@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis MCLL - Sistema de Operações</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #0a0e14;
+      --surface: #121821;
+      --surface-alt: #1f2937;
+      --border: #374151;
+      --border-strong: #4b5563;
+      --text-primary: #e0e0e0;
+      --text-secondary: #9ca3af;
+      --accent: #378ADD;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--accent) 0%, #1D9E75 100%);
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .header-status {
+      font-size: 12px;
+      background: rgba(0,0,0,0.2);
+      padding: 6px 12px;
+      border-radius: 20px;
+    }
+
+    /* NAVEGAÇÃO DE ABAS */
+    .navbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0;
+      position: sticky;
+      top: 60px;
+      z-index: 99;
+    }
+
+    .nav-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      overflow-x: auto;
+      gap: 0;
+      padding: 0;
+    }
+
+    .nav-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 16px 20px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .nav-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .nav-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(55,138,221,0.05);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* PÁGINA/ABA */
+    .page {
+      display: none;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .page-header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .page-title::before {
+      content: '';
+      width: 4px;
+      height: 24px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .page-description {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* UPLOAD SECTION */
+    .upload-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .upload-section h3 {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--accent);
+      background: rgba(55,138,221,0.05);
+    }
+
+    .upload-zone input {
+      display: none;
+    }
+
+    .upload-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .upload-text strong {
+      color: var(--text-primary);
+    }
+
+    /* STATUS ALERT */
+    .alert {
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .alert-success {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      border: 0.5px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .alert-info {
+      background: rgba(55, 138, 221, 0.1);
+      color: var(--accent);
+      border: 0.5px solid rgba(55, 138, 221, 0.3);
+    }
+
+    .alert-warning {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--warning);
+      border: 0.5px solid rgba(245, 158, 11, 0.3);
+    }
+
+    /* FILTROS */
+    .filters {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .filter-group label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .filter-group select,
+    .filter-group input {
+      background: var(--surface-alt);
+      border: 0.5px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .filter-group select:focus,
+    .filter-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      align-self: flex-end;
+      margin-top: 22px;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    /* GRID */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .card-header {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .metric-box {
+      background: var(--surface-alt);
+      border-radius: 6px;
+      padding: 10px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .metric-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--success);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .metric-value.warning {
+      color: var(--warning);
+    }
+
+    .metric-value.danger {
+      color: var(--danger);
+    }
+
+    .chart-container {
+      position: relative;
+      height: 280px;
+      margin-top: 16px;
+    }
+
+    /* CARDS DE DADOS */
+    .data-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .data-card {
+      background: var(--surface-alt);
+      border: 0.5px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .data-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .data-card-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .data-card-value {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* TABELAS */
+    .table-scroll {
+      overflow-x: auto;
+      margin-top: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    thead {
+      background: var(--surface-alt);
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    th {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px;
+      border-bottom: 0.5px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    tr:hover {
+      background: var(--surface-alt);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .status-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .status-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+
+    .status-danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .nav-container {
+        gap: 0;
+      }
+      .nav-btn {
+        padding: 12px 14px;
+        font-size: 11px;
+      }
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-content">
+      <h1>🎯 Jarvis MCLL</h1>
+      <div class="header-status">Versão 3.0 - Módulos Independentes</div>
+    </div>
+  </div>
+
+  <!-- NAVIGATION TABS -->
+  <div class="navbar">
+    <div class="nav-container">
+      <button class="nav-btn active" onclick="switchPage('redes', this)">📡 Redes</button>
+      <button class="nav-btn" onclick="switchPage('abertos', this)">🔴 B2B Abertos</button>
+      <button class="nav-btn" onclick="switchPage('encerrados', this)">🔧 B2B Encerrados</button>
+      <button class="nav-btn" onclick="switchPage('repetidos', this)">🔁 Repetidos</button>
+      <button class="nav-btn" onclick="switchPage('ofs', this)">👥 OFS</button>
+      <button class="nav-btn" onclick="switchPage('frota', this)">🚗 Frota</button>
+      <button class="nav-btn" onclick="switchPage('bases', this)">📁 Bases</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- ============= 1. PAINEL DE REDES ============= -->
+    <div id="redes" class="page active">
+      <div class="page-header">
+        <div class="page-title">📡 Painel de Redes</div>
+        <div class="page-description">Análise de Backbone e Acesso com TME, Prazo e distribuição por cidade</div>
+      </div>
+
+      <div class="upload-section">
+        <h3>📂 Carregar BASE_REDE.xlsx</h3>
+        <div class="upload-zone" onclick="document.getElementById('uploadRede').click()">
+          <input type="file" id="uploadRede" accept=".xlsx" onchange="handleRede(event)">
+          <div class="upload-text"><strong>Clique ou arraste</strong> arquivo BASE_REDE.xlsx</div>
+        </div>
+        <div id="statusRede"></div>
+      </div>
+
+      <div class="filters" id="filtrosRede"></div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">BACKBONE</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Total OS</div>
+              <div class="metric-value" id="backboneTotal">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">TME Médio (h)</div>
+              <div class="metric-value" id="backboneTME">-</div>
+            </div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">% No Prazo</div>
+            <div class="metric-value" id="backbonePrazo">-</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">ACESSO</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Total OS</div>
+              <div class="metric-value" id="acessoTotal">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">TME Médio (h)</div>
+              <div class="metric-value" id="acessoTME">-</div>
+            </div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">% No Prazo</div>
+            <div class="metric-value" id="acessoPrazo">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Distribuição por Cidade</div>
+        <div class="data-cards" id="cidadesRede"></div>
+        <div class="chart-container">
+          <canvas id="chartRede"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Últimos Registros</div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>OS</th>
+                <th>Cidade</th>
+                <th>UF</th>
+                <th>TME (h)</th>
+                <th>Prazo</th>
+                <th>Outlier</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaRede">
+              <tr><td colspan="6" class="empty-state">Aguardando carregamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============= 2. PAINEL B2B ABERTOS ============= -->
+    <div id="abertos" class="page">
+      <div class="page-header">
+        <div class="page-title">🔴 Painel B2B - Chamados Abertos</div>
+        <div class="page-description">Tickets em aberto com status, tempo decorrido e classificação</div>
+      </div>
+
+      <div class="upload-section">
+        <h3>📂 Carregar BASE_ABERTOS.xlsx</h3>
+        <div class="upload-zone" onclick="document.getElementById('uploadAbertos').click()">
+          <input type="file" id="uploadAbertos" accept=".xlsx" onchange="handleAbertos(event)">
+          <div class="upload-text"><strong>Clique ou arraste</strong> arquivo BASE_ABERTOS.xlsx</div>
+        </div>
+        <div id="statusAbertos"></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">Resumo</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Total Abertos</div>
+              <div class="metric-value" id="abertosTotal">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Tempo Médio (dias)</div>
+              <div class="metric-value" id="abertosTempo">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Por Status</div>
+        <div class="data-cards" id="statusAbertos"></div>
+        <div class="chart-container">
+          <canvas id="chartAbertos"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Tickets Abertos</div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticket ID</th>
+                <th>Cliente</th>
+                <th>Departamento</th>
+                <th>Status</th>
+                <th>Abertura</th>
+                <th>Dias</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaAbertos">
+              <tr><td colspan="6" class="empty-state">Aguardando carregamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============= 3. PAINEL B2B ENCERRADOS ============= -->
+    <div id="encerrados" class="page">
+      <div class="page-header">
+        <div class="page-title">🔧 Painel B2B - Encerrados</div>
+        <div class="page-description">Análise de tickets encerrados com segmentação, faixa SLA e valores</div>
+      </div>
+
+      <div class="upload-section">
+        <h3>📂 Carregar BASE_B2B_ENCERRADOS.xlsx</h3>
+        <div class="upload-zone" onclick="document.getElementById('uploadEncerrados').click()">
+          <input type="file" id="uploadEncerrados" accept=".xlsx" onchange="handleEncerrados(event)">
+          <div class="upload-text"><strong>Clique ou arraste</strong> arquivo BASE_B2B_ENCERRADOS.xlsx</div>
+        </div>
+        <div id="statusEncerrados"></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">Resumo Geral</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Total Encerrado</div>
+              <div class="metric-value" id="encerradosTotal">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Valor Total (R$ mil)</div>
+              <div class="metric-value" id="encerradosValor">-</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Por Segmento</div>
+          <div class="data-cards" id="segmentosEncerrados"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Distribuição por Segmento</div>
+        <div class="chart-container">
+          <canvas id="chartSegmento"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Últimos Tickets Encerrados</div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticket ID</th>
+                <th>Cliente</th>
+                <th>Segmento</th>
+                <th>Valor (R$)</th>
+                <th>Data Fechamento</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaEncerrados">
+              <tr><td colspan="6" class="empty-state">Aguardando carregamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============= 4. PAINEL REPETIDOS ============= -->
+    <div id="repetidos" class="page">
+      <div class="page-header">
+        <div class="page-title">🔁 Painel Repetidos</div>
+        <div class="page-description">Análise de chamados que se repetem (reincidência) por cliente e numplan</div>
+      </div>
+
+      <div class="alert alert-info">
+        💡 Este módulo utiliza dados de BASE_B2B_ENCERRADOS.xlsx. 
+        Carregue a base no módulo de Encerrados primeiro.
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">Resumo de Repetições</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Total Chamados</div>
+              <div class="metric-value" id="repetidosTotal">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Chamados Repetidos</div>
+              <div class="metric-value danger" id="repetidosCount">-</div>
+            </div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Taxa de Repetição (%)</div>
+            <div class="metric-value warning" id="repetidosTaxa">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Distribuição de Reincidência</div>
+        <div class="chart-container">
+          <canvas id="chartRepetidos"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Top Chamados Repetidos</div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente ID</th>
+                <th>NumPlan</th>
+                <th>Vezes Repetido</th>
+                <th>Última Ocorrência</th>
+                <th>Taxa (%)</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaRepetidos">
+              <tr><td colspan="5" class="empty-state">Aguardando carregamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============= 5. PAINEL OFS ============= -->
+    <div id="ofs" class="page">
+      <div class="page-header">
+        <div class="page-title">👥 Produtividade OFS</div>
+        <div class="page-description">Acompanhamento de técnicos com atividades, status e dias trabalhados</div>
+      </div>
+
+      <div class="upload-section">
+        <h3>📂 Carregar BASE_PRODUTIVIDADE_OFS.xlsx</h3>
+        <div class="upload-zone" onclick="document.getElementById('uploadOFS').click()">
+          <input type="file" id="uploadOFS" accept=".xlsx" onchange="handleOFS(event)">
+          <div class="upload-text"><strong>Clique ou arraste</strong> arquivo BASE_PRODUTIVIDADE_OFS.xlsx</div>
+        </div>
+        <div id="statusOFS"></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">Resumo Geral</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Total Atividades</div>
+              <div class="metric-value" id="ofsTotal">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Técnicos Ativos</div>
+              <div class="metric-value" id="ofsTecnicos">-</div>
+            </div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">% Concluído</div>
+            <div class="metric-value success" id="ofsConcluido">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Top 10 Técnicos</div>
+        <div class="data-cards" id="tecnicosOFS"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Por Tipo de Atividade</div>
+        <div class="chart-container">
+          <canvas id="chartOFS"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Últimas Atividades</div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Técnico</th>
+                <th>Atividade</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>OS</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaOFS">
+              <tr><td colspan="6" class="empty-state">Aguardando carregamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============= 6. PAINEL FROTA ============= -->
+    <div id="frota" class="page">
+      <div class="page-header">
+        <div class="page-title">🚗 Frota & Combustível</div>
+        <div class="page-description">Gerenciamento de veículos, saldos Alelo e consumo de combustível</div>
+      </div>
+
+      <div class="upload-section">
+        <h3>📂 Carregar BASE de Frota (quando disponível)</h3>
+        <div class="upload-zone" onclick="document.getElementById('uploadFrota').click()">
+          <input type="file" id="uploadFrota" accept=".xlsx" onchange="handleFrota(event)">
+          <div class="upload-text"><strong>Clique ou arraste</strong> arquivo de Frota</div>
+        </div>
+        <div id="statusFrota"></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">Saldo Geral</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Saldo Total (R$)</div>
+              <div class="metric-value" id="frotaSaldo">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Veículos Ativos</div>
+              <div class="metric-value" id="frotaVeiculos">-</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Transações</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">Aportes (mês)</div>
+              <div class="metric-value success" id="frotaAportes">-</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Retiradas (mês)</div>
+              <div class="metric-value danger" id="frotaRetiradas">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Veículos</div>
+        <div class="data-cards" id="veiculosFrota"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Histórico de Transações</div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Veículo</th>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Valor (R$)</th>
+                <th>Saldo (R$)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaFrota">
+              <tr><td colspan="6" class="empty-state">Nenhuma base carregada</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============= 7. CENTRAL DE BASES ============= -->
+    <div id="bases" class="page">
+      <div class="page-header">
+        <div class="page-title">📁 Central de Bases</div>
+        <div class="page-description">Gerenciamento centralizado de todas as bases de dados</div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-header">📊 BASE_REDE.xlsx</div>
+          <div class="metrics">
+            <div class="metric-box">
+              <div class="metric-label">BACKBONE</div>
+              <div class="metric-value" id="metaBackbone">0</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">ACESSO</div>
+              <div class="metric-value" id="metaAcesso">0</div>
+            </div>
+          </div>
+          <div style="margin-top: 12px; font-size: 11px; color: var(--text-secondary);">
+            Última atualização: <span id="dateRede">-</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">📋 BASE_ABERTOS.xlsx</div>
+          <div class="metric-box">
+            <div class="metric-label">Tickets Carregados</div>
+            <div class="metric-value" id="metaAbertos">0</div>
+          </div>
+          <div style="margin-top: 12px; font-size: 11px; color: var(--text-secondary);">
+            Última atualização: <span id="dateAbertos">-</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">🔧 BASE_B2B_ENCERRADOS.xlsx</div>
+          <div class="metric-box">
+            <div class="metric-label">Tickets Carregados</div>
+            <div class="metric-value" id="metaEncerrados">0</div>
+          </div>
+          <div style="margin-top: 12px; font-size: 11px; color: var(--text-secondary);">
+            Última atualização: <span id="dateEncerrados">-</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">👥 BASE_PRODUTIVIDADE_OFS.xlsx</div>
+          <div class="metric-box">
+            <div class="metric-label">Atividades Carregadas</div>
+            <div class="metric-value" id="metaOFS">0</div>
+          </div>
+          <div style="margin-top: 12px; font-size: 11px; color: var(--text-secondary);">
+            Última atualização: <span id="dateOFS">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">📝 Instruções de Uso</div>
+        <div style="padding: 12px; font-size: 12px; line-height: 1.8; color: var(--text-secondary);">
+          <p style="margin-bottom: 12px;">
+            <strong>Cada módulo acima possui um upload independente:</strong>
+          </p>
+          <p>1. <strong>Painel de Redes</strong> → Upload de BASE_REDE.xlsx (BACKBONE + ACESSO)</p>
+          <p>2. <strong>B2B Abertos</strong> → Upload de BASE_ABERTOS.xlsx</p>
+          <p>3. <strong>B2B Encerrados</strong> → Upload de BASE_B2B_ENCERRADOS.xlsx</p>
+          <p>4. <strong>Repetidos</strong> → Usa dados de Encerrados (mesmo upload)</p>
+          <p>5. <strong>OFS</strong> → Upload de BASE_PRODUTIVIDADE_OFS.xlsx</p>
+          <p>6. <strong>Frota</strong> → Upload de base de frota quando disponível</p>
+          <br>
+          <p style="color: var(--accent); font-weight: 600;">
+            ✓ Cada base pode ser atualizada independentemente
+            <br>✓ Dados persistem na sessão (até fechar o navegador)
+            <br>✓ Gráficos atualizam automaticamente ao upload
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ============= DADOS GLOBAIS =============
+    let dados = {
+      rede: { backbone: [], acesso: [] },
+      abertos: [],
+      encerrados: [],
+      ofs: [],
+      frota: []
+    };
+
+    let charts = {};
+
+    // ============= NAVEGAÇÃO =============
+    function switchPage(pageId, btn) {
+      // Esconder todas as páginas
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      
+      // Mostrar página selecionada
+      document.getElementById(pageId).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    // ============= HELPERS =============
+    function lerAba(wb, nomeAba) {
+      const aba = wb.Sheets[nomeAba];
+      if (!aba) return [];
+      return XLSX.utils.sheet_to_json(aba);
+    }
+
+    function showStatus(elementId, type, message) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.innerHTML = `<div class="alert alert-${type}">✓ ${message}</div>`;
+    }
+
+    function formatDate(date) {
+      return new Date().toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // ============= 1. PAINEL DE REDES =============
+    function handleRede(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result);
+          dados.rede.backbone = lerAba(wb, 'BACKBONE');
+          dados.rede.acesso = lerAba(wb, 'ACESSO');
+          
+          showStatus('statusRede', 'success', `Rede carregada: ${dados.rede.backbone.length} BACKBONE + ${dados.rede.acesso.length} ACESSO`);
+          document.getElementById('dateRede').textContent = formatDate();
+          document.getElementById('metaBackbone').textContent = dados.rede.backbone.length;
+          document.getElementById('metaAcesso').textContent = dados.rede.acesso.length;
+          
+          renderRedes();
+        } catch (error) {
+          showStatus('statusRede', 'warning', `Erro ao ler arquivo: ${error.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderRedes() {
+      const todos = [...dados.rede.backbone, ...dados.rede.acesso];
+      if (!todos.length) return;
+
+      // BACKBONE
+      const backbone = dados.rede.backbone;
+      document.getElementById('backboneTotal').textContent = backbone.length;
+      const bTME = backbone.length > 0
+        ? (backbone.reduce((sum, r) => sum + (parseFloat(r['TME']) || 0), 0) / backbone.length).toFixed(1)
+        : '-';
+      document.getElementById('backboneTME').textContent = bTME;
+      const bPrazo = backbone.length > 0
+        ? Math.round((backbone.filter(r => r['PRAZO'] == 1).length / backbone.length) * 100)
+        : 0;
+      document.getElementById('backbonePrazo').textContent = bPrazo + '%';
+
+      // ACESSO
+      const acesso = dados.rede.acesso;
+      document.getElementById('acessoTotal').textContent = acesso.length;
+      const aTME = acesso.length > 0
+        ? (acesso.reduce((sum, r) => sum + (parseFloat(r['TME']) || 0), 0) / acesso.length).toFixed(1)
+        : '-';
+      document.getElementById('acessoTME').textContent = aTME;
+      const aPrazo = acesso.length > 0
+        ? Math.round((acesso.filter(r => r['PRAZO'] == 1).length / acesso.length) * 100)
+        : 0;
+      document.getElementById('acessoPrazo').textContent = aPrazo + '%';
+
+      // CIDADES
+      const cidades = {};
+      todos.forEach(r => {
+        const cidade = r['CIDADE'] || r['CIDADE_SIMPLES'] || r['UF'] || 'N/A';
+        cidades[cidade] = (cidades[cidade] || 0) + 1;
+      });
+
+      const cidadesHTML = Object.entries(cidades)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([cidade, count]) => `
+          <div class="data-card">
+            <div class="data-card-label">${cidade}</div>
+            <div class="data-card-value">${count}</div>
+          </div>
+        `).join('');
+      document.getElementById('cidadesRede').innerHTML = cidadesHTML;
+
+      // GRÁFICO
+      renderChartRede(cidades);
+
+      // TABELA
+      const tabelaHTML = todos.slice(0, 10).map(r => `
+        <tr>
+          <td>${r['OS'] || '-'}</td>
+          <td>${r['CIDADE'] || r['CIDADE_SIMPLES'] || '-'}</td>
+          <td>${r['UF'] || '-'}</td>
+          <td>${(parseFloat(r['TME']) || 0).toFixed(1)}</td>
+          <td><span class="status-badge status-${r['PRAZO'] == 1 ? 'success' : 'danger'}">
+            ${r['PRAZO'] == 1 ? 'Sim' : 'Não'}
+          </span></td>
+          <td><span class="status-badge status-${r['OUTLIER'] == 1 ? 'danger' : 'success'}">
+            ${r['OUTLIER'] == 1 ? 'Sim' : 'Não'}
+          </span></td>
+        </tr>
+      `).join('');
+      document.getElementById('tabelaRede').innerHTML = tabelaHTML;
+    }
+
+    function renderChartRede(cidades) {
+      if (charts.chartRede) charts.chartRede.destroy();
+      
+      const ctx = document.getElementById('chartRede');
+      if (!ctx) return;
+
+      charts.chartRede = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(cidades).slice(0, 10),
+          datasets: [{
+            label: 'OS por Cidade',
+            data: Object.values(cidades).slice(0, 10),
+            backgroundColor: '#378ADD'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#9ca3af' } } },
+          scales: {
+            y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+            x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }
+          }
+        }
+      });
+    }
+
+    // ============= 2. PAINEL B2B ABERTOS =============
+    function handleAbertos(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result);
+          dados.abertos = lerAba(wb, 'Planilha1');
+          
+          showStatus('statusAbertos', 'success', `${dados.abertos.length} tickets abertos carregados`);
+          document.getElementById('dateAbertos').textContent = formatDate();
+          document.getElementById('metaAbertos').textContent = dados.abertos.length;
+          
+          renderAbertos();
+        } catch (error) {
+          showStatus('statusAbertos', 'warning', `Erro: ${error.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderAbertos() {
+      if (!dados.abertos.length) return;
+
+      document.getElementById('abertosTotal').textContent = dados.abertos.length;
+      
+      const tempos = dados.abertos.map(a => parseFloat(a['Tempo']) || 0);
+      const tempoMedio = tempos.length > 0 ? (tempos.reduce((a, b) => a + b) / tempos.length).toFixed(1) : '-';
+      document.getElementById('abertosTempo').textContent = tempoMedio;
+
+      const status = {};
+      dados.abertos.forEach(a => {
+        const s = a['Status'] || 'N/A';
+        status[s] = (status[s] || 0) + 1;
+      });
+
+      const statusHTML = Object.entries(status).map(([st, count]) => `
+        <div class="data-card">
+          <div class="data-card-label">${st}</div>
+          <div class="data-card-value">${count}</div>
+        </div>
+      `).join('');
+      document.getElementById('statusAbertos').innerHTML = statusHTML;
+
+      // GRÁFICO
+      if (charts.chartAbertos) charts.chartAbertos.destroy();
+      const ctx = document.getElementById('chartAbertos');
+      if (ctx) {
+        charts.chartAbertos = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: Object.keys(status),
+            datasets: [{
+              data: Object.values(status),
+              backgroundColor: ['#378ADD', '#1D9E75', '#f59e0b', '#ef4444']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } }
+          }
+        });
+      }
+
+      // TABELA
+      const tabelaHTML = dados.abertos.slice(0, 10).map(a => `
+        <tr>
+          <td>${a['ID Ticket'] || a['Ticket'] || '-'}</td>
+          <td>${a['Cliente']?.substring(0, 25) || '-'}</td>
+          <td>${a['Departamento'] || '-'}</td>
+          <td><span class="status-badge status-warning">${a['Status'] || 'N/A'}</span></td>
+          <td>${a['Abertura do Ticket']?.substring(0, 10) || '-'}</td>
+          <td>${a['Tempo'] || '-'}</td>
+        </tr>
+      `).join('');
+      document.getElementById('tabelaAbertos').innerHTML = tabelaHTML;
+    }
+
+    // ============= 3. PAINEL B2B ENCERRADOS =============
+    function handleEncerrados(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result);
+          dados.encerrados = lerAba(wb, 'BASE ENCERRADO');
+          
+          showStatus('statusEncerrados', 'success', `${dados.encerrados.length} tickets encerrados carregados`);
+          document.getElementById('dateEncerrados').textContent = formatDate();
+          document.getElementById('metaEncerrados').textContent = dados.encerrados.length;
+          
+          renderEncerrados();
+          renderRepetidos();
+        } catch (error) {
+          showStatus('statusEncerrados', 'warning', `Erro: ${error.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderEncerrados() {
+      if (!dados.encerrados.length) return;
+
+      document.getElementById('encerradosTotal').textContent = dados.encerrados.length;
+      
+      const valor = dados.encerrados.reduce((sum, e) => sum + (parseFloat(e['valorservico']) || 0), 0);
+      document.getElementById('encerradosValor').textContent = (valor / 1000).toFixed(0);
+
+      const segmentos = {};
+      dados.encerrados.forEach(e => {
+        const seg = e['segmento_cliente'] || 'N/A';
+        segmentos[seg] = (segmentos[seg] || 0) + 1;
+      });
+
+      const segHTML = Object.entries(segmentos).map(([seg, count]) => `
+        <div class="data-card">
+          <div class="data-card-label">${seg.substring(0, 12)}</div>
+          <div class="data-card-value">${count}</div>
+        </div>
+      `).join('');
+      document.getElementById('segmentosEncerrados').innerHTML = segHTML;
+
+      // GRÁFICO
+      if (charts.chartSegmento) charts.chartSegmento.destroy();
+      const ctx = document.getElementById('chartSegmento');
+      if (ctx) {
+        charts.chartSegmento = new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: Object.keys(segmentos),
+            datasets: [{
+              data: Object.values(segmentos),
+              backgroundColor: ['#378ADD', '#1D9E75', '#f59e0b']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } }
+          }
+        });
+      }
+
+      // TABELA
+      const tabelaHTML = dados.encerrados.slice(0, 10).map(e => `
+        <tr>
+          <td>${e['ticket_id'] || '-'}</td>
+          <td>${e['Cliente']?.substring(0, 25) || '-'}</td>
+          <td>${e['segmento_cliente'] || '-'}</td>
+          <td>R$ ${Number(e['valorservico'] || 0).toLocaleString('pt-BR')}</td>
+          <td>${e['data_fechamento']?.toString().substring(0, 10) || '-'}</td>
+          <td><span class="status-badge status-success">✓</span></td>
+        </tr>
+      `).join('');
+      document.getElementById('tabelaEncerrados').innerHTML = tabelaHTML;
+    }
+
+    // ============= 4. PAINEL REPETIDOS =============
+    function renderRepetidos() {
+      if (!dados.encerrados.length) return;
+
+      document.getElementById('repetidosTotal').textContent = dados.encerrados.length;
+
+      const repetidos = {};
+      dados.encerrados.forEach(e => {
+        const chave = `${e['numplan']}_${e['cliente_id']}`;
+        repetidos[chave] = (repetidos[chave] || 0) + 1;
+      });
+
+      const repetidosCount = Object.values(repetidos).filter(v => v > 1).length;
+      document.getElementById('repetidosCount').textContent = repetidosCount;
+      
+      const taxa = dados.encerrados.length > 0
+        ? ((repetidosCount / dados.encerrados.length) * 100).toFixed(1)
+        : 0;
+      document.getElementById('repetidosTaxa').textContent = taxa + '%';
+
+      // GRÁFICO
+      if (charts.chartRepetidos) charts.chartRepetidos.destroy();
+      const ctx = document.getElementById('chartRepetidos');
+      if (ctx) {
+        const semRepetir = dados.encerrados.length - repetidosCount;
+        charts.chartRepetidos = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Sem Repetição', 'Repetidos'],
+            datasets: [{
+              data: [semRepetir, repetidosCount],
+              backgroundColor: ['#1D9E75', '#ef4444']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } }
+          }
+        });
+      }
+
+      // TABELA - Top repetidos
+      const topRepetidos = Object.entries(repetidos)
+        .filter(([_, v]) => v > 1)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      const tabelaHTML = topRepetidos.map(([chave, count], idx) => {
+        const ticket = dados.encerrados.find(e => `${e['numplan']}_${e['cliente_id']}` === chave);
+        return `
+          <tr>
+            <td>${ticket?.['cliente_id'] || '-'}</td>
+            <td>${ticket?.['numplan'] || '-'}</td>
+            <td><span class="status-badge status-danger">${count}</span></td>
+            <td>${ticket?.['data_fechamento']?.toString().substring(0, 10) || '-'}</td>
+            <td>${((count / dados.encerrados.length) * 100).toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join('');
+      document.getElementById('tabelaRepetidos').innerHTML = tabelaHTML || '<tr><td colspan="5" class="empty-state">Nenhum repetido encontrado</td></tr>';
+    }
+
+    // ============= 5. PAINEL OFS =============
+    function handleOFS(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result);
+          dados.ofs = lerAba(wb, 'Base_Organizada') || lerAba(wb, 'BASE');
+          
+          showStatus('statusOFS', 'success', `${dados.ofs.length} atividades carregadas`);
+          document.getElementById('dateOFS').textContent = formatDate();
+          document.getElementById('metaOFS').textContent = dados.ofs.length;
+          
+          renderOFS();
+        } catch (error) {
+          showStatus('statusOFS', 'warning', `Erro: ${error.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderOFS() {
+      if (!dados.ofs.length) return;
+
+      document.getElementById('ofsTotal').textContent = dados.ofs.length;
+
+      const tecnicos = new Set();
+      dados.ofs.forEach(o => {
+        if (o['Recurso']) tecnicos.add(o['Recurso']);
+      });
+      document.getElementById('ofsTecnicos').textContent = tecnicos.size;
+
+      const concluido = dados.ofs.filter(o => 
+        o['Status da Atividade']?.toLowerCase().includes('concluído')
+      ).length;
+      const taxa = dados.ofs.length > 0 ? ((concluido / dados.ofs.length) * 100).toFixed(0) : 0;
+      document.getElementById('ofsConcluido').textContent = taxa + '%';
+
+      // Top técnicos
+      const tecnicosCount = {};
+      dados.ofs.forEach(o => {
+        const t = o['Recurso'] || 'N/A';
+        tecnicosCount[t] = (tecnicosCount[t] || 0) + 1;
+      });
+
+      const tecnicosHTML = Object.entries(tecnicosCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([t, count]) => `
+          <div class="data-card">
+            <div class="data-card-label">${t.substring(0, 12)}</div>
+            <div class="data-card-value">${count}</div>
+          </div>
+        `).join('');
+      document.getElementById('tecnicosOFS').innerHTML = tecnicosHTML;
+
+      // GRÁFICO - Tipo de atividade
+      const tipos = {};
+      dados.ofs.forEach(o => {
+        const tipo = o['Tipo de Atividade'] || 'N/A';
+        tipos[tipo] = (tipos[tipo] || 0) + 1;
+      });
+
+      if (charts.chartOFS) charts.chartOFS.destroy();
+      const ctx = document.getElementById('chartOFS');
+      if (ctx) {
+        charts.chartOFS = new Chart(ctx, {
+          type: 'horizontalBar',
+          type: 'bar',
+          indexAxis: 'y',
+          data: {
+            labels: Object.keys(tipos).slice(0, 8),
+            datasets: [{
+              label: 'Atividades',
+              data: Object.values(tipos).slice(0, 8),
+              backgroundColor: '#1D9E75'
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#9ca3af' } } },
+            scales: {
+              x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+              y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }
+            }
+          }
+        });
+      }
+
+      // TABELA
+      const tabelaHTML = dados.ofs.slice(0, 10).map(o => `
+        <tr>
+          <td>${o['Data']?.substring(0, 10) || '-'}</td>
+          <td>${o['Recurso']?.substring(0, 20) || '-'}</td>
+          <td>${o['Atividade']?.substring(0, 20) || '-'}</td>
+          <td>${o['Tipo de Atividade'] || '-'}</td>
+          <td><span class="status-badge status-${o['Status da Atividade']?.includes('concluído') ? 'success' : 'warning'}">
+            ${o['Status da Atividade']?.substring(0, 10) || '-'}
+          </span></td>
+          <td>${o['Ordem de Serviço'] || '-'}</td>
+        </tr>
+      `).join('');
+      document.getElementById('tabelaOFS').innerHTML = tabelaHTML;
+    }
+
+    // ============= 6. PAINEL FROTA =============
+    function handleFrota(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result);
+          const firstSheet = wb.SheetNames[0];
+          dados.frota = lerAba(wb, firstSheet);
+          
+          showStatus('statusFrota', 'success', `Base de frota carregada com ${dados.frota.length} registros`);
+          document.getElementById('statusFrota').textContent = formatDate();
+          
+          // renderFrota(); // Implementar conforme necessário
+        } catch (error) {
+          showStatus('statusFrota', 'warning', `Erro: ${error.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  </script>
+</body>
+</html>
