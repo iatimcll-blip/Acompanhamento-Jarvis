@@ -1869,6 +1869,72 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
   .top-tabbar .ntab { padding: 5px 8px !important; gap: 0 !important; }
   .atrix-search { max-width: 160px !important; }
 }
+
+/* ═══ MELHORIAS B2B ABERTOS ═══ */
+
+/* ID do ticket maior e em destaque */
+.abc-id {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: -.2px !important;
+}
+.abc-id a { font-size: 15px !important; font-weight: 700 !important; }
+
+/* MOP/EPS maior */
+.abc-mop {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  gap: 5px !important;
+}
+
+/* Cliente / Cliente Final em negrito e visível */
+.abc-cliente {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: var(--tx) !important;
+  line-height: 1.4 !important;
+}
+.abc-cliente-final {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--tx2) !important;
+  display: block !important;
+  margin-top: 2px !important;
+}
+
+/* Tabela Dinâmica — colunas ajustadas ao conteúdo */
+.ab-bloco-tbl { table-layout: auto !important; width: auto !important; min-width: 100% !important; }
+.ab-bloco-tbl th,
+.ab-bloco-tbl td { white-space: nowrap !important; padding: 6px 10px !important; }
+.ab-bloco-tbl td.col-cliente { white-space: normal !important; min-width: 160px !important; max-width: 260px !important; word-break: break-word !important; }
+.ab-bloco-tbl td.col-causa  { white-space: normal !important; min-width: 140px !important; max-width: 220px !important; word-break: break-word !important; }
+
+/* ═══ MELHORIAS B2B ENCERRADOS ═══ */
+
+/* Tabela encerrados — colunas automáticas com quebra nos textos longos */
+#tbl-enc-main { table-layout: auto !important; width: 100% !important; }
+#tbl-enc-main th, #tbl-enc-main td { white-space: nowrap !important; }
+#tbl-enc-main td.enc-cli,
+#tbl-enc-main td.enc-cf,
+#tbl-enc-main td.enc-causa {
+  white-space: normal !important;
+  word-break: break-word !important;
+  max-width: 200px !important;
+}
+#tbl-enc-main td.enc-causa { max-width: 220px !important; color: var(--tx2) !important; }
+#tbl-enc-main td.enc-tempo { font-variant-numeric: tabular-nums !important; text-align: right !important; }
+#tbl-enc-main td.enc-semana { text-align: center !important; }
+
+/* Relatório Executivo no final */
+#exec-report { margin-top: 24px !important; }
+
+/* Classes auxiliares do layout flat encerrados */
+.enc-nowrap { white-space: nowrap !important; }
+.enc-flat td { vertical-align: middle !important; padding: 7px 10px !important; }
+.enc-flat { border-bottom: 1px solid var(--bd) !important; }
+
+/* Nome do cliente no card abertos */
+.abc-cli-nome { display: block !important; font-weight: 700 !important; color: var(--tx) !important; }
 </style>
 </head>
 <body data-theme="light">
@@ -2251,7 +2317,6 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
     <div id="dash-enc" style="display:none">
       <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
       <div id="week-banner-enc"></div>
-      <div id="exec-report"></div>
       <div id="repetidos-enc"></div>
       <div class="mrow" id="mrow-enc"></div>
       <div class="prow" id="prow-enc"></div>
@@ -2313,12 +2378,18 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
             <th onclick="sEnc('protocolo')">Protocolo</th>
             <th onclick="sEnc('cliente')">Cliente</th>
             <th onclick="sEnc('titulo')">Cliente Final</th>
+            <th>UF/Cidade</th>
+            <th onclick="sEnc('cluster')">Cluster</th>
             <th onclick="sEnc('faixa')">Faixa SLA</th>
             <th onclick="sEnc('semana')">Semana</th>
+            <th onclick="sEnc('tempoTotal')">Tempo</th>
+            <th>Dentro 8h</th>
+            <th onclick="sEnc('causaRaiz')">Causa</th>
           </tr></thead>
           <tbody id="tb-enc"></tbody>
         </table></div>
       </div>
+      <div id="exec-report"></div>
     </div>
   </div>
 
@@ -4026,7 +4097,7 @@ function renderTAb(){
     const idHtml=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.id)}</a>`:eh(d.id);
     const subHtml=canEdit()?`<select class="substatus-select" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
     const _sk=nk(d.substatus);const rowCls=(_sk.includes('FECHADO')||_sk.includes('CANCELADO')||isValidationSubstatus(d.substatus)||_sk.includes('RESPONDIDO'))?'row-green':((_sk.includes('PENDENTE')&&_sk.includes('CLIENTE'))||(_sk.includes('LIBER')&&_sk.includes('ACESSO')))?'row-orange':_sk.includes('DISPONIBIL')?'row-yellow':'';
-    const clienteDisplay=d.assunto?`${eh(d.cliente)} <span style="color:var(--tx3);font-size:10px;font-weight:400">/ ${eh(d.assunto)}</span>`:eh(d.cliente);
+    const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
     return`<div class="ab-card ${rowCls}"><div class="abc-r1"><div class="abc-id">${idHtml}${lk}</div><div class="abc-loc"><span class="abc-mop"><span style="width:7px;height:7px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div><div class="abc-sla"><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span><span class="badge ${ss}">${eh(d.statusSla)}</span><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-r2"><span class="abc-cliente">${clienteDisplay}</span><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span></span></div><div class="abc-r3"><div class="abc-prof">${profCell}</div><div class="abc-divr"></div><div class="abc-obs">${obsCell}</div></div></div>`;
@@ -4155,9 +4226,11 @@ function abRenderBlocos(chamados){
     const linhas=itens.length?itens.map(c=>{
       const cl=safeUrl(c.link);
       const idCell=cl?`<a href="${eh(cl)}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-weight:600">${eh(c.id)}</a>`:`<span style="font-weight:600;color:var(--blue)">${eh(c.id)}</span>`;
-      return`<tr><td style="min-width:140px">${eh(c.cliente)}</td><td style="white-space:nowrap">${idCell}</td><td>${eh(c.assunto)}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${abFaixaDot(c.faixa)}"></span>${eh(c.faixa)}</span></td><td style="color:var(--tx3);white-space:nowrap">${eh(c.cidade)}</td><td style="color:var(--tx3)">${eh(c.uf)}</td><td style="color:var(--tx3)">${eh(c.substatus)}</td></tr>`;
-    }).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--tx3);padding:14px;font-style:italic">Nenhum chamado em aberto neste MOP/EPS.</td></tr>`;
-    return`<div class="ab-bloco"><div class="ab-bloco-hd"><span class="ab-bloco-titulo">▸ ${eh(mop)} <span class="ab-bloco-qtd">· ${itens.length} chamado(s)</span></span><button class="ab-copy-btn" onclick="abCopiarBloco('${eh(mop)}',this)"${itens.length?'':' disabled'}>Copiar bloco</button></div><div class="ab-bloco-scroll"><table class="ab-bloco-tbl"><thead><tr><th>Cliente</th><th>ID Ticket</th><th>Assunto</th><th style="text-align:right">SLA</th><th>Faixa</th><th>Cidade</th><th>UF</th><th>Substatus</th></tr></thead><tbody>${linhas}</tbody></table></div></div>`;
+      const ufCidade=c.cidade?`\/\`:c.uf||'—';
+      const clienteCF=c.assunto?`<span style="font-weight:600;color:var(--tx)">\</span><span style="display:block;font-size:11px;color:var(--tx2);margin-top:1px">\</span>`:eh(c.cliente);
+      return`<tr><td style="white-space:nowrap">\</td><td class="col-cliente">\</td><td style="white-space:nowrap;color:var(--tx3)">\</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">\</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:\"></span>\</span></td><td class="col-causa" style="color:var(--tx3)">\</td></tr>`;
+    }).join(''):`<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px;font-style:italic">Nenhum chamado em aberto neste MOP/EPS.</td></tr>`;
+    return`<div class="ab-bloco"><div class="ab-bloco-hd"><span class="ab-bloco-titulo">▸ ${eh(mop)} <span class="ab-bloco-qtd">· ${itens.length} chamado(s)</span></span><button class="ab-copy-btn" onclick="abCopiarBloco('${eh(mop)}',this)"${itens.length?'':' disabled'}>Copiar bloco</button></div><div class="ab-bloco-scroll"><table class="ab-bloco-tbl"><thead><tr><th>ID Ticket</th><th>Cliente / Cliente Final</th><th>UF/Cidade</th><th style="text-align:right">SLA</th><th>Faixa</th><th>Substatus</th></tr></thead><tbody>${linhas}</tbody></table></div></div>`;
   }).join('');
 }
 function abTextoBloco(mop,chamados){
@@ -4502,10 +4575,10 @@ function renderTEnc(){
     const cidadeUf=d.cidade?`${d.uf}/${d.cidade}`:d.uf||'—';
     const cliTC=titleCasePT(d.cliente)||d.cliente;
     const cfTC=d.titulo?titleCasePT(d.titulo)||d.titulo:'—';
-    const r1=`<tr class="enc-r1"><td class="tid">${d.protocolo}</td><td style="color:var(--tx)" title="${eh(cliTC)}">${cliTC}</td><td style="color:var(--tx2)" title="${eh(cfTC)}">${cfTC}</td><td><span class="badge ${bc}">${d.faixa}</span></td><td><span class="badge b-teal">${d.semana||'—'}</span></td></tr>`;
-    const r2=`<tr class="enc-r2"><td>${cidadeUf}</td><td><span style="display:inline-flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${CCLR[d.cluster]||'#8e8e93'};flex-shrink:0"></span>${d.cluster||'—'}</span></td><td style="${sc}">${fh(d.tempoTotal)}</td><td>${d8}&nbsp;${ol}</td><td title="${causa}">${causa||'—'}</td></tr>`;
-    return r1+r2;
-  }).join('')||'<tr><td colspan="5" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+    const clrDot=CCLR[d.cluster]||'#8e8e93';
+    const clsSpan=`<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${clrDot};flex-shrink:0"></span>${d.cluster||'—'}</span>`;
+    return`<tr class="enc-flat"><td class="tid enc-nowrap">${d.protocolo}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}&nbsp;${ol}</td><td class="enc-causa" title="${causa}">${causa||'—'}</td></tr>`;
+  }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sEnc(c){scEnc===c?sdEnc*=-1:(scEnc=c,sdEnc=-1);renderTEnc()}
 
