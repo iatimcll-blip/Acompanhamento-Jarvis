@@ -2,7 +2,6 @@ import { FC } from "react";
 import {
   BarChart,
   Bar,
-  LineChart,
   Line,
   PieChart,
   Pie,
@@ -24,11 +23,6 @@ interface ChartProps {
   height?: number;
 }
 
-interface RedeChartsProps {
-  cidadesData: ChartDataPoint[];
-  tmeData: { date: string; tme: number; outlier: number }[];
-  statusData: { name: string; value: number }[];
-}
 
 const COLORS = {
   primary: "#378ADD",
@@ -175,7 +169,7 @@ export const StatusPieChart: FC<{
               fill={COLORS.primary}
               dataKey="value"
             >
-              {data.map((entry, index) => (
+              {data.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
               ))}
             </Pie>
