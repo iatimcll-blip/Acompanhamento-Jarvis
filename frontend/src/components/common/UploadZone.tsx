@@ -1,6 +1,5 @@
 import { FC, useCallback, useState } from "react";
 import {
-  Box,
   Card,
   CardContent,
   Typography,

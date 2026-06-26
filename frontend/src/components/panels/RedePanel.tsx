@@ -33,7 +33,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
-} from "@mui/icons-icons";
+} from "@mui/icons-material";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -72,7 +72,7 @@ export const RedePanel: FC = () => {
 
   const [filters, setFilters] = useState<FilterCriteria>({});
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
@@ -109,7 +109,7 @@ export const RedePanel: FC = () => {
     setUploadError(null);
     setUploadSuccess(false);
     try {
-      const result = await api.uploadExcel(file, "redes");
+      await api.uploadExcel(file, "redes");
       setUploadSuccess(true);
 
       setTimeout(() => {
