@@ -7822,6 +7822,7 @@ const _rde4LblPlugin={
   id:'rde4lbl',
   afterDatasetsDraw(chart){
     const ctx=chart.ctx;
+    const txC=getComputedStyle(document.body).getPropertyValue('--tx2').trim()||'#3c3c43';
     chart.data.datasets.forEach((ds,di)=>{
       if(ds._noLabel)return;
       const meta=chart.getDatasetMeta(di);
@@ -7829,12 +7830,19 @@ const _rde4LblPlugin={
       meta.data.forEach((pt,i)=>{
         const v=ds.data[i];if(v==null)return;
         const lbl=ds._fmt?ds._fmt(v):String(v);
+        const hasDelta=ds._delta&&ds._delta[i]!=null;
         ctx.save();
-        ctx.fillStyle=ds._lblColor||'rgba(255,255,255,0.9)';
-        ctx.font='bold 10px sans-serif';
         ctx.textAlign='center';
+        ctx.font='bold 10px sans-serif';
+        ctx.fillStyle=ds._lblColor||txC;
         ctx.textBaseline='bottom';
-        ctx.fillText(lbl,pt.x,pt.y-3);
+        ctx.fillText(lbl,pt.x,pt.y-(hasDelta?16:6));
+        if(hasDelta){
+          const d=ds._delta[i];
+          ctx.font='bold 9px sans-serif';
+          ctx.fillStyle=d>0?'#22c55e':d<0?'#ef4444':'#8e8e93';
+          ctx.fillText((d>0?'▲+':d<0?'▼':'')+Math.abs(d)+'%',pt.x,pt.y-4);
+        }
         ctx.restore();
       });
     });
@@ -7895,7 +7903,7 @@ function rde4RenderAll(recs){
   const isAC=rdeTab==='ACESSO',tl=rdeTab==='AMBOS'?'TME/TMR':isAC?'TME':'TMR';
   const fmtPct=v=>+(v||0).toFixed(1)+'%';
   const fmtTme=v=>+(v||0).toFixed(2);
-  const baseOpts=(yFmt,yMin,yMax)=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>yFmt(v),color:txC},min:yMin,max:yMax},x:{grid:{display:false},ticks:{color:txC,font:{size:10}},maxRotation:45}},spanGaps:true});
+  const baseOpts=(yFmt,yMin,yMax)=>({responsive:true,maintainAspectRatio:false,layout:{padding:{top:28,right:52}},plugins:{legend:{display:false}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>yFmt(v),color:txC},min:yMin,max:yMax},x:{grid:{display:false},ticks:{color:txC,font:{size:10}},maxRotation:45}},spanGaps:true});
   const months=_rde4AggMonth(recs);
   if(!months.length)return;
   const mKeys=months.map(x=>x.key);
@@ -7906,19 +7914,19 @@ function rde4RenderAll(recs){
   _rde4Destroy('outM');
   const outVals=months.map(x=>+x.outlier.toFixed(1));
   const cvOM=document.getElementById('rde4-out-m-ch');
-  if(cvOM)rde4Ch.outM=new Chart(cvOM,{type:'bar',plugins:[_rde4LblPlugin],data:{labels:mLbls,datasets:[{label:'Outlier %',data:outVals,backgroundColor:_rde4BarColors(outVals,RDE_MOUT,false),borderRadius:4,_fmt:fmtPct}]},options:{...baseOpts(fmtPct,0,null),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
+  if(cvOM)rde4Ch.outM=new Chart(cvOM,{type:'bar',plugins:[_rde4LblPlugin,rdeLabelPlugin],data:{labels:mLbls,datasets:[{label:'Outlier %',data:outVals,backgroundColor:_rde4BarColors(outVals,RDE_MOUT,false),borderRadius:4,_fmt:fmtPct},{type:'line',label:'Limite '+RDE_MOUT+'%',lineLabel:'Limite '+RDE_MOUT+'%',data:mLbls.map(()=>RDE_MOUT),borderColor:'rgba(255,59,48,.75)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,order:0,_noLabel:true}]},options:{...baseOpts(fmtPct,0,null),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
   const moEl=document.getElementById('rde4-meta-out');if(moEl)moEl.textContent=RDE_MOUT+'%';
   // ── Prazo ──
   _rde4Destroy('przM');
   const przVals=months.map(x=>+x.prazo.toFixed(1));
   const cvPM=document.getElementById('rde4-prz-m-ch');
-  if(cvPM)rde4Ch.przM=new Chart(cvPM,{type:'bar',plugins:[_rde4LblPlugin],data:{labels:mLbls,datasets:[{label:'Prazo %',data:przVals,backgroundColor:_rde4BarColors(przVals,RDE_M89,true),borderRadius:4,_fmt:fmtPct}]},options:{...baseOpts(fmtPct,0,100),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
+  if(cvPM)rde4Ch.przM=new Chart(cvPM,{type:'bar',plugins:[_rde4LblPlugin,rdeLabelPlugin],data:{labels:mLbls,datasets:[{label:'Prazo %',data:przVals,backgroundColor:_rde4BarColors(przVals,RDE_M89,true),borderRadius:4,_fmt:fmtPct},{type:'line',label:'Meta '+RDE_M89+'%',lineLabel:'Meta '+RDE_M89+'%',data:mLbls.map(()=>RDE_M89),borderColor:'rgba(52,199,89,.75)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,order:0,_noLabel:true}]},options:{...baseOpts(fmtPct,0,100),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
   const mpEl=document.getElementById('rde4-meta-prz');if(mpEl)mpEl.textContent=RDE_M89+'%';
   // ── TME/TMR ──
   _rde4Destroy('tmeM');
   const tmeVals=months.map(x=>+x.tme.toFixed(2));
   const cvTM=document.getElementById('rde4-tme-m-ch');
-  if(cvTM)rde4Ch.tmeM=new Chart(cvTM,{type:'bar',plugins:[_rde4LblPlugin],data:{labels:mLbls,datasets:[{label:tl,data:tmeVals,backgroundColor:_rde4BarColors(tmeVals,RDE_MTME,false),borderRadius:4,_fmt:fmtTme}]},options:{...baseOpts(fmtTme,0,null),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
+  if(cvTM)rde4Ch.tmeM=new Chart(cvTM,{type:'bar',plugins:[_rde4LblPlugin,rdeLabelPlugin],data:{labels:mLbls,datasets:[{label:tl,data:tmeVals,backgroundColor:_rde4BarColors(tmeVals,RDE_MTME,false),borderRadius:4,_fmt:fmtTme},{type:'line',label:'Meta '+RDE_MTME+'h',lineLabel:'Meta '+RDE_MTME+'h',data:mLbls.map(()=>RDE_MTME),borderColor:'rgba(249,115,22,.75)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,order:0,_noLabel:true}]},options:{...baseOpts(fmtTme,0,null),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
   const mtEl=document.getElementById('rde4-meta-tme');if(mtEl)mtEl.textContent=String(RDE_MTME).replace('.',',');
   const pillT=document.getElementById('rde4-pill-tme');if(pillT)pillT.textContent=tl;
   const tmeHd=document.getElementById('rde4-tme-ttl');if(tmeHd)tmeHd.textContent=tl+' de Ocorrências por Mês';
@@ -7927,8 +7935,9 @@ function rde4RenderAll(recs){
   _rde4Destroy('qtdM');
   const qtdVals=months.map(x=>x.n);
   const maxQtd=Math.max(...qtdVals,1);
+  const qtdDeltas=qtdVals.map((v,i)=>{if(!i)return null;const p=qtdVals[i-1];return p?Math.round((v-p)/p*100):null;});
   const cvQM=document.getElementById('rde4-qtd-m-ch');
-  if(cvQM)rde4Ch.qtdM=new Chart(cvQM,{type:'bar',plugins:[_rde4LblPlugin],data:{labels:mLbls,datasets:[{label:'Ocorrências',data:qtdVals,backgroundColor:_rde4QtdBg(qtdVals),borderRadius:4,_fmt:v=>String(v),_lblColor:'rgba(255,255,255,0.95)'}]},options:{...baseOpts(v=>String(v),0,null),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
+  if(cvQM)rde4Ch.qtdM=new Chart(cvQM,{type:'bar',plugins:[_rde4LblPlugin],data:{labels:mLbls,datasets:[{label:'Ocorrências',data:qtdVals,backgroundColor:_rde4QtdBg(qtdVals),borderRadius:4,_fmt:v=>String(v),_delta:qtdDeltas}]},options:{...baseOpts(v=>String(v),0,null),onClick:(e,el)=>{if(el.length)onClickM(el[0].index);}}});
   const mqEl=document.getElementById('rde4-meta-qtd');if(mqEl)mqEl.textContent=maxQtd;
   // ── Daily charts ──
   const mesLbl=rdeMname(rde4SelMes);
@@ -7941,14 +7950,14 @@ function rde4RenderAll(recs){
   const dAgg=_rde4AggDay(recs,rde4SelMes);
   if(dAgg.length){
     const dLbls=dAgg.map(x=>x.label);
-    const mkLineDs=(vals,meta,higherOk,fmt)=>[{label:'',data:vals,borderColor:'#1a3060',borderWidth:2,borderDash:[6,4],tension:.3,fill:false,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:_rde4DotColors(vals,meta,higherOk),pointBorderColor:_rde4DotColors(vals,meta,higherOk),_fmt:fmt,_ptLabel:true,_ptColors:_rde4DotColors(vals,meta,higherOk)}];
-    const lineOpts=(yFmt,yMin)=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>yFmt(v),color:txC},min:yMin},x:{grid:{display:false},ticks:{color:txC,font:{size:9},maxRotation:55}}},spanGaps:true});
+    const mkLineDs=(vals,meta,higherOk,fmt)=>[{label:'',data:vals,borderColor:'#1a3060',borderWidth:2,borderDash:[6,4],tension:.3,fill:false,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:_rde4DotColors(vals,meta,higherOk),pointBorderColor:_rde4DotColors(vals,meta,higherOk),_fmt:fmt,_ptLabel:true,_ptColors:_rde4DotColors(vals,meta,higherOk)},{label:'Meta',lineLabel:higherOk?'Meta ≥'+fmt(meta):'Limite ≤'+fmt(meta),data:vals.map(()=>meta),borderColor:higherOk?'rgba(52,199,89,.65)':'rgba(255,59,48,.65)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,order:0,_noLabel:true}];
+    const lineOpts=(yFmt,yMin)=>({responsive:true,maintainAspectRatio:false,layout:{padding:{top:22,right:54}},plugins:{legend:{display:false}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>yFmt(v),color:txC},min:yMin},x:{grid:{display:false},ticks:{color:txC,font:{size:9},maxRotation:55}}},spanGaps:true});
     const cvOD=document.getElementById('rde4-out-d-ch');
-    if(cvOD)rde4Ch.outD=new Chart(cvOD,{type:'line',plugins:[_rde4PtPlugin],data:{labels:dLbls,datasets:mkLineDs(dAgg.map(x=>+x.outlier.toFixed(1)),RDE_MOUT,false,fmtPct)},options:lineOpts(fmtPct,0)});
+    if(cvOD)rde4Ch.outD=new Chart(cvOD,{type:'line',plugins:[_rde4PtPlugin,rdeLabelPlugin],data:{labels:dLbls,datasets:mkLineDs(dAgg.map(x=>+x.outlier.toFixed(1)),RDE_MOUT,false,fmtPct)},options:lineOpts(fmtPct,0)});
     const cvPD=document.getElementById('rde4-prz-d-ch');
-    if(cvPD)rde4Ch.przD=new Chart(cvPD,{type:'line',plugins:[_rde4PtPlugin],data:{labels:dLbls,datasets:mkLineDs(dAgg.map(x=>+x.prazo.toFixed(1)),RDE_M89,true,fmtPct)},options:lineOpts(fmtPct,0)});
+    if(cvPD)rde4Ch.przD=new Chart(cvPD,{type:'line',plugins:[_rde4PtPlugin,rdeLabelPlugin],data:{labels:dLbls,datasets:mkLineDs(dAgg.map(x=>+x.prazo.toFixed(1)),RDE_M89,true,fmtPct)},options:lineOpts(fmtPct,0)});
     const cvTD=document.getElementById('rde4-tme-d-ch');
-    if(cvTD)rde4Ch.tmeD=new Chart(cvTD,{type:'line',plugins:[_rde4PtPlugin],data:{labels:dLbls,datasets:mkLineDs(dAgg.map(x=>+x.tme.toFixed(2)),RDE_MTME,false,fmtTme)},options:lineOpts(fmtTme,0)});
+    if(cvTD)rde4Ch.tmeD=new Chart(cvTD,{type:'line',plugins:[_rde4PtPlugin,rdeLabelPlugin],data:{labels:dLbls,datasets:mkLineDs(dAgg.map(x=>+x.tme.toFixed(2)),RDE_MTME,false,fmtTme)},options:lineOpts(fmtTme,0)});
     const cvQD=document.getElementById('rde4-qtd-d-ch');
     const qtdDVals=dAgg.map(x=>x.n);
     if(cvQD)rde4Ch.qtdD=new Chart(cvQD,{type:'line',plugins:[_rde4PtPlugin],data:{labels:dLbls,datasets:[{label:'',data:qtdDVals,borderColor:'#1a3060',borderWidth:2,borderDash:[6,4],tension:.3,fill:false,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:qtdDVals.map(()=>'#ff9500'),pointBorderColor:qtdDVals.map(()=>'#ff9500'),_fmt:v=>String(v),_ptLabel:true,_ptColors:qtdDVals.map(()=>'#ff9500')}]},options:lineOpts(v=>String(v),0)});
