@@ -4359,7 +4359,7 @@ async function saveRemoteState(st){
     remoteSaveWarned=false;
   }catch(e){
     console.warn('Não foi possível salvar as bases compartilhadas:',e);
-    if(canEdit()&&!remoteSaveWarned){remoteSaveWarned=true;alert('A base foi salva neste navegador, mas ainda não foi gravada no armazenamento compartilhado. Verifique a configuração BLOB_READ_WRITE_TOKEN no Vercel.')}
+    if(canEdit()&&!remoteSaveWarned){remoteSaveWarned=true;console.info('Armazenamento remoto indisponível (GitHub Pages). Dados salvos localmente.')}
   }
 }
 function saveState(){
@@ -7974,7 +7974,17 @@ if(new URLSearchParams(location.search).get('resetauth')==='1'){
   try{localStorage.removeItem(USERS_KEY);localStorage.removeItem(SESSION_KEY);}catch(e){}
   history.replaceState(null,'',location.pathname);
 }
-initAuth();renderFuel();
+/* ── SYNC ENTRE ABAS (mesmo navegador) ── */
+window.addEventListener('storage',function(e){
+  if(e.key===STORAGE_KEY&&e.newValue){
+    try{
+      const st=JSON.parse(e.newValue);
+      applyState(st,'Sync entre abas');
+      updateCentralStatus();
+      updateClearBtns();
+    }catch(err){}
+  }
+});initAuth();renderFuel();
 rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls();renderRede();}
 updateCentralStatus();
 </script>
