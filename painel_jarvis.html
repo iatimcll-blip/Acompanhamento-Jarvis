@@ -3883,22 +3883,26 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
 
 <!-- ── MODAL: TÉCNICOS OFS ── -->
 <div class="modal-overlay" id="modal-ofs-tec" style="display:none" onclick="if(event.target===this)closeOfsTecModal()">
-  <div class="modal-box" style="max-width:500px">
+  <div class="modal-box" style="max-width:580px">
     <div class="modal-hd">
-      <span class="modal-title"><i class="ti ti-user-plus"></i> Gerenciar Técnicos OFS</span>
+      <span class="modal-title"><i class="ti ti-users"></i> Gerenciar Técnicos OFS</span>
       <button class="modal-close" onclick="closeOfsTecModal()"><i class="ti ti-x"></i></button>
     </div>
     <div class="modal-body">
-      <div style="background:var(--surface2);border-radius:var(--r);padding:12px;margin-bottom:14px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:10px">Adicionar técnico</div>
-        <div style="display:grid;grid-template-columns:1fr 80px 130px;gap:8px;align-items:end">
+      <div id="ofs-tec-form-wrap" style="background:var(--surface2);border-radius:var(--r);padding:12px;margin-bottom:14px;border:1.5px solid transparent;transition:border-color .2s">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div id="ofs-tec-form-title" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3)">Adicionar técnico</div>
+          <button id="ofs-tec-cancel-btn" onclick="ofsTecCancelEdit()" style="display:none;font-size:11px;background:none;border:none;color:var(--tx3);cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid var(--bd)"><i class="ti ti-x"></i> Cancelar</button>
+        </div>
+        <input type="hidden" id="ofs-tec-edit-idx" value="-1">
+        <div style="display:grid;grid-template-columns:1fr 80px 150px;gap:8px;align-items:end">
           <div>
             <div style="font-size:10px;color:var(--tx3);margin-bottom:4px">Nome completo</div>
-            <input class="finput" id="ofs-tec-nome" placeholder="Nome do técnico" autocomplete="off" onkeydown="if(event.key==='Enter')ofsTecAdd()">
+            <input class="finput" id="ofs-tec-nome" placeholder="Nome do técnico" autocomplete="off" onkeydown="if(event.key==='Enter')ofsTecSalvar()">
           </div>
           <div>
             <div style="font-size:10px;color:var(--tx3);margin-bottom:4px">UF</div>
-            <select class="fsel" id="ofs-tec-uf" style="width:100%">
+            <select class="fsel" id="ofs-tec-uf" style="width:100%" onchange="ofsTecAutoGrupo()">
               <option value="MA">MA</option>
               <option value="PA">PA</option>
             </select>
@@ -3907,15 +3911,19 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
             <div style="font-size:10px;color:var(--tx3);margin-bottom:4px">Grupo</div>
             <select class="fsel" id="ofs-tec-grupo" style="width:100%">
               <option value="EPS SLN MA">EPS SLN MA</option>
+              <option value="EPS SLN PA">EPS SLN PA</option>
               <option value="MOP GIGA+">MOP GIGA+</option>
             </select>
           </div>
         </div>
-        <button onclick="ofsTecAdd()" style="margin-top:10px;width:100%;padding:8px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-weight:600;font-size:12px;cursor:pointer"><i class="ti ti-plus"></i> Adicionar</button>
+        <button id="ofs-tec-submit-btn" onclick="ofsTecSalvar()" style="margin-top:10px;width:100%;padding:8px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-weight:600;font-size:12px;cursor:pointer"><i id="ofs-tec-submit-icon" class="ti ti-plus"></i> <span id="ofs-tec-submit-label">Adicionar</span></button>
       </div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:6px">Técnicos cadastrados manualmente</div>
-      <div id="ofs-tec-list" style="max-height:280px;overflow-y:auto"></div>
-      <div style="margin-top:12px;font-size:10px;color:var(--tx3)"><i class="ti ti-info-circle"></i> Alterações aplicam-se ao recarregar a base OFS.</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3)">Técnicos cadastrados <span id="ofs-tec-count" style="color:var(--blue);font-variant-numeric:tabular-nums"></span></div>
+        <button onclick="ofsTecExportAll()" style="font-size:10px;background:none;border:1px solid var(--bd);border-radius:5px;padding:3px 8px;cursor:pointer;color:var(--tx2)"><i class="ti ti-download" style="font-size:11px"></i> Exportar</button>
+      </div>
+      <div id="ofs-tec-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--r)"></div>
+      <div style="margin-top:10px;font-size:10px;color:var(--tx3)"><i class="ti ti-info-circle"></i> Alterações refletem imediatamente nos filtros e gráficos do painel.</div>
     </div>
   </div>
 </div>
@@ -6285,24 +6293,93 @@ function ofsNameMatch(tec,list){
 }
 function getOfsUF(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.uf||'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.MA))return'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'PA';return'MA';}
 function getOfsGrupo(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.grupo||'EPS SLN MA';if(ofsNameMatch(tec,OFS_MOP_NAMES))return'MOP GIGA+';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'EPS SLN PA';return'EPS SLN MA';}
-function openOfsTecModal(){ofsTecRenderList();const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='flex';}
+function openOfsTecModal(){ofsTecCancelEdit();ofsTecRenderList();const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='flex';}
 function closeOfsTecModal(){const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='none';}
 function ofsTecRenderList(){
   const el=document.getElementById('ofs-tec-list');if(!el)return;
-  if(!ofsTecCustom.length){el.innerHTML='<div style="color:var(--tx3);font-size:11px;text-align:center;padding:16px">Nenhum técnico cadastrado manualmente.</div>';return;}
-  el.innerHTML=ofsTecCustom.map((t,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:.5px solid var(--bd)"><span style="flex:1;font-size:12px">${eh(t.nome)}</span><span class="badge b-blue" style="font-size:9px">${t.uf}</span><span style="font-size:10px;color:var(--tx3);min-width:80px">${t.grupo}</span><button onclick="ofsTecRemove(${i})" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:16px;padding:0 4px;line-height:1">✕</button></div>`).join('');
+  const ct=document.getElementById('ofs-tec-count');if(ct)ct.textContent=ofsTecCustom.length?`(${ofsTecCustom.length})`:'';
+  if(!ofsTecCustom.length){el.innerHTML='<div style="color:var(--tx3);font-size:11px;text-align:center;padding:20px">Nenhum técnico cadastrado manualmente.<br><span style="font-size:10px">Técnicos são detectados automaticamente pela base OFS.</span></div>';return;}
+  const sorted=[...ofsTecCustom].map((t,i)=>({...t,_i:i})).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const gpClr={'EPS SLN MA':'#8b5cf6','EPS SLN PA':'#10b981','MOP GIGA+':'#f97316'};
+  el.innerHTML=sorted.map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:.5px solid var(--bd);transition:background .15s" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:600;color:var(--tx)">${eh(t.nome)}</div>
+      <div style="font-size:10px;color:var(--tx3);margin-top:1px">${t.grupo}</div>
+    </div>
+    <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(59,130,246,.12);color:#3b82f6">${t.uf}</span>
+    <span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:${gpClr[t.grupo]||'#6b7280'}22;color:${gpClr[t.grupo]||'#6b7280'}">${t.grupo==='MOP GIGA+'?'MOP':t.grupo==='EPS SLN PA'?'PA':'MA'}</span>
+    <button onclick="ofsTecEdit(${t._i})" style="background:none;border:1px solid var(--bd);border-radius:5px;cursor:pointer;color:var(--blue);font-size:12px;padding:3px 7px;line-height:1" title="Editar"><i class="ti ti-pencil"></i></button>
+    <button onclick="ofsTecRemove(${t._i})" style="background:none;border:1px solid rgba(239,68,68,.3);border-radius:5px;cursor:pointer;color:#ef4444;font-size:12px;padding:3px 7px;line-height:1" title="Remover"><i class="ti ti-trash"></i></button>
+  </div>`).join('');
 }
-function ofsTecAdd(){
+function ofsTecEdit(idx){
+  const t=ofsTecCustom[idx];if(!t)return;
+  document.getElementById('ofs-tec-nome').value=t.nome;
+  document.getElementById('ofs-tec-uf').value=t.uf||'MA';
+  document.getElementById('ofs-tec-grupo').value=t.grupo||'EPS SLN MA';
+  document.getElementById('ofs-tec-edit-idx').value=idx;
+  const fw=document.getElementById('ofs-tec-form-wrap');if(fw)fw.style.borderColor='var(--blue)';
+  const ttl=document.getElementById('ofs-tec-form-title');if(ttl)ttl.textContent='Editando técnico';
+  const lbl=document.getElementById('ofs-tec-submit-label');if(lbl)lbl.textContent='Salvar alteração';
+  const ico=document.getElementById('ofs-tec-submit-icon');if(ico)ico.className='ti ti-check';
+  const btn=document.getElementById('ofs-tec-cancel-btn');if(btn)btn.style.display='';
+  document.getElementById('ofs-tec-nome').focus();
+  document.getElementById('ofs-tec-form-wrap').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function ofsTecCancelEdit(){
+  document.getElementById('ofs-tec-edit-idx').value='-1';
+  const nome=document.getElementById('ofs-tec-nome');if(nome)nome.value='';
+  const uf=document.getElementById('ofs-tec-uf');if(uf)uf.value='MA';
+  const gr=document.getElementById('ofs-tec-grupo');if(gr)gr.value='EPS SLN MA';
+  const fw=document.getElementById('ofs-tec-form-wrap');if(fw)fw.style.borderColor='transparent';
+  const ttl=document.getElementById('ofs-tec-form-title');if(ttl)ttl.textContent='Adicionar técnico';
+  const lbl=document.getElementById('ofs-tec-submit-label');if(lbl)lbl.textContent='Adicionar';
+  const ico=document.getElementById('ofs-tec-submit-icon');if(ico)ico.className='ti ti-plus';
+  const btn=document.getElementById('ofs-tec-cancel-btn');if(btn)btn.style.display='none';
+}
+function ofsTecAutoGrupo(){
+  const uf=document.getElementById('ofs-tec-uf')?.value;
+  const gr=document.getElementById('ofs-tec-grupo');
+  if(!gr)return;
+  const editIdx=Number(document.getElementById('ofs-tec-edit-idx')?.value??-1);
+  if(editIdx>=0)return;
+  if(uf==='PA')gr.value='EPS SLN PA';
+  else if(gr.value==='EPS SLN PA')gr.value='EPS SLN MA';
+}
+function ofsTecSalvar(){
   const nome=(document.getElementById('ofs-tec-nome')?.value||'').trim();
   const uf=document.getElementById('ofs-tec-uf')?.value||'MA';
   const grupo=document.getElementById('ofs-tec-grupo')?.value||'EPS SLN MA';
+  const editIdx=Number(document.getElementById('ofs-tec-edit-idx')?.value??-1);
   if(!nome){alert('Informe o nome do técnico.');return;}
-  if(ofsTecCustom.some(t=>normN(t.nome)===normN(nome))){alert('Técnico já cadastrado.');return;}
-  ofsTecCustom.push({nome,uf,grupo});ofsTecSave();
-  const inp=document.getElementById('ofs-tec-nome');if(inp)inp.value='';
+  if(editIdx>=0){
+    ofsTecCustom[editIdx]={nome,uf,grupo};
+    ofsTecSave();ofsTecApply();ofsTecCancelEdit();
+  } else {
+    if(ofsTecCustom.some(t=>normN(t.nome)===normN(nome))){alert('Técnico já cadastrado com este nome.');return;}
+    ofsTecCustom.push({nome,uf,grupo});
+    ofsTecSave();ofsTecApply();
+    const inp=document.getElementById('ofs-tec-nome');if(inp)inp.value='';
+    document.getElementById('ofs-tec-nome').focus();
+  }
   ofsTecRenderList();
 }
-function ofsTecRemove(idx){ofsTecCustom.splice(idx,1);ofsTecSave();ofsTecRenderList();}
+function ofsTecRemove(idx){
+  if(!confirm('Remover este técnico?'))return;
+  ofsTecCustom.splice(idx,1);ofsTecSave();ofsTecApply();ofsTecRenderList();
+  if(Number(document.getElementById('ofs-tec-edit-idx')?.value)===idx)ofsTecCancelEdit();
+}
+function ofsTecApply(){
+  _ofsTecDisp.clear();
+  ofsRows=ofsRows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)}));
+  saveOfsState();renderOfs();
+}
+function ofsTecExportAll(){
+  const rows=[['Nome','UF','Grupo'],...ofsTecCustom.map(t=>[t.nome,t.uf,t.grupo])];
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(csv);a.download='tecnicos_ofs.csv';a.click();
+}
+function ofsTecAdd(){ofsTecSalvar();}
 const _ofsTecDisp=new Map();
 function canonicTec(raw){
   const clean=raw.trim().replace(/_\d+$/,'');
