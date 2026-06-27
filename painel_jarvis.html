@@ -3490,9 +3490,9 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
   <div class="panel" id="panel-ofs">
     <div id="ofs-empty" class="empty">
       <div class="empty-icon"><i class="ti ti-chart-bar"></i></div>
-      <h2>Produtividade OFS</h2>
-      <p>Carregue o cronograma de recursos para ver o desempenho por técnico.</p>
-      <button class="empty-btn" onclick="openCentral('ofs')" style="background:#f97316;color:#fff;border-color:#f97316"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
+      <h2 id="ofs-empty-title">Produtividade OFS</h2>
+      <p id="ofs-empty-msg">Carregando base padrão…</p>
+      <button class="empty-btn" onclick="openCentral('ofs')" style="background:#f97316;color:#fff;border-color:#f97316;display:none" id="ofs-empty-btn"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
     </div>
     <div id="ofs-dash" style="display:none">
       <div class="ofs-hrow">
@@ -6437,8 +6437,7 @@ function restoreOfsState(){
     const raw=localStorage.getItem(OFS_KEY);if(!raw)return;
     const s=JSON.parse(raw);
     if(s.rows&&Array.isArray(s.rows)){
-      ofsRows=s.rows;
-      if(ofsRows.length&&!ofsRows[0].uf)ofsRows=ofsRows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)}));
+      ofsRows=s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)}));
       ofsMeta=s.meta||{fname:'',loaded:true};
     }
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
@@ -6447,13 +6446,21 @@ function restoreOfsState(){
   }catch(e){console.warn('OFS restore failed:',e);}
 }
 async function autoLoadOfsDefault(){
-  if(ofsRows.length)return;
+  const setMsg=(msg,showBtn)=>{
+    const m=document.getElementById('ofs-empty-msg');if(m)m.textContent=msg;
+    const b=document.getElementById('ofs-empty-btn');if(b)b.style.display=showBtn?'':'none';
+  };
+  if(ofsRows.length){setMsg('',true);return;}
+  setMsg('Carregando base padrão…',false);
   try{
     const resp=await fetch('./Fonte/BASE_OFS.xlsx');
-    if(!resp.ok)return;
+    if(!resp.ok){setMsg('Nenhuma base carregada.',true);return;}
     const buf=await resp.arrayBuffer();
     procOfs(new Uint8Array(buf),'BASE_OFS.xlsx (padrão)');
-  }catch(e){console.info('OFS base padrão não disponível:',e.message);}
+  }catch(e){
+    console.info('OFS auto-load:',e.message);
+    setMsg('Nenhuma base carregada.',true);
+  }
 }
 function clearOfs(){
   ofsRows=[];ofsMeta={fname:'',loaded:false};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
