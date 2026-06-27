@@ -6250,7 +6250,7 @@ function abAnnObsInput(id){
 }
 function abAnnObsReadonly(id){const o=(abAnnotations[id]||{}).obs||'';return o?`<span class="ann-readonly" title="${eh(o)}">${eh(o.length>30?o.slice(0,29)+'…':o)}</span>`:`<span class="ann-empty">—</span>`;}
 const OFS_STATUS_COLORS={'concluído':'#22c55e','iniciado':'#3b82f6','pendente':'#f59e0b','não concluído':'#ef4444','suspenso':'#8b5cf6','cancelado':'#6b7280','sem status':'#94a3b8'};
-const OFS_EXCLUDED=['almoço','almoco','checklist'];
+const OFS_EXCLUDED=['almoço','almoco','checklist','revisao','reuniao','inventario','inventário','reposicao de materiais','reposição de materiais'];
 const OFS_DIAS_SEM=['segunda-feira','terca-feira','quarta-feira','quinta-feira','sexta-feira','sabado','domingo','segunda','terca','quarta','quinta','sexta','sabado'];
 const OFS_UF_NAMES={
   MA:['anderson ravelly da silva santos','balbino silva rosa','clemilton mendes da silva','igor leonardo duarte basola','jeandersson dos santos campos','joardson foreliza de assis castro','marcos yuri bulhao silva','moises amorim viana','thaylson pereira rial'],
@@ -6300,9 +6300,10 @@ function ofsTecAdd(){
 function ofsTecRemove(idx){ofsTecCustom.splice(idx,1);ofsTecSave();ofsTecRenderList();}
 const _ofsTecDisp=new Map();
 function canonicTec(raw){
-  const key=normN(raw);
+  const clean=raw.trim().replace(/_\d+$/,'');
+  const key=normN(clean);
   const canonical=OFS_NAME_ALIASES[key]||key;
-  if(!_ofsTecDisp.has(canonical)){const src=OFS_NAME_ALIASES[key]?OFS_NAME_ALIASES[key].replace(/\b\w/g,c=>c.toUpperCase()):raw.trim();const d=src.trim().split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());['Da','De','Do','Dos','Das','E','A'].forEach(w=>{const i=d.indexOf(w);if(i>0)d[i]=d[i].toLowerCase();});_ofsTecDisp.set(canonical,d.join(' '));}
+  if(!_ofsTecDisp.has(canonical)){const src=OFS_NAME_ALIASES[key]?OFS_NAME_ALIASES[key].replace(/\b\w/g,c=>c.toUpperCase()):clean;const d=src.trim().split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());['Da','De','Do','Dos','Das','E','A'].forEach(w=>{const i=d.indexOf(w);if(i>0)d[i]=d[i].toLowerCase();});_ofsTecDisp.set(canonical,d.join(' '));}
   return _ofsTecDisp.get(canonical);
 }
 function ofsFilteredRows(){
@@ -6316,13 +6317,13 @@ function ofsFilteredRows(){
 function procOfs(raw,fname){
   _ofsTecDisp.clear();
   const wb=XLSX.read(raw,{type:'array',cellDates:true});
-  const ws=wb.Sheets[wb.SheetNames[0]];
+  const ws=wb.Sheets['Dados Completos']||wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('dados completos'))]||wb.Sheets[wb.SheetNames[0]];
   const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
   const out=[];
   for(const r of rows){
     const vals=Object.values(r);
     const tecRaw=String(r['Recurso']||r['Técnico']||r['TECNICO']||r['tecnico']||r['RECURSO']||vals[2]||'').trim();
-    const tipo=String(r['Tipo de Atividade']||r['TIPO_ATIVIDADE']||r['tipo_atividade']||r['Atividade']||r['ATIVIDADE']||vals[6]||'').trim();
+    const tipo=String(r['Tipo de Atividade.1']||r['Tipo de Atividade']||r['TIPO_ATIVIDADE']||r['tipo_atividade']||r['Atividade']||r['ATIVIDADE']||vals[25]||'').trim();
     const stRaw=String(r['Status da Atividade']||r['Status']||r['STATUS']||r['status']||r['Situação']||r['SITUACAO']||vals[7]||'').trim();
     const dtRaw=r['Data']||r['DATA']||r['data']||r['Data de Início']||vals[0]||'';
     if(!tecRaw||isOfsWeekday(tecRaw)||isOfsExcluded(tipo))continue;
@@ -6362,6 +6363,15 @@ function restoreOfsState(){
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
   }catch(e){console.warn('OFS restore failed:',e);}
+}
+async function autoLoadOfsDefault(){
+  if(ofsRows.length)return;
+  try{
+    const resp=await fetch('./Fonte/BASE_OFS.xlsx');
+    if(!resp.ok)return;
+    const buf=await resp.arrayBuffer();
+    procOfs(new Uint8Array(buf),'BASE_OFS.xlsx (padrão)');
+  }catch(e){console.info('OFS base padrão não disponível:',e.message);}
 }
 function clearOfs(){
   ofsRows=[];ofsMeta={fname:'',loaded:false};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
@@ -7984,7 +7994,7 @@ window.addEventListener('storage',function(e){
       updateClearBtns();
     }catch(err){}
   }
-});initAuth();renderFuel();
+});initAuth();renderFuel();autoLoadOfsDefault();
 rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls();renderRede();}
 updateCentralStatus();
 </script>
