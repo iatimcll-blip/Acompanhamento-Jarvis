@@ -202,6 +202,8 @@ body {
 .ofs-gp-tag { display:inline-block; font-size:9px; font-weight:700; padding:1px 5px; border-radius:4px; vertical-align:middle; }
 .ofs-gp-tag.MOP { background:rgba(249,115,22,.15); color:#f97316; }
 .ofs-gp-tag.EPS { background:rgba(139,92,246,.15); color:#8b5cf6; }
+.ofs-fb.gp-pa { }
+.ofs-fb.gp-pa.active { background:rgba(16,185,129,.15); color:#10b981; border-color:rgba(16,185,129,.35); }
 .ofs-sum-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
 @media(max-width:1100px){.ofs-kpis{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:900px){.ofs-kpis{grid-template-columns:repeat(3,1fr)}.ofs-grid2,.ofs-grid3,.ofs-sum-grid{grid-template-columns:1fr}.ofs-cards{grid-template-columns:repeat(2,1fr)}.ofs-cw{height:clamp(180px,24vh,280px)}}
@@ -3508,6 +3510,8 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
           <span style="color:var(--tx3);font-size:11px">–</span>
           <input type="date" class="ofs-date-in" id="ofs-dt-end">
           <button class="ofs-apply-btn" onclick="ofsApplyDateFilter()">Aplicar</button>
+          <select class="ofs-date-in" id="ofs-sel-mes" onchange="ofsSetMes(this.value)" title="Filtrar por mês" style="cursor:pointer"><option value="">Mês...</option></select>
+          <select class="ofs-date-in" id="ofs-sel-sem" onchange="ofsSetSem(this.value)" title="Filtrar por semana" style="cursor:pointer"><option value="">Semana...</option></select>
         </div>
         <div class="ofs-filter-sep"></div>
         <div class="ofs-filter-group">
@@ -3522,6 +3526,7 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
           <button class="ofs-fb active" id="ofs-gp-all" onclick="ofsSetGrupo('all')">Todos</button>
           <button class="ofs-fb gp-mop" id="ofs-gp-MOP" onclick="ofsSetGrupo('MOP')">MOP GIGA+</button>
           <button class="ofs-fb gp-eps" id="ofs-gp-EPS" onclick="ofsSetGrupo('EPS')">EPS SLN MA</button>
+          <button class="ofs-fb gp-pa" id="ofs-gp-SLNPA" onclick="ofsSetGrupo('EPS SLN PA')">SLN PA</button>
         </div>
         <div style="margin-left:auto">
           <button class="ofs-apply-btn" onclick="openOfsTecModal()" title="Gerenciar técnicos cadastrados" style="display:flex;align-items:center;gap:5px"><i class="ti ti-user-plus" style="font-size:13px"></i> Técnicos</button>
@@ -6279,7 +6284,7 @@ function ofsNameMatch(tec,list){
   return list.some(t=>{const nt=normN(t),tp=nt.split(' ');return n===nt||(p[0]===tp[0]&&p[p.length-1]===tp[tp.length-1])||(p[0]===tp[0]&&p[1]&&p[1]===tp[1]);});
 }
 function getOfsUF(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.uf||'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.MA))return'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'PA';return'MA';}
-function getOfsGrupo(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.grupo||'EPS SLN MA';return ofsNameMatch(tec,OFS_MOP_NAMES)?'MOP GIGA+':'EPS SLN MA';}
+function getOfsGrupo(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.grupo||'EPS SLN MA';if(ofsNameMatch(tec,OFS_MOP_NAMES))return'MOP GIGA+';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'EPS SLN PA';return'EPS SLN MA';}
 function openOfsTecModal(){ofsTecRenderList();const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='flex';}
 function closeOfsTecModal(){const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='none';}
 function ofsTecRenderList(){
@@ -6402,6 +6407,23 @@ function ofsCalcTecnicos(rows){
   return Array.from(map.values()).map(t=>({...t,dias:t.dias.size,taxa:t.total?Math.round(t.concluido/t.total*100):0,media_dia:t.dias.size?+(t.total/t.dias.size).toFixed(1):0}));
 }
 function ofsDestroyChart(ref){try{if(ref)ref.destroy();}catch(e){}}
+function ofsSetMes(mes){
+  if(!mes){const dates=ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr).sort();ofsFilter.dtStart=dates[0]||'';ofsFilter.dtEnd=dates[dates.length-1]||'';}
+  else{const[y,m]=mes.split('-');const last=new Date(+y,+m,0);ofsFilter.dtStart=`${y}-${m}-01`;ofsFilter.dtEnd=`${y}-${m}-${String(last.getDate()).padStart(2,'0')}`;}
+  const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
+  if(dtS)dtS.value=ofsFilter.dtStart;if(dtE)dtE.value=ofsFilter.dtEnd;
+  const semSel=document.getElementById('ofs-sel-sem');if(semSel){semSel.dataset.selVal='';semSel.value='';}
+  renderOfs();
+}
+function ofsSetSem(val){
+  if(!val){const dates=ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr).sort();ofsFilter.dtStart=dates[0]||'';ofsFilter.dtEnd=dates[dates.length-1]||'';}
+  else{const[start,end]=val.split('|');ofsFilter.dtStart=start;ofsFilter.dtEnd=end;}
+  const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
+  if(dtS)dtS.value=ofsFilter.dtStart;if(dtE)dtE.value=ofsFilter.dtEnd;
+  const mesSel=document.getElementById('ofs-sel-mes');if(mesSel)mesSel.value='';
+  const semSel=document.getElementById('ofs-sel-sem');if(semSel)semSel.dataset.selVal=val||'';
+  renderOfs();
+}
 function ofsSetUF(uf){
   ofsFilter.uf=uf;
   ['all','MA','PA'].forEach(v=>{const b=document.getElementById('ofs-uf-'+v);if(b){b.classList.toggle('active',v===uf);b.classList.toggle('uf-ma',v==='MA'&&v===uf);b.classList.toggle('uf-pa',v==='PA'&&v===uf);}});
@@ -6410,6 +6432,7 @@ function ofsSetUF(uf){
 function ofsSetGrupo(g){
   ofsFilter.grupo=g;
   ['all','MOP','EPS'].forEach(v=>{const b=document.getElementById('ofs-gp-'+v);if(b){b.classList.toggle('active',v===g);b.classList.toggle('gp-mop',v==='MOP'&&v===g);b.classList.toggle('gp-eps',v==='EPS'&&v===g);}});
+  const bPA=document.getElementById('ofs-gp-SLNPA');if(bPA)bPA.classList.toggle('active',g==='EPS SLN PA');
   renderOfs();
 }
 function ofsApplyDateFilter(){
@@ -6429,11 +6452,16 @@ function renderOfs(){
   if(dtS)dtS.value=ofsFilter.dtStart;if(dtE)dtE.value=ofsFilter.dtEnd;
   ['all','MA','PA'].forEach(v=>{const b=document.getElementById('ofs-uf-'+v);if(b)b.classList.toggle('active',ofsFilter.uf===v);});
   ['all','MOP','EPS'].forEach(v=>{const b=document.getElementById('ofs-gp-'+v);if(b)b.classList.toggle('active',ofsFilter.grupo===v);});
+  {const bSPA=document.getElementById('ofs-gp-SLNPA');if(bSPA)bSPA.classList.toggle('active',ofsFilter.grupo==='EPS SLN PA');}
   // Show technician counts per group on filter buttons
   {const allTecs=new Map();ofsRows.forEach(r=>{if(!allTecs.has(r.tecnico))allTecs.set(r.tecnico,r.grupo);});
-  let mopN=0,epsN=0;allTecs.forEach(g=>{if(g.includes('MOP'))mopN++;else epsN++;});
-  const bMop=document.getElementById('ofs-gp-MOP'),bEps=document.getElementById('ofs-gp-EPS');
-  if(bMop)bMop.textContent=`MOP GIGA+ (${mopN})`;if(bEps)bEps.textContent=`EPS SLN MA (${epsN})`;}
+  let mopN=0,epsMAn=0,epsPAn=0;allTecs.forEach(g=>{if(g.includes('MOP'))mopN++;else if(g==='EPS SLN PA')epsPAn++;else epsMAn++;});
+  const bMop=document.getElementById('ofs-gp-MOP'),bEps=document.getElementById('ofs-gp-EPS'),bSPA=document.getElementById('ofs-gp-SLNPA');
+  if(bMop)bMop.textContent=`MOP GIGA+ (${mopN})`;if(bEps)bEps.textContent=`EPS SLN MA (${epsMAn})`;if(bSPA)bSPA.textContent=`SLN PA (${epsPAn})`;}
+  // Populate month select
+  {const mesSel=document.getElementById('ofs-sel-mes');if(mesSel){const months=[...new Set(ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr.slice(0,7)))].sort();const cur=mesSel.value;mesSel.innerHTML='<option value="">Mês...</option>'+months.map(m=>{const[y,mo]=m.split('-');const lbl=new Date(+y,+mo-1,15).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});return`<option value="${m}"${m===cur?' selected':''}>${lbl}</option>`;}).join('');}}
+  // Populate week select
+  {const semSel=document.getElementById('ofs-sel-sem');if(semSel){const wMap=new Map();ofsRows.filter(r=>r.dtStr).forEach(r=>{const d=new Date(r.dtStr+'T12:00:00');const day=d.getDay()||7;const mon=new Date(d);mon.setDate(d.getDate()-day+1);const sun=new Date(mon);sun.setDate(mon.getDate()+6);const k=mon.toISOString().slice(0,10);if(!wMap.has(k))wMap.set(k,sun.toISOString().slice(0,10));});const weeks=[...wMap.entries()].sort((a,b)=>a[0].localeCompare(b[0]));const cur=semSel.dataset.selVal||'';semSel.innerHTML='<option value="">Semana...</option>'+weeks.map(([st,en])=>{const s=st.split('-'),e=en.split('-');return`<option value="${st}|${en}"${(st+'|'+en)===cur?' selected':''}>${s[2]}/${s[1]} – ${e[2]}/${e[1]}</option>`;}).join('');}}
   const rows=ofsFilteredRows();
   const filtDates=rows.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
   const per=filtDates.length?`${filtDates[0].split('-').reverse().join('/')} – ${filtDates[filtDates.length-1].split('-').reverse().join('/')}`:'-';
@@ -6477,7 +6505,7 @@ function renderOfs(){
   if(cwRank)cwRank.style.height=Math.max(200,sorted.length*38+30)+'px';
   ofsDestroyChart(ofsChRank);
   const ctxRk=document.getElementById('ofs-chRank')?.getContext('2d');
-  if(ctxRk){ofsChRank=new Chart(ctxRk,{type:'bar',plugins:DL?[DL]:[],data:{labels:sorted.map(t=>`${t.nome.split(' ')[0]} (${t.uf})`),datasets:[{data:sorted.map(t=>t.total),backgroundColor:sorted.map((t,i)=>RANK_COLORS[i%RANK_COLORS.length]+'cc'),borderRadius:5,borderSkipped:false,clip:false}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:36,top:4,bottom:4}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.raw} atividades`}},datalabels:DL?{anchor:'end',align:'right',color:'var(--tx2)',font:{size:10,weight:'600'},formatter:v=>v,clip:false}:{display:false}},scales:{x:{grid:{color:'rgba(128,128,128,.1)'},ticks:{color:'var(--tx2)',font:{size:10}}},y:{grid:{display:false},ticks:{color:'var(--tx2)',font:{size:11}}}}}})}
+  if(ctxRk){ofsChRank=new Chart(ctxRk,{type:'bar',plugins:DL?[DL]:[],data:{labels:sorted.map(t=>t.nome),datasets:[{data:sorted.map(t=>t.total),backgroundColor:sorted.map((t,i)=>RANK_COLORS[i%RANK_COLORS.length]+'cc'),borderRadius:5,borderSkipped:false,clip:false}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:36,top:4,bottom:4}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.raw} atividades`}},datalabels:DL?{anchor:'end',align:'right',color:'var(--tx2)',font:{size:10,weight:'600'},formatter:v=>v,clip:false}:{display:false}},scales:{x:{grid:{color:'rgba(128,128,128,.1)'},ticks:{color:'var(--tx2)',font:{size:10}}},y:{grid:{display:false},ticks:{color:'var(--tx2)',font:{size:11}}}}}})}
   const stCounts={};for(const r of rows)stCounts[r.status]=(stCounts[r.status]||0)+1;
   const stKeys=Object.keys(stCounts);
   ofsDestroyChart(ofsChStatus);
