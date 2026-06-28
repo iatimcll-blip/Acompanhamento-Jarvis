@@ -5562,17 +5562,33 @@ function parseCsvRows(text){
   const lines=String(text||'').replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim()!=='');
   if(lines.length<2)return[];
   const head=csvSplit(lines[0]).map(h=>String(h||'').trim());
-  return lines.slice(1).map(line=>{const cols=csvSplit(line),row={};head.forEach((h,i)=>row[h]=cols[i]??'');return row});
+  return lines.slice(1).map(line=>{const cols=csvSplit(line),row={__cols:cols};head.forEach((h,i)=>row[h]=cols[i]??'');return row});
 }
 function moneyBR(v){
-  const s=String(v||'').trim().replace(/\./g,'').replace(',','.');
-  const n=Number(s);return Number.isFinite(n)?n:0;
+  let raw=String(v||'').trim();
+  if(!raw)return 0;
+  const neg=/^\s*-/.test(raw)||/\(\s*\d/.test(raw);
+  let s=raw.replace(/\u00a0/g,' ').replace(/[^\d,.\-()]/g,'').replace(/[()]/g,'').replace(/^-+/,'').trim();
+  if(!s)return 0;
+  const comma=s.lastIndexOf(','),dot=s.lastIndexOf('.');
+  if(comma>=0&&dot>=0){
+    s=comma>dot?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');
+  }else if(comma>=0){
+    s=s.replace(/\./g,'').replace(',','.');
+  }else if((s.match(/\./g)||[]).length>1){
+    s=s.replace(/\./g,'');
+  }
+  const n=Number(s);
+  return Number.isFinite(n)?(neg?-Math.abs(n):n):0;
 }
-function aleloDate(v){
-  const m=String(v||'').trim().match(/^(\d{2})-(\d{2})-(\d{2,4})\s+(\d{1,2}):(\d{2})/);
-  if(!m)return new Date().toISOString().slice(0,10);
-  const y=Number(m[3].length===2?'20'+m[3]:m[3]);
-  return `${y}-${m[2]}-${m[1]}`;
+function aleloDate(v,fallback){
+  const s=String(v||'').trim();
+  const m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(!m)return fallback!==undefined?fallback:new Date().toISOString().slice(0,10);
+  const p=n=>String(n).padStart(2,'0');
+  const y=String(m[3]).length===2?'20'+m[3]:m[3];
+  const date=`${y}-${p(m[2])}-${p(m[1])}`;
+  return m[4]?`${date}T${p(m[4])}:${p(m[5]||'00')}:${p(m[6]||'00')}`:date;
 }
 function headerKey(v){return nk(String(v||'').replace(/\uFFFD/g,''))}
 function headerDistance(a,b){
@@ -5592,39 +5608,63 @@ function rowVal(row,names){
   }
   return '';
 }
+function aleloCell(row,idx,names){
+  const cols=row&&Array.isArray(row.__cols)?row.__cols:[];
+  const raw=cols[idx];
+  if(raw!==undefined&&String(raw).trim()!=='')return raw;
+  return rowVal(row,names||[]);
+}
+function aleloObs(tipo,desbloqueioAt,responsavel){
+  const parts=[`Importado da Base Alelo - ${tipo||'Transação'}`];
+  if(desbloqueioAt)parts.push(`desbloqueio ${fmtFuelDatetime(desbloqueioAt)}`);
+  if(responsavel)parts.push(`responsável ${responsavel}`);
+  return repairPtBR(parts.join(' · '));
+}
 function importFuelAlelo(text,fname){
   ensureFuelData();
-  const rows=parseCsvRows(text),plates=new Set(dFuelVehicles.map(v=>v.placa));
-  const keys=Object.keys(rows[0]||{});
-  const findCol=names=>{for(const name of names){const max=Math.max(2,Math.ceil(headerKey(name).length*.25)),best=keys.map(key=>({key,dist:headerDistance(key,name)})).sort((a,b)=>a.dist-b.dist)[0];if(best&&best.dist<=max)return best.key}return ''};
-  const col={placa:findCol(['Placa do veículo','Placa do veiculo']),driver:findCol(['Nome do motorista']),tipo:findCol(['Tipo de mercadoria','Descrição da transação','Descricao da transacao']),status:findCol(['Status da transação','Status da transacao']),auth:findCol(['Número de autorização da transação','Numero de autorizacao da transacao']),valor:findCol(['Valor da transação','Valor da transacao']),data:findCol(['Data/hora da transação','Data/hora da transacao']),mercadoria:findCol(['Mercadoria'])};
-  const val=(r,k)=>k?String(r[k]||''):'';
-  let imported=0,importedByDriver=0,ignored=0,dups=0;
+  const rows=parseCsvRows(text);
+  if(!rows.length)throw new Error('CSV sem dados válidos.');
+  dFuelRequests=dFuelRequests.filter(r=>r.source!=='alelo-base'&&!String(r.obs||'').includes('Importado da Base Alelo')&&!String(r.obs||'').includes('Importado da base Alelo'));
+  dFuelAportes=dFuelAportes.filter(a=>a.source!=='alelo-base');
+  let imported=0,credits=0,ignored=0,vehiclesCreated=0,vehiclesUpdated=0;
   rows.forEach((r,i)=>{
-    let placa=val(r,col.placa).toUpperCase().trim();
-    const driver=val(r,col.driver).trim();
-    const tipo=val(r,col.tipo),status=val(r,col.status);
-    if(!/combust/i.test(tipo)||!/aprov/i.test(status)){ignored++;return}
-    const auth=val(r,col.auth).trim(),valor=moneyBR(val(r,col.valor));
-    if(!valor){ignored++;return}
-    let matchedByDriver=false;
-    if(!placa||!plates.has(placa)){
-      /* Tentar match por nome do condutor */
-      if(driver){
-        const driverNorm=nk(driver);
-        const vMatch=dFuelVehicles.find(v=>nk(v.condutor||'')===driverNorm);
-        if(vMatch){placa=vMatch.placa;matchedByDriver=true}else{ignored++;return}
-      }else{ignored++;return}
+    const driver=String(aleloCell(r,1,['Nome do motorista'])).trim();
+    const placa=String(aleloCell(r,2,['Placa do veículo','Placa do veiculo'])).toUpperCase().replace(/[^A-Z0-9]/g,'').trim();
+    const data=aleloDate(aleloCell(r,5,['Data/hora da transação','Data/hora da transacao']));
+    const valor=moneyBR(aleloCell(r,6,['Valor da transação (R$)','Valor da transação','Valor da transacao']));
+    const desbloqueioAt=aleloDate(aleloCell(r,21,['Data do desbloqueio da transação','Data do desbloqueio da transacao']),'');
+    const responsavel=String(aleloCell(r,22,['Responsável do desbloqueio da transação','Responsavel do desbloqueio da transacao'])).trim();
+    const tipo=String(aleloCell(r,26,['Tipo de transação','Tipo de transacao'])).trim()||'Compra';
+    if(!placa||!valor){ignored++;return}
+    const vIdx=dFuelVehicles.findIndex(v=>v.placa===placa);
+    if(vIdx<0){
+      dFuelVehicles.push({placa,modelo:'',ano:'',condutor:driver||placa,setor:'Base Alelo',superior:responsavel,tipo:'Gasolina',tipoCartao:'Próprio',status:'Ativo',obsStatus:'Importado da Base Alelo',source:'alelo-base'});
+      vehiclesCreated++;
+    }else if(driver&&(!dFuelVehicles[vIdx].condutor||dFuelVehicles[vIdx].condutor===placa)){
+      dFuelVehicles[vIdx].condutor=driver;
+      vehiclesUpdated++;
     }
-    const data=aleloDate(val(r,col.data));
-    const id='ALELO-'+(auth||`${data}-${placa}-${i}`);
-    if(dFuelRequests.some(x=>x.id===id)){dups++;return}
     const v=fuelVehicleByPlate(placa);
-    dFuelRequests.push({id,data,placa,condutor:v.condutor||driver,valor,obs:repairPtBR(`Importado da base Alelo - ${val(r,col.mercadoria)||tipo}`)});
-    if(matchedByDriver)importedByDriver++;else imported++;
+    const condutor=v.condutor||driver||placa;
+    const tipoKey=nk(tipo);
+    const isCredit=/credito|cr[eé]dito|emergencial|limite|carga|aporte/i.test(tipoKey);
+    const idBase=[i,placa,data,Math.abs(valor).toFixed(2),tipoKey].join('-').replace(/[^A-Z0-9a-z._-]/g,'');
+    if(!valor){ignored++;return}
+    if(isCredit){
+      dFuelAportes.push({id:'ALELO-APT-'+idBase,data:(desbloqueioAt||data).slice(0,10),valor:Math.abs(valor),desc:aleloObs(tipo,desbloqueioAt,responsavel),source:'alelo-base',placa,condutor,tipoTransacao:tipo,desbloqueioAt,desbloqueioResponsavel:responsavel});
+      credits++;
+    }else{
+      dFuelRequests.push({id:'ALELO-'+idBase,data,placa,condutor,valor:Math.abs(valor),obs:aleloObs(tipo,desbloqueioAt,responsavel),source:'alelo-base',tipoTransacao:tipo,desbloqueioAt,desbloqueioResponsavel:responsavel});
+      imported++;
+    }
   });
+  dFuelVehicles=normalizeFuelVehicles(dFuelVehicles);
+  dFuelRequests=normalizeFuelRequests(dFuelRequests);
+  dFuelAportes=normalizeFuelAportes(dFuelAportes);
+  fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
+  fuelCardBalance=null;
   renderFuel();saveState();updateCentralStatus();
-  alert(`Base Alelo importada: ${imported} compatibilizados por placa, ${importedByDriver} por condutor, ${dups} duplicadas, ${ignored} ignorados (placa/condutor não cadastrado).`);
+  alert(`Base Alelo importada: ${imported} compras, ${credits} créditos/aportes, ${vehiclesCreated} veículos criados, ${vehiclesUpdated} veículos atualizados, ${ignored} linhas ignoradas.`);
 }
 function fuelProjection(){const by={};fuelValidRequests().forEach(r=>{const v=fuelVehicleByPlate(r.placa),name=v.condutor||r.condutor||r.placa;if(!by[name])by[name]={valor:0,count:0};by[name].valor+=Number(r.valor||0);by[name].count++});return Object.entries(by).sort((a,b)=>b[1].valor-a[1].valor)}
 function fuelDriverName(r){const v=fuelVehicleByPlate(r.placa);return r.condutor||v.condutor||r.placa||'Sem condutor'}
@@ -5820,7 +5860,8 @@ function renderFuel(){
   ['fuel-withdraw-date'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=new Date().toISOString().slice(0,10)});
   _renderFuelVTable();
   const showAlelo=document.getElementById('show-alelo-imports')&&document.getElementById('show-alelo-imports').checked;
-  const displayRequests=showAlelo?validRequests:validRequests.filter(r=>!String(r.obs||'').includes('Importado da base Alelo'));
+  const isAleloImport=r=>r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''));
+  const displayRequests=showAlelo?validRequests:validRequests.filter(r=>!isAleloImport(r));
   document.getElementById('cnt-fuel-r').textContent=validRequests.length+' solicitações'+(showAlelo?'':` (${displayRequests.length} manuais, ${validRequests.length-displayRequests.length} Alelo ocultos)`);
   document.getElementById('tb-fuel-r').innerHTML=displayRequests.slice().sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(r=>`<tr><td style="white-space:nowrap">${fmtFuelDatetime(r.data)}</td><td class="tid">${eh(r.placa)}</td><td>${eh(r.condutor||fuelVehicleByPlate(r.placa).condutor||'-')}</td><td>${brl(Number(r.valor||0))}</td><td>${eh(repairPtBR(r.obs||''))}</td><td class="admin-only"><span class="card-action" onclick="editFuelRequest('${eh(r.id)}')">Editar</span><span class="card-action" onclick="deleteFuelRequest('${eh(r.id)}')">Excluir</span></td></tr>`).join('')||'<tr><td colspan="6" class="nores">Nenhuma solicitação registrada</td></tr>';
   const capEl=document.getElementById('cnt-fuel-ap');if(capEl)capEl.textContent=dFuelAportes.length+' aporte'+(dFuelAportes.length!==1?'s':'');
