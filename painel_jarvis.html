@@ -2770,17 +2770,17 @@ tbody tr:last-child td {
 }
 #panel-combustivel .fuel-manual-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  margin-top: 10px;
+  margin-top: 2px;
 }
 #panel-combustivel .fuel-manual-form .finput {
   width: 100%;
   min-width: 0;
 }
 #panel-combustivel .fuel-manual-form .fuel-manual-wide {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 #panel-combustivel #mrow-fuel {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -2791,8 +2791,8 @@ tbody tr:last-child td {
 #panel-combustivel .fuel-aporte-mini {
   display: grid;
   gap: 3px;
-  margin-top: 8px;
-  max-height: 88px;
+  margin-top: 2px;
+  max-height: 72px;
   overflow: auto;
   font-size: 10px;
   color: var(--tx3);
@@ -2814,11 +2814,46 @@ tbody tr:last-child td {
 }
 #panel-combustivel .mc,
 #panel-combustivel .pc {
-  min-height: 104px;
+  min-height: 118px;
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 7px;
+  overflow: hidden;
+}
+#panel-combustivel .mc-label {
+  min-height: 24px;
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+#panel-combustivel .mc-val,
+#panel-combustivel .pv {
+  font-size: clamp(18px, 1.45vw, 24px);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+#panel-combustivel .mc-val {
+  min-height: 29px;
+  display: flex;
+  align-items: center;
 }
 #panel-combustivel .mc-sub,
 #panel-combustivel .ps {
   line-height: 1.35;
+  margin-top: 0;
+  min-height: 27px;
+  overflow-wrap: anywhere;
+}
+#panel-combustivel #mrow-fuel .mc-sub {
+  display: flex;
+  align-items: flex-end;
 }
 #panel-combustivel .g2-charts .card,
 #panel-combustivel .g3-charts .card {
@@ -6372,7 +6407,7 @@ function renderFuelChart(){
           }
         }},
         datalabels:DL?{
-          display:c=>{const v=Number(c.dataset.data[c.dataIndex]||0);return Math.abs(v)>0&&c.chart.width>780&&entries.length<=8&&c.datasetIndex===2},
+          display:c=>{const v=Number(c.dataset.data[c.dataIndex]||0);return Math.abs(v)>0&&c.chart.width>680&&entries.length<=10&&c.dataset.type!=='line'},
           anchor:'end',
           align:'top',
           offset:2,
@@ -6394,12 +6429,14 @@ function renderFuelChart(){
 function renderFuelTopChart(){
   const ctx=document.getElementById('ch-fuel-top');if(!ctx)return;if(chFuelTop){chFuelTop.destroy();chFuelTop=null}
   const dk=document.body.dataset.theme==='dark',entries=fuelProjection().slice(0,10);
-  chFuelTop=new Chart(ctx,{type:'bar',data:{labels:entries.map(e=>e[0]),datasets:[{label:'Maior consumo R$',data:entries.map(e=>Number(e[1].valor.toFixed(2))),backgroundColor:'rgba(255,149,0,.85)',borderRadius:8}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.parsed.x||0)}`}}},scales:{x:{beginAtZero:true,grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:v=>brl(Number(v))}},y:{grid:{display:false},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366'}}}}});
+  const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  chFuelTop=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:entries.map(e=>e[0]),datasets:[{label:'Maior consumo R$',data:entries.map(e=>Number(e[1].valor.toFixed(2))),backgroundColor:'rgba(255,149,0,.85)',borderRadius:8}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:46}},plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.parsed.x||0)}`}},datalabels:DL?{anchor:'end',align:'right',offset:3,formatter:v=>brl(v),font:{size:9,weight:'700'},color:dk?'#e5e7eb':'#3a3a3c',clip:false}:{display:false}},scales:{x:{beginAtZero:true,grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:v=>brl(Number(v))}},y:{grid:{display:false},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366'}}}}});
 }
 function renderFuelProjectionChart(){
   const ctx=document.getElementById('ch-fuel-proj');if(!ctx)return;if(chFuelProj){chFuelProj.destroy();chFuelProj=null}
   const entries=fuelMonthProjection(),dk=document.body.dataset.theme==='dark',current=entries.reduce((s,e)=>s+Number(e.atual||0),0),next=entries.reduce((s,e)=>s+Number(e.proj||0),0);
-  chFuelProj=new Chart(ctx,{type:'line',data:{labels:['Mês atual','Próximo mês'],datasets:[{label:'Projeção mensal',data:[Number(current.toFixed(2)),Number(next.toFixed(2))],borderColor:'rgba(62,207,142,.95)',backgroundColor:'rgba(62,207,142,.18)',fill:true,borderWidth:2,pointRadius:4,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.parsed.y||0)}`}}},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:dk?'#8e8e93':'#636366'}},y:{beginAtZero:true,grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:v=>brl(Number(v))}}}}});
+  const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  chFuelProj=new Chart(ctx,{type:'line',plugins:DL?[DL]:[],data:{labels:['Mês atual','Próximo mês'],datasets:[{label:'Projeção mensal',data:[Number(current.toFixed(2)),Number(next.toFixed(2))],borderColor:'rgba(62,207,142,.95)',backgroundColor:'rgba(62,207,142,.18)',fill:true,borderWidth:2,pointRadius:4,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:26,right:16}},plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.parsed.y||0)}`}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>brl(v),font:{size:10,weight:'700'},color:dk?'#e5e7eb':'#3a3a3c',clip:false}:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:dk?'#8e8e93':'#636366'}},y:{beginAtZero:true,grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:v=>brl(Number(v))}}}}});
 }
 
 /* ─── EXPORT ─── */
