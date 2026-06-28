@@ -3152,7 +3152,7 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
       <div class="rede-hrow">
         <div>
           <div class="rede-htitle">Painel <span>Rede</span></div>
-          <div class="rede-hsub">MA CAP · MA INT · PI · NORTE &nbsp;|&nbsp; Meta: ≥85% prazo · ≤4,9% outlier · TME ≤6,0h &nbsp;·&nbsp; <span id="rede-fname" style="color:var(--tx3)"></span></div>
+          <div class="rede-hsub">MA CAP · MA INT · PI · NORTE &nbsp;|&nbsp; Meta: <span id="rede-hsub-meta">≥85% prazo · ≤4,9% outlier · TME ≤6,0h</span> &nbsp;·&nbsp; <span id="rede-fname" style="color:var(--tx3)"></span></div>
         </div>
         <div class="rede-hright">
           <span id="rede-ts-text" style="font-size:11px;color:var(--tx3)"></span>
@@ -3189,6 +3189,39 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
         <div class="rede-ctrlrow" id="rde-period-row" style="display:none">
           <span class="rede-clbl">Período</span>
           <div class="rede-seg rde-seg-periods" id="rde-period-seg"></div>
+        </div>
+      </div>
+      <!-- Configuração de Metas -->
+      <div class="rede-ctrlbar" id="rde-meta-cfg" style="margin-bottom:14px">
+        <div class="rede-ctrlrow" style="flex-wrap:wrap;gap:8px">
+          <span class="rede-clbl" style="white-space:nowrap;display:flex;align-items:center;gap:4px"><i class="ti ti-target-arrow"></i> Metas</span>
+          <label style="font-size:10px;color:var(--tx3);white-space:nowrap;display:flex;align-items:center;gap:4px">
+            Prazo ≥
+            <input id="rde-cfg-prazo" type="number" step="0.5" min="50" max="100" value="85"
+              onkeydown="if(event.key==='Enter')rdeMetaSave()"
+              style="width:58px;padding:4px 6px;border:.5px solid var(--bd);border-radius:7px;background:var(--surface2);color:var(--tx);font-size:11px;font-family:inherit;text-align:right">
+            %
+          </label>
+          <label style="font-size:10px;color:var(--tx3);white-space:nowrap;display:flex;align-items:center;gap:4px">
+            Outlier ≤
+            <input id="rde-cfg-out" type="number" step="0.1" min="0.1" max="50" value="4.9"
+              onkeydown="if(event.key==='Enter')rdeMetaSave()"
+              style="width:58px;padding:4px 6px;border:.5px solid var(--bd);border-radius:7px;background:var(--surface2);color:var(--tx);font-size:11px;font-family:inherit;text-align:right">
+            %
+          </label>
+          <label style="font-size:10px;color:var(--tx3);white-space:nowrap;display:flex;align-items:center;gap:4px">
+            TME ≤
+            <input id="rde-cfg-tme" type="number" step="0.5" min="0.5" max="72" value="6.0"
+              onkeydown="if(event.key==='Enter')rdeMetaSave()"
+              style="width:58px;padding:4px 6px;border:.5px solid var(--bd);border-radius:7px;background:var(--surface2);color:var(--tx);font-size:11px;font-family:inherit;text-align:right">
+            h
+          </label>
+          <button onclick="rdeMetaSave()" style="background:rgba(0,122,255,.15);border:.5px solid rgba(0,122,255,.4);color:var(--blue);padding:5px 16px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit;white-space:nowrap">
+            <i class="ti ti-check"></i> Aplicar
+          </button>
+          <button onclick="rdeMetaReset()" title="Restaurar valores padrão" style="background:var(--surface2);border:.5px solid var(--bd);color:var(--tx3);padding:5px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">
+            <i class="ti ti-refresh"></i> Padrão
+          </button>
         </div>
       </div>
       <!-- KPI cards -->
@@ -7515,7 +7548,9 @@ const rdeM={mes:[],ml:[],sem:[],sl:[],ca:[],mo:[]};
 const RDE_CL_NM={"C":"MA CAP","I":"MA INT","P":"PI","N":"NORTE"};
 const RDE_CL_CL={"C":"#9d7ef0","I":"#4d8ef0","P":"#3ecf8e","N":"#f0a14d"};
 const RDE_CLS=["C","I","P","N"];
-const RDE_M89=85,RDE_MOUT=4.9,RDE_MTME=6.0;
+const RDE_META_KEY='atrix:rede:meta:v1';
+const RDE_M89_DEF=85,RDE_MOUT_DEF=4.9,RDE_MTME_DEF=6.0;
+let RDE_M89=RDE_M89_DEF,RDE_MOUT=RDE_MOUT_DEF,RDE_MTME=RDE_MTME_DEF;
 let rdeModo='m',rdeSelMonth='',rdeSelWeek='',rdeActiveView='bb',rdeCharts={};
 let rdeTab='ACESSO',rdeGran='all',rdePeriod=null,rdeCluster='',rdeCallsOnRender=false,rdeLineCh2=null,rdeTimeCh2=null,rdeCauseCh2=null,rdeCityCh2=null;
 const REDE_STORAGE='atrix:rede:bases:v2';
@@ -7618,6 +7653,41 @@ function rdeRestoreUI(){
     if(ui.period)rdePeriod=ui.period;
     if(ui.cluster!==undefined)rdeCluster=ui.cluster||'';
   }catch(e){console.warn('rede ui restore',e)}
+}
+function rdeMetaLoad(){
+  try{
+    const raw=localStorage.getItem(RDE_META_KEY);if(!raw)return;
+    const m=JSON.parse(raw);
+    if(m.m89>0&&m.m89<=100)RDE_M89=m.m89;
+    if(m.mOut>0&&m.mOut<100)RDE_MOUT=m.mOut;
+    if(m.mTme>0)RDE_MTME=m.mTme;
+  }catch(e){}
+}
+function rdeMetaSave(){
+  const vP=parseFloat(document.getElementById('rde-cfg-prazo').value);
+  const vO=parseFloat(document.getElementById('rde-cfg-out').value);
+  const vT=parseFloat(document.getElementById('rde-cfg-tme').value);
+  if(isNaN(vP)||vP<=0||vP>100){alert('Valor de Prazo inválido (1–100)');return;}
+  if(isNaN(vO)||vO<=0||vO>=100){alert('Valor de Outlier inválido (0.1–99)');return;}
+  if(isNaN(vT)||vT<=0){alert('Valor de TME inválido (deve ser > 0)');return;}
+  RDE_M89=+vP.toFixed(1);RDE_MOUT=+vO.toFixed(1);RDE_MTME=+vT.toFixed(1);
+  try{localStorage.setItem(RDE_META_KEY,JSON.stringify({m89:RDE_M89,mOut:RDE_MOUT,mTme:RDE_MTME}));}catch(e){}
+  rdeMetaUpdSub();
+  if(rdeBD.length||rdeAD.length)renderRede();
+}
+function rdeMetaReset(){
+  RDE_M89=RDE_M89_DEF;RDE_MOUT=RDE_MOUT_DEF;RDE_MTME=RDE_MTME_DEF;
+  try{localStorage.removeItem(RDE_META_KEY);}catch(e){}
+  rdeMetaFill();rdeMetaUpdSub();
+  if(rdeBD.length||rdeAD.length)renderRede();
+}
+function rdeMetaUpdSub(){
+  const el=document.getElementById('rede-hsub-meta');
+  if(el)el.textContent='≥'+RDE_M89+'% prazo · ≤'+RDE_MOUT+'% outlier · TME ≤'+RDE_MTME+'h';
+}
+function rdeMetaFill(){
+  const p=document.getElementById('rde-cfg-prazo');const o=document.getElementById('rde-cfg-out');const t=document.getElementById('rde-cfg-tme');
+  if(p)p.value=RDE_M89;if(o)o.value=RDE_MOUT;if(t)t.value=RDE_MTME;
 }
 function rdeShowDash(){
   const empty=document.getElementById('rede-empty'),dash=document.getElementById('rede-dash');
@@ -8116,6 +8186,7 @@ window.addEventListener('storage',function(e){
     }catch(err){}
   }
 });initAuth();renderFuel();autoLoadOfsDefault();
+rdeMetaLoad();rdeMetaFill();rdeMetaUpdSub();
 rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls();renderRede();}
 updateCentralStatus();
 </script>
