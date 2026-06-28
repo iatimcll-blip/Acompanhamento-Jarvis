@@ -5480,7 +5480,17 @@ function ensureFuelData(){
 }
 function fuelVehicleByPlate(placa){const k=String(placa||'').toUpperCase().trim();return dFuelVehicles.find(v=>v.placa===k)||{}}
 function fuelValidRequests(){return normalizeFuelRequests(dFuelRequests)}
-function fuelSpent(){return fuelValidRequests().reduce((s,r)=>s+Number(r.valor||0),0)}
+function fuelTxKind(r){
+  if(!r||r.source!=='alelo-base')return'compra';
+  const t=nk(r.tipoTransacao||r.aleloKind||r.obs||'');
+  if(t.includes('DEBITO'))return'debito';
+  if(t.includes('CREDITO')||t.includes('EMERGENCIAL')||t.includes('LIMITE'))return'credito';
+  return'compra';
+}
+function fuelPurchaseRequests(){return fuelValidRequests().filter(r=>fuelTxKind(r)==='compra')}
+function fuelCreditRequests(){return fuelValidRequests().filter(r=>fuelTxKind(r)==='credito')}
+function fuelDebitRequests(){return fuelValidRequests().filter(r=>fuelTxKind(r)==='debito')}
+function fuelSpent(){return fuelPurchaseRequests().reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0)}
 function fuelWithdrawn(){return dFuelWithdrawals.reduce((s,r)=>s+Number(r.valor||0),0)}
 function fuelBalance(){const total=Number(fuelBalanceTotal||0),spent=fuelSpent(),withdrawn=fuelWithdrawn(),moved=withdrawn-spent,computed=Math.max(0,total-spent-withdrawn),available=fuelCardBalance===null||fuelCardBalance===undefined?computed:Math.max(0,Number(fuelCardBalance||0)),saldoGeral=Math.max(0,total-withdrawn);return{total,spent,withdrawn,moved,available,computed,saldoGeral,manual:fuelCardBalance!==null&&fuelCardBalance!==undefined}}
 function reduceFuelCardBalance(valor){if(fuelCardBalance!==null&&fuelCardBalance!==undefined)fuelCardBalance=Math.max(0,Number(fuelCardBalance||0)-Number(valor||0))}
@@ -5625,48 +5635,43 @@ function importFuelAlelo(text,fname){
   const rows=parseCsvRows(text);
   if(!rows.length)throw new Error('CSV sem dados válidos.');
   dFuelRequests=dFuelRequests.filter(r=>r.source!=='alelo-base'&&!String(r.obs||'').includes('Importado da Base Alelo')&&!String(r.obs||'').includes('Importado da base Alelo'));
+  /* Limpa créditos Alelo importados por versões anteriores; Aportes ficam apenas manuais. */
   dFuelAportes=dFuelAportes.filter(a=>a.source!=='alelo-base');
-  let imported=0,credits=0,ignored=0,vehiclesCreated=0,vehiclesUpdated=0;
+  fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
+  const placasPermitidas=new Set(dFuelVehicles.map(v=>String(v.placa||'').toUpperCase().trim()).filter(Boolean));
+  let compras=0,creditos=0,debitos=0,ignored=0,ignoredPlate=0,ignoredStatus=0;
   rows.forEach((r,i)=>{
     const driver=String(aleloCell(r,1,['Nome do motorista'])).trim();
     const placa=String(aleloCell(r,2,['Placa do veículo','Placa do veiculo'])).toUpperCase().replace(/[^A-Z0-9]/g,'').trim();
+    const status=String(aleloCell(r,4,['Status da transação','Status da transacao'])).trim();
     const data=aleloDate(aleloCell(r,5,['Data/hora da transação','Data/hora da transacao']));
     const valor=moneyBR(aleloCell(r,6,['Valor da transação (R$)','Valor da transação','Valor da transacao']));
     const desbloqueioAt=aleloDate(aleloCell(r,21,['Data do desbloqueio da transação','Data do desbloqueio da transacao']),'');
     const responsavel=String(aleloCell(r,22,['Responsável do desbloqueio da transação','Responsavel do desbloqueio da transacao'])).trim();
     const tipo=String(aleloCell(r,26,['Tipo de transação','Tipo de transacao'])).trim()||'Compra';
     if(!placa||!valor){ignored++;return}
-    const vIdx=dFuelVehicles.findIndex(v=>v.placa===placa);
-    if(vIdx<0){
-      dFuelVehicles.push({placa,modelo:'',ano:'',condutor:driver||placa,setor:'Base Alelo',superior:responsavel,tipo:'Gasolina',tipoCartao:'Próprio',status:'Ativo',obsStatus:'Importado da Base Alelo',source:'alelo-base'});
-      vehiclesCreated++;
-    }else if(driver&&(!dFuelVehicles[vIdx].condutor||dFuelVehicles[vIdx].condutor===placa)){
-      dFuelVehicles[vIdx].condutor=driver;
-      vehiclesUpdated++;
-    }
+    if(!placasPermitidas.has(placa)){ignoredPlate++;return}
     const v=fuelVehicleByPlate(placa);
     const condutor=v.condutor||driver||placa;
     const tipoKey=nk(tipo);
-    const isCredit=/credito|cr[eé]dito|emergencial|limite|carga|aporte/i.test(tipoKey);
+    const statusKey=nk(status);
+    const isDebit=tipoKey.includes('DEBITO');
+    const isCredit=!isDebit&&(tipoKey.includes('CREDITO')||tipoKey.includes('EMERGENCIAL')||tipoKey.includes('LIMITE'));
+    const kind=isDebit?'debito':isCredit?'credito':'compra';
+    if(kind==='compra'&&statusKey!=='APROVADA'){ignoredStatus++;return}
     const idBase=[i,placa,data,Math.abs(valor).toFixed(2),tipoKey].join('-').replace(/[^A-Z0-9a-z._-]/g,'');
-    if(!valor){ignored++;return}
-    if(isCredit){
-      dFuelAportes.push({id:'ALELO-APT-'+idBase,data:(desbloqueioAt||data).slice(0,10),valor:Math.abs(valor),desc:aleloObs(tipo,desbloqueioAt,responsavel),source:'alelo-base',placa,condutor,tipoTransacao:tipo,desbloqueioAt,desbloqueioResponsavel:responsavel});
-      credits++;
-    }else{
-      dFuelRequests.push({id:'ALELO-'+idBase,data,placa,condutor,valor:Math.abs(valor),obs:aleloObs(tipo,desbloqueioAt,responsavel),source:'alelo-base',tipoTransacao:tipo,desbloqueioAt,desbloqueioResponsavel:responsavel});
-      imported++;
-    }
+    const signedValor=kind==='debito'?-Math.abs(valor):Math.abs(valor);
+    dFuelRequests.push({id:'ALELO-'+idBase,data,placa,condutor,valor:signedValor,obs:aleloObs(tipo,desbloqueioAt,responsavel),source:'alelo-base',tipoTransacao:tipo,aleloKind:kind,statusTransacao:status,desbloqueioAt,desbloqueioResponsavel:responsavel});
+    if(kind==='compra')compras++;else if(kind==='credito')creditos++;else debitos++;
   });
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles);
   dFuelRequests=normalizeFuelRequests(dFuelRequests);
   dFuelAportes=normalizeFuelAportes(dFuelAportes);
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
-  fuelCardBalance=null;
   renderFuel();saveState();updateCentralStatus();
-  alert(`Base Alelo importada: ${imported} compras, ${credits} créditos/aportes, ${vehiclesCreated} veículos criados, ${vehiclesUpdated} veículos atualizados, ${ignored} linhas ignoradas.`);
+  alert(`Base Alelo importada: ${compras} compras aprovadas, ${creditos} créditos emergenciais, ${debitos} débitos emergenciais. Ignoradas: ${ignored} sem placa/valor, ${ignoredPlate} placa fora da aba Placa, ${ignoredStatus} compras não aprovadas.`);
 }
-function fuelProjection(){const by={};fuelValidRequests().forEach(r=>{const v=fuelVehicleByPlate(r.placa),name=v.condutor||r.condutor||r.placa;if(!by[name])by[name]={valor:0,count:0};by[name].valor+=Number(r.valor||0);by[name].count++});return Object.entries(by).sort((a,b)=>b[1].valor-a[1].valor)}
+function fuelProjection(){const by={};fuelPurchaseRequests().forEach(r=>{const v=fuelVehicleByPlate(r.placa),name=v.condutor||r.condutor||r.placa;if(!by[name])by[name]={valor:0,count:0};by[name].valor+=Math.abs(Number(r.valor||0));by[name].count++});return Object.entries(by).sort((a,b)=>b[1].valor-a[1].valor)}
 function fuelDriverName(r){const v=fuelVehicleByPlate(r.placa);return r.condutor||v.condutor||r.placa||'Sem condutor'}
 function fuelDriverOptions(){return[...new Set([...dFuelVehicles.map(v=>v.condutor).filter(Boolean),...fuelValidRequests().map(fuelDriverName).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'pt-BR'))}
 function onFuelDriverChange(v){selectedFuelDriver=v;renderFuelDriverDetail()}
@@ -5674,7 +5679,7 @@ function renderFuelDriverDetail(){
   const box=document.getElementById('fuel-driver-detail');if(!box)return;
   if(!selectedFuelDriver){box.style.display='none';box.innerHTML='';return}
   const rows=fuelValidRequests().filter(r=>fuelDriverName(r)===selectedFuelDriver).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
-  const total=rows.reduce((s,r)=>s+Number(r.valor||0),0),plates=[...new Set(rows.map(r=>r.placa).filter(Boolean))];
+  const total=rows.filter(r=>fuelTxKind(r)==='compra').reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0),plates=[...new Set(rows.map(r=>r.placa).filter(Boolean))];
   box.style.display='block';
   box.innerHTML=`<div class="tsec-hd"><span class="tsec-title">Transações do condutor: ${eh(selectedFuelDriver)}</span><span id="cnt-fuel-driver" style="color:var(--tx3)">${rows.length} transações</span></div><div class="fuel-driver-summary"><div><span>Total consumido</span><b>${brl(total)}</b></div><div><span>Placas usadas</span><b>${plates.length?plates.map(eh).join(', '):'-'}</b></div><div><span>Último registro</span><b>${rows[0]?eh(rows[0].data):'-'}</b></div></div><div class="tw"><table><thead><tr><th>Data</th><th>Placa</th><th>Valor</th><th>Observação</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${eh(r.data)}</td><td class="tid">${eh(r.placa)}</td><td>${brl(Number(r.valor||0))}</td><td>${eh(r.obs||'')}</td></tr>`).join('')||'<tr><td colspan="4" class="nores">Nenhuma transação para este condutor</td></tr>'}</tbody></table></div>`;
 }
@@ -5705,7 +5710,7 @@ function fuelProjectionWindow(){
 function fuelMonthProjection(){
   const win=fuelProjectionWindow(),by={};
   dFuelVehicles.forEach(v=>{by[v.placa]={label:`${v.placa} - ${v.condutor||'Sem condutor'}`,placa:v.placa,atual:0,proj:0,count:0}});
-  fuelValidRequests().forEach(r=>{const d=new Date((r.data||'')+'T00:00:00');if(isNaN(d)||d<win.start||d>win.end)return;const placa=String(r.placa||'').toUpperCase().trim();if(!by[placa])return;by[placa].atual+=Number(r.valor||0);by[placa].count++});
+  fuelPurchaseRequests().forEach(r=>{const d=new Date((r.data||'')+'T00:00:00');if(isNaN(d)||d<win.start||d>win.end)return;const placa=String(r.placa||'').toUpperCase().trim();if(!by[placa])return;by[placa].atual+=Math.abs(Number(r.valor||0));by[placa].count++});
   Object.values(by).forEach(v=>v.proj=v.atual/win.elapsed*win.totalDays);
   return Object.values(by).sort((a,b)=>a.atual-b.atual||a.proj-b.proj||a.label.localeCompare(b.label));
 }
@@ -5839,6 +5844,7 @@ function copiarFuelVTable(btn){
 function renderFuel(){
   ensureFuelData();
   const validRequests=fuelValidRequests();
+  const fuelCompras=fuelPurchaseRequests(),fuelCreditos=fuelCreditRequests(),fuelDebitos=fuelDebitRequests();
   const bal=fuelBalance(),levelBase=bal.saldoGeral||bal.available,level=levelBase?Math.max(0,Math.min(100,bal.available/levelBase*100)):0,color=level>60?'#7ee787':level>30?'#ffcc66':'#ff6b6b';
   const fuelCycle=fuelCycleWindow();
   const totalValor=bal.spent,active=dFuelVehicles.filter(v=>v.status==='Ativo').length;
@@ -5846,7 +5852,7 @@ function renderFuel(){
   const cycleEditor=fuelCalendarEditing?`<div style="display:grid;grid-template-columns:repeat(2,minmax(118px,1fr));gap:6px;margin-top:8px"><input class="finput" id="fuel-cycle-start" type="date" value="${fuelCycle.startDate}" title="Data inicial do ciclo"><input class="finput" id="fuel-cycle-end" type="date" value="${fuelCycle.endDate}" title="Data final do ciclo"><span class="card-action" onclick="setFuelCycleCalendar()">Salvar</span><span class="card-action" onclick="resetFuelCycleCalendar()">Padrão 16-15</span></div>`:'';
   const cycleAction=canEdit()?`<span class="card-action" onclick="toggleFuelCalendarEdit()">${fuelCalendarEditing?'Fechar':'Editar calendário'}</span>`:'';
   document.getElementById('fuel-balance-summary').innerHTML=`<div class="mc c-blue"><div class="mc-label">Saldo Geral</div><div class="mc-val">${brl(bal.saldoGeral)}</div><div class="mc-sub">aportes − retiradas</div></div><div class="mc c-green"><div class="mc-label">Saldo Disponível</div><div class="mc-val" style="color:${color}">${brl(bal.available)}</div><div class="mc-sub">reflete o saldo combustível/cartão</div></div><div class="mc c-orange"><div class="mc-label">Período de renovação</div><div class="mc-val" style="font-size:15px">${eh(fuelCycle.label)}</div><div class="mc-sub">${fuelCycle.manual?'calendário manual':'ciclo automático 16-15'} ${cycleAction}</div>${cycleEditor}</div>`;
-  document.getElementById('mrow-fuel').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">histórico validado</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">total das solicitações válidas</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - solicitações</div></div>`;
+  document.getElementById('mrow-fuel').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
   const top=fuelProjection()[0]||['-',{valor:0,litros:0,count:0}];
   const nextSuggestion=fuelNextMonthSuggestion();
   const driverOptions=fuelDriverOptions();if(selectedFuelDriver&&!driverOptions.includes(selectedFuelDriver))selectedFuelDriver='';
@@ -5862,7 +5868,7 @@ function renderFuel(){
   const showAlelo=document.getElementById('show-alelo-imports')&&document.getElementById('show-alelo-imports').checked;
   const isAleloImport=r=>r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''));
   const displayRequests=showAlelo?validRequests:validRequests.filter(r=>!isAleloImport(r));
-  document.getElementById('cnt-fuel-r').textContent=validRequests.length+' solicitações'+(showAlelo?'':` (${displayRequests.length} manuais, ${validRequests.length-displayRequests.length} Alelo ocultos)`);
+  document.getElementById('cnt-fuel-r').textContent=`${validRequests.length} solicitações (${fuelCompras.length} compras, ${fuelCreditos.length} créditos, ${fuelDebitos.length} débitos)`+(showAlelo?'':` · ${validRequests.length-displayRequests.length} Alelo ocultos`);
   document.getElementById('tb-fuel-r').innerHTML=displayRequests.slice().sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(r=>`<tr><td style="white-space:nowrap">${fmtFuelDatetime(r.data)}</td><td class="tid">${eh(r.placa)}</td><td>${eh(r.condutor||fuelVehicleByPlate(r.placa).condutor||'-')}</td><td>${brl(Number(r.valor||0))}</td><td>${eh(repairPtBR(r.obs||''))}</td><td class="admin-only"><span class="card-action" onclick="editFuelRequest('${eh(r.id)}')">Editar</span><span class="card-action" onclick="deleteFuelRequest('${eh(r.id)}')">Excluir</span></td></tr>`).join('')||'<tr><td colspan="6" class="nores">Nenhuma solicitação registrada</td></tr>';
   const capEl=document.getElementById('cnt-fuel-ap');if(capEl)capEl.textContent=dFuelAportes.length+' aporte'+(dFuelAportes.length!==1?'s':'');
   const tbAp=document.getElementById('tb-fuel-ap');if(tbAp)tbAp.innerHTML=dFuelAportes.slice().sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(r=>`<tr><td>${eh(r.data)}</td><td>${brl(r.valor)}</td><td>${eh(r.desc||'')}</td><td class="admin-only"><span class="card-action" onclick="deleteFuelAporte('${eh(r.id)}')">Excluir</span></td></tr>`).join('')||'<tr><td colspan="4" class="nores">Nenhum aporte registrado</td></tr>';
