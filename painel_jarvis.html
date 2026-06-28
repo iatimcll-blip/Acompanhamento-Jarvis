@@ -2726,6 +2726,7 @@ tbody tr:last-child td {
   line-height: 1.5;
 }
 #panel-combustivel .fuel-gauge { order: 2; }
+#panel-combustivel .fuel-manual-cards { order: 3; margin-bottom: 0 !important; }
 #panel-combustivel #fuel-extra-projection { order: 3; margin-bottom: 0 !important; }
 #panel-combustivel .fuel-consumo-title { order: 4; margin-top: 2px !important; }
 #panel-combustivel #mrow-fuel { order: 5; margin-bottom: 0 !important; }
@@ -2760,6 +2761,26 @@ tbody tr:last-child td {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   align-content: stretch;
+}
+#panel-combustivel .fuel-manual-cards {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+}
+#panel-combustivel .fuel-manual-card {
+  align-items: stretch;
+}
+#panel-combustivel .fuel-manual-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+#panel-combustivel .fuel-manual-form .finput {
+  width: 100%;
+  min-width: 0;
+}
+#panel-combustivel .fuel-manual-form .fuel-manual-wide {
+  grid-column: span 2;
 }
 #panel-combustivel #mrow-fuel {
   grid-template-columns: repeat(7, minmax(132px, 1fr));
@@ -2860,6 +2881,9 @@ tbody tr:last-child td {
 @media(max-width:1180px) {
   #panel-combustivel #mrow-fuel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #panel-combustivel #prow-fuel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #panel-combustivel .fuel-manual-cards { grid-template-columns: 1fr; }
+  #panel-combustivel .fuel-manual-form { grid-template-columns: 1fr; }
+  #panel-combustivel .fuel-manual-form .fuel-manual-wide { grid-column: auto; }
   #panel-combustivel .fuel-split { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-split-pane { max-height: none; }
   #panel-combustivel .fuel-request-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3555,6 +3579,28 @@ function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'
         <div class="fuel-pump" id="fuel-pump"><div class="fuel-fill" id="fuel-fill"><div class="fuel-wave"></div></div></div>
       </div>
       <div id="fuel-balance-summary"></div>
+    </div>
+    <div class="mrow admin-only fuel-manual-cards" id="fuel-manual-cards">
+      <div class="mc c-green fuel-manual-card">
+        <div class="mc-label">Atualizar Saldo Disponível</div>
+        <div class="mc-val" id="fuel-card-balance-current" style="color:var(--green-dk)">R$ 0,00</div>
+        <div class="mc-sub">ajuste manual do saldo combustível/cartão</div>
+        <div class="fuel-manual-form">
+          <input class="finput" id="fuel-card-balance-quick" type="number" step="0.01" min="0" placeholder="Novo saldo R$">
+          <span class="card-action" onclick="setFuelCardBalanceQuick()">Atualizar</span>
+        </div>
+      </div>
+      <div class="mc c-blue fuel-manual-card">
+        <div class="mc-label">Aporte Manual</div>
+        <div class="mc-val" id="fuel-aporte-total-current">R$ 0,00</div>
+        <div class="mc-sub">registro manual de aporte no ciclo</div>
+        <div class="fuel-manual-form">
+          <input class="finput" id="fuel-aporte-date-quick" type="date">
+          <input class="finput" id="fuel-aporte-valor-quick" type="number" step="0.01" min="0" placeholder="Valor R$">
+          <input class="finput fuel-manual-wide" id="fuel-aporte-desc-quick" placeholder="Descrição">
+          <span class="card-action" onclick="addFuelAporteQuick()">Registrar</span>
+        </div>
+      </div>
     </div>
     <div id="fuel-extra-projection" style="margin-bottom:16px"></div>
 
@@ -5798,24 +5844,29 @@ function addFuelRequest(){
   clearFuelRequestForm();
   renderFuel();saveState();
 }
-function addFuelAporte(){
+function addFuelAporteFrom(dateId,valorId,descId){
   if(!canEdit())return;
-  const valor=Number(document.getElementById('fuel-aporte-valor').value||0);
+  const dateEl=document.getElementById(dateId),valorEl=document.getElementById(valorId),descEl=document.getElementById(descId);
+  const valor=Number(valorEl&&valorEl.value||0);
   if(!valor){alert('Informe o valor do aporte.');return}
-  const item={id:'APT'+Date.now(),data:document.getElementById('fuel-aporte-date').value||new Date().toISOString().slice(0,10),valor,desc:document.getElementById('fuel-aporte-desc').value.trim()};
+  const item={id:'APT'+Date.now(),data:dateEl&&dateEl.value||new Date().toISOString().slice(0,10),valor,desc:descEl&&descEl.value.trim()||''};
   dFuelAportes.push(item);
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
-  document.getElementById('fuel-aporte-valor').value='';
-  document.getElementById('fuel-aporte-desc').value='';
+  if(valorEl)valorEl.value='';
+  if(descEl)descEl.value='';
   renderFuel();saveState();
 }
+function addFuelAporte(){addFuelAporteFrom('fuel-aporte-date','fuel-aporte-valor','fuel-aporte-desc')}
+function addFuelAporteQuick(){addFuelAporteFrom('fuel-aporte-date-quick','fuel-aporte-valor-quick','fuel-aporte-desc-quick')}
 function deleteFuelAporte(id){
   if(!canEdit())return;if(!confirm('Excluir este aporte?'))return;
   dFuelAportes=dFuelAportes.filter(a=>a.id!==id);
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   renderFuel();saveState();
 }
-function setFuelCardBalance(){if(!canEdit())return;fuelCardBalance=Number(document.getElementById('fuel-card-balance').value||0);document.getElementById('fuel-card-balance').value='';renderFuel();saveState()}
+function setFuelCardBalanceFrom(inputId){if(!canEdit())return;const el=document.getElementById(inputId);fuelCardBalance=Number(el&&el.value||0);if(el)el.value='';renderFuel();saveState()}
+function setFuelCardBalance(){setFuelCardBalanceFrom('fuel-card-balance')}
+function setFuelCardBalanceQuick(){setFuelCardBalanceFrom('fuel-card-balance-quick')}
 function clearFuelWithdrawalForm(){editingFuelWithdrawalId='';document.getElementById('fuel-withdraw-date').value='';document.getElementById('fuel-withdraw-value').value='';document.getElementById('fuel-withdraw-reason').value='';const act=document.getElementById('fuel-withdraw-action');if(act)act.textContent='Registrar retirada';const can=document.getElementById('fuel-withdraw-cancel');if(can)can.style.display='none'}
 function editFuelWithdrawal(id){if(!canEdit())return;const r=dFuelWithdrawals.find(x=>x.id===id);if(!r)return;editingFuelWithdrawalId=id;document.getElementById('fuel-withdraw-date').value=r.data;document.getElementById('fuel-withdraw-value').value=r.valor;document.getElementById('fuel-withdraw-reason').value=r.reason||'';const act=document.getElementById('fuel-withdraw-action');if(act)act.textContent='Salvar edição';const can=document.getElementById('fuel-withdraw-cancel');if(can)can.style.display='';document.getElementById('fuel-withdraw-date').scrollIntoView({behavior:'smooth',block:'nearest'})}
 function deleteFuelWithdrawal(id){if(!canEdit())return;if(!confirm('Excluir esta retirada?'))return;const old=dFuelWithdrawals.find(r=>r.id===id);restoreFuelCardBalance(old&&old.valor);dFuelWithdrawals=dFuelWithdrawals.filter(r=>r.id!==id);if(editingFuelWithdrawalId===id)clearFuelWithdrawalForm();renderFuel();saveState()}
@@ -6137,6 +6188,8 @@ function renderFuel(){
   const cycleEditor=fuelCalendarEditing?`<div style="display:grid;grid-template-columns:repeat(2,minmax(118px,1fr));gap:6px;margin-top:8px"><input class="finput" id="fuel-cycle-start" type="date" value="${fuelCycle.startDate}" title="Data inicial do ciclo"><input class="finput" id="fuel-cycle-end" type="date" value="${fuelCycle.endDate}" title="Data final do ciclo"><span class="card-action" onclick="setFuelCycleCalendar()">Salvar</span><span class="card-action" onclick="resetFuelCycleCalendar()">Padrão 16-15</span></div>`:'';
   const cycleAction=canEdit()?`<span class="card-action" onclick="toggleFuelCalendarEdit()">${fuelCalendarEditing?'Fechar':'Editar calendário'}</span>`:'';
   document.getElementById('fuel-balance-summary').innerHTML=`<div class="mc c-blue"><div class="mc-label">Saldo Geral</div><div class="mc-val">${brl(bal.saldoGeral)}</div><div class="mc-sub">aportes − retiradas</div></div><div class="mc c-green"><div class="mc-label">Saldo Disponível</div><div class="mc-val" style="color:${color}">${brl(bal.available)}</div><div class="mc-sub">reflete o saldo combustível/cartão</div></div><div class="mc c-orange"><div class="mc-label">Período de renovação</div><div class="mc-val" style="font-size:15px">${eh(fuelCycle.label)}</div><div class="mc-sub">${fuelCycle.manual?'calendário manual':'ciclo automático 16-15'} ${cycleAction}</div>${cycleEditor}</div>`;
+  const quickSaldo=document.getElementById('fuel-card-balance-current');if(quickSaldo)quickSaldo.textContent=brl(bal.available);
+  const quickAporte=document.getElementById('fuel-aporte-total-current');if(quickAporte)quickAporte.textContent=brl(fuelBalanceTotal);
   document.getElementById('mrow-fuel').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito STB3E91</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito STB3E91</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
   const top=fuelProjection()[0]||['-',{valor:0,litros:0,count:0}];
   const nextSuggestion=fuelNextMonthSuggestion();
@@ -6148,7 +6201,7 @@ function renderFuel(){
   renderFuelProjectionDetail();
   document.getElementById('fuel-status').innerHTML=listRows(se(cnt(dFuelVehicles,'status')),k=>({Ativo:'var(--green)',Inativo:'var(--tx3)',Oficina:'var(--orange)',Bloqueado:'var(--red)'}[k]||'var(--blue)'));
   const sel=document.getElementById('fuel-req-placa');if(sel){const cur=sel.value;const _ord={Ativo:0,Oficina:1,Inativo:2,Bloqueado:3};const _vs=[...dFuelVehicles].sort((a,b)=>(_ord[a.status]??9)-(_ord[b.status]??9)||a.condutor.localeCompare(b.condutor,'pt-BR'));sel.innerHTML='<option value="">Selecionar placa</option>'+_vs.map(v=>`<option value="${eh(v.placa)}">${eh(v.placa)} — ${eh(v.condutor)}${v.status!=='Ativo'?' ('+eh(v.status)+')':''}</option>`).join('');sel.value=[...sel.options].some(o=>o.value===cur)?cur:''}
-  ['fuel-withdraw-date'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=new Date().toISOString().slice(0,10)});
+  ['fuel-withdraw-date','fuel-aporte-date','fuel-aporte-date-quick'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=new Date().toISOString().slice(0,10)});
   _renderFuelVTable();
   renderFuelRequestsTable();
   const capEl=document.getElementById('cnt-fuel-ap');if(capEl)capEl.textContent=dFuelAportes.length+' aporte'+(dFuelAportes.length!==1?'s':'');
