@@ -3448,10 +3448,10 @@ tbody tr:last-child td {
 <div class="user-panel" id="sheets-panel">
   <div class="user-card" style="width:min(560px,100%);max-height:90vh;overflow:auto">
     <div class="user-card-hd">
-      <div class="user-card-title" style="display:flex;align-items:center;gap:8px"><i class="ti ti-brand-google" style="color:#34a853"></i> Google Sheets — Backup automático</div>
+      <div class="user-card-title" style="display:flex;align-items:center;gap:8px"><i class="ti ti-brand-google" style="color:#34a853"></i> Google Sheets — Sincronização compartilhada</div>
       <button class="mini-btn" onclick="closeSheetsSettings()">Fechar</button>
     </div>
-    <p style="font-size:12px;color:var(--tx3);margin-bottom:14px;line-height:1.6">Cole abaixo a URL do seu <b>Google Apps Script Web App</b> para habilitar o envio automático dos dados de combustível para o Google Sheets.</p>
+    <p style="font-size:12px;color:var(--tx3);margin-bottom:14px;line-height:1.6">Cole abaixo a URL do seu <b>Google Apps Script Web App</b> para habilitar a sincronização compartilhada do painel. Com isso, bases e atualizações ficam disponíveis para outros equipamentos.</p>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input id="sheets-url" class="finput" style="flex:1;min-width:200px" placeholder="https://script.google.com/macros/s/.../exec">
       <button class="mini-btn" style="background:var(--green-dk);color:#fff;border-color:var(--green-dk);white-space:nowrap;padding:0 14px" onclick="saveSheetsUrl()">Salvar URL</button>
@@ -3459,7 +3459,7 @@ tbody tr:last-child td {
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
         <input type="checkbox" id="sheets-auto" onchange="toggleSheetsAuto(this.checked)" style="cursor:pointer">
-        Salvar automaticamente ao atualizar dados
+        Sincronizar automaticamente ao atualizar dados
       </label>
       <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveToGoogleSheets(true)"><i class="ti ti-send" style="font-size:12px;margin-right:4px"></i>Enviar agora</button>
     </div>
@@ -3473,8 +3473,14 @@ tbody tr:last-child td {
         <li>Escolha: <b>Executar como: Eu mesmo</b> · <b>Acesso: Qualquer pessoa</b></li>
         <li>Copie a URL gerada e cole no campo acima</li>
       </ol>
-      <pre id="sheets-script-code" style="background:var(--surface2);border-radius:8px;padding:10px;margin-top:10px;overflow-x:auto;font-size:10px;line-height:1.5;white-space:pre-wrap;cursor:pointer" title="Clique para copiar" onclick="copyScriptCode()">function doPost(e){try{var d=JSON.parse(e.postData.contents);var ss=SpreadsheetApp.openById('SEU_SHEET_ID');var ts=new Date().toLocaleString('pt-BR');var sv=ss.getSheetByName('Veiculos')||ss.insertSheet('Veiculos');sv.clearContents();sv.appendRow(['Placa','Modelo','Ano','Condutor','Setor','Superior','Tipo','Cartao','Status','Atualizado']);(d.dFuelVehicles||[]).forEach(function(v){sv.appendRow([v.placa,v.modelo,v.ano,v.condutor,v.setor,v.superior,v.tipo,v.tipoCartao,v.status,ts])});var sr=ss.getSheetByName('Solicitacoes')||ss.insertSheet('Solicitacoes');sr.clearContents();sr.appendRow(['ID','Data','Placa','Condutor','Valor','Observacao','Atualizado']);(d.dFuelRequests||[]).forEach(function(r){sr.appendRow([r.id,r.data,r.placa,r.condutor,r.valor,r.obs,ts])});return ContentService.createTextOutput(JSON.stringify({status:'ok'})).setMimeType(ContentService.MimeType.JSON)}catch(err){return ContentService.createTextOutput(JSON.stringify({status:'error',msg:err.message})).setMimeType(ContentService.MimeType.JSON)}}
-function doGet(){return ContentService.createTextOutput(JSON.stringify({status:'ok'})).setMimeType(ContentService.MimeType.JSON)}</pre>
+      <pre id="sheets-script-code" style="background:var(--surface2);border-radius:8px;padding:10px;margin-top:10px;overflow-x:auto;font-size:10px;line-height:1.5;white-space:pre-wrap;cursor:pointer" title="Clique para copiar" onclick="copyScriptCode()">const SHEET_ID='SEU_SHEET_ID';
+const CHUNK=45000;
+function _out(o,cb){var s=JSON.stringify(o);return ContentService.createTextOutput(cb?cb+'('+s+');':s).setMimeType(cb?ContentService.MimeType.JAVASCRIPT:ContentService.MimeType.JSON)}
+function _sheet(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n)}
+function _readState(ss){var sh=ss.getSheetByName('PainelState');if(!sh||sh.getLastRow()<2)return null;var vals=sh.getRange(2,2,sh.getLastRow()-1,1).getValues();var txt=vals.map(function(r){return r[0]||''}).join('');return txt?JSON.parse(txt):null}
+function _writeState(ss,state){var sh=_sheet(ss,'PainelState');sh.clearContents();sh.appendRow(['Parte','JSON','Atualizado']);var txt=JSON.stringify(state||{});var ts=new Date().toISOString();for(var i=0,p=1;i<txt.length;i+=CHUNK,p++)sh.appendRow([p,txt.slice(i,i+CHUNK),ts]);return{parts:Math.ceil(txt.length/CHUNK),bytes:txt.length,savedAt:ts}}
+function doPost(e){try{var d=JSON.parse(e.postData.contents||'{}');var ss=SpreadsheetApp.openById(SHEET_ID);var meta=_writeState(ss,d.state||d);return _out({status:'ok',meta:meta})}catch(err){return _out({status:'error',msg:err.message})}}
+function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=SpreadsheetApp.openById(SHEET_ID);return _out({status:'ok',state:_readState(ss)},cb)}catch(err){return _out({status:'error',msg:err.message},e&&e.parameter&&e.parameter.callback)}}</pre>
     </details>
   </div>
 </div>
@@ -4833,6 +4839,7 @@ const IDB_NAME='atrix-jarvis-store';
 const IDB_STORE='kv';
 const ACTIVE_TAB_KEY='atrix:painel:aba:v1';
 const REMOTE_STATE_API='/api/painel-state';
+const SHARED_STATE_URL='';
 const USERS_KEY='atrix:usuarios:v1';
 const SESSION_KEY='atrix:sessao:v1';
 let currentUser=null;
@@ -5207,19 +5214,65 @@ async function saveRemoteState(st){
     if(canEdit()&&!remoteSaveWarned){remoteSaveWarned=true;console.info('Armazenamento remoto indisponível (GitHub Pages). Dados salvos localmente.')}
   }
 }
+function jsonpFetch(url,params={}){
+  return new Promise((resolve,reject)=>{
+    if(!url){resolve(null);return}
+    const cb='jarvisSync_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const u=new URL(url,window.location.href);
+    Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));
+    u.searchParams.set('callback',cb);
+    const s=document.createElement('script');
+    const done=(ok,val)=>{delete window[cb];s.remove();ok?resolve(val):reject(val)};
+    const timer=setTimeout(()=>done(false,new Error('Tempo esgotado ao buscar estado compartilhado.')),20000);
+    window[cb]=data=>{clearTimeout(timer);done(true,data)};
+    s.onerror=()=>{clearTimeout(timer);done(false,new Error('Falha ao carregar estado compartilhado.'))};
+    s.src=u.toString();
+    document.head.appendChild(s);
+  });
+}
+async function saveSharedState(st,manual=false){
+  const url=getSheetsUrl();
+  if(!url){if(manual)alert('Configure primeiro a URL do Google Apps Script.');return false}
+  try{
+    await fetch(url,{method:'POST',body:JSON.stringify({state:st||buildState()}),mode:'no-cors'});
+    return true;
+  }catch(e){
+    console.warn('Não foi possível salvar no estado compartilhado:',e);
+    if(manual)alert('Erro ao enviar para o estado compartilhado: '+e.message);
+    return false;
+  }
+}
+async function restoreSharedState(){
+  const url=getSheetsUrl();
+  if(!url)return false;
+  try{
+    const data=await jsonpFetch(url,{action:'state',t:Date.now()});
+    const st=data&&data.state;
+    if(!st||typeof st!=='object')return false;
+    const localRaw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY);
+    let localAt='';try{localAt=(localRaw&&JSON.parse(localRaw).savedAt)||''}catch(_){}
+    const remoteAt=st.savedAt||'';
+    if(!localAt||remoteAt>=localAt){
+      if(applyState(st,'Base compartilhada'))saveLocalState(buildState());
+      updateCentralStatus();updateClearBtns();
+      return true;
+    }
+  }catch(e){console.warn('Não foi possível carregar o estado compartilhado:',e)}
+  return false;
+}
 function saveState(){
   const st=buildState();
   saveLocalState(st);
   if(canEdit()){
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer=setTimeout(()=>saveRemoteState(st),450);
-    if(localStorage.getItem(SHEETS_AUTO_KEY)==='1')saveToGoogleSheets(false);
+    if(SHARED_STATE_URL||localStorage.getItem(SHEETS_AUTO_KEY)==='1')saveSharedState(st,false);
   }
 }
 async function restoreRemoteState(){
   try{
     const res=await fetch(REMOTE_STATE_API,{cache:'no-store'});
-    if(!res.ok)return;
+    if(!res.ok){restoreSharedState();return}
     const data=await res.json();
     if(data&&data.state){
       /* só aplica o estado remoto se for mais recente que o local */
@@ -5231,7 +5284,8 @@ async function restoreRemoteState(){
         if(applyState(data.state,'Base compartilhada'))saveLocalState(buildState());
       }
     }else if(data&&data.ok&&canEdit()&&(dAb.length||dEnc.length))saveRemoteState(buildState());
-  }catch(e){console.warn('Não foi possível carregar as bases compartilhadas:',e)}
+    else restoreSharedState();
+  }catch(e){console.warn('Não foi possível carregar as bases compartilhadas:',e);restoreSharedState();}
 }
 function restoreState(){
   try{
@@ -8161,7 +8215,7 @@ function initFuelSplit(){
 /* ─── GOOGLE SHEETS ─── */
 const SHEETS_URL_KEY='atrix:sheets-url:v1';
 const SHEETS_AUTO_KEY='atrix:sheets-auto:v1';
-function getSheetsUrl(){return localStorage.getItem(SHEETS_URL_KEY)||''}
+function getSheetsUrl(){return SHARED_STATE_URL||localStorage.getItem(SHEETS_URL_KEY)||''}
 function openSheetsSettings(){
   if(!canEdit())return;
   const inp=document.getElementById('sheets-url');if(inp)inp.value=getSheetsUrl();
@@ -8173,8 +8227,10 @@ function closeSheetsSettings(){document.getElementById('sheets-panel').style.dis
 function saveSheetsUrl(){
   const url=(document.getElementById('sheets-url').value||'').trim();
   localStorage.setItem(SHEETS_URL_KEY,url);
+  if(url)localStorage.setItem(SHEETS_AUTO_KEY,'1');
+  const cb=document.getElementById('sheets-auto');if(cb)cb.checked=!!url;
   const el=document.getElementById('sheets-status');
-  if(el){el.textContent=url?'URL salva. Clique em "Enviar agora" para testar.':'URL removida.';el.style.color=url?'var(--green-dk)':'var(--tx3)'}
+  if(el){el.textContent=url?'URL salva. Clique em "Enviar agora" para testar e sincronizar.':'URL removida.';el.style.color=url?'var(--green-dk)':'var(--tx3)'}
 }
 function toggleSheetsAuto(on){localStorage.setItem(SHEETS_AUTO_KEY,on?'1':'0')}
 function copyScriptCode(){
@@ -8185,12 +8241,14 @@ async function saveToGoogleSheets(manual=false){
   const url=getSheetsUrl();
   if(!url){if(manual)alert('Configure primeiro a URL do Google Apps Script na opção Google Sheets (ícone G na barra superior).');return}
   const st=document.getElementById('sheets-status');
-  if(st){st.textContent='Enviando para o Google Sheets…';st.style.color='var(--blue)'}
+  if(st){st.textContent='Enviando estado completo do painel…';st.style.color='var(--blue)'}
   const btn=document.getElementById('sheets-nav-btn');
   if(btn)btn.style.color='var(--orange)';
   try{
-    await fetch(url,{method:'POST',body:JSON.stringify({dFuelVehicles,dFuelRequests:fuelValidRequests(),dFuelWithdrawals,fuelBalanceTotal,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}),mode:'no-cors'});
-    const msg='Enviado ao Google Sheets em '+now2();
+    const ok=await saveSharedState(buildState(),manual);
+    if(!ok)throw new Error('Falha ao enviar estado compartilhado.');
+    setTimeout(()=>restoreSharedState(),1200);
+    const msg='Estado compartilhado atualizado em '+now2();
     if(st){st.textContent=msg;st.style.color='var(--green-dk)'}
     if(btn)btn.style.color='var(--green-dk)';setTimeout(()=>{if(btn)btn.style.color=''},3000);
     if(manual)alert(msg);
@@ -9247,7 +9305,13 @@ function rdeShowCalls(title,flatRecs){
 }
 loadAbAnnotations();loadAleloCardImage();ofsTecLoad();
 /* reset via URL: ?resetauth=1 limpa dados de autenticação corrompidos */
-if(new URLSearchParams(location.search).get('resetauth')==='1'){
+const bootParams=new URLSearchParams(location.search);
+const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
+if(bootSync){
+  try{localStorage.setItem(SHEETS_URL_KEY,bootSync);localStorage.setItem(SHEETS_AUTO_KEY,'1');}catch(e){}
+  history.replaceState(null,'',location.pathname);
+}
+if(bootParams.get('resetauth')==='1'){
   try{localStorage.removeItem(USERS_KEY);localStorage.removeItem(SESSION_KEY);}catch(e){}
   history.replaceState(null,'',location.pathname);
 }
