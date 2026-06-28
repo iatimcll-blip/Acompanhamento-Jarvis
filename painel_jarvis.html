@@ -6855,16 +6855,35 @@ function renderFuelChart(){
           }
         }},
         datalabels:DL?{
-          display:c=>{const v=Number(c.dataset.data[c.dataIndex]||0);return Math.abs(v)>0&&c.chart.width>520},
-          anchor:'end',
-          align:c=>c.dataset.type==='line'?'top':'end',
-          offset:c=>c.dataset.type==='line'?6:2,
+          display:c=>{
+            const v=Number(c.dataset.data[c.dataIndex]||0);
+            if(!Math.abs(v)||c.chart.width<=520)return false;
+            if(c.dataset.type==='line'&&entries.length>8)return c.dataIndex%2===0||c.dataIndex===entries.length-1;
+            return true;
+          },
+          anchor:c=>c.datasetIndex===1?'center':'end',
+          align:c=>{
+            if(c.dataset.type==='line')return c.dataIndex%2?'bottom':'top';
+            if(c.datasetIndex===0)return'start';
+            if(c.datasetIndex===1)return'center';
+            return'end';
+          },
+          offset:c=>c.dataset.type==='line'?8:(c.datasetIndex===2?5:0),
           formatter:v=>compact(v),
           font:c=>({size:c.chart.width<760?8:9,weight:'800'}),
-          color:c=>c.dataset.type==='line'?'#b45309':(dk?'#f8fafc':'#1f2937'),
-          backgroundColor:c=>c.dataset.type==='line'?(dk?'rgba(17,24,39,.82)':'rgba(255,255,255,.86)'):'transparent',
+          color:c=>{
+            if(c.dataset.type==='line')return'#b45309';
+            if(c.datasetIndex===1)return'#fff';
+            return dk?'#f8fafc':'#111827';
+          },
+          backgroundColor:c=>{
+            if(c.dataset.type==='line')return dk?'rgba(17,24,39,.86)':'rgba(255,255,255,.92)';
+            if(c.datasetIndex===1)return'rgba(0,82,180,.55)';
+            return dk?'rgba(17,24,39,.48)':'rgba(255,255,255,.70)';
+          },
           borderRadius:4,
-          padding:c=>c.dataset.type==='line'?2:0,
+          padding:c=>c.dataset.type==='line'?3:2,
+          clamp:true,
           clip:false
         }:{display:false}
       },
