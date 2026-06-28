@@ -6339,8 +6339,9 @@ function renderFuelChart(){
   const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
   const moneyTick=v=>brl(Number(v));
   const fmtDiff=v=>(Number(v)>=0?'+ ':'- ')+brl(Math.abs(Number(v||0)));
-  if(ctx.parentElement)ctx.parentElement.style.height=Math.min(700,Math.max(340,entries.length*54+120))+'px';
+  if(ctx.parentElement)ctx.parentElement.style.height=Math.min(560,Math.max(340,entries.length*28+220))+'px';
   const compact=v=>{const n=Math.abs(Number(v||0));return n>=1000?'R$ '+(Number(v)/1000).toFixed(1).replace('.',',')+' mil':brl(Number(v))};
+  const trend=trendValues(entries.map(e=>Number(e.proj||0)));
   chFuel=new Chart(ctx,{
     type:'bar',
     plugins:DL?[DL]:[],
@@ -6350,34 +6351,37 @@ function renderFuelChart(){
         {label:'Ciclo anterior R$',data:entries.map(e=>Number(e.anterior.toFixed(2))),backgroundColor:'rgba(142,142,147,.42)',borderRadius:6},
         {label:'Consumo atual R$',data:entries.map(e=>Number(e.atual.toFixed(2))),backgroundColor:'rgba(0,122,255,.78)',borderRadius:6},
         {label:'Projeção ciclo atual R$',data:entries.map(e=>Number(e.proj.toFixed(2))),backgroundColor:'rgba(52,199,89,.72)',borderRadius:6},
-        {label:'Diferença projeção x anterior',data:entries.map(e=>Number(e.difProjAnterior.toFixed(2))),backgroundColor:entries.map(e=>e.difProjAnterior>=0?'rgba(255,149,0,.70)':'rgba(239,68,68,.68)'),borderRadius:6}
+        {type:'line',label:'Linha de tendência',data:trend.map(v=>Number(v.toFixed(2))),borderColor:'rgba(255,159,10,.95)',backgroundColor:'rgba(255,159,10,.16)',borderWidth:2,pointRadius:2,pointHoverRadius:4,tension:.25}
       ]
     },
     options:{
-      indexAxis:'y',
       responsive:true,
       maintainAspectRatio:false,
-      layout:{padding:{top:18,right:48,left:4,bottom:4}},
+      layout:{padding:{top:28,right:12,left:4,bottom:10}},
       plugins:{
         legend:{display:true,labels:{boxWidth:10,font:{size:10}}},
         tooltip:{callbacks:{
           title:items=>items&&items[0]?entries[items[0].dataIndex].label:'',
-          label:c=>`${c.dataset.label}: ${c.datasetIndex===3?fmtDiff(c.parsed.x):brl(c.parsed.x||0)}`
+          label:c=>{
+            const e=entries[c.dataIndex]||{};
+            const val=c.dataset.type==='line'?c.parsed.y:c.parsed.y;
+            return [`${c.dataset.label}: ${brl(val||0)}`,c.datasetIndex===2?`Diferença projeção x anterior: ${fmtDiff(e.difProjAnterior)}`:''].filter(Boolean);
+          }
         }},
         datalabels:DL?{
-          display:c=>{const v=Number(c.dataset.data[c.dataIndex]||0);return Math.abs(v)>0&&c.chart.width>680&&entries.length<=14&&(c.datasetIndex===2||c.datasetIndex===3)},
+          display:c=>{const v=Number(c.dataset.data[c.dataIndex]||0);return Math.abs(v)>0&&c.chart.width>780&&entries.length<=8&&c.datasetIndex===2},
           anchor:'end',
-          align:'right',
-          offset:3,
-          formatter:(v,c)=>c.datasetIndex===3?fmtDiff(v):compact(v),
+          align:'top',
+          offset:2,
+          formatter:v=>compact(v),
           font:{size:9,weight:'700'},
           color:dk?'#e5e7eb':'#3a3a3c',
           clip:false
         }:{display:false}
       },
       scales:{
-        x:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:moneyTick}},
-        y:{grid:{display:false},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:function(v){const label=this.getLabelForValue(v)||'';return label.length>34?label.slice(0,33)+'...':label;}}}
+        x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',maxRotation:45,minRotation:0,autoSkip:true,callback:function(v){const label=this.getLabelForValue(v)||'';const placa=String(label).split(' - ')[0]||label;return placa;}}},
+        y:{beginAtZero:true,grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#8e8e93':'#636366',callback:moneyTick}}
       }
     }
   });
