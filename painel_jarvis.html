@@ -257,6 +257,19 @@ body {
 .wpp-chat-row small { color:#8696a0; font-size:11px; }
 .wpp-frame-wrap { min-height: 610px; position: relative; background:#efeae2; overflow: hidden; }
 .wpp-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background:#111b21; }
+.wpp-native { position:absolute; inset:0; display:grid; grid-template-rows:58px minmax(0,1fr) 62px; background:#0b141a; }
+.wpp-chat-head { display:flex; align-items:center; gap:10px; padding:0 14px; background:#202c33; border-bottom:1px solid rgba(134,150,160,.20); }
+.wpp-chat-title { font-size:13px; font-weight:800; color:#e9edef; }
+.wpp-chat-sub { font-size:10px; color:#8696a0; margin-top:1px; }
+.wpp-messages { position:relative; overflow:auto; padding:18px; background:#0b141a; }
+.wpp-messages:before { content:''; position:absolute; inset:0; opacity:.05; background:radial-gradient(circle at 20% 20%,#fff 0 1px,transparent 1px),radial-gradient(circle at 80% 40%,#fff 0 1px,transparent 1px); background-size:28px 28px; pointer-events:none; }
+.wpp-msg { position:relative; z-index:1; max-width:min(680px,78%); margin:0 0 8px; padding:8px 10px 6px; border-radius:8px; background:#202c33; color:#e9edef; font-size:13px; line-height:1.35; box-shadow:0 1px 1px rgba(0,0,0,.18); }
+.wpp-msg.me { margin-left:auto; background:#005c4b; }
+.wpp-msg-time { display:block; margin-top:4px; color:rgba(233,237,239,.58); font-size:9px; text-align:right; }
+.wpp-empty-chat { position:relative; z-index:1; height:100%; display:flex; align-items:center; justify-content:center; text-align:center; color:#8696a0; font-size:13px; }
+.wpp-composer { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#202c33; border-top:1px solid rgba(134,150,160,.20); }
+.wpp-composer input { flex:1; height:40px; border:0; outline:0; border-radius:8px; background:#2a3942; color:#e9edef; padding:0 14px; font:inherit; font-size:13px; }
+.wpp-composer button { width:40px; height:40px; border:0; border-radius:50%; background:#00a884; color:#06251f; display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .wpp-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background:#111b21; color:#8696a0; font-size: 12px; pointer-events: none; transition: opacity .18s, visibility .18s; z-index: 2; }
 .wpp-loading.hide { opacity: 0; visibility: hidden; }
 .wpp-loading i { color:#00a884; font-size: 34px; animation: wppPulse 1.2s ease-in-out infinite; }
@@ -4559,7 +4572,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="wpp-status" id="wpp-status"><i class="ti ti-qrcode"></i><span>Aguardando leitura do QR Code</span></div>
         <div class="wpp-actions">
-          <button type="button" class="wpp-action primary" onclick="openWhatsAppExternal()"><i class="ti ti-external-link"></i><span>Abrir sessão</span></button>
+          <button type="button" class="wpp-action primary" onclick="openWhatsAppExternal()"><i class="ti ti-plug-connected"></i><span>Configurar serviço</span></button>
           <button type="button" class="wpp-action" onclick="refreshWhatsAppPanel()"><i class="ti ti-refresh"></i><span>Atualizar</span></button>
         </div>
       </div>
@@ -4570,18 +4583,30 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div><div class="wpp-side-title">Jarvis WhatsApp</div><div class="wpp-side-sub">Espelho operacional</div></div>
           </div>
           <div class="wpp-searchbar"><span><i class="ti ti-search"></i> Pesquisar ou começar uma conversa</span></div>
-          <div class="wpp-chat-list">
+          <div class="wpp-chat-list" id="wpp-chat-list">
             <div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-qrcode"></i></div><div><strong>Conectar aparelho</strong><small>Leia o QR Code para iniciar a sessão</small></div></div>
             <div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-bell"></i></div><div><strong>Notificações</strong><small>Alertas chegam após a conexão</small></div></div>
             <div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-lock"></i></div><div><strong>Sessão segura</strong><small>Não usa usuário ou senha no painel</small></div></div>
           </div>
         </aside>
         <div class="wpp-frame-wrap">
+          <div class="wpp-native">
+            <div class="wpp-chat-head">
+              <div class="wpp-avatar"><i class="ti ti-brand-whatsapp"></i></div>
+              <div><div class="wpp-chat-title" id="wpp-chat-title">WhatsApp Jarvis</div><div class="wpp-chat-sub" id="wpp-chat-sub">Conecte via QR Code para carregar conversas</div></div>
+            </div>
+            <div class="wpp-messages" id="wpp-messages"><div class="wpp-empty-chat">Aguardando conexão com o WhatsApp.</div></div>
+            <form class="wpp-composer" onsubmit="sendWppMessage(event)">
+              <input id="wpp-message-input" placeholder="Digite uma mensagem" autocomplete="off" disabled>
+              <button type="submit" title="Enviar" disabled id="wpp-send-btn"><i class="ti ti-send"></i></button>
+            </form>
+          </div>
           <div class="wpp-loading" id="wpp-loading">
             <i class="ti ti-brand-whatsapp"></i>
             <div class="wpp-qr-card">
               <h3>Conectar WhatsApp Web</h3>
               <p>O QR Code será exibido na área espelhada. Use o celular autorizado para vincular o aparelho.</p>
+              <img id="wpp-qr-img" alt="QR Code WhatsApp" style="display:none;width:220px;height:220px;background:#fff;border-radius:8px;padding:8px;margin:2px auto 14px">
               <ol class="wpp-qr-steps">
                 <li>Abra o WhatsApp no celular.</li>
                 <li>Toque em Aparelhos conectados.</li>
@@ -4590,7 +4615,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               </ol>
             </div>
           </div>
-          <iframe class="wpp-frame" id="wpp-frame" src="about:blank" title="WhatsApp interno Jarvis MCLL" allow="fullscreen; clipboard-read; clipboard-write; microphone; camera; notifications" onload="setWppLoading(false)"></iframe>
         </div>
       </div>
     </div>
@@ -7868,9 +7892,20 @@ function playWppSound(){
     setTimeout(()=>{try{ctx.close();}catch(_){}},600);
   }catch(_){}
 }
+const WPP_BRIDGE_DEFAULT='http://127.0.0.1:8788';
+const WPP_BRIDGE_KEY='jarvis:wpp:bridge-url';
 const WPP_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/painel?embed=atrix';
 const WPP_PANEL_ORIGIN='https://mcll-painel-acionamentos-production.up.railway.app';
 const MONITOR_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/monitor?embed=atrix';
+let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[];
+function wppBridgeUrl(){return(localStorage.getItem(WPP_BRIDGE_KEY)||WPP_BRIDGE_DEFAULT).replace(/\/+$/,'')}
+function wppWsUrl(){return wppBridgeUrl().replace(/^http/i,'ws')+'/ws'}
+async function wppFetch(path,opts){
+  const res=await fetch(wppBridgeUrl()+path,{cache:'no-store',...opts,headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+  const data=await res.json().catch(()=>null);
+  if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));
+  return data;
+}
 function setWppStatus(text,icon='ti-qrcode'){
   const el=document.getElementById('wpp-status');if(!el)return;
   el.innerHTML=`<i class="ti ${icon}"></i><span>${eh(text)}</span>`;
@@ -7880,24 +7915,77 @@ function setWppLoading(show){
   if(el)el.classList.toggle('hide',!show);
   setWppStatus(show?'Aguardando leitura do QR Code':'Sessão espelhada carregada',show?'ti-qrcode':'ti-check');
 }
+function renderWppState(st){
+  wppBridgeState=st||wppBridgeState||{};
+  const qr=document.getElementById('wpp-qr-img');
+  if(qr){qr.style.display=wppBridgeState.qr?'block':'none';if(wppBridgeState.qr)qr.src=wppBridgeState.qr}
+  const ready=wppBridgeState.status==='ready';
+  setWppLoading(!ready);
+  const statusMap={starting:'Iniciando serviço WhatsApp',qr:'Leia o QR Code para conectar',authenticated:'Autenticado, carregando conversas',ready:'Sessão conectada dentro do painel',auth_failure:'Falha na autenticação',disconnected:'Sessão desconectada',error:'Erro no serviço WhatsApp'};
+  setWppStatus(statusMap[wppBridgeState.status]||'Aguardando conexão',ready?'ti-check':wppBridgeState.status==='error'?'ti-alert-triangle':'ti-qrcode');
+  const input=document.getElementById('wpp-message-input'),btn=document.getElementById('wpp-send-btn');
+  if(input)input.disabled=!ready||!wppActiveChat;
+  if(btn)btn.disabled=!ready||!wppActiveChat;
+}
+function renderWppChats(){
+  const el=document.getElementById('wpp-chat-list');if(!el)return;
+  if(!wppChats.length){el.innerHTML='<div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-qrcode"></i></div><div><strong>Conectar aparelho</strong><small>Leia o QR Code para iniciar a sessão</small></div></div>';return}
+  el.innerHTML=wppChats.map(c=>`<div class="wpp-chat-row" onclick="selectWppChat('${eh(c.id)}')" style="cursor:pointer;background:${c.id===wppActiveChat?'rgba(0,168,132,.12)':''}"><div class="wpp-avatar">${c.isGroup?'<i class="ti ti-users"></i>':'<i class="ti ti-user"></i>'}</div><div style="min-width:0;flex:1"><strong>${eh(c.name)}</strong><small>${eh((c.lastMessage&&c.lastMessage.body)||'Sem mensagens recentes')}</small></div>${c.unreadCount?`<span style="background:#00a884;color:#06251f;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:900">${c.unreadCount}</span>`:''}</div>`).join('');
+}
+function renderWppMessages(){
+  const box=document.getElementById('wpp-messages');if(!box)return;
+  const chat=wppChats.find(c=>c.id===wppActiveChat);
+  const title=document.getElementById('wpp-chat-title'),sub=document.getElementById('wpp-chat-sub');
+  if(title)title.textContent=chat?chat.name:'WhatsApp Jarvis';
+  if(sub)sub.textContent=chat?(chat.isGroup?'Grupo':'Contato'):'Conecte via QR Code para carregar conversas';
+  if(!wppActiveChat){box.innerHTML='<div class="wpp-empty-chat">Selecione uma conversa para visualizar as mensagens.</div>';renderWppState();return}
+  if(!wppMessages.length){box.innerHTML='<div class="wpp-empty-chat">Sem mensagens carregadas nesta conversa.</div>';renderWppState();return}
+  box.innerHTML=wppMessages.map(m=>{const t=m.timestamp?new Date(m.timestamp*1000).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';return`<div class="wpp-msg ${m.fromMe?'me':''}">${eh(m.body||'['+(m.type||'mensagem')+']')}<span class="wpp-msg-time">${t}</span></div>`}).join('');
+  box.scrollTop=box.scrollHeight;
+  renderWppState();
+}
+async function loadWppChats(){
+  try{wppChats=await wppFetch('/api/chats');renderWppChats();if(!wppActiveChat&&wppChats[0])selectWppChat(wppChats[0].id)}
+  catch(e){console.warn('WhatsApp chats:',e);renderWppChats()}
+}
+async function selectWppChat(id){
+  wppActiveChat=id;renderWppChats();renderWppMessages();
+  try{wppMessages=await wppFetch('/api/chats/'+encodeURIComponent(id)+'/messages?limit=60');renderWppMessages()}
+  catch(e){wppMessages=[];renderWppMessages();_ghToast('Erro ao carregar conversa: '+e.message,'var(--red)',5000)}
+}
+async function sendWppMessage(ev){
+  if(ev)ev.preventDefault();
+  const input=document.getElementById('wpp-message-input');const body=(input&&input.value||'').trim();
+  if(!body||!wppActiveChat)return;
+  try{const r=await wppFetch('/api/send-message',{method:'POST',body:JSON.stringify({to:wppActiveChat,body})});if(input)input.value='';wppMessages.push(r.message);renderWppMessages();loadWppChats()}
+  catch(e){_ghToast('Erro ao enviar WhatsApp: '+e.message,'var(--red)',6000)}
+}
+function connectWppBridge(force=false){
+  if(wppWs&&!force)return;
+  try{if(wppWs)wppWs.close()}catch(_){}
+  setWppStatus('Conectando ao serviço WhatsApp','ti-loader-2');
+  wppWs=new WebSocket(wppWsUrl());
+  wppWs.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.state)renderWppState(msg.state);if(msg.type==='message'||msg.type==='message_create'){if(msg.message&&msg.message.from===wppActiveChat||msg.message&&msg.message.to===wppActiveChat){wppMessages.push(msg.message);renderWppMessages()}if(activeTab!=='whatsapp'){wppUnreadCount++;updateWppBadge();playWppSound()}loadWppChats();}if(msg.state&&msg.state.status==='ready')loadWppChats();}catch(err){console.warn('WhatsApp ws:',err)}};
+  wppWs.onopen=()=>wppFetch('/api/status').then(renderWppState).catch(()=>{});
+  wppWs.onerror=()=>setWppStatus('Serviço WhatsApp indisponível. Inicie o bridge na porta 8788.','ti-alert-triangle');
+  wppWs.onclose=()=>{if(activeTab==='whatsapp')setWppStatus('Serviço WhatsApp desconectado','ti-alert-triangle')};
+}
 function setMonitorLoading(show){
   const el=document.getElementById('monitor-loading');
   if(el)el.classList.toggle('hide',!show);
 }
 function loadWhatsAppPanel(force=false){
-  const frame=document.getElementById('wpp-frame');
-  if(!frame)return;
-  if(force||frame.src==='about:blank'){
-    setWppLoading(true);
-    setWppStatus('Carregando sessão via QR Code','ti-loader-2');
-    frame.src=WPP_PANEL_URL+(force?((WPP_PANEL_URL.includes('?')?'&':'?')+'t='+Date.now()):'');
-  }
+  setWppLoading(true);
+  connectWppBridge(force);
+  wppFetch('/api/status').then(st=>{renderWppState(st);if(st.status==='ready')loadWppChats()}).catch(e=>setWppStatus('Inicie o Jarvis WhatsApp Bridge: '+e.message,'ti-alert-triangle'));
 }
 function refreshWhatsAppPanel(){
   loadWhatsAppPanel(true);
+  loadWppChats();
 }
 function openWhatsAppExternal(){
-  window.open(WPP_PANEL_URL,'_blank','noopener,noreferrer');
+  const next=prompt('URL do Jarvis WhatsApp Bridge',wppBridgeUrl());
+  if(next){localStorage.setItem(WPP_BRIDGE_KEY,next.replace(/\/+$/,''));loadWhatsAppPanel(true)}
 }
 function loadMonitorPanel(force=false){
   const frame=document.getElementById('monitor-frame');

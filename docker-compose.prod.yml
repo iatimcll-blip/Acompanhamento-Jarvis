@@ -72,6 +72,29 @@ services:
       timeout: 10s
       retries: 3
 
+  # WhatsApp Bridge (QR Code / sessão persistente)
+  whatsapp:
+    build:
+      context: ./whatsapp-bridge
+      dockerfile: Dockerfile
+    container_name: jarvis-whatsapp-prod
+    environment:
+      WPP_PORT: 8788
+      WPP_CORS_ORIGIN: ${WPP_CORS_ORIGIN:-https://iatimcll-blip.github.io}
+      WPP_CLIENT_ID: ${WPP_CLIENT_ID:-jarvis}
+    ports:
+      - "${WPP_PORT:-8788}:8788"
+    volumes:
+      - ./data/whatsapp:/app/.wwebjs_auth
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Nginx Reverse Proxy (opcional)
   nginx:
     image: nginx:alpine
