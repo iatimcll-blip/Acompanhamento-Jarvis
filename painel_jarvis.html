@@ -7892,19 +7892,29 @@ function playWppSound(){
     setTimeout(()=>{try{ctx.close();}catch(_){}},600);
   }catch(_){}
 }
-const WPP_BRIDGE_DEFAULT='http://127.0.0.1:8788';
+const WPP_BRIDGE_RAILWAY='https://mcll-painel-acionamentos-production.up.railway.app';
+const WPP_BRIDGE_LOCAL='http://127.0.0.1:8788';
+const WPP_BRIDGE_DEFAULT=WPP_BRIDGE_RAILWAY;
 const WPP_BRIDGE_KEY='jarvis:wpp:bridge-url';
 const WPP_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/painel?embed=atrix';
 const WPP_PANEL_ORIGIN='https://mcll-painel-acionamentos-production.up.railway.app';
 const MONITOR_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/monitor?embed=atrix';
-let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[];
-function wppBridgeUrl(){return(localStorage.getItem(WPP_BRIDGE_KEY)||WPP_BRIDGE_DEFAULT).replace(/\/+$/,'')}
+let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[],wppActiveBridgeUrl='';
+function wppBridgeUrl(){return(wppActiveBridgeUrl||localStorage.getItem(WPP_BRIDGE_KEY)||WPP_BRIDGE_DEFAULT).replace(/\/+$/,'')}
+function wppBridgeCandidates(){return[...new Set([localStorage.getItem(WPP_BRIDGE_KEY),WPP_BRIDGE_DEFAULT,WPP_BRIDGE_LOCAL].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]}
 function wppWsUrl(){return wppBridgeUrl().replace(/^http/i,'ws')+'/ws'}
 async function wppFetch(path,opts){
-  const res=await fetch(wppBridgeUrl()+path,{cache:'no-store',...opts,headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})}});
-  const data=await res.json().catch(()=>null);
-  if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));
-  return data;
+  let lastErr=null;
+  for(const base of wppBridgeCandidates()){
+    try{
+      const res=await fetch(base+path,{cache:'no-store',...opts,headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+      const data=await res.json().catch(()=>null);
+      if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));
+      wppActiveBridgeUrl=base;
+      return data;
+    }catch(e){lastErr=e}
+  }
+  throw lastErr||new Error('Serviço WhatsApp indisponível');
 }
 function setWppStatus(text,icon='ti-qrcode'){
   const el=document.getElementById('wpp-status');if(!el)return;
@@ -7963,7 +7973,7 @@ async function sendWppMessage(ev){
 function connectWppBridge(force=false){
   if(wppWs&&!force)return;
   try{if(wppWs)wppWs.close()}catch(_){}
-  setWppStatus('Conectando ao serviço WhatsApp','ti-loader-2');
+  setWppStatus('Conectando ao motor Railway do WhatsApp','ti-loader-2');
   wppWs=new WebSocket(wppWsUrl());
   wppWs.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.state)renderWppState(msg.state);if(msg.type==='message'||msg.type==='message_create'){if(msg.message&&msg.message.from===wppActiveChat||msg.message&&msg.message.to===wppActiveChat){wppMessages.push(msg.message);renderWppMessages()}if(activeTab!=='whatsapp'){wppUnreadCount++;updateWppBadge();playWppSound()}loadWppChats();}if(msg.state&&msg.state.status==='ready')loadWppChats();}catch(err){console.warn('WhatsApp ws:',err)}};
   wppWs.onopen=()=>wppFetch('/api/status').then(renderWppState).catch(()=>{});
@@ -7976,8 +7986,7 @@ function setMonitorLoading(show){
 }
 function loadWhatsAppPanel(force=false){
   setWppLoading(true);
-  connectWppBridge(force);
-  wppFetch('/api/status').then(st=>{renderWppState(st);if(st.status==='ready')loadWppChats()}).catch(e=>setWppStatus('Inicie o Jarvis WhatsApp Bridge: '+e.message,'ti-alert-triangle'));
+  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats()}).catch(e=>setWppStatus('Motor Railway indisponível. Configure a URL do bridge: '+e.message,'ti-alert-triangle'));
 }
 function refreshWhatsAppPanel(){
   loadWhatsAppPanel(true);
