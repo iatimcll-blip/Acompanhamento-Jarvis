@@ -7901,14 +7901,14 @@ const WPP_FILTER_KEY='jarvis:wpp:filter:v1';
 const WPP_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/painel?embed=atrix';
 const WPP_PANEL_ORIGIN='https://mcll-painel-acionamentos-production.up.railway.app';
 const MONITOR_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/monitor?embed=atrix';
-let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[],wppActiveBridgeUrl='';
+let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[],wppActiveBridgeUrl='',wppPollTimer=null;
 let wppFilterEnabled=false,wppFilterIds=new Set(),wppSearchQuery='';
 function wppFilterLoad(){try{const s=JSON.parse(localStorage.getItem(WPP_FILTER_KEY)||'{}');wppFilterEnabled=!!s.enabled;wppFilterIds=new Set(Array.isArray(s.ids)?s.ids:[]);}catch(e){wppFilterEnabled=false;wppFilterIds=new Set();}}
 function wppFilterSave(){try{localStorage.setItem(WPP_FILTER_KEY,JSON.stringify({enabled:wppFilterEnabled,ids:[...wppFilterIds]}));}catch(e){}}
 function wppIsMonitored(chatId){return !wppFilterEnabled||!wppFilterIds.size||wppFilterIds.has(chatId);}
 function wppSearch(q){wppSearchQuery=(q||'').toLowerCase();renderWppChats();}
 function wppBridgeUrl(){return(wppActiveBridgeUrl||localStorage.getItem(WPP_BRIDGE_KEY)||WPP_BRIDGE_DEFAULT).replace(/\/+$/,'')}
-function wppBridgeCandidates(){return[...new Set([localStorage.getItem(WPP_BRIDGE_KEY),WPP_BRIDGE_DEFAULT,WPP_BRIDGE_LOCAL].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]}
+function wppBridgeCandidates(){return[...new Set([localStorage.getItem(WPP_BRIDGE_KEY),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]}
 function wppWsUrl(){return wppBridgeUrl().replace(/^http/i,'ws')+'/ws'}
 async function wppFetch(path,opts){
   let lastErr=null;
@@ -7984,14 +7984,37 @@ async function sendWppMessage(ev){
   catch(e){_ghToast('Erro ao enviar WhatsApp: '+e.message,'var(--red)',6000)}
 }
 function connectWppBridge(force=false){
-  if(wppWs&&!force)return;
-  try{if(wppWs)wppWs.close()}catch(_){}
-  setWppStatus('Conectando ao motor Railway do WhatsApp','ti-loader-2');
-  wppWs=new WebSocket(wppWsUrl());
-  wppWs.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.state)renderWppState(msg.state);if(msg.type==='message'||msg.type==='message_create'){if(msg.message&&(msg.message.from===wppActiveChat||msg.message.to===wppActiveChat)){wppMessages.push(msg.message);renderWppMessages();}const srcId=msg.message&&msg.message.from;if(activeTab!=='whatsapp'&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();playWppSound();}loadWppChats();}if(msg.state&&msg.state.status==='ready')loadWppChats();}catch(err){console.warn('WhatsApp ws:',err)}};
-  wppWs.onopen=()=>wppFetch('/api/status').then(renderWppState).catch(()=>{});
-  wppWs.onerror=()=>setWppStatus('Serviço WhatsApp indisponível. Inicie o bridge na porta 8788.','ti-alert-triangle');
-  wppWs.onclose=()=>{if(activeTab==='whatsapp')setWppStatus('Serviço WhatsApp desconectado','ti-alert-triangle')};
+  if(wppWs&&wppWs.readyState<2&&!force)return;
+  try{if(wppWs){wppWs.onclose=null;wppWs.close();}}catch(_){}
+  clearInterval(wppPollTimer);wppPollTimer=null;
+  setWppStatus('Conectando ao serviço WhatsApp...','ti-loader-2');
+  try{
+    wppWs=new WebSocket(wppWsUrl());
+    wppWs.onmessage=e=>{try{
+      const msg=JSON.parse(e.data);
+      if(msg.state)renderWppState(msg.state);
+      if(msg.type==='message'||msg.type==='message_create'){
+        if(msg.message&&(msg.message.from===wppActiveChat||msg.message.to===wppActiveChat)){wppMessages.push(msg.message);renderWppMessages();}
+        const srcId=msg.message&&msg.message.from;
+        if(activeTab!=='whatsapp'&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();playWppSound();}
+        loadWppChats();
+      }else if(msg.state&&msg.state.status==='ready'){loadWppChats();}
+    }catch(err){console.warn('WhatsApp ws:',err)}};
+    wppWs.onopen=()=>{clearInterval(wppPollTimer);wppPollTimer=null;wppFetch('/api/status').then(st=>{renderWppState(st);if(st.status==='ready')loadWppChats();}).catch(()=>{});};
+    wppWs.onerror=()=>{wppWs=null;_startWppPolling();};
+    wppWs.onclose=()=>{wppWs=null;_startWppPolling();if(activeTab==='whatsapp')setWppStatus('Reconectando...','ti-loader-2');};
+  }catch(e){_startWppPolling();}
+}
+function _startWppPolling(){
+  if(wppPollTimer)return;
+  wppPollTimer=setInterval(async()=>{
+    try{
+      const st=await wppFetch('/api/status');
+      renderWppState(st);
+      if(st.status==='ready'&&!wppChats.length)loadWppChats();
+      if(!wppWs||wppWs.readyState>1){try{wppWs=new WebSocket(wppWsUrl());wppWs.onopen=()=>{clearInterval(wppPollTimer);wppPollTimer=null;connectWppBridge(true);};wppWs.onerror=()=>{wppWs=null;};}catch(_){}}
+    }catch(e){setWppStatus('Serviço indisponível. Verifique o bridge.','ti-alert-triangle');}
+  },4000);
 }
 function setMonitorLoading(show){
   const el=document.getElementById('monitor-loading');
@@ -8000,7 +8023,7 @@ function setMonitorLoading(show){
 function loadWhatsAppPanel(force=false){
   wppFilterLoad();
   setWppLoading(true);
-  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats()}).catch(e=>setWppStatus('Motor Railway indisponível. Configure a URL do bridge: '+e.message,'ti-alert-triangle'));
+  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats();}).catch(()=>{connectWppBridge(force);});
 }
 function refreshWhatsAppPanel(){
   loadWhatsAppPanel(true);
