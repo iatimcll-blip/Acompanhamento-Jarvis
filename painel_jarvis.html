@@ -6982,11 +6982,18 @@ function deleteFuelAleloBase(){
 function fuelProjection(){const by={};fuelPurchaseRequests().forEach(r=>{const v=fuelVehicleByPlate(r.placa),name=v.condutor||r.condutor||r.placa;if(!by[name])by[name]={valor:0,count:0};by[name].valor+=Math.abs(Number(r.valor||0));by[name].count++});return Object.entries(by).sort((a,b)=>b[1].valor-a[1].valor)}
 function fuelDriverName(r){const v=fuelVehicleByPlate(r.placa);return r.condutor||v.condutor||r.placa||'Sem condutor'}
 function fuelDriverOptions(){return[...new Set([...dFuelVehicles.map(v=>v.condutor).filter(Boolean),...fuelValidRequests().map(fuelDriverName).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'pt-BR'))}
-function onFuelDriverChange(v){selectedFuelDriver=v;renderFuelDriverDetail()}
+function fuelDriverMatch(r,name){
+  const n=nk(name);
+  if(!n)return false;
+  const placa=String(r&&r.placa||'').toUpperCase().trim();
+  const vehicle=fuelVehicleByPlate(placa);
+  return nk(fuelDriverName(r))===n||nk(r&&r.condutor||'')===n||nk(vehicle.condutor||'')===n;
+}
+function onFuelDriverChange(v){selectedFuelDriver=v;renderFuelDriverDetail();const box=document.getElementById('fuel-driver-detail');if(v&&box)box.scrollIntoView({behavior:'smooth',block:'nearest'})}
 function renderFuelDriverDetail(){
   const box=document.getElementById('fuel-driver-detail');if(!box)return;
   if(!selectedFuelDriver){box.style.display='none';box.innerHTML='';return}
-  const rows=fuelValidRequests().filter(r=>fuelDriverName(r)===selectedFuelDriver).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const rows=fuelValidRequests().filter(r=>fuelDriverMatch(r,selectedFuelDriver)).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
   const total=rows.filter(r=>fuelTxKind(r)==='compra').reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0),plates=[...new Set(rows.map(r=>r.placa).filter(Boolean))];
   box.style.display='block';
   box.innerHTML=`<div class="tsec-hd"><span class="tsec-title">Transações do condutor: ${eh(selectedFuelDriver)}</span><span id="cnt-fuel-driver" style="color:var(--tx3)">${rows.length} transações</span></div><div class="fuel-driver-summary"><div><span>Total consumido</span><b>${brl(total)}</b></div><div><span>Placas usadas</span><b>${plates.length?plates.map(eh).join(', '):'-'}</b></div><div><span>Último registro</span><b>${rows[0]?eh(rows[0].data):'-'}</b></div></div><div class="tw"><table><thead><tr><th>Data</th><th>Placa</th><th>Tipo</th><th>Valor</th><th>Observação</th></tr></thead><tbody>${rows.map(r=>{const kind=fuelTxKind(r),label=kind==='credito'?'Crédito':kind==='debito'?'Débito':'Compra';return`<tr><td>${eh(r.data)}</td><td class="tid">${eh(r.placa)}</td><td><span class="badge ${kind==='credito'?'b-in':kind==='debito'?'b-red':'b-blue'}">${label}</span></td><td>${brl(Number(r.valor||0))}</td><td>${eh(r.obs||'')}</td></tr>`}).join('')||'<tr><td colspan="5" class="nores">Nenhuma transação para este condutor</td></tr>'}</tbody></table></div>`;
