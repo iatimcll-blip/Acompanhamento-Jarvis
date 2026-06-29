@@ -4031,11 +4031,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="empty-btn eb-enc" onclick="openCentral('enc')"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
     </div>
     <div id="dash-enc" style="display:none">
-      <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
-      <div id="week-banner-enc"></div>
-      <div id="repetidos-enc"></div>
       <div class="mrow" id="mrow-enc"></div>
       <div class="prow" id="prow-enc"></div>
+      <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
+      <div id="week-banner-enc"></div>
       <div class="section-hd">Performance por cluster <span class="sh-line"></span></div>
       <div class="cluster-grid" id="cluster-cards"></div>
       <div class="g3">
@@ -6433,7 +6432,7 @@ function renderAbResumo(){
 /* ─── RENDER ENCERRADOS ─── */
 function renderAllEnc(){
   const d=encScope();
-  rBanner(d);renderExecReport(d);renderRepetidosEnc(d);rMetEnc(d);rPillEnc(d);rClusterCards(d);
+  rBanner(d);renderExecReport(d);rMetEnc(d);rPillEnc(d);rClusterCards(d);
   rSlaEnc(d);rCausaEnc(d);rMeta8(d);rChEnc(d);rChSem();
   rSegEnc(d);rUfEnc(d);renderTEnc();
 }
@@ -6453,16 +6452,12 @@ function rMetEnc(d){
   const s=encRuleStats(d);
   const vs=d.map(x=>x.tempoTotal).filter(v=>v>0);
   const avg=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;
-  const cliMap={};d.forEach(r=>{const k=r.clienteId||r.numplan||r.cliente||'';if(k)cliMap[k]=(cliMap[k]||0)+1});
-  const repClientes=Object.values(cliMap).filter(n=>n>1).length;
-  const repChamados=Object.values(cliMap).filter(n=>n>1).reduce((a,b)=>a+b,0);
   document.getElementById('mrow-enc').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total encerrados</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
     <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div></div>
     <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
     <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. 1,98%':'dentro do máx. 1,98%'}</div></div>
-    <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>
-    <div class="mc c-blue"><div class="mc-label">Repetições</div><div class="mc-val" style="color:var(--blue)">${repClientes}</div><div class="mc-sub">${repChamados} chamados de clientes recorrentes</div></div>`;
+    <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>`;
 }
 
 function rPillEnc(d){
@@ -6677,55 +6672,6 @@ function bestClientName(nome,clienteId,numplan){
   if(!isGeneric(clienteId))return{display:clienteId,id:numplan||nome||''};
   if(!isGeneric(numplan))return{display:numplan,id:nome||''};
   return{display:nome||clienteId||numplan||'—',id:''};
-}
-function renderRepetidosEnc(d){
-  const el=document.getElementById('repetidos-enc');if(!el)return;
-  if(!d||!d.length){el.innerHTML='';return}
-  /* agrupar por clienteId (fallback: numplan, depois cliente) */
-  const map={};
-  d.forEach(r=>{
-    const key=r.clienteId||r.numplan||r.cliente||'';
-    if(!key)return;
-    if(!map[key])map[key]={count:0,chamados:[],nome:'',numplan:r.numplan||'',clienteId:r.clienteId||''};
-    map[key].count++;
-    map[key].chamados.push(r.protocolo||r.os||'');
-    const bn=bestClientName(r.cliente||r.titulo||'',r.clienteId||'',r.numplan||'');
-    if(!map[key].nome&&bn.display&&bn.display!=='—')map[key].nome=bn.display;
-  });
-  const repetidos=Object.values(map).filter(x=>x.count>1).sort((a,b)=>b.count-a.count).slice(0,20);
-  if(!repetidos.length){el.innerHTML='';return}
-  const total=d.length;
-  const totalRep=repetidos.reduce((s,x)=>s+x.count,0);
-  el.innerHTML=`<div class="tsec" style="margin-bottom:16px">
-    <div class="tsec-hd">
-      <span class="tsec-title"><i class="ti ti-repeat" style="font-size:13px;vertical-align:-1px;margin-right:4px;color:var(--orange)"></i>Clientes Repetidos</span>
-      <span style="font-size:10px;color:var(--tx3)">${repetidos.length} cliente${repetidos.length!==1?'s':''} com chamados recorrentes · ${totalRep} de ${total} chamados</span>
-    </div>
-    <div class="tw"><table>
-      <thead><tr>
-        <th>#</th>
-        <th>Cliente / Título</th>
-        <th>ID</th>
-        <th style="text-align:center">Chamados</th>
-        <th style="text-align:center">% do período</th>
-      </tr></thead>
-      <tbody>
-        ${repetidos.map((x,i)=>{
-          const nome=x.nome||x.clienteId||x.numplan||'—';
-          const id=x.clienteId||x.numplan||'—';
-          const pct=pp(x.count/total*100);
-          const clr=x.count>=5?'color:var(--red);font-weight:700':x.count>=3?'color:var(--orange);font-weight:600':'color:var(--tx)';
-          return`<tr>
-            <td style="color:var(--tx3);font-size:11px">${i+1}º</td>
-            <td style="color:var(--tx)">${eh(titleCasePT(nome)||nome)}</td>
-            <td style="color:var(--tx3);font-size:11px">${eh(id)}</td>
-            <td style="text-align:center;${clr}">${x.count}</td>
-            <td style="text-align:center;color:var(--tx3);font-size:11px">${pct}%</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table></div>
-  </div>`;
 }
 function renderTEnc(){
   const f=gFEnc();
