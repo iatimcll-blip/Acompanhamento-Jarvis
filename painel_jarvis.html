@@ -4926,6 +4926,12 @@ let remoteSaveWarned=false;
 
 /* LOGIN E PERMISSOES */
 function encPass(v){return btoa(unescape(encodeURIComponent(String(v||''))))}
+async function hashPass(v){
+  try{
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(v||'')));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){return encPass(v);}/* fallback Base64 se Web Crypto indisponível */
+}
 function normRole(role){return role==='admin'?'admin':'viewer'}
 function roleLabel(role){return normRole(role)==='admin'?'Admin - permissões totais':'Usuário - apenas leitura'}
 function getUsers(){
@@ -4936,10 +4942,10 @@ function getUsers(){
   users=users.filter(u=>u&&typeof u.username==='string'&&u.username).map(u=>({...u,role:normRole(u.role)}));
   /* admin: senha fixa no código — sempre forçada para evitar que estado antigo bloqueie acesso */
   const ai=users.findIndex(u=>u.username.toLowerCase()==='admin');
-  if(ai<0)users.unshift({username:'admin',pass:encPass('atrix@2026'),role:'admin'});
-  else users[ai]={...users[ai],username:'admin',pass:encPass('atrix@2026'),role:'admin'};
+  if(ai<0)users.unshift({username:'admin',pass:encPass('atrix@2026'),role:'admin',passType:'b64'});
+  else users[ai]={...users[ai],username:'admin',pass:encPass('atrix@2026'),role:'admin',passType:'b64'};
   if(!users.some(u=>u.username.toLowerCase()==='moises'))
-    users.push({username:'Moises',pass:encPass('Alloha@2026'),role:'viewer'});
+    users.push({username:'Moises',pass:encPass('Alloha@2026'),role:'viewer',passType:'b64'});
   saveUsers(users);
   return users;
 }
@@ -4964,21 +4970,36 @@ function showLogin(msg){
 }
 function hideLogin(){document.getElementById('login-screen').style.display='none';document.getElementById('login-error').textContent=''}
 async function syncRemoteUsers(){
+  /* tenta carregar usuários do Google Sheets compartilhado */
   try{
-    const res=await fetch(REMOTE_STATE_API,{cache:'no-store'});
-    if(!res.ok)return false;
-    const data=await res.json();
-    if(data&&data.state&&Array.isArray(data.state.users)&&data.state.users.length){saveUsers(data.state.users);getUsers();return true}
+    const url=getSheetsUrl();
+    if(!url)return false;
+    const data=await jsonpFetch(url,{action:'state',t:Date.now()});
+    if(data&&data.state&&Array.isArray(data.state.users)&&data.state.users.length){
+      saveUsers(data.state.users);getUsers();return true;
+    }
   }catch(e){console.warn('Não foi possível carregar usuários compartilhados:',e)}
   return false;
 }
 async function loginUser(ev){
   if(ev)ev.preventDefault();
   const username=document.getElementById('login-user').value.trim();
-  const pass=document.getElementById('login-pass').value;
-  let user=getUsers().find(u=>u.username.toLowerCase()===username.toLowerCase()&&u.pass===encPass(pass));
-  if(!user&&await syncRemoteUsers())user=getUsers().find(u=>u.username.toLowerCase()===username.toLowerCase()&&u.pass===encPass(pass));
+  const passRaw=document.getElementById('login-pass').value;
+  const passSha=await hashPass(passRaw);
+  const passB64=encPass(passRaw);
+  function matchUser(u){
+    if(u.username.toLowerCase()!==username.toLowerCase())return false;
+    return u.passType==='sha256'?u.pass===passSha:u.pass===passB64;
+  }
+  let users=getUsers();
+  let user=users.find(matchUser);
+  if(!user&&await syncRemoteUsers()){users=getUsers();user=users.find(matchUser);}
   if(!user){showLogin('Usuário ou senha inválidos.');return}
+  /* migra Base64 → SHA-256 automaticamente no próximo login */
+  if(!user.passType||user.passType==='b64'){
+    user={...user,pass:passSha,passType:'sha256'};
+    saveUsers(users.map(u=>u.username===user.username?user:u));
+  }
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
@@ -4995,11 +5016,18 @@ function resetAuthData(){
   showLogin('Dados de autenticação redefinidos. Use as credenciais padrão.');
 }
 function initAuth(){
-  const users=getUsers();
-  const user=users.find(u=>u.username.toLowerCase()==='admin');
-  currentUser=user||{username:'admin',role:'admin'};
-  localStorage.setItem(SESSION_KEY,currentUser.username);
-  hideLogin();restoreState();restoreActiveTab();applyPermissions();
+  const savedUsername=localStorage.getItem(SESSION_KEY);
+  if(savedUsername){
+    const users=getUsers();
+    const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
+    if(user){
+      currentUser=user;
+      hideLogin();restoreState();restoreActiveTab();applyPermissions();
+      return;
+    }
+  }
+  /* sem sessão válida → exibe tela de login */
+  showLogin('');
 }
 function openUserPanel(){
   if(!canEdit())return;
@@ -5007,7 +5035,7 @@ function openUserPanel(){
   document.getElementById('user-panel').style.display='flex';
 }
 function closeUserPanel(){document.getElementById('user-panel').style.display='none'}
-function createSecondaryUser(){
+async function createSecondaryUser(){
   if(!canEdit())return;
   const username=document.getElementById('new-user').value.trim();
   const pass=document.getElementById('new-pass').value.trim();
@@ -5016,7 +5044,8 @@ function createSecondaryUser(){
   if(pass.length<4){alert('Informe uma senha com pelo menos 4 caracteres.');return}
   const users=getUsers();
   if(users.some(u=>u.username.toLowerCase()===username.toLowerCase())){alert('Usuário já existe.');return}
-  users.push({username,pass:encPass(pass),role});
+  const passSha=await hashPass(pass);
+  users.push({username,pass:passSha,passType:'sha256',role});
   saveUsers(users);
   saveState();
   document.getElementById('new-user').value='';
@@ -5348,22 +5377,8 @@ function saveState(){
   }
 }
 async function restoreRemoteState(){
-  try{
-    const res=await fetch(REMOTE_STATE_API,{cache:'no-store'});
-    if(!res.ok){restoreSharedState();return}
-    const data=await res.json();
-    if(data&&data.state){
-      /* só aplica o estado remoto se for mais recente que o local */
-      const localRaw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY);
-      const localSt=localRaw?JSON.parse(localRaw):null;
-      const remoteAt=data.state.savedAt||'';
-      const localAt=localSt&&localSt.savedAt||'';
-      if(remoteAt>=localAt){
-        if(applyState(data.state,'Base compartilhada'))saveLocalState(buildState());
-      }
-    }else if(data&&data.ok&&canEdit()&&(dAb.length||dEnc.length))saveRemoteState(buildState());
-    else restoreSharedState();
-  }catch(e){console.warn('Não foi possível carregar as bases compartilhadas:',e);restoreSharedState();}
+  /* no GitHub Pages não há backend — vai direto para Google Sheets */
+  restoreSharedState();
 }
 function restoreState(){
   try{
@@ -8293,7 +8308,7 @@ function initFuelSplit(){
 /* ─── GOOGLE SHEETS ─── */
 const SHEETS_URL_KEY='atrix:sheets-url:v1';
 const SHEETS_AUTO_KEY='atrix:sheets-auto:v1';
-function getSheetsUrl(){return SHARED_STATE_URL||localStorage.getItem(SHEETS_URL_KEY)||''}
+function getSheetsUrl(){return localStorage.getItem(SHEETS_URL_KEY)||SHARED_STATE_URL||''}
 function openSheetsSettings(){
   if(!canEdit())return;
   const inp=document.getElementById('sheets-url');if(inp)inp.value=getSheetsUrl();
