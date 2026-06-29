@@ -5150,7 +5150,16 @@ function showLogin(msg){
   document.getElementById('login-error').textContent=msg||'';
   setTimeout(()=>document.getElementById('login-user').focus(),50);
 }
-function hideLogin(){document.getElementById('login-screen').style.display='none';document.getElementById('login-error').textContent=''}
+function hideLogin(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('login-error').textContent='';
+  /* avisa admin se token GitHub não configurado */
+  setTimeout(()=>{
+    if(canEdit()&&!getGhToken()){
+      _ghToast('⚠ Sync não configurado. Clique em ☁ para configurar o token GitHub.','var(--orange)',8000);
+    }
+  },1500);
+}
 async function syncRemoteUsers(){
   /* tenta carregar usuários do estado remoto (GitHub ou Sheets) */
   try{
@@ -5189,19 +5198,26 @@ async function _ghStateToB64(st){
 
 async function _ghB64ToState(b64Content){
   const raw=b64Content.replace(/\n/g,'');
-  const wrapper=JSON.parse(decodeURIComponent(escape(atob(raw))));
-  if(wrapper.z===1&&window.DecompressionStream){
-    try{
-      const bin=atob(wrapper.d);
-      const bytes=new Uint8Array(bin.length);
-      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-      const ds=new DecompressionStream('gzip');
-      const writer=ds.writable.getWriter();
-      writer.write(bytes);writer.close();
-      return JSON.parse(await new Response(ds.readable).text());
-    }catch{}
+  let decoded;
+  try{decoded=JSON.parse(decodeURIComponent(escape(atob(raw))));}
+  catch(e){throw new Error('Conteúdo sync-state inválido');}
+  /* Formato novo: wrapper {z:0|1, d:'...'} */
+  if(decoded&&typeof decoded.z!=='undefined'&&decoded.d){
+    if(decoded.z===1&&window.DecompressionStream){
+      try{
+        const bin=atob(decoded.d);
+        const bytes=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+        const ds=new DecompressionStream('gzip');
+        const writer=ds.writable.getWriter();
+        writer.write(bytes);writer.close();
+        return JSON.parse(await new Response(ds.readable).text());
+      }catch(e){console.warn('Descompressão gzip falhou, tentando sem compressão:',e);}
+    }
+    return JSON.parse(decodeURIComponent(escape(atob(decoded.d))));
   }
-  return JSON.parse(decodeURIComponent(escape(atob(wrapper.d))));
+  /* Formato direto: JSON de estado (placeholder ou legado) */
+  return decoded;
 }
 
 async function fetchGhRawState(){
@@ -5231,12 +5247,14 @@ async function saveGhState(manual=false){
     if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
     const msg='Sincronizado com GitHub em '+now2();
     if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
+    _ghToast('Sync GitHub ✓ '+now2(),'var(--green-dk)');
     if(manual)alert(msg);
     return true;
   }catch(e){
     console.warn('Erro ao salvar no GitHub:',e);
     const msg='Erro GitHub: '+e.message;
     if(el){el.textContent=msg;el.style.color='var(--red)'}
+    _ghToast('Erro sync: '+e.message,'var(--red)',6000);
     if(manual)alert(msg);
     return false;
   }
@@ -5245,17 +5263,35 @@ async function saveGhState(manual=false){
 async function restoreGhState(){
   try{
     const st=await fetchGhRawState();
+    /* ignora placeholder (sem dados reais) */
     if(!st||typeof st!=='object')return false;
+    const hasData=Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.ofsRows);
+    if(!hasData&&!st.savedAt)return false;
     const localRaw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY);
     let localAt='';try{localAt=(localRaw&&JSON.parse(localRaw).savedAt)||''}catch(_){}
     const remoteAt=st.savedAt||'';
-    if(!localAt||remoteAt>=localAt){
-      if(applyState(st,'Base compartilhada'))saveLocalState(buildState());
+    if(!localAt||remoteAt>localAt){
+      const applied=applyState(st,'Base compartilhada');
+      if(applied){
+        saveLocalState(buildState());
+        _ghToast('Bases carregadas do GitHub ✓','var(--green-dk)',5000);
+      }
       updateCentralStatus();updateClearBtns();
-      return true;
+      return applied;
     }
   }catch(e){console.warn('Erro ao carregar estado do GitHub:',e)}
   return false;
+}
+
+function _ghToast(msg,color,dur=3500){
+  let t=document.getElementById('_gh-toast');
+  if(!t){
+    t=document.createElement('div');t.id='_gh-toast';
+    t.style.cssText='position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:10px;font-size:12px;font-weight:500;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.15);transition:opacity .4s;pointer-events:none;background:var(--surface);border:1px solid var(--bd)';
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;t.style.color=color||'var(--tx)';t.style.opacity='1';
+  clearTimeout(t._t);t._t=setTimeout(()=>t.style.opacity='0',dur);
 }
 
 async function syncNow(manual=true){
