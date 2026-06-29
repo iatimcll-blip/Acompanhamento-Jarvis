@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     fonts-liberation \
+    fonts-noto-color-emoji \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -30,11 +31,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV WPP_AUTH_DIR=/data/.wwebjs_auth
 
-COPY package*.json ./
+RUN mkdir -p /data/.wwebjs_auth && chown node:node /data/.wwebjs_auth
+
+USER node
+
+COPY --chown=node:node package*.json ./
 RUN npm install --omit=dev
 
-COPY server.js ./
+COPY --chown=node:node server.js ./
 
 EXPOSE 8788
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
