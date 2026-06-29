@@ -5542,19 +5542,21 @@ async function idbGet(key){
   });
 }
 function stateMeta(st){
-  return{version:st.version,savedAt:st.savedAt,savedBy:st.savedBy,lastAbAt:st.lastAbAt,lastEncAt:st.lastEncAt,lastAbFile:st.lastAbFile,lastEncFile:st.lastEncFile,fuelBaseAt:st.fuelBaseAt,fuelBaseFile:st.fuelBaseFile};
+  return{version:st.version,savedAt:st.savedAt,savedBy:st.savedBy,lastAbAt:st.lastAbAt,lastEncAt:st.lastEncAt,lastAbFile:st.lastAbFile,lastEncFile:st.lastEncFile,fuelBaseAt:st.fuelBaseAt,fuelBaseFile:st.fuelBaseFile,rdeBaseAt:st.rdeState&&st.rdeState.at,rdeBaseFile:st.rdeState&&st.rdeState.fileName};
 }
 function stateSignature(st){
   if(!st||typeof st!=='object')return'';
   const len=v=>Array.isArray(v)?v.length:0;
+  const rede=st.rdeState||{};
   return[
     len(st.dAb),st.lastAbAt||'',st.lastAbFile||'',
     len(st.dEnc),st.lastEncAt||'',st.lastEncFile||'',
     len(st.dFuelVehicles),len(st.dFuelRequests),len(st.dFuelWithdrawals),len(st.dFuelAportes),st.fuelBaseAt||'',st.fuelBaseFile||'',
-    len(st.ofsRows),(st.ofsMeta&&st.ofsMeta.uploadedAt)||'',(st.ofsMeta&&st.ofsMeta.fname)||''
+    len(st.ofsRows),(st.ofsMeta&&st.ofsMeta.uploadedAt)||'',(st.ofsMeta&&st.ofsMeta.fname)||'',
+    len(rede.BD),len(rede.AD),rede.at||'',rede.fileName||''
   ].join('|');
 }
-function stateHasBaseData(st){return !!(st&&typeof st==='object'&&(Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.ofsRows)))}
+function stateHasBaseData(st){const rede=st&&st.rdeState;return !!(st&&typeof st==='object'&&(Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.ofsRows)||(rede&&(Array.isArray(rede.BD)||Array.isArray(rede.AD)))));}
 function getLocalStateForSync(){
   let raw=null;
   try{raw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY)}catch(_){}
@@ -5569,7 +5571,8 @@ function shouldApplyRemoteState(st){
   if(remoteAt&&remoteAt>=localAt)return true;
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
-function buildState(){return{version:7,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,pausedBusinessH:Number(d.pausedBusinessH||0),slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -5657,6 +5660,15 @@ function applyState(st,label){
     renderFuel();
     changed=true;
   }
+  if(st.rdeState&&typeof st.rdeState==='object'){
+    const appliedRede=rdeApplyStoredState(st.rdeState);
+    if(appliedRede){
+      idbSet(REDE_STORAGE,st.rdeState).catch(e=>console.warn('rede IndexedDB save',e));
+      try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st.rdeState));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
+      rdeRestoreUI();rdeSyncControls();renderRede();
+      changed=true;
+    }
+  }
   if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
     ofsRows=st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)}));
     ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
@@ -5737,6 +5749,22 @@ function saveState(){
       else if(SHARED_STATE_URL||localStorage.getItem(SHEETS_AUTO_KEY)==='1'){saveSharedState(st,false);}
     },800);
   }
+}
+function autoSyncAfterBaseUpload(label){
+  if(!canEdit())return;
+  clearTimeout(remoteSaveTimer);
+  remoteSaveTimer=setTimeout(async()=>{
+    const suffix=label?' ('+label+')':'';
+    if(getGhToken()){
+      _ghToast('Sincronizando base'+suffix+'…','var(--blue)',3500);
+      await saveGhState(false);
+    }else if(getSheetsUrl()){
+      _ghToast('Sincronizando base'+suffix+'…','var(--blue)',3500);
+      await saveToGoogleSheets(false);
+    }else{
+      _ghToast('Base anexada salva neste dispositivo. Configure a sincronização para compartilhar.','var(--orange)',7000);
+    }
+  },300);
 }
 async function restoreRemoteState(){
   /* tenta GitHub primeiro; se falhar (sem token ou arquivo inexistente), tenta Sheets */
@@ -5851,7 +5879,7 @@ function clearRede(){
   if(!confirm('Limpar base de rede? Os dados serão removidos.'))return;
   try{localStorage.removeItem(REDE_STORAGE);localStorage.removeItem(REDE_UI_KEY);}catch(e){}
   idbSet(REDE_STORAGE,null).catch(()=>{});
-  rdeBD=[];rdeAD=[];
+  rdeBD=[];rdeAD=[];rdeBaseFile='';rdeBaseAt='';
   ['mes','ml','sem','sl','ca','mo'].forEach(k=>rdeM[k].length=0);
   rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeActiveView='bb';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';
   Object.values(rdeCharts).forEach(ch=>{try{ch.destroy();}catch(e){}});rdeCharts={};
@@ -5998,7 +6026,7 @@ function procAb(raw,fname){
   fillFiltersAb();renderAllAb();startRefresh();
   document.getElementById('empty-ab').style.display='none';
   document.getElementById('dash-ab').style.display='block';
-  saveState();updateClearBtns();
+  saveState();autoSyncAfterBaseUpload('B2B Abertos');updateClearBtns();
 }
 
 /* ─── PROCESS ENCERRADOS ─── */
@@ -6053,7 +6081,7 @@ function procEnc(raw,fname){
   const showControls=document.getElementById('panel-encerrados').classList.contains('active');
   const encSubbarEl=document.getElementById('enc-subbar');
   if(encSubbarEl)encSubbarEl.classList.toggle('visible',showControls&&dEnc.length>0);
-  saveState();updateClearBtns();
+  saveState();autoSyncAfterBaseUpload('B2B Encerrados');updateClearBtns();
 }
 
 /* ─── WEEK / CLUSTER SELECTORS ─── */
@@ -6997,7 +7025,7 @@ function importFuelAlelo(text,fname){
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   fuelBaseFile=fname||'Base Alelo.csv';
   fuelBaseAt=now2();
-  renderFuel();saveState();updateCentralStatus();
+  renderFuel();saveState();autoSyncAfterBaseUpload('Alelo');updateCentralStatus();
   alert(`Base Alelo importada: ${compras} compras aprovadas, ${creditos} créditos emergenciais, ${debitos} débitos emergenciais. Ignoradas: ${ignored} sem placa/valor, ${ignoredPlate} placa fora da aba Placa, ${ignoredStatus} compras não aprovadas.`);
 }
 function deleteFuelAleloBase(){
@@ -7990,7 +8018,7 @@ function procOfs(raw,fname){
   renderOfs();
   const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=out.length;nb.style.display=out.length?'':'none';}
   const tsEl=document.getElementById('ts-ofs');if(tsEl)tsEl.textContent='Anexado '+_uat;
-  saveState();updateCentralStatus();updateClearBtns();
+  saveState();if(!/\(padrão\)/i.test(String(fname||'')))autoSyncAfterBaseUpload('OFS');updateCentralStatus();updateClearBtns();
 }
 function saveOfsState(){
   const st={rows:ofsRows,meta:ofsMeta,filter:ofsFilter};
@@ -9090,7 +9118,7 @@ function downloadCurrentReport(){
 }
 
 /* ─── REDE PANEL ─── */
-let rdeBD=[],rdeAD=[];
+let rdeBD=[],rdeAD=[],rdeBaseFile='',rdeBaseAt='';
 const rdeM={mes:[],ml:[],sem:[],sl:[],ca:[],mo:[]};
 const RDE_CL_NM={"C":"MA CAP","I":"MA INT","P":"PI","N":"NORTE"};
 const RDE_CL_CL={"C":"#9d7ef0","I":"#4d8ef0","P":"#3ecf8e","N":"#f0a14d"};
@@ -9163,12 +9191,13 @@ function rdeApplyRows(rows,fileName){
   if(!bb.length&&!ac.length)throw new Error('Nenhuma linha reconhecida para Backbone ou Acesso.');
   if(bb.length)rdeBD=bb;if(ac.length)rdeAD=ac;
   const _now=new Date();
-  const st={version:3,BD:rdeBD,AD:rdeAD,fileName,M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:_now.toISOString()};
+  rdeBaseFile=fileName||'';rdeBaseAt=_now.toISOString();
+  const st={version:3,BD:rdeBD,AD:rdeAD,fileName:rdeBaseFile,M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt};
   idbSet(REDE_STORAGE,st).catch(e=>console.warn('rede IndexedDB save',e));
   try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
   const fn=document.getElementById('rede-fname');if(fn)fn.textContent=fileName;
   const ts=document.getElementById('rede-ts-text');if(ts)ts.textContent='Anexado '+_now.toLocaleDateString('pt-BR')+' '+_now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';rdeShowDash();rdeSyncControls();renderRede();updateClearBtns();updateCentralStatus();
+  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
 }
 function rdeHasDetail(rows,idx){return Array.isArray(rows)&&rows.some(r=>Array.isArray(r)&&r.length>idx&&r[idx]&&typeof r[idx]==='object')}
 function rdeRestoreM(saved){
@@ -9184,6 +9213,8 @@ function rdeApplyStoredState(st){
   rdeRestoreM(st.M);
   if(Array.isArray(st.BD)&&st.BD.length)rdeBD=st.BD;
   if(Array.isArray(st.AD)&&st.AD.length)rdeAD=st.AD;
+  rdeBaseFile=st.fileName||rdeBaseFile||'';
+  rdeBaseAt=st.at||rdeBaseAt||'';
   const fn=document.getElementById('rede-fname');if(fn&&st.fileName)fn.textContent=st.fileName;
   const ts=document.getElementById('rede-ts-text');if(ts&&st.at){const d=new Date(st.at);ts.textContent='Anexado '+d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
   rdeShowDash();
