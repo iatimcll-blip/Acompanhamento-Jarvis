@@ -4573,6 +4573,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="wpp-status" id="wpp-status"><i class="ti ti-qrcode"></i><span>Aguardando leitura do QR Code</span></div>
         <div class="wpp-actions">
           <button type="button" class="wpp-action primary" onclick="openWhatsAppExternal()"><i class="ti ti-plug-connected"></i><span>Configurar serviço</span></button>
+          <button type="button" class="wpp-action" id="wpp-filter-btn" onclick="openWppFilter()" title="Configurar quais grupos e contatos geram notificações"><i class="ti ti-filter"></i><span>Monitoramento</span></button>
           <button type="button" class="wpp-action" onclick="refreshWhatsAppPanel()"><i class="ti ti-refresh"></i><span>Atualizar</span></button>
         </div>
       </div>
@@ -4582,7 +4583,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div class="wpp-avatar"><i class="ti ti-brand-whatsapp"></i></div>
             <div><div class="wpp-side-title">Jarvis WhatsApp</div><div class="wpp-side-sub">Espelho operacional</div></div>
           </div>
-          <div class="wpp-searchbar"><span><i class="ti ti-search"></i> Pesquisar ou começar uma conversa</span></div>
+          <div class="wpp-searchbar" style="display:flex;align-items:center;gap:8px"><i class="ti ti-search" style="color:var(--tx2);flex-shrink:0;font-size:14px"></i><input id="wpp-search-input" placeholder="Pesquisar conversas..." oninput="wppSearch(this.value)" autocomplete="off" style="background:none;border:none;outline:none;width:100%;color:var(--tx);font-size:13px;padding:0"></div>
           <div class="wpp-chat-list" id="wpp-chat-list">
             <div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-qrcode"></i></div><div><strong>Conectar aparelho</strong><small>Leia o QR Code para iniciar a sessão</small></div></div>
             <div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-bell"></i></div><div><strong>Notificações</strong><small>Alertas chegam após a conexão</small></div></div>
@@ -7896,10 +7897,16 @@ const WPP_BRIDGE_RAILWAY='https://mcll-painel-acionamentos-production.up.railway
 const WPP_BRIDGE_LOCAL='http://127.0.0.1:8788';
 const WPP_BRIDGE_DEFAULT=WPP_BRIDGE_RAILWAY;
 const WPP_BRIDGE_KEY='jarvis:wpp:bridge-url';
+const WPP_FILTER_KEY='jarvis:wpp:filter:v1';
 const WPP_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/painel?embed=atrix';
 const WPP_PANEL_ORIGIN='https://mcll-painel-acionamentos-production.up.railway.app';
 const MONITOR_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/monitor?embed=atrix';
 let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[],wppActiveBridgeUrl='';
+let wppFilterEnabled=false,wppFilterIds=new Set(),wppSearchQuery='';
+function wppFilterLoad(){try{const s=JSON.parse(localStorage.getItem(WPP_FILTER_KEY)||'{}');wppFilterEnabled=!!s.enabled;wppFilterIds=new Set(Array.isArray(s.ids)?s.ids:[]);}catch(e){wppFilterEnabled=false;wppFilterIds=new Set();}}
+function wppFilterSave(){try{localStorage.setItem(WPP_FILTER_KEY,JSON.stringify({enabled:wppFilterEnabled,ids:[...wppFilterIds]}));}catch(e){}}
+function wppIsMonitored(chatId){return !wppFilterEnabled||!wppFilterIds.size||wppFilterIds.has(chatId);}
+function wppSearch(q){wppSearchQuery=(q||'').toLowerCase();renderWppChats();}
 function wppBridgeUrl(){return(wppActiveBridgeUrl||localStorage.getItem(WPP_BRIDGE_KEY)||WPP_BRIDGE_DEFAULT).replace(/\/+$/,'')}
 function wppBridgeCandidates(){return[...new Set([localStorage.getItem(WPP_BRIDGE_KEY),WPP_BRIDGE_DEFAULT,WPP_BRIDGE_LOCAL].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]}
 function wppWsUrl(){return wppBridgeUrl().replace(/^http/i,'ws')+'/ws'}
@@ -7939,8 +7946,14 @@ function renderWppState(st){
 }
 function renderWppChats(){
   const el=document.getElementById('wpp-chat-list');if(!el)return;
+  const fbtn=document.getElementById('wpp-filter-btn');
+  if(fbtn){const active=wppFilterEnabled&&wppFilterIds.size>0;fbtn.style.background=active?'rgba(0,168,132,.2)':'';fbtn.style.color=active?'#00a884':'';}
   if(!wppChats.length){el.innerHTML='<div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-qrcode"></i></div><div><strong>Conectar aparelho</strong><small>Leia o QR Code para iniciar a sessão</small></div></div>';return}
-  el.innerHTML=wppChats.map(c=>`<div class="wpp-chat-row" onclick="selectWppChat('${eh(c.id)}')" style="cursor:pointer;background:${c.id===wppActiveChat?'rgba(0,168,132,.12)':''}"><div class="wpp-avatar">${c.isGroup?'<i class="ti ti-users"></i>':'<i class="ti ti-user"></i>'}</div><div style="min-width:0;flex:1"><strong>${eh(c.name)}</strong><small>${eh((c.lastMessage&&c.lastMessage.body)||'Sem mensagens recentes')}</small></div>${c.unreadCount?`<span style="background:#00a884;color:#06251f;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:900">${c.unreadCount}</span>`:''}</div>`).join('');
+  let chats=wppChats;
+  if(wppFilterEnabled&&wppFilterIds.size)chats=chats.filter(c=>wppFilterIds.has(c.id));
+  if(wppSearchQuery)chats=chats.filter(c=>(c.name||'').toLowerCase().includes(wppSearchQuery));
+  if(!chats.length){el.innerHTML='<div class="wpp-chat-row"><div class="wpp-avatar"><i class="ti ti-filter-x"></i></div><div><strong>Sem resultados</strong><small>Nenhuma conversa corresponde ao filtro ativo</small></div></div>';return}
+  el.innerHTML=chats.map(c=>`<div class="wpp-chat-row" onclick="selectWppChat('${eh(c.id)}')" style="cursor:pointer;background:${c.id===wppActiveChat?'rgba(0,168,132,.12)':''}"><div class="wpp-avatar">${c.isGroup?'<i class="ti ti-users"></i>':'<i class="ti ti-user"></i>'}</div><div style="min-width:0;flex:1"><strong>${eh(c.name)}</strong><small>${eh((c.lastMessage&&c.lastMessage.body)||'Sem mensagens recentes')}</small></div>${wppFilterIds.has(c.id)?'<i class="ti ti-star-filled" title="Monitorado" style="color:#00a884;font-size:11px;flex-shrink:0;margin-right:4px"></i>':''}${c.unreadCount?`<span style="background:#00a884;color:#06251f;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:900;flex-shrink:0">${c.unreadCount}</span>`:''}</div>`).join('');
 }
 function renderWppMessages(){
   const box=document.getElementById('wpp-messages');if(!box)return;
@@ -7975,7 +7988,7 @@ function connectWppBridge(force=false){
   try{if(wppWs)wppWs.close()}catch(_){}
   setWppStatus('Conectando ao motor Railway do WhatsApp','ti-loader-2');
   wppWs=new WebSocket(wppWsUrl());
-  wppWs.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.state)renderWppState(msg.state);if(msg.type==='message'||msg.type==='message_create'){if(msg.message&&msg.message.from===wppActiveChat||msg.message&&msg.message.to===wppActiveChat){wppMessages.push(msg.message);renderWppMessages()}if(activeTab!=='whatsapp'){wppUnreadCount++;updateWppBadge();playWppSound()}loadWppChats();}if(msg.state&&msg.state.status==='ready')loadWppChats();}catch(err){console.warn('WhatsApp ws:',err)}};
+  wppWs.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.state)renderWppState(msg.state);if(msg.type==='message'||msg.type==='message_create'){if(msg.message&&(msg.message.from===wppActiveChat||msg.message.to===wppActiveChat)){wppMessages.push(msg.message);renderWppMessages();}const srcId=msg.message&&msg.message.from;if(activeTab!=='whatsapp'&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();playWppSound();}loadWppChats();}if(msg.state&&msg.state.status==='ready')loadWppChats();}catch(err){console.warn('WhatsApp ws:',err)}};
   wppWs.onopen=()=>wppFetch('/api/status').then(renderWppState).catch(()=>{});
   wppWs.onerror=()=>setWppStatus('Serviço WhatsApp indisponível. Inicie o bridge na porta 8788.','ti-alert-triangle');
   wppWs.onclose=()=>{if(activeTab==='whatsapp')setWppStatus('Serviço WhatsApp desconectado','ti-alert-triangle')};
@@ -7985,6 +7998,7 @@ function setMonitorLoading(show){
   if(el)el.classList.toggle('hide',!show);
 }
 function loadWhatsAppPanel(force=false){
+  wppFilterLoad();
   setWppLoading(true);
   wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats()}).catch(e=>setWppStatus('Motor Railway indisponível. Configure a URL do bridge: '+e.message,'ti-alert-triangle'));
 }
@@ -7995,6 +8009,54 @@ function refreshWhatsAppPanel(){
 function openWhatsAppExternal(){
   const next=prompt('URL do Jarvis WhatsApp Bridge',wppBridgeUrl());
   if(next){localStorage.setItem(WPP_BRIDGE_KEY,next.replace(/\/+$/,''));loadWhatsAppPanel(true)}
+}
+function openWppFilter(){
+  wppFilterLoad();
+  let overlay=document.getElementById('wpp-filter-modal');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='wpp-filter-modal';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;width:100%;max-width:440px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:18px 18px 0;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:10px"><i class="ti ti-filter" style="font-size:22px;color:#00a884"></i><div><div style="font-size:15px;font-weight:700;color:var(--tx)">Monitoramento Seletivo</div><div style="font-size:11px;color:var(--tx2);margin-top:1px">Escolha quais grupos e contatos geram alertas</div></div></div><button onclick="closeWppFilter()" style="background:none;border:none;cursor:pointer;color:var(--tx2);font-size:18px;padding:4px"><i class="ti ti-x"></i></button></div><div style="padding:12px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:13px;color:var(--tx)"><strong>Ativar filtro</strong><div style="font-size:11px;color:var(--tx2);margin-top:2px">Badge e som apenas das conversas marcadas com ★</div></div><div id="wpp-filter-switch" onclick="wppToggleFilterMode()" style="width:44px;height:24px;border-radius:99px;cursor:pointer;transition:.2s;flex-shrink:0;position:relative"><div id="wpp-filter-thumb" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div></div></div><div id="wpp-filter-body" style="overflow-y:auto;padding:0 18px;flex:1"></div><div style="padding:14px 18px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px"><span id="wpp-filter-count" style="flex:1;font-size:12px;color:var(--tx2)"></span><button onclick="closeWppFilter()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--tx);font-size:13px">Cancelar</button><button onclick="wppSaveFilter()" style="padding:8px 20px;border-radius:8px;border:none;background:#00a884;color:#fff;cursor:pointer;font-weight:600;font-size:13px">Salvar</button></div></div>`;
+    overlay.addEventListener('click',e=>{if(e.target===overlay)closeWppFilter();});
+    document.body.appendChild(overlay);
+  }
+  _wppFilterRenderModal();
+  overlay.style.display='flex';
+}
+function _wppFilterRenderModal(){
+  const sw=document.getElementById('wpp-filter-switch'),th=document.getElementById('wpp-filter-thumb');
+  if(sw){sw.style.background=wppFilterEnabled?'#00a884':'#ccc';if(th)th.style.left=wppFilterEnabled?'22px':'2px';}
+  const body=document.getElementById('wpp-filter-body');
+  if(!body)return;
+  if(!wppChats.length){body.innerHTML='<div style="text-align:center;color:var(--tx2);padding:28px 16px"><i class="ti ti-brand-whatsapp" style="font-size:32px;color:#00a884"></i><br><br><strong style="color:var(--tx)">WhatsApp não conectado</strong><br><span style="font-size:12px">Conecte via QR Code para listar grupos e contatos disponíveis</span></div>';return;}
+  const groups=wppChats.filter(c=>c.isGroup),contacts=wppChats.filter(c=>!c.isGroup);
+  const renderSection=(title,icon,list)=>list.length?`<div style="padding:10px 0 4px;font-size:11px;font-weight:700;color:var(--tx2);letter-spacing:.5px;text-transform:uppercase"><i class="ti ${icon}" style="margin-right:4px"></i>${title} (${list.length})</div>`+list.map(c=>`<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd);cursor:pointer" for="wppf-${eh(c.id)}"><input id="wppf-${eh(c.id)}" type="checkbox" value="${eh(c.id)}" ${wppFilterIds.has(c.id)?'checked':''} onchange="wppToggleFilterItem(this.value,this.checked)" style="width:16px;height:16px;accent-color:#00a884;flex-shrink:0"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${eh(c.name)}</div><div style="font-size:11px;color:var(--tx2)">${c.isGroup?'Grupo':'Contato'}${c.unreadCount?` · ${c.unreadCount} não lida${c.unreadCount!==1?'s':''}`:''}</div></div>${wppFilterIds.has(c.id)?'<i class="ti ti-star-filled" style="color:#00a884;font-size:13px;flex-shrink:0"></i>':''}</label>`).join(''):'';
+  body.innerHTML=renderSection('Grupos','ti-users',groups)+renderSection('Contatos','ti-user',contacts);
+  _wppFilterUpdateCount();
+}
+function wppToggleFilterItem(id,checked){
+  if(checked)wppFilterIds.add(id);else wppFilterIds.delete(id);
+  // Atualiza ícone de estrela no item
+  const lbl=document.querySelector(`label[for="wppf-${CSS.escape(id)}"]`);
+  if(lbl){let star=lbl.querySelector('.ti-star-filled');if(checked&&!star){star=document.createElement('i');star.className='ti ti-star-filled';star.style.cssText='color:#00a884;font-size:13px;flex-shrink:0';lbl.appendChild(star);}else if(!checked&&star)star.remove();}
+  _wppFilterUpdateCount();
+}
+function _wppFilterUpdateCount(){
+  const el=document.getElementById('wpp-filter-count');
+  if(el)el.textContent=wppFilterIds.size?`${wppFilterIds.size} conversa${wppFilterIds.size!==1?'s':''} marcada${wppFilterIds.size!==1?'s':''}`:wppFilterEnabled?'Nenhuma conversa marcada — todos os alertas bloqueados':'Nenhuma conversa marcada';
+}
+function wppToggleFilterMode(){
+  wppFilterEnabled=!wppFilterEnabled;
+  const sw=document.getElementById('wpp-filter-switch'),th=document.getElementById('wpp-filter-thumb');
+  if(sw){sw.style.background=wppFilterEnabled?'#00a884':'#ccc';if(th)th.style.left=wppFilterEnabled?'22px':'2px';}
+  _wppFilterUpdateCount();
+}
+function closeWppFilter(){const el=document.getElementById('wpp-filter-modal');if(el)el.style.display='none';}
+function wppSaveFilter(){
+  wppFilterSave();closeWppFilter();renderWppChats();
+  const n=wppFilterIds.size;
+  _ghToast(wppFilterEnabled&&n?`★ Monitorando ${n} conversa${n!==1?'s':''}`:wppFilterEnabled?'Filtro ativo — marque ao menos uma conversa':'Filtro desativado — recebendo alertas de todos','#00a884',4000);
 }
 function loadMonitorPanel(force=false){
   const frame=document.getElementById('monitor-frame');
