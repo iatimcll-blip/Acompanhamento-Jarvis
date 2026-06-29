@@ -5629,12 +5629,14 @@ function applyState(st,label){
   fuelBaseAt=st.fuelBaseAt||fuelBaseAt||'';
   fuelBaseFile=st.fuelBaseFile||fuelBaseFile||'';
   renderFuel();
-  if(Array.isArray(st.ofsRows)&&st.ofsRows.length&&!ofsRows.length){
+  if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
     ofsRows=st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)}));
-    if(st.ofsMeta)ofsMeta={fname:'',loaded:true,...st.ofsMeta};
+    ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
     saveOfsState();
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
+    renderOfs();updateCentralStatus();
+    changed=true;
   }
   if(clearLegacyFuelRequests)saveState();
   updateUploadTimes();
@@ -7798,6 +7800,7 @@ let ofsChRank=null,ofsChStatus=null,ofsChTaxa=null,ofsChTipo=null,ofsChDia=null;
 let ofsSortCol='total',ofsSortAsc=false;
 let ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
 let ofsAlertFilter='';
+function ofsWasManuallyCleared(){return !!(ofsMeta&&(ofsMeta.cleared||ofsMeta.clearedAt))}
 
 /* ─── anotações persistentes de chamados abertos ─── */
 let abAnnotations={};
@@ -7991,7 +7994,7 @@ function procOfs(raw,fname){
   const dates=out.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
   ofsFilter={uf:'all',grupo:'all',dtStart:dates[0]||'',dtEnd:dates[dates.length-1]||''};
   const _uat=new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-  ofsMeta={fname,loaded:true,uploadedAt:_uat};
+  ofsMeta={fname,loaded:true,uploadedAt:_uat,cleared:false,clearedAt:''};
   saveOfsState();
   renderOfs();
   const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=out.length;nb.style.display=out.length?'':'none';}
@@ -8034,6 +8037,7 @@ async function autoLoadOfsDefault(){
     const b=document.getElementById('ofs-empty-btn');if(b)b.style.display=showBtn?'':'none';
   };
   if(ofsRows.length){setMsg('',true);return;}
+  if(ofsWasManuallyCleared()){setMsg('Nenhuma base carregada.',true);return;}
   setMsg('Carregando base padrão…',false);
   try{
     const resp=await fetch('./Fonte/BASE_OFS.xlsx');
@@ -8048,12 +8052,13 @@ async function autoLoadOfsDefault(){
 function clearOfs(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar base OFS? Os dados serão removidos.'))return;
-  ofsRows=[];ofsMeta={fname:'',loaded:false};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
-  try{localStorage.removeItem(OFS_KEY);}catch(e){}
-  idbSet(OFS_KEY,null).catch(()=>{});
+  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:''};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
+  saveOfsState();
   [ofsChRank,ofsChStatus,ofsChTaxa,ofsChTipo,ofsChDia].forEach(c=>{try{if(c)c.destroy();}catch(e){}});
   ofsChRank=ofsChStatus=ofsChTaxa=ofsChTipo=ofsChDia=null;
   const nb=document.getElementById('nb-ofs');if(nb){nb.textContent='0';nb.style.display='none';}
+  const tsEl=document.getElementById('ts-ofs');if(tsEl)tsEl.textContent='';
+  const fnEl=document.getElementById('ofs-fname');if(fnEl)fnEl.textContent='';
   const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
   if(dtS)dtS.value='';if(dtE)dtE.value='';
   renderOfs();saveState();updateClearBtns();updateCentralStatus();
