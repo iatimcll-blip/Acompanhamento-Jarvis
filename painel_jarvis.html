@@ -5486,15 +5486,16 @@ function encRuleStats(d){
 function parseOpeningDate(v){if(v===undefined||v===null||v==='')return null;if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v).trim();if(!raw)return null;const iso=new Date(raw);if(!isNaN(iso))return iso;const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const y=Number(m[3].length===2?'20'+m[3]:m[3]);const d=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(d)?null:d}
 function fmtReportDate(v){const d=parseOpeningDate(v);if(!d)return String(v||'').trim()||'-';const hasTime=d.getHours()||d.getMinutes()||d.getSeconds();return hasTime?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}
 function hoursSince(d){return d?Math.max(0,(Date.now()-d.getTime())/3600000):0}
-const PAUSE_SUBSTATUS=['Pendente Cliente','Pendente Agendamento','Pendente Valida\u00e7\u00e3o','Cancelado','Fechado','Aguardando Libera\u00e7\u00e3o De Acesso','Encaminhado ao T\u00e9cnico'];
+const PAUSE_SUBSTATUS=['Pendente Cliente','Pendente Agendamento','Pendente Valida\u00e7\u00e3o','Cancelado','Fechado','Aguardando Libera\u00e7\u00e3o De Acesso'];
 const OPERATOR_CLIENTS=['OPERADORA','OPERADORAS','TIM','CLARO','VIVO','ONLINE'];
 function isPausedSubstatus(v){const s=nk(v);return PAUSE_SUBSTATUS.some(x=>s===nk(x)||s.includes(nk(x)))||(s.includes('PENDENTE')&&(s.includes('CLIENTE')||s.includes('AGENDAMENTO')||s.includes('VALIDA')))||s.includes('CANCELADO')||s.includes('FECHADO')||(s.includes('LIBER')&&s.includes('ACESSO'))}
+function isSwapRepair(d){return nk(d&&d.depAtual||'')===nk('CMO - REPARO SWAP')}
 function isOperatorClient(d){const s=nk((d&&d.cliente)||'');return OPERATOR_CLIENTS.some(x=>s.includes(nk(x)))}
 function isPendingSubstatus(v){return nk(v).includes('PENDENTE')}
 function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s.includes('VALIDA')}
 function substatusLamp(d){
-  if(isOperatorClient(d))return'<span class="sla-lamp lamp-blue" title="Operadora: contagem continua"></span>';
   if(isPausedSubstatus(d.substatus))return'<span class="sla-lamp lamp-orange" title="SLA congelado por substatus"></span>';
+  if(isOperatorClient(d))return'<span class="sla-lamp lamp-blue" title="Operadora: contagem continua"></span>';
   return'<span class="sla-lamp lamp-green" title="SLA contando normalmente"></span>';
 }
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
@@ -5503,7 +5504,8 @@ function holidaySet(y){const e=easterDate(y);return new Set([`${y}-01-01`,`${y}-
 function fmtDay(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function workWindow(d){const day=d.getDay();if(day===0||holidaySet(d.getFullYear()).has(fmtDay(d)))return null;const start=new Date(d.getFullYear(),d.getMonth(),d.getDate(),8,0,0,0);const end=day===6?new Date(d.getFullYear(),d.getMonth(),d.getDate(),12,0,0,0):new Date(d.getFullYear(),d.getMonth(),d.getDate(),18,0,0,0);return{start,end}}
 function businessHoursBetween(start,end){if(!start||!end||end<=start)return 0;let total=0,cur=new Date(start.getFullYear(),start.getMonth(),start.getDate());const guard=new Date(end.getFullYear(),end.getMonth(),end.getDate());for(let i=0;cur<=guard&&i<3700;i++,cur=addDays(cur,1)){const w=workWindow(cur);if(!w)continue;const a=new Date(Math.max(start,w.start)),b=new Date(Math.min(end,w.end));if(b>a)total+=(b-a)/3600000}return Math.max(0,total)}
-function computeSlaHours(d,now=new Date()){if(d.dynamicSheetSla&&d.openedAt){const total=Math.max(0,(now-d.openedAt)/3600000);return Math.max(0,total-Number(d.tempoClienteH||0)-Number(d.tempoSuporteH||0))}if(!d.openedAt)return d.originalSlaH||d.slaLimitH||0;if(isOperatorClient(d))return Math.max(0,(now-d.openedAt)/3600000);const base=businessHoursBetween(d.openedAt,now);const paused=Number(d.pausedBusinessH||0)+(d.pauseStart?businessHoursBetween(d.pauseStart,now):0);return Math.max(0,base-paused)}
+function slaActiveHoursBetween(start,end,d){if(!start||!end||end<=start)return 0;if(isSwapRepair(d))return Math.max(0,(end-start)/3600000);let total=0,cur=new Date(start.getFullYear(),start.getMonth(),start.getDate());const guard=new Date(end.getFullYear(),end.getMonth(),end.getDate());for(let i=0;cur<=guard&&i<3700;i++,cur=addDays(cur,1)){const a0=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),0,0,0,0),a1=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),18,0,0,0);const a=new Date(Math.max(start,a0)),b=new Date(Math.min(end,a1));if(b>a)total+=(b-a)/3600000}return Math.max(0,total)}
+function computeSlaHours(d,now=new Date()){if(d.dynamicSheetSla){const base=Number(d.sheetSlaH??d.originalSlaH??d.slaH??0);const anchor=parseOpeningDate(d.slaBaseAt)||now;const end=isPausedSubstatus(d.substatus)?(d.pauseStart||anchor):now;return Math.max(0,base+slaActiveHoursBetween(anchor,end,d))}if(!d.openedAt)return d.originalSlaH||d.slaLimitH||0;if(isOperatorClient(d))return Math.max(0,(now-d.openedAt)/3600000);const base=businessHoursBetween(d.openedAt,now);const paused=Number(d.pausedBusinessH||0)+(d.pauseStart?businessHoursBetween(d.pauseStart,now):0);return Math.max(0,base-paused)}
 function slaBaseLimit(r){const v=gv(r,['SLA Base','SLA Meta','Meta SLA','Prazo SLA','SLA Prazo','SLA Contratado','SLA Limite','SLA limite (h)','Prazo (h)','Prazo']);return v===''?0:ph(v)}
 function statusSla(slaH,mop,limitH){const m={'MA CAP':8,'MA INT':8,'PI CAP':8,'PI INT':8,'PA CAP':8,'PA INT':8,'AP / AM':4,'SLN MA':8,'SLN PA':8,'GIGA+ MA':8,'GIGA+ PI':8,'ADX':4};const lim=limitH||m[mop]||8;return slaH>lim?'FORA DO PRAZO':'NO PRAZO'}
 function refreshAbTimes(){const now=new Date();dAb.forEach(d=>{d.slaH=computeSlaHours(d,now);d.faixa=cf(d.slaH);d.statusSla=statusSla(d.slaH,d.mop,d.slaLimitH)})}
@@ -5584,7 +5586,7 @@ function shouldApplyRemoteState(st){
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
 function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
-function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
+function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
   if(!s)return s;
@@ -6053,8 +6055,8 @@ function procAb(raw,fname){
     const assunto=repairPtBR(String(gv(r,['Assunto','ASSUNTO','Complemento','Complement','COMPLEMENTO'])||depAtual||Object.values(r)[4]||'').trim());
     let mop=normMopByCity(uf,cidade);
     if(!mop)mop=fmtMop(gv(r,['MOP/EPS (Regra)','MOP/EPS','MOP_EPS']))||iMop(uf,regiao);
-    const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao,substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,tempoClienteH,tempoSuporteH,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH,pausedBusinessH:0,pauseStart:null,mop};
-    if(!isOperatorClient(item)&&isPausedSubstatus(substatus))item.pauseStart=new Date();
+    const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao,substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,slaBaseAt:new Date().toISOString(),tempoClienteH,tempoSuporteH,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH,pausedBusinessH:0,pauseStart:null,mop};
+    if(isPausedSubstatus(substatus))item.pauseStart=new Date();
     item.slaH=computeSlaHours(item);
     const faixaRaw=String(abCol(r,28,['Faixa SLA','Faixa_SLA','FAIXA SLA','Faixa','aging_ccs','AGING_CCS'])||'').trim();
     item.faixa=SLA_ORDER.find(f=>nk(faixaRaw).includes(nk(f)))||cf(item.slaH);
@@ -6326,10 +6328,13 @@ function updateSubstatus(rowKey,value){
   if(!canEdit())return;
   const item=dAb.find(d=>String(d.rowKey)===String(rowKey)||String(d.id)===String(rowKey));if(!item)return;
   const next=fmtSubstatus(value);
-  const now=new Date(),wasPaused=!isOperatorClient(item)&&isPausedSubstatus(item.substatus),willPause=!isOperatorClient(item)&&isPausedSubstatus(next);
-  if(wasPaused&&!willPause&&item.pauseStart){item.pausedBusinessH=Number(item.pausedBusinessH||0)+businessHoursBetween(item.pauseStart,now);item.pauseStart=null}
-  if(!wasPaused&&willPause)item.pauseStart=now;
+  const now=new Date(),wasPaused=isPausedSubstatus(item.substatus),willPause=isPausedSubstatus(next);
+  if(item.dynamicSheetSla){item.slaH=computeSlaHours(item,now);item.sheetSlaH=item.slaH;item.slaBaseAt=now.toISOString();item.pauseStart=null;item.pausedBusinessH=0}
+  else{
+    if(wasPaused&&!willPause&&item.pauseStart){item.pausedBusinessH=Number(item.pausedBusinessH||0)+businessHoursBetween(item.pauseStart,now);item.pauseStart=null}
+  }
   item.substatus=next;
+  if(willPause)item.pauseStart=now;
   item.slaH=computeSlaHours(item,now);item.faixa=cf(item.slaH);item.statusSla=statusSla(item.slaH,item.mop,item.slaLimitH);
   fillFiltersAb();renderAllAb();saveState()
 }
