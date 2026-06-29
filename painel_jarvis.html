@@ -3611,7 +3611,7 @@ tbody tr:last-child td {
 <input type="file" id="file-ab" accept=".xlsx,.xls" style="display:none">
 <input type="file" id="file-enc" accept=".xlsx,.xls" style="display:none">
 <input type="file" id="file-fuel" accept=".csv" style="display:none">
-<input type="file" id="file-ofs" accept=".xlsx,.xls,.csv" style="display:none">
+<input type="file" id="file-ofs" accept=".xlsx,.xls,.csv" multiple style="display:none">
 <input type="file" id="file-rede" accept=".xlsx,.xls" style="display:none">
 <div class="login-screen" id="login-screen" style="display:none">
   <form class="login-card" onsubmit="loginUser(event)">
@@ -4890,7 +4890,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="cd-ts" id="cd-ts-ofs">Não carregado</div>
         </div>
         <span class="cd-dot cd-off" id="cd-dot-ofs"></span>
-        <label class="cd-upload-btn" style="background:rgba(249,115,22,.12);color:#f97316;border-color:rgba(249,115,22,.25)" onclick="event.preventDefault();document.getElementById('file-ofs').click();document.getElementById('central-dados').style.display='none'"><i class="ti ti-upload" style="font-size:13px"></i> Carregar</label>
+        <label class="cd-upload-btn" title="Selecione o Relatorio_OFS_MOP-EPS.xlsx e/ou um ou mais CSVs" style="background:rgba(249,115,22,.12);color:#f97316;border-color:rgba(249,115,22,.25)" onclick="event.preventDefault();document.getElementById('file-ofs').click();document.getElementById('central-dados').style.display='none'"><i class="ti ti-upload" style="font-size:13px"></i> Carregar base/CSVs</label>
       </div>
       <!-- Combustíveis (admin-only) -->
       <div class="cd-row admin-only" id="cd-row-fuel">
@@ -7987,18 +7987,23 @@ function ofsFilteredRows(){
   if(ofsFilter.grupo!=='all')r=r.filter(x=>(x.grupo||'').startsWith(ofsFilter.grupo));
   return r;
 }
-function procOfs(raw,fname){
-  _ofsTecDisp.clear();
+function ofsRowKey(r){
+  const os=normN(r.os||'');
+  if(os)return'os:'+os;
+  return['tec',normN(r.tecnico),r.dtStr||'',normN(r.tipo),normN(r.status)].join('|');
+}
+function ofsReadRows(raw,fname){
   const wb=XLSX.read(raw,{type:'array',cellDates:true});
   const ws=wb.Sheets['Dados Completos']||wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('dados completos'))]||wb.Sheets[wb.SheetNames[0]];
   const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
   const out=[];
-  for(const r of rows){
+  for(const [rowIndex,r] of rows.entries()){
     const vals=Object.values(r);
     const tecRaw=String(r['Recurso']||r['Técnico']||r['TECNICO']||r['tecnico']||r['RECURSO']||vals[2]||'').trim();
     const tipo=String(r['Tipo de Atividade.1']||r['Tipo de Atividade']||r['TIPO_ATIVIDADE']||r['tipo_atividade']||r['Atividade']||r['ATIVIDADE']||vals[25]||'').trim();
     const stRaw=String(r['Status da Atividade']||r['Status']||r['STATUS']||r['status']||r['Situação']||r['SITUACAO']||vals[7]||'').trim();
     const dtRaw=r['Data']||r['DATA']||r['data']||r['Data de Início']||vals[0]||'';
+    const os=String(r['ID da Ordem de Serviço']||r['Ordem de Serviço']||r['OS']||r['os']||vals[44]||vals[28]||'').trim();
     if(!tecRaw||isOfsWeekday(tecRaw)||isOfsExcluded(tipo))continue;
     const tecnico=canonicTec(tecRaw);
     let dt=null;
@@ -8006,8 +8011,11 @@ function procOfs(raw,fname){
     else if(typeof dtRaw==='number'&&dtRaw>10000){const d=XLSX.SSF.parse_date_code(dtRaw);if(d)dt=new Date(d.y,d.m-1,d.d);}
     else if(dtRaw){const p=String(dtRaw).trim();const m=p.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);if(m){const y=m[3].length===2?2000+parseInt(m[3]):parseInt(m[3]);dt=new Date(y,parseInt(m[2])-1,parseInt(m[1]));}}
     const dtStr=dt?`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`:'';
-    out.push({tecnico,tipo,status:ofsStatusKey(stRaw),dtStr,uf:getOfsUF(tecnico),grupo:getOfsGrupo(tecnico)});
+    out.push({tecnico,tipo,status:ofsStatusKey(stRaw),dtStr,uf:getOfsUF(tecnico),grupo:getOfsGrupo(tecnico),os,sourceFile:fname||'',sourceRow:rowIndex+2});
   }
+  return out;
+}
+function applyOfsRows(out,fname,opts={}){
   if(!out.length)throw new Error('Nenhum registro produtivo encontrado. Verifique se a base possui Recurso, Data, Tipo de Atividade e Status da Atividade.');
   ofsRows=out;
   const dates=out.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
@@ -8019,6 +8027,32 @@ function procOfs(raw,fname){
   const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=out.length;nb.style.display=out.length?'':'none';}
   const tsEl=document.getElementById('ts-ofs');if(tsEl)tsEl.textContent='Anexado '+_uat;
   saveState();if(!/\(padrão\)/i.test(String(fname||'')))autoSyncAfterBaseUpload('OFS');updateCentralStatus();updateClearBtns();
+}
+function procOfs(raw,fname){
+  _ofsTecDisp.clear();
+  applyOfsRows(ofsReadRows(raw,fname),fname);
+}
+function procOfsFiles(parsedFiles){
+  _ofsTecDisp.clear();
+  const isMaster=f=>/Relatorio_OFS_MOP-EPS|Relatório_OFS_MOP-EPS|\.xlsx?$|\.xls$/i.test(f&&f.name||'');
+  const files=parsedFiles.filter(f=>f&&f.raw).sort((a,b)=>(isMaster(b)?1:0)-(isMaster(a)?1:0));
+  if(!files.length)return;
+  const hasMaster=files.some(isMaster);
+  const baseRows=hasMaster?[]:ofsRows.slice();
+  const map=new Map();
+  baseRows.forEach(r=>map.set(ofsRowKey(r),r));
+  let imported=0;
+  const labels=[];
+  files.forEach(file=>{
+    const rows=ofsReadRows(file.raw,file.name);
+    imported+=rows.length;
+    rows.forEach(r=>map.set(ofsRowKey(r),r));
+    labels.push(file.name);
+  });
+  const out=[...map.values()];
+  const name=labels.length===1?labels[0]:`${labels.length} arquivos OFS`;
+  applyOfsRows(out,name);
+  _ghToast(`OFS atualizado: ${out.length} registros (${imported} lidos)`, 'var(--green-dk)', 6000);
 }
 function saveOfsState(){
   const st={rows:ofsRows,meta:ofsMeta,filter:ofsFilter};
@@ -8347,10 +8381,18 @@ function ofsRenderAlerts(tecs){
   }).join('');
 }
 document.getElementById('file-ofs').addEventListener('change',function(e){
-  const f=e.target.files[0];if(!f)return;
-  const rd=new FileReader();
-  rd.onload=ev=>{try{procOfs(new Uint8Array(ev.target.result),f.name)}catch(er){alert('Erro ao carregar base OFS: '+er.message)}};
-  rd.readAsArrayBuffer(f);this.value='';
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
+  const files=[...e.target.files];if(!files.length)return;
+  Promise.all(files.map(f=>new Promise((resolve,reject)=>{
+    const rd=new FileReader();
+    rd.onload=ev=>resolve({name:f.name,raw:new Uint8Array(ev.target.result)});
+    rd.onerror=()=>reject(new Error('Falha ao ler '+f.name));
+    rd.readAsArrayBuffer(f);
+  }))).then(parsed=>{
+    try{procOfsFiles(parsed)}
+    catch(er){alert('Erro ao carregar base OFS: '+er.message)}
+  }).catch(er=>alert('Erro ao carregar base OFS: '+er.message));
+  this.value='';
 });
 
 /* ─── OFS MODAL TÉCNICO ─── */
