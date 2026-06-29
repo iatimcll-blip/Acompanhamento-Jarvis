@@ -771,14 +771,18 @@ body {
 .ab-copy-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:7px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx2);cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .12s}
 .ab-copy-btn:hover:not(:disabled){background:var(--surface3);color:var(--tx)}
 .ab-copy-btn:disabled{opacity:.4;cursor:default}
-.ab-pivot-scroll{overflow-x:auto;margin-bottom:4px}
-.ab-pivot{width:100%;border-collapse:collapse;font-size:10.5px;min-width:300px}
-.ab-pivot th{padding:4px 6px;background:var(--blue-bg);color:var(--blue);font-weight:600;text-align:right;white-space:nowrap}
+.ab-pivot-cap{padding:12px 14px;background:var(--surface);border-radius:8px;border:.5px solid var(--bd);max-width:100%;box-sizing:border-box}
+.ab-pivot-scroll{overflow-x:auto;margin-bottom:4px;max-width:100%;padding-bottom:2px}
+.ab-pivot{width:max-content;min-width:760px;border-collapse:collapse;font-size:11px;table-layout:fixed}
+.ab-pivot col.col-label{width:300px}
+.ab-pivot col.col-uf{width:58px}
+.ab-pivot col.col-total{width:70px}
+.ab-pivot th{padding:6px 8px;background:var(--blue-bg);color:var(--blue);font-weight:700;text-align:right;white-space:nowrap}
 .ab-pivot th.l{text-align:left}
-.ab-pivot td{padding:3px 6px;text-align:right;border-bottom:.5px solid var(--bd);color:var(--tx2)}
-.ab-pivot td.l{text-align:left}
+.ab-pivot td{padding:5px 8px;text-align:right;border-bottom:.5px solid var(--bd);color:var(--tx2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ab-pivot td.l{text-align:left;white-space:normal;line-height:1.25;word-break:normal;overflow-wrap:anywhere;font-variant-numeric:normal}
 .ab-pivot tr.apg td{background:var(--blue-bg);color:var(--blue);font-weight:600;border-bottom:none}
-.ab-pivot tr.aps td.l{padding-left:22px;color:var(--tx2)}
+.ab-pivot tr.aps td.l{padding-left:24px;color:var(--tx2)}
 .ab-pivot tr.apr td{background:var(--surface2);font-weight:600;border-bottom:none;color:var(--tx)}
 .ab-bloco{border:.5px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:10px}
 .ab-bloco-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;background:var(--surface2)}
@@ -4010,7 +4014,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <span class="ab-section-title">Tabela dinâmica — substatus × MOP/EPS × UF</span>
               <button class="ab-copy-btn" id="ab-btn-pivot" onclick="abCopiarPivot(this)" disabled>Copiar tabela</button>
             </div>
-            <div id="ab-pivot-cap" style="padding:10px;background:var(--surface);border-radius:8px;border:.5px solid var(--bd)">
+            <div id="ab-pivot-cap" class="ab-pivot-cap">
               <div class="ab-pivot-scroll"><table class="ab-pivot" id="ab-pivot"></table></div>
               <p style="font-size:13px;color:var(--tx2);margin:10px 0 2px">Bom dia, segue backlog B2B reapros.</p>
             </div>
@@ -6326,7 +6330,7 @@ function abRenderPivot(chamados){
   const{ufs,mapa}=abConstruirPivot(chamados);
   const subs=Object.keys(mapa).sort(abOrdenarPor(AB_ORDEM_SUB));
   const totalUf={};ufs.forEach(uf=>totalUf[uf]=0);let totalGeral=0;
-  let h='<thead><tr><th class="l">Substatus / MOP/EPS</th>'
+  let h='<colgroup><col class="col-label">'+ufs.map(()=>'<col class="col-uf">').join('')+'<col class="col-total"></colgroup><thead><tr><th class="l">Substatus / MOP/EPS</th>'
     +ufs.map(uf=>`<th>${eh(uf)}</th>`).join('')+'<th>Total</th></tr></thead>';
   let b='<tbody>';
   subs.forEach(s=>{
@@ -6375,11 +6379,21 @@ function abCopiarImagem(el,btn){
   /* oculta botões dentro do elemento capturado */
   const btns=[...el.querySelectorAll('.ab-copy-btn,button')];
   btns.forEach(b=>b.style.visibility='hidden');
+  const restore=[];
+  const tempStyle=(node,prop,val)=>{if(!node)return;restore.push([node,prop,node.style[prop]]);node.style[prop]=val};
+  if(el.id==='ab-pivot-cap'){
+    const table=el.querySelector('.ab-pivot'),scroll=el.querySelector('.ab-pivot-scroll');
+    const w=Math.max(el.offsetWidth,table?table.scrollWidth+32:0);
+    tempStyle(el,'width',w+'px');tempStyle(el,'maxWidth','none');
+    tempStyle(scroll,'overflow','visible');tempStyle(scroll,'maxWidth','none');
+    if(table)tempStyle(table,'width',Math.max(table.scrollWidth,760)+'px');
+  }
+  const restoreAll=()=>{btns.forEach(b=>b.style.visibility='');restore.reverse().forEach(([node,prop,val])=>node.style[prop]=val)};
   abCarregarH2C(async()=>{
     try{
       const bg=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#ffffff';
       const canvas=await html2canvas(el,{backgroundColor:bg,scale:2,useCORS:true,logging:false,allowTaint:true});
-      btns.forEach(b=>b.style.visibility='');
+      restoreAll();
       canvas.toBlob(async blob=>{
         try{
           await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
@@ -6392,7 +6406,7 @@ function abCopiarImagem(el,btn){
         btn.disabled=false;setTimeout(()=>btn.textContent=orig,2000);
       },'image/png');
     }catch(e){
-      btns.forEach(b=>b.style.visibility='');
+      restoreAll();
       btn.textContent='Erro';btn.disabled=false;
       setTimeout(()=>btn.textContent=orig,2000);
     }
