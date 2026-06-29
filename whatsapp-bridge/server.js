@@ -7,7 +7,7 @@ const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
-const PORT = Number(process.env.WPP_PORT || process.env.PORT || 8788);
+const PORT = Number(process.env.PORT || process.env.WPP_PORT || 8788);
 const CORS_ORIGIN = process.env.WPP_CORS_ORIGIN || '*';
 const CLIENT_ID = process.env.WPP_CLIENT_ID || 'jarvis';
 const AUTH_DIR = process.env.WPP_AUTH_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, '.wwebjs_auth') : path.join(__dirname, '.wwebjs_auth'));
@@ -103,11 +103,15 @@ async function startClient() {
     authStrategy: new LocalAuth({ clientId: CLIENT_ID, dataPath: AUTH_DIR }),
     puppeteer: {
       headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-software-rasterizer',
+        '--single-process'
       ]
     }
   });
