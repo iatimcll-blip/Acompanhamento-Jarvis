@@ -3514,26 +3514,60 @@ tbody tr:last-child td {
 </div>
 
 
-<!-- ═══ GOOGLE SHEETS MODAL ═══ -->
+<!-- ═══ MODAL DE SINCRONIZAÇÃO ═══ -->
 <div class="user-panel" id="sheets-panel">
-  <div class="user-card" style="width:min(560px,100%);max-height:90vh;overflow:auto">
+  <div class="user-card" style="width:min(600px,100%);max-height:90vh;overflow:auto">
     <div class="user-card-hd">
-      <div class="user-card-title" style="display:flex;align-items:center;gap:8px"><i class="ti ti-brand-google" style="color:#34a853"></i> Google Sheets — Sincronização compartilhada</div>
+      <div class="user-card-title" style="display:flex;align-items:center;gap:8px"><i class="ti ti-cloud-upload" style="color:var(--blue)"></i> Sincronização entre dispositivos</div>
       <button class="mini-btn" onclick="closeSheetsSettings()">Fechar</button>
     </div>
-    <p style="font-size:12px;color:var(--tx3);margin-bottom:14px;line-height:1.6">Cole abaixo a URL do seu <b>Google Apps Script Web App</b> para habilitar a sincronização compartilhada do painel. Com isso, bases e atualizações ficam disponíveis para outros equipamentos.</p>
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <input id="sheets-url" class="finput" style="flex:1;min-width:200px" placeholder="https://script.google.com/macros/s/.../exec">
-      <button class="mini-btn" style="background:var(--green-dk);color:#fff;border-color:var(--green-dk);white-space:nowrap;padding:0 14px" onclick="saveSheetsUrl()">Salvar URL</button>
+    <!-- STATUS GERAL -->
+    <div id="sync-status" style="font-size:12px;color:var(--tx3);margin-bottom:14px;min-height:16px;padding:6px 10px;border-radius:8px;background:var(--surface2)"></div>
+
+    <!-- ── OPÇÃO 1: GITHUB (RECOMENDADO) ── -->
+    <div style="border:.5px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:6px;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-brand-github"></i> GitHub — Sincronização automática <span style="font-size:10px;background:var(--blue);color:#fff;padding:1px 6px;border-radius:20px;font-weight:500">Recomendado</span>
+      </div>
+      <p style="font-size:11px;color:var(--tx3);margin-bottom:10px;line-height:1.6">
+        Cole um <b>Personal Access Token</b> do GitHub com permissão <code>contents:write</code> no repositório. Qualquer dispositivo lê automaticamente ao abrir o painel; o admin escreve ao anexar bases.
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <input id="gh-token-input" class="finput" type="password" style="flex:1;min-width:200px;font-family:monospace" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+        <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveGhToken()">Salvar Token</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="mini-btn admin-only" style="background:var(--green-dk);color:#fff;border-color:var(--green-dk);padding:0 14px" onclick="syncNow(true)"><i class="ti ti-cloud-upload" style="font-size:12px;margin-right:4px"></i>Sincronizar agora</button>
+        <button class="mini-btn" style="padding:0 14px" onclick="restoreGhState().then(ok=>document.getElementById('sync-status').textContent=ok?'Base importada do GitHub!':'Nenhum dado remoto encontrado.')"><i class="ti ti-cloud-download" style="font-size:12px;margin-right:4px"></i>Importar do GitHub</button>
+      </div>
+      <details style="margin-top:10px;font-size:11px;color:var(--tx3)">
+        <summary style="cursor:pointer;font-weight:600;color:var(--tx2)">Como criar o Personal Access Token</summary>
+        <ol style="padding-left:16px;margin-top:8px;display:flex;flex-direction:column;gap:4px">
+          <li>Acesse <b>github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens</b></li>
+          <li>Clique em <b>"Generate new token"</b></li>
+          <li>Defina expiração e em <b>Repository access</b> selecione apenas este repositório</li>
+          <li>Em <b>Permissions → Contents</b> selecione <b>Read and write</b></li>
+          <li>Gere o token, copie e cole no campo acima</li>
+        </ol>
+      </details>
     </div>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-        <input type="checkbox" id="sheets-auto" onchange="toggleSheetsAuto(this.checked)" style="cursor:pointer">
-        Sincronizar automaticamente ao atualizar dados
-      </label>
-      <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveToGoogleSheets(true)"><i class="ti ti-send" style="font-size:12px;margin-right:4px"></i>Enviar agora</button>
-    </div>
-    <div id="sheets-status" style="font-size:11px;color:var(--tx3);margin-bottom:12px;min-height:16px"></div>
+
+    <!-- ── OPÇÃO 2: GOOGLE SHEETS (BACKUP) ── -->
+    <details style="border:.5px solid var(--bd);border-radius:10px;padding:12px 14px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--tx2);display:flex;align-items:center;gap:6px"><i class="ti ti-brand-google" style="color:#34a853"></i> Google Apps Script — Backup opcional</summary>
+      <p style="font-size:11px;color:var(--tx3);margin:10px 0;line-height:1.6">Alternativa via Google Sheets. Cole a URL do Web App do Apps Script.</p>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input id="sheets-url" class="finput" style="flex:1;min-width:200px" placeholder="https://script.google.com/macros/s/.../exec">
+        <button class="mini-btn" style="background:var(--green-dk);color:#fff;border-color:var(--green-dk);white-space:nowrap;padding:0 14px" onclick="saveSheetsUrl()">Salvar URL</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="sheets-auto" onchange="toggleSheetsAuto(this.checked)" style="cursor:pointer">
+          Auto-sincronizar com Sheets ao atualizar dados
+        </label>
+        <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveToGoogleSheets(true)"><i class="ti ti-send" style="font-size:12px;margin-right:4px"></i>Enviar ao Sheets</button>
+      </div>
+      <div id="sheets-status" style="font-size:11px;color:var(--tx3);margin-bottom:10px;min-height:16px"></div>
     <details style="font-size:11px;color:var(--tx3);line-height:1.6;border:.5px solid var(--bd);border-radius:10px;padding:10px 14px">
       <summary style="cursor:pointer;font-weight:600;color:var(--tx2);margin-bottom:6px">Como configurar o Apps Script</summary>
       <ol style="padding-left:16px;margin-top:8px;display:flex;flex-direction:column;gap:5px">
@@ -3597,6 +3631,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <button class="nav-btn" onclick="openCentral()" title="Central de Dados" style="color:var(--blue)"><i class="ti ti-database"></i></button>
         <div class="nav-btn" onclick="openReportModal()" title="Gerar Relatório" style="color:var(--blue)"><i class="ti ti-file-text"></i></div>
         <div class="nav-btn admin-only" onclick="openUserPanel()" title="Usuários"><i class="ti ti-users"></i></div>
+        <div class="nav-btn admin-only" id="sheets-nav-btn" onclick="openSyncSettings()" title="Configurar sincronização entre dispositivos"><i class="ti ti-cloud"></i></div>
+        <div class="nav-btn admin-only" onclick="syncNow(true)" title="Sincronizar bases agora"><i class="ti ti-cloud-upload"></i></div>
         <div class="nav-btn" onclick="toggleTheme()" title="Tema"><i class="ti ti-moon" id="ti-icon"></i></div>
         <div class="nav-btn" onclick="logoutUser()" title="Sair"><i class="ti ti-logout"></i></div>
         <div class="avatar-btn" id="avatar-label">--</div>
@@ -4921,8 +4957,14 @@ const STORAGE_META_KEY='atrix:painel:bases:meta:v1';
 const IDB_NAME='atrix-jarvis-store';
 const IDB_STORE='kv';
 const ACTIVE_TAB_KEY='atrix:painel:aba:v1';
-const REMOTE_STATE_API='/api/painel-state';
+const REMOTE_STATE_API='/api/painel-state';/* legado – não usado em GitHub Pages */
 const SHARED_STATE_URL='https://script.google.com/macros/s/AKfycbzFETp9TMf33AWR-XUsL8iCd9yqQvuGO4L8kr2c7fx8JOHoDX6iJR2_Me0_RrLG9YPx/exec';
+/* ── GitHub Sync (primário) ── */
+const GH_SYNC_OWNER='iatimcll-blip';
+const GH_SYNC_REPO='Acompanhamento-Jarvis';
+const GH_SYNC_FILE='data/sync-state.json';
+const GH_SYNC_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_SYNC_FILE;
+const GH_TOKEN_KEY='atrix:gh-sync-token:v1';
 const USERS_KEY='atrix:usuarios:v1';
 const SESSION_KEY='atrix:sessao:v1';
 let currentUser=null;
@@ -4975,7 +5017,11 @@ function showLogin(msg){
 }
 function hideLogin(){document.getElementById('login-screen').style.display='none';document.getElementById('login-error').textContent=''}
 async function syncRemoteUsers(){
-  /* tenta carregar usuários do Google Sheets compartilhado */
+  /* tenta carregar usuários do estado remoto (GitHub ou Sheets) */
+  try{
+    const st=await fetchGhRawState();
+    if(st&&Array.isArray(st.users)&&st.users.length){saveUsers(st.users);getUsers();return true;}
+  }catch{}
   try{
     const url=getSheetsUrl();
     if(!url)return false;
@@ -4985,6 +5031,120 @@ async function syncRemoteUsers(){
     }
   }catch(e){console.warn('Não foi possível carregar usuários compartilhados:',e)}
   return false;
+}
+
+/* ═══ SINCRONIZAÇÃO VIA GITHUB API ═══ */
+function getGhToken(){return localStorage.getItem(GH_TOKEN_KEY)||''}
+
+async function _ghStateToB64(st){
+  const json=JSON.stringify(st);
+  if(window.CompressionStream){
+    try{
+      const blob=new Blob([json]);
+      const cs=blob.stream().pipeThrough(new CompressionStream('gzip'));
+      const buf=await new Response(cs).arrayBuffer();
+      const bytes=new Uint8Array(buf);
+      let bin='';
+      for(let i=0;i<bytes.length;i+=4096)bin+=String.fromCharCode(...bytes.subarray(i,Math.min(i+4096,bytes.length)));
+      return btoa(unescape(encodeURIComponent(JSON.stringify({z:1,d:btoa(bin)}))));
+    }catch(e){console.warn('Compressão indisponível, enviando sem compressão.');}
+  }
+  return btoa(unescape(encodeURIComponent(JSON.stringify({z:0,d:btoa(unescape(encodeURIComponent(json)))}))));
+}
+
+async function _ghB64ToState(b64Content){
+  const raw=b64Content.replace(/\n/g,'');
+  const wrapper=JSON.parse(decodeURIComponent(escape(atob(raw))));
+  if(wrapper.z===1&&window.DecompressionStream){
+    try{
+      const bin=atob(wrapper.d);
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      const ds=new DecompressionStream('gzip');
+      const writer=ds.writable.getWriter();
+      writer.write(bytes);writer.close();
+      return JSON.parse(await new Response(ds.readable).text());
+    }catch{}
+  }
+  return JSON.parse(decodeURIComponent(escape(atob(wrapper.d))));
+}
+
+async function fetchGhRawState(){
+  const token=getGhToken();
+  const headers={Accept:'application/vnd.github.v3+json',...(token?{Authorization:'token '+token}:{})};
+  const res=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers,cache:'no-store'});
+  if(!res.ok)return null;
+  const j=await res.json();
+  if(!j.content)return null;
+  return await _ghB64ToState(j.content);
+}
+
+async function saveGhState(manual=false){
+  const token=getGhToken();
+  if(!token){if(manual)alert('Configure o Token GitHub nas configurações de sincronização.');return false}
+  const el=document.getElementById('sync-status');
+  try{
+    if(el){el.textContent='Salvando no GitHub…';el.style.color='var(--blue)'}
+    const content=await _ghStateToB64(buildState());
+    let sha='';
+    try{
+      const info=await fetch(GH_SYNC_API,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
+      if(info.ok){const j=await info.json();sha=j.sha||'';}
+    }catch{}
+    const body=JSON.stringify({message:'sync: painel '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
+    const res=await fetch(GH_SYNC_API,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
+    if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
+    const msg='Sincronizado com GitHub em '+now2();
+    if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
+    if(manual)alert(msg);
+    return true;
+  }catch(e){
+    console.warn('Erro ao salvar no GitHub:',e);
+    const msg='Erro GitHub: '+e.message;
+    if(el){el.textContent=msg;el.style.color='var(--red)'}
+    if(manual)alert(msg);
+    return false;
+  }
+}
+
+async function restoreGhState(){
+  try{
+    const st=await fetchGhRawState();
+    if(!st||typeof st!=='object')return false;
+    const localRaw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY);
+    let localAt='';try{localAt=(localRaw&&JSON.parse(localRaw).savedAt)||''}catch(_){}
+    const remoteAt=st.savedAt||'';
+    if(!localAt||remoteAt>=localAt){
+      if(applyState(st,'Base compartilhada'))saveLocalState(buildState());
+      updateCentralStatus();updateClearBtns();
+      return true;
+    }
+  }catch(e){console.warn('Erro ao carregar estado do GitHub:',e)}
+  return false;
+}
+
+async function syncNow(manual=true){
+  if(!canEdit()){alert('Apenas administradores podem sincronizar.');return}
+  const token=getGhToken();
+  if(token)await saveGhState(manual);
+  else if(getSheetsUrl())await saveToGoogleSheets(manual);
+  else alert('Configure a sincronização (GitHub Token ou Google Apps Script URL) nas configurações.');
+}
+
+function openSyncSettings(){
+  const el=document.getElementById('gh-token-input');
+  if(el)el.value=getGhToken();
+  const inp=document.getElementById('sheets-url');if(inp)inp.value=getSheetsUrl();
+  const cb=document.getElementById('sheets-auto');if(cb)cb.checked=localStorage.getItem(SHEETS_AUTO_KEY)==='1';
+  const st=document.getElementById('sync-status');if(st)st.textContent='';
+  document.getElementById('sheets-panel').style.display='flex';
+}
+
+function saveGhToken(){
+  const val=(document.getElementById('gh-token-input').value||'').trim();
+  localStorage.setItem(GH_TOKEN_KEY,val);
+  const st=document.getElementById('sync-status');
+  if(st){st.textContent=val?'Token salvo! Clique em "Sincronizar agora" para testar.':'Token removido.';st.style.color=val?'var(--green-dk)':'var(--tx3)'}
 }
 async function loginUser(ev){
   if(ev)ev.preventDefault();
@@ -5317,14 +5477,7 @@ function saveLocalState(st){
   }
 }
 async function saveRemoteState(st){
-  try{
-    const res=await fetch(REMOTE_STATE_API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(st||buildState())});
-    if(!res.ok){const body=await res.json().catch(()=>({}));throw new Error(body.error||('HTTP '+res.status))}
-    remoteSaveWarned=false;
-  }catch(e){
-    console.warn('Não foi possível salvar as bases compartilhadas:',e);
-    if(canEdit()&&!remoteSaveWarned){remoteSaveWarned=true;console.info('Armazenamento remoto indisponível (GitHub Pages). Dados salvos localmente.')}
-  }
+  /* legado: REMOTE_STATE_API não existe no GitHub Pages — sincronização agora via GitHub API ou Sheets */
 }
 function jsonpFetch(url,params={}){
   return new Promise((resolve,reject)=>{
@@ -5377,13 +5530,16 @@ function saveState(){
   saveLocalState(st);
   if(canEdit()){
     clearTimeout(remoteSaveTimer);
-    remoteSaveTimer=setTimeout(()=>saveRemoteState(st),450);
-    if(SHARED_STATE_URL||localStorage.getItem(SHEETS_AUTO_KEY)==='1')saveSharedState(st,false);
+    remoteSaveTimer=setTimeout(()=>{
+      if(getGhToken()){saveGhState(false);}
+      else if(SHARED_STATE_URL||localStorage.getItem(SHEETS_AUTO_KEY)==='1'){saveSharedState(st,false);}
+    },800);
   }
 }
 async function restoreRemoteState(){
-  /* no GitHub Pages não há backend — vai direto para Google Sheets */
-  restoreSharedState();
+  /* tenta GitHub primeiro; se falhar (sem token ou arquivo inexistente), tenta Sheets */
+  const ghOk=await restoreGhState();
+  if(!ghOk)await restoreSharedState();
 }
 function restoreState(){
   try{
@@ -8317,13 +8473,7 @@ function initFuelSplit(){
 const SHEETS_URL_KEY='atrix:sheets-url:v1';
 const SHEETS_AUTO_KEY='atrix:sheets-auto:v1';
 function getSheetsUrl(){return localStorage.getItem(SHEETS_URL_KEY)||SHARED_STATE_URL||''}
-function openSheetsSettings(){
-  if(!canEdit())return;
-  const inp=document.getElementById('sheets-url');if(inp)inp.value=getSheetsUrl();
-  const cb=document.getElementById('sheets-auto');if(cb)cb.checked=localStorage.getItem(SHEETS_AUTO_KEY)==='1';
-  const st=document.getElementById('sheets-status');if(st)st.textContent='';
-  document.getElementById('sheets-panel').style.display='flex';
-}
+function openSheetsSettings(){openSyncSettings();}
 function closeSheetsSettings(){document.getElementById('sheets-panel').style.display='none'}
 function saveSheetsUrl(){
   const url=(document.getElementById('sheets-url').value||'').trim();
