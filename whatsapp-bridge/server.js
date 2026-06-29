@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -8,6 +10,9 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const PORT = Number(process.env.WPP_PORT || process.env.PORT || 8788);
 const CORS_ORIGIN = process.env.WPP_CORS_ORIGIN || '*';
 const CLIENT_ID = process.env.WPP_CLIENT_ID || 'jarvis';
+const AUTH_DIR = process.env.WPP_AUTH_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, '.wwebjs_auth') : path.join(__dirname, '.wwebjs_auth'));
+
+fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 const app = express();
 const server = http.createServer(app);
@@ -95,7 +100,7 @@ async function startClient() {
   setStatus('starting', { lastError: '' });
 
   client = new Client({
-    authStrategy: new LocalAuth({ clientId: CLIENT_ID }),
+    authStrategy: new LocalAuth({ clientId: CLIENT_ID, dataPath: AUTH_DIR }),
     puppeteer: {
       headless: true,
       args: [
@@ -150,7 +155,8 @@ async function startClient() {
   }
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', state: publicState() }));
+app.get('/', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', docs: ['/health', '/api/status', '/api/chats'] }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', authDir: AUTH_DIR, state: publicState() }));
 app.get('/api/status', (_req, res) => res.json(publicState()));
 
 app.post('/api/restart', async (_req, res) => {
@@ -217,5 +223,16 @@ wss.on('connection', ws => {
 
 server.listen(PORT, () => {
   console.log(`Jarvis WhatsApp bridge on http://localhost:${PORT}`);
+  console.log(`WhatsApp auth dir: ${AUTH_DIR}`);
   startClient();
+});
+
+process.on('SIGINT', async () => {
+  if (client) await client.destroy().catch(() => {});
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  if (client) await client.destroy().catch(() => {});
+  process.exit(0);
 });
