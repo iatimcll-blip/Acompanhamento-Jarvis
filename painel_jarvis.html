@@ -5574,6 +5574,7 @@ function shouldApplyRemoteState(st){
   const local=getLocalStateForSync();
   const localAt=(local&&local.savedAt)||'',remoteAt=st.savedAt||'';
   if(!localAt)return true;
+  if(remoteAt&&remoteAt<localAt)return false;
   if(remoteAt&&remoteAt>=localAt)return true;
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
@@ -5608,8 +5609,8 @@ function applyState(st,label){
   if(Array.isArray(st.dAb)){
     dAb=normalizeAbState(st.dAb);
     document.getElementById('nb-ab').textContent=dAb.length;
-    if(st.lastAbAt)lastAbAt=st.lastAbAt;
-    if(st.lastAbFile)lastAbFile=st.lastAbFile;
+    if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
+    if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
     fillFiltersAb();renderAllAb();startRefresh();
     document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
     document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
@@ -5618,8 +5619,8 @@ function applyState(st,label){
   if(Array.isArray(st.dEnc)){
     dEnc=normalizeEncState(st.dEnc);
     document.getElementById('nb-enc').textContent=dEnc.length;
-    if(st.lastEncAt)lastEncAt=st.lastEncAt;
-    if(st.lastEncFile)lastEncFile=st.lastEncFile;
+    if(Object.prototype.hasOwnProperty.call(st,'lastEncAt'))lastEncAt=st.lastEncAt||'';
+    if(Object.prototype.hasOwnProperty.call(st,'lastEncFile'))lastEncFile=st.lastEncFile||'';
     /* 1. popula mês primeiro para que fillWeekSelector filtre corretamente */
     fillFiltersEnc();fillMesSelector();fillClusterSelector();
     if(st.selMes&&dEnc.some(d=>d.mes===st.selMes)){selMes=st.selMes;const ms=document.getElementById('mes-selector');if(ms)ms.value=selMes}else{selMes=''}
@@ -5661,8 +5662,8 @@ function applyState(st,label){
     fuelCycleEndDay=Math.min(28,Math.max(1,Number(st.fuelCycleEndDay||15)));
     fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
     fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
-    fuelBaseAt=st.fuelBaseAt||fuelBaseAt||'';
-    fuelBaseFile=st.fuelBaseFile||fuelBaseFile||'';
+    if(Object.prototype.hasOwnProperty.call(st,'fuelBaseAt'))fuelBaseAt=st.fuelBaseAt||'';
+    if(Object.prototype.hasOwnProperty.call(st,'fuelBaseFile'))fuelBaseFile=st.fuelBaseFile||'';
     renderFuel();
     changed=true;
   }
@@ -5755,6 +5756,31 @@ function saveState(){
       else if(SHARED_STATE_URL||localStorage.getItem(SHEETS_AUTO_KEY)==='1'){saveSharedState(st,false);}
     },800);
   }
+}
+async function persistClearedBase(label){
+  const st=buildState();
+  saveLocalState(st);
+  clearTimeout(remoteSaveTimer);
+  updateCentralStatus();updateClearBtns();
+  if(!canEdit())return false;
+  const suffix=label?' ('+label+')':'';
+  try{
+    if(getGhToken()){
+      _ghToast('Sincronizando exclusão'+suffix+'…','var(--blue)',3500);
+      return await saveGhState(false);
+    }
+    if(getSheetsUrl()){
+      _ghToast('Sincronizando exclusão'+suffix+'…','var(--blue)',3500);
+      const ok=await saveSharedState(st,false);
+      _ghToast(ok?'Exclusão sincronizada'+suffix+' ✓':'Falha ao sincronizar exclusão'+suffix,ok?'var(--green-dk)':'var(--red)',ok?3500:7000);
+      return ok;
+    }
+    _ghToast('Base excluída neste dispositivo. Configure a sincronização para refletir em todos.','var(--orange)',7000);
+  }catch(e){
+    console.warn('Erro ao sincronizar exclusão:',e);
+    _ghToast('Erro ao sincronizar exclusão: '+e.message,'var(--red)',7000);
+  }
+  return false;
 }
 function autoSyncAfterBaseUpload(label){
   if(!canEdit())return;
@@ -5858,7 +5884,7 @@ function clienteAbertoNome(r){
   return usarColunaC&&clienteC?clienteC:(clienteHeader||clienteK);
 }
 /* ─── LIMPAR BASES ─── */
-function clearAb(){
+async function clearAb(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Abertos? Essa ação não pode ser desfeita.'))return;
   dAb=[];stopRefresh();lastAbAt='';lastAbFile='';updateUploadTimes();
@@ -5866,9 +5892,9 @@ function clearAb(){
   const empty=document.getElementById('empty-ab');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ab');if(dash)dash.style.display='none';
   const sr=document.getElementById('f-srch-ab');if(sr)sr.value='';
-  saveState();updateClearBtns();updateCentralStatus();
+  await persistClearedBase('B2B Abertos');
 }
-function clearEnc(){
+async function clearEnc(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Encerrados? Isso também limpará B2B Repetidos.'))return;
   dEnc=[];lastEncAt='';lastEncFile='';updateUploadTimes();
@@ -5878,9 +5904,9 @@ function clearEnc(){
   const dash=document.getElementById('dash-enc');if(dash)dash.style.display='none';
   const encSubbar=document.getElementById('enc-subbar');if(encSubbar)encSubbar.classList.remove('visible');
   renderPanelRepetidos();
-  saveState();updateClearBtns();updateCentralStatus();
+  await persistClearedBase('B2B Encerrados');
 }
-function clearRede(){
+async function clearRede(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar base de rede? Os dados serão removidos.'))return;
   try{localStorage.removeItem(REDE_STORAGE);localStorage.removeItem(REDE_UI_KEY);}catch(e){}
@@ -5890,7 +5916,7 @@ function clearRede(){
   rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeActiveView='bb';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';
   Object.values(rdeCharts).forEach(ch=>{try{ch.destroy();}catch(e){}});rdeCharts={};
   [rdeLineCh2,rdeTimeCh2,rdeCauseCh2,rdeCityCh2].forEach(ch=>{if(ch)try{ch.destroy();}catch(e){}});rdeLineCh2=rdeTimeCh2=rdeCauseCh2=rdeCityCh2=null;
-  rdeShowDash();saveState();updateClearBtns();updateCentralStatus();
+  rdeShowDash();await persistClearedBase('Rede');
 }
 function updateUploadTimes(){
   const sa=document.getElementById('ts-ab');if(sa)sa.textContent=lastAbAt?'Anexado '+(lastAbFile?lastAbFile+' · ':'')+lastAbAt:'';
@@ -7037,7 +7063,7 @@ function importFuelAlelo(text,fname){
   renderFuel();saveState();autoSyncAfterBaseUpload('Alelo');updateCentralStatus();
   alert(`Base Alelo importada: ${compras} compras aprovadas, ${creditos} créditos emergenciais, ${debitos} débitos emergenciais. Ignoradas: ${ignored} sem placa/valor, ${ignoredPlate} placa fora da aba Placa, ${ignoredStatus} compras não aprovadas.`);
 }
-function deleteFuelAleloBase(){
+async function deleteFuelAleloBase(){
   if(!canEdit())return;
   const before=dFuelRequests.length;
   const alelo=dFuelRequests.filter(fuelIsAleloImport).length;
@@ -7050,7 +7076,7 @@ function deleteFuelAleloBase(){
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   fuelBaseFile='';
   fuelBaseAt='';
-  renderFuel();saveState();updateCentralStatus();updateClearBtns();
+  renderFuel();await persistClearedBase('Alelo');
   alert(`Base Alelo excluída: ${before-dFuelRequests.length} registro${before-dFuelRequests.length!==1?'s':''} removido${before-dFuelRequests.length!==1?'s':''}.`);
 }
 function fuelProjection(){const by={};fuelPurchaseRequests().forEach(r=>{const v=fuelVehicleByPlate(r.placa),name=v.condutor||r.condutor||r.placa;if(!by[name])by[name]={valor:0,count:0};by[name].valor+=Math.abs(Number(r.valor||0));by[name].count++});return Object.entries(by).sort((a,b)=>b[1].valor-a[1].valor)}
@@ -8229,7 +8255,7 @@ async function autoLoadOfsDefault(){
     setMsg('Nenhuma base carregada.',true);
   }
 }
-function clearOfs(){
+async function clearOfs(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar base OFS? Os dados serão removidos.'))return;
   ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:''};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
@@ -8241,7 +8267,7 @@ function clearOfs(){
   const fnEl=document.getElementById('ofs-fname');if(fnEl)fnEl.textContent='';
   const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
   if(dtS)dtS.value='';if(dtE)dtE.value='';
-  renderOfs();saveState();updateClearBtns();updateCentralStatus();
+  renderOfs();await persistClearedBase('OFS');
 }
 function ofsCalcTecnicos(rows){
   if(!rows)rows=ofsFilteredRows();
@@ -9370,7 +9396,7 @@ function rdeApplyRows(rows,fileName){
 function rdeHasDetail(rows,idx){return Array.isArray(rows)&&rows.some(r=>Array.isArray(r)&&r.length>idx&&r[idx]&&typeof r[idx]==='object')}
 function rdeRestoreM(saved){
   if(!saved||typeof saved!=='object')return;
-  ['mes','ml','sem','sl','ca','mo'].forEach(k=>{if(Array.isArray(saved[k])&&saved[k].length){rdeM[k].length=0;saved[k].forEach(v=>rdeM[k].push(v));}});
+  ['mes','ml','sem','sl','ca','mo'].forEach(k=>{if(Array.isArray(saved[k])){rdeM[k].length=0;saved[k].forEach(v=>rdeM[k].push(v));}});
 }
 function rdeApplyStoredState(st){
   if(!st)return false;
@@ -9379,12 +9405,12 @@ function rdeApplyStoredState(st){
   const okAD=!Array.isArray(st.AD)||!st.AD.length||rdeHasDetail(st.AD,8);
   if(st.version!==3||!okBD||!okAD){localStorage.removeItem(REDE_STORAGE);return false}
   rdeRestoreM(st.M);
-  if(Array.isArray(st.BD)&&st.BD.length)rdeBD=st.BD;
-  if(Array.isArray(st.AD)&&st.AD.length)rdeAD=st.AD;
-  rdeBaseFile=st.fileName||rdeBaseFile||'';
-  rdeBaseAt=st.at||rdeBaseAt||'';
-  const fn=document.getElementById('rede-fname');if(fn&&st.fileName)fn.textContent=st.fileName;
-  const ts=document.getElementById('rede-ts-text');if(ts&&st.at){const d=new Date(st.at);ts.textContent='Anexado '+d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+  if(Array.isArray(st.BD))rdeBD=st.BD;
+  if(Array.isArray(st.AD))rdeAD=st.AD;
+  if(Object.prototype.hasOwnProperty.call(st,'fileName'))rdeBaseFile=st.fileName||'';
+  if(Object.prototype.hasOwnProperty.call(st,'at'))rdeBaseAt=st.at||'';
+  const fn=document.getElementById('rede-fname');if(fn)fn.textContent=st.fileName||'';
+  const ts=document.getElementById('rede-ts-text');if(ts)ts.textContent=st.at?'Anexado '+new Date(st.at).toLocaleDateString('pt-BR')+' '+new Date(st.at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
   rdeShowDash();
   updateCentralStatus();
   return true;
