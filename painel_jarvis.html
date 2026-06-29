@@ -5855,7 +5855,7 @@ function updateCentralStatus(){
   const redeFileEl=document.getElementById('rede-fname');
   const redeAt=redeEl?String(redeEl.textContent||'').replace(/^Anexado\s+/,''):'';
   const redeTs=fmtBaseInfo(redeFileEl&&redeFileEl.textContent,redeAt);
-  const aleloCount=(typeof dFuelRequests!=='undefined'?dFuelRequests.filter(r=>r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''))).length:0);
+  const aleloCount=(typeof dFuelRequests!=='undefined'?dFuelRequests.filter(fuelIsAleloImport).length:0);
   const fuelTs=fuelBaseAt?fmtBaseInfo(fuelBaseFile,fuelBaseAt):'';
   setSlot('ab',typeof dAb!=='undefined'&&dAb.length>0,abTs);
   setSlot('enc',typeof dEnc!=='undefined'&&dEnc.length>0,encTs);
@@ -6976,7 +6976,7 @@ function importFuelAlelo(text,fname){
   if(!rows.length)throw new Error('CSV sem dados válidos.');
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles).filter(v=>v.source!=='alelo-base');
   if(!dFuelVehicles.length)dFuelVehicles=normalizeFuelVehicles(FUEL_BASE);
-  dFuelRequests=dFuelRequests.filter(r=>r.source!=='alelo-base'&&!String(r.obs||'').includes('Importado da Base Alelo')&&!String(r.obs||'').includes('Importado da base Alelo'));
+  dFuelRequests=dFuelRequests.filter(r=>!fuelIsAleloImport(r));
   /* Limpa créditos Alelo importados por versões anteriores; Aportes ficam apenas manuais. */
   dFuelAportes=dFuelAportes.filter(a=>a.source!=='alelo-base');
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
@@ -7018,16 +7018,17 @@ function importFuelAlelo(text,fname){
 function deleteFuelAleloBase(){
   if(!canEdit())return;
   const before=dFuelRequests.length;
-  const alelo=dFuelRequests.filter(r=>r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''))).length;
-  if(!alelo){alert('Não há Base Alelo importada para excluir.');return}
-  if(!confirm(`Excluir ${alelo} registro${alelo!==1?'s':''} importado${alelo!==1?'s':''} da Base Alelo? Registros manuais serão mantidos.`))return;
-  dFuelRequests=dFuelRequests.filter(r=>!(r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''))));
+  const alelo=dFuelRequests.filter(fuelIsAleloImport).length;
+  if(!alelo&&!fuelBaseAt&&!fuelBaseFile){alert('Não há Base Alelo importada para excluir.');return}
+  const msg=alelo?`Excluir ${alelo} registro${alelo!==1?'s':''} importado${alelo!==1?'s':''} da Base Alelo? Registros manuais serão mantidos.`:'Limpar o vínculo da Base Alelo importada?';
+  if(!confirm(msg))return;
+  dFuelRequests=dFuelRequests.filter(r=>!fuelIsAleloImport(r));
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles).filter(v=>v.source!=='alelo-base');
   dFuelAportes=dFuelAportes.filter(a=>a.source!=='alelo-base');
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   fuelBaseFile='';
   fuelBaseAt='';
-  renderFuel();saveState();updateCentralStatus();
+  renderFuel();saveState();updateCentralStatus();updateClearBtns();
   alert(`Base Alelo excluída: ${before-dFuelRequests.length} registro${before-dFuelRequests.length!==1?'s':''} removido${before-dFuelRequests.length!==1?'s':''}.`);
 }
 function fuelProjection(){const by={};fuelPurchaseRequests().forEach(r=>{const v=fuelVehicleByPlate(r.placa),name=v.condutor||r.condutor||r.placa;if(!by[name])by[name]={valor:0,count:0};by[name].valor+=Math.abs(Number(r.valor||0));by[name].count++});return Object.entries(by).sort((a,b)=>b[1].valor-a[1].valor)}
@@ -7042,7 +7043,7 @@ function renderFuelDriverDetail(){
   box.style.display='block';
   box.innerHTML=`<div class="tsec-hd"><span class="tsec-title">Transações do condutor: ${eh(selectedFuelDriver)}</span><span id="cnt-fuel-driver" style="color:var(--tx3)">${rows.length} transações</span></div><div class="fuel-driver-summary"><div><span>Total consumido</span><b>${brl(total)}</b></div><div><span>Placas usadas</span><b>${plates.length?plates.map(eh).join(', '):'-'}</b></div><div><span>Último registro</span><b>${rows[0]?eh(rows[0].data):'-'}</b></div></div><div class="tw"><table><thead><tr><th>Data</th><th>Placa</th><th>Valor</th><th>Observação</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${eh(r.data)}</td><td class="tid">${eh(r.placa)}</td><td>${brl(Number(r.valor||0))}</td><td>${eh(r.obs||'')}</td></tr>`).join('')||'<tr><td colspan="4" class="nores">Nenhuma transação para este condutor</td></tr>'}</tbody></table></div>`;
 }
-function fuelIsAleloImport(r){return r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''))}
+function fuelIsAleloImport(r){return !!(r&&(r.source==='alelo-base'||/importado da base alelo/i.test(String(r.obs||''))))}
 function fuelApplyRequestFilters(rows){
   let out=rows.slice();
   const q=nk(fuelRFilter.q||'');
@@ -7179,7 +7180,7 @@ function trendValues(values){
 function renderAleloPanel(){
   const el=document.getElementById('alelo-remanejo-panel');if(!el)return;
   const bal=fuelBalance();
-  const aleloCount=dFuelRequests.filter(r=>r&&r.source==='alelo-base'||/importado da base alelo/i.test(String(r&&r.obs||''))).length;
+  const aleloCount=dFuelRequests.filter(fuelIsAleloImport).length;
   const deleteBaseBtn=canEdit()?`<button class="card-action admin-only" onclick="deleteFuelAleloBase()" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Excluir base${aleloCount?` (${aleloCount})`:''}</button>`:'';
   const active=dFuelVehicles.filter(v=>v.status==='Ativo');
   const projection=fuelMonthProjection();
@@ -8045,6 +8046,8 @@ async function autoLoadOfsDefault(){
   }
 }
 function clearOfs(){
+  if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
+  if(!confirm('Limpar base OFS? Os dados serão removidos.'))return;
   ofsRows=[];ofsMeta={fname:'',loaded:false};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
   try{localStorage.removeItem(OFS_KEY);}catch(e){}
   idbSet(OFS_KEY,null).catch(()=>{});
@@ -8053,7 +8056,7 @@ function clearOfs(){
   const nb=document.getElementById('nb-ofs');if(nb){nb.textContent='0';nb.style.display='none';}
   const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
   if(dtS)dtS.value='';if(dtE)dtE.value='';
-  renderOfs();updateClearBtns();updateCentralStatus();
+  renderOfs();saveState();updateClearBtns();updateCentralStatus();
 }
 function ofsCalcTecnicos(rows){
   if(!rows)rows=ofsFilteredRows();
