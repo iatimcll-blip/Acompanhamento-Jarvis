@@ -19,6 +19,12 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 app.use(cors({ origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN.split(',').map(s => s.trim()) }));
+// Allow HTTPS pages (GitHub Pages) to reach the local bridge via Chrome Private Network Access
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); return res.sendStatus(204); }
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
 
 let client;
