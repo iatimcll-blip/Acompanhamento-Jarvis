@@ -5672,7 +5672,7 @@ function applyState(st,label){
     }
   }
   if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
-    ofsRows=st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)}));
+    ofsRows=ofsDedupeRows(st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)})));
     ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
     saveOfsState();
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
@@ -7856,7 +7856,8 @@ function abAnnObsInput(id){
   return `<textarea class="ann-obs" placeholder="Anotações…" rows="1" onclick="event.stopPropagation()" oninput="saveAbAnnotation('${eh(id)}','obs',this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${escaped}</textarea>`;
 }
 function abAnnObsReadonly(id){const o=(abAnnotations[id]||{}).obs||'';return o?`<span class="ann-readonly" title="${eh(o)}">${eh(o.length>30?o.slice(0,29)+'…':o)}</span>`:`<span class="ann-empty">—</span>`;}
-const OFS_STATUS_COLORS={'concluído':'#22c55e','iniciado':'#3b82f6','pendente':'#f59e0b','não concluído':'#ef4444','suspenso':'#8b5cf6','cancelado':'#6b7280','sem status':'#94a3b8'};
+const OFS_STATUS_COLORS={'concluído':'#22c55e','iniciado':'#3b82f6','pendente':'#f59e0b','não concluído':'#ef4444','suspenso':'#8b5cf6','cancelado':'#6b7280','sem status':'#94a3b8','em rota':'#06b6d4'};
+const OFS_STATUS_ORDER=['concluído','iniciado','pendente','não concluído','suspenso','cancelado','em rota','sem status'];
 const OFS_EXCLUDED=['almoço','almoco','checklist','revisao','reuniao','inventario','inventário','reposicao de materiais','reposição de materiais'];
 const OFS_DIAS_SEM=['segunda-feira','terca-feira','quarta-feira','quinta-feira','sexta-feira','sabado','domingo','segunda','terca','quarta','quinta','sexta','sabado'];
 const OFS_UF_NAMES={
@@ -7872,14 +7873,16 @@ const OFS_NAME_ALIASES={
 function isOfsExcluded(t){return OFS_EXCLUDED.some(e=>normN(t).includes(e));}
 function isOfsWeekday(s){const n=normN(s);return OFS_DIAS_SEM.some(d=>n===normN(d));}
 function ofsStatusKey(s){
-  const n=normN(s);
+  const raw=String(s||'').trim();
+  const n=normN(raw);
+  if(!n)return'sem status';
   if(n.includes('nao conclu')||n.includes('n conclu'))return'não concluído';
   if(n.includes('conclu'))return'concluído';
   if(n.includes('inici'))return'iniciado';
   if(n.includes('pend'))return'pendente';
   if(n.includes('susp'))return'suspenso';
   if(n.includes('cancel'))return'cancelado';
-  return'sem status';
+  return n;
 }
 function ofsNameMatch(tec,list){
   const n=normN(tec),p=n.split(' ');
@@ -7994,6 +7997,11 @@ function ofsRowKey(r){
   const os=normN(r.os||'');
   if(os)return'os:'+os;
   return['tec',normN(r.tecnico),r.dtStr||'',normN(r.tipo),normN(r.status)].join('|');
+}
+function ofsDedupeRows(rows){
+  const map=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{if(r)map.set(ofsRowKey(r),r)});
+  return[...map.values()];
 }
 function ofsIsMasterFile(f){return /Relatorio_OFS_MOP-EPS|Relatório_OFS_MOP-EPS|\.xlsx?$|\.xls$/i.test(f&&f.name||'')}
 function ofsIsCsvFile(f){return /\.csv$/i.test(f&&f.name||'')}
@@ -8115,14 +8123,15 @@ function ofsReadRows(raw,fname){
 }
 function applyOfsRows(out,fname,opts={}){
   if(!out.length)throw new Error('Nenhum registro produtivo encontrado. Verifique se a base possui Recurso, Data, Tipo de Atividade e Status da Atividade.');
-  ofsRows=out;
-  const dates=out.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
+  const clean=ofsDedupeRows(out);
+  ofsRows=clean;
+  const dates=clean.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
   ofsFilter={uf:'all',grupo:'all',dtStart:dates[0]||'',dtEnd:dates[dates.length-1]||''};
   const _uat=new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
   ofsMeta={fname,loaded:true,uploadedAt:_uat,cleared:false,clearedAt:''};
   saveOfsState();
   renderOfs();
-  const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=out.length;nb.style.display=out.length?'':'none';}
+  const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=clean.length;nb.style.display=clean.length?'':'none';}
   const tsEl=document.getElementById('ts-ofs');if(tsEl)tsEl.textContent='Anexado '+_uat;
   saveState();if(!/\(padrão\)/i.test(String(fname||'')))autoSyncAfterBaseUpload('OFS');updateCentralStatus();updateClearBtns();
 }
@@ -8174,7 +8183,7 @@ function restoreOfsState(){
     const raw=localStorage.getItem(OFS_KEY);if(!raw){restoreOfsStateFromIndexedDb();return}
     const s=JSON.parse(raw);
     if(s.rows&&Array.isArray(s.rows)){
-      ofsRows=s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)}));
+      ofsRows=ofsDedupeRows(s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)})));
       ofsMeta=s.meta||{fname:'',loaded:true};
     }
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
@@ -8185,7 +8194,7 @@ function restoreOfsState(){
 async function restoreOfsStateFromIndexedDb(){
   try{
     const s=await idbGet(OFS_KEY);if(!s||!Array.isArray(s.rows))return;
-    ofsRows=s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)}));
+    ofsRows=ofsDedupeRows(s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)})));
     ofsMeta=s.meta||{fname:'',loaded:true};
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
@@ -8229,15 +8238,17 @@ function ofsCalcTecnicos(rows){
   if(!rows)rows=ofsFilteredRows();
   const map=new Map();
   for(const r of rows){
-    if(!map.has(r.tecnico))map.set(r.tecnico,{nome:r.tecnico,uf:r.uf,grupo:r.grupo,total:0,concluido:0,iniciado:0,pendente:0,nconc:0,susp:0,canc:0,semStatus:0,dias:new Set(),tipos:{}});
+    if(!map.has(r.tecnico))map.set(r.tecnico,{nome:r.tecnico,uf:r.uf,grupo:r.grupo,total:0,concluido:0,iniciado:0,pendente:0,nconc:0,susp:0,canc:0,semStatus:0,outros:0,statusCounts:{},dias:new Set(),tipos:{}});
     const t=map.get(r.tecnico);t.total++;
+    t.statusCounts[r.status]=(t.statusCounts[r.status]||0)+1;
     if(r.status==='concluído')t.concluido++;
     else if(r.status==='iniciado')t.iniciado++;
     else if(r.status==='pendente')t.pendente++;
     else if(r.status==='não concluído')t.nconc++;
     else if(r.status==='suspenso')t.susp++;
     else if(r.status==='cancelado')t.canc++;
-    else t.semStatus++;
+    else if(r.status==='sem status')t.semStatus++;
+    else t.outros++;
     if(r.dtStr)t.dias.add(r.dtStr);
     t.tipos[r.tipo]=(t.tipos[r.tipo]||0)+1;
   }
@@ -8304,7 +8315,8 @@ function renderOfs(){
   const per=filtDates.length?`${filtDates[0].split('-').reverse().join('/')} – ${filtDates[filtDates.length-1].split('-').reverse().join('/')}`:'-';
   const perEl=document.getElementById('ofs-periodo');if(perEl)perEl.textContent=per;
   const tecs=ofsCalcTecnicos(rows);
-  const total=rows.length,concl=rows.filter(r=>r.status==='concluído').length,pend=rows.filter(r=>r.status==='pendente').length,inic=rows.filter(r=>r.status==='iniciado').length,nconc=rows.filter(r=>r.status==='não concluído').length,susp=rows.filter(r=>r.status==='suspenso').length,canc=rows.filter(r=>r.status==='cancelado').length;
+  const stCounts={};for(const r of rows)stCounts[r.status]=(stCounts[r.status]||0)+1;
+  const total=rows.length,concl=stCounts['concluído']||0,pend=stCounts['pendente']||0,inic=stCounts['iniciado']||0,nconc=stCounts['não concluído']||0,susp=stCounts['suspenso']||0,canc=stCounts['cancelado']||0,semStatus=stCounts['sem status']||0,outrosSt=Object.entries(stCounts).filter(([s])=>!['concluído','pendente','iniciado','não concluído','suspenso','cancelado','sem status'].includes(s)).reduce((a,[,v])=>a+v,0);
   const taxa=total?Math.round(concl/total*100):0,dias=new Set(rows.filter(r=>r.dtStr).map(r=>r.dtStr)).size;
   const kEl=document.getElementById('ofs-kpis');
   if(kEl)kEl.innerHTML=[
@@ -8313,6 +8325,7 @@ function renderOfs(){
     {label:'Taxa Conclusão',val:taxa+'%',icon:'ti-percentage',color:'#3b82f6'},
     {label:'Pendentes+Iniciados',val:pend+inic,icon:'ti-clock',color:'#f59e0b'},
     {label:'N/Concl+Susp+Canc',val:nconc+susp+canc,icon:'ti-x',color:'#ef4444'},
+    {label:'Outros Status',val:outrosSt+semStatus,icon:'ti-info-circle',color:'#06b6d4'},
     {label:'Dias Operação',val:dias,icon:'ti-calendar',color:'#8b5cf6'}
   ].map(k=>`<div class="ofs-kpi"><div class="ofs-kpi-icon" style="color:${k.color};background:${k.color}18"><i class="ti ${k.icon}"></i></div><div class="ofs-kpi-val">${k.val}</div><div class="ofs-kpi-lbl">${k.label}</div></div>`).join('');
   // UF summary
@@ -8320,15 +8333,15 @@ function renderOfs(){
   if(ufSumEl){
     ufSumEl.style.display=ofsFilter.uf==='all'?'':'none';
     if(ofsFilter.uf==='all'){
-      const ufD={};rows.forEach(r=>{if(!ufD[r.uf])ufD[r.uf]={total:0,concl:0,inic:0,pend:0,nconc:0,susp:0,canc:0,tecs:new Set()};const d=ufD[r.uf];d.total++;d.tecs.add(r.tecnico);if(r.status==='concluído')d.concl++;else if(r.status==='iniciado')d.inic++;else if(r.status==='pendente')d.pend++;else if(r.status==='não concluído')d.nconc++;else if(r.status==='suspenso')d.susp++;else if(r.status==='cancelado')d.canc++;});
+      const ufD={};rows.forEach(r=>{if(!ufD[r.uf])ufD[r.uf]={total:0,concl:0,inic:0,pend:0,nconc:0,susp:0,canc:0,other:0,tecs:new Set()};const d=ufD[r.uf];d.total++;d.tecs.add(r.tecnico);if(r.status==='concluído')d.concl++;else if(r.status==='iniciado')d.inic++;else if(r.status==='pendente')d.pend++;else if(r.status==='não concluído')d.nconc++;else if(r.status==='suspenso')d.susp++;else if(r.status==='cancelado')d.canc++;else d.other++;});
       const ufBody=document.getElementById('ofs-uf-tbody');
       if(ufBody)ufBody.innerHTML=['MA','PA'].filter(u=>ufD[u]).map(u=>{const d=ufD[u];const tx=d.total?Math.round(d.concl/d.total*100):0;const tc=tx>=80?'#22c55e':tx>=60?'#f59e0b':'#ef4444';
-        return`<tr style="border-bottom:.5px solid var(--bd)"><td style="padding:7px 8px;font-weight:700">UF ${u} <span class="ofs-uf-tag ${u}">${u}</span></td><td style="padding:7px 8px;text-align:right">${d.tecs.size}</td><td style="padding:7px 8px;text-align:right;font-variant-numeric:tabular-nums">${d.total}</td><td style="padding:7px 8px;text-align:right;color:#22c55e;font-variant-numeric:tabular-nums">${d.concl}</td><td style="padding:7px 8px;text-align:right;color:${tc};font-weight:700">${tx}%</td><td style="padding:7px 8px;text-align:right;color:#f59e0b;font-variant-numeric:tabular-nums">${d.pend+d.inic}</td><td style="padding:7px 8px;text-align:right;color:#ef4444;font-variant-numeric:tabular-nums">${d.nconc+d.susp+d.canc}</td></tr>`;
+        return`<tr style="border-bottom:.5px solid var(--bd)"><td style="padding:7px 8px;font-weight:700">UF ${u} <span class="ofs-uf-tag ${u}">${u}</span></td><td style="padding:7px 8px;text-align:right">${d.tecs.size}</td><td style="padding:7px 8px;text-align:right;font-variant-numeric:tabular-nums">${d.total}</td><td style="padding:7px 8px;text-align:right;color:#22c55e;font-variant-numeric:tabular-nums">${d.concl}</td><td style="padding:7px 8px;text-align:right;color:${tc};font-weight:700">${tx}%</td><td style="padding:7px 8px;text-align:right;color:#f59e0b;font-variant-numeric:tabular-nums">${d.pend+d.inic+d.other}</td><td style="padding:7px 8px;text-align:right;color:#ef4444;font-variant-numeric:tabular-nums">${d.nconc+d.susp+d.canc}</td></tr>`;
       }).join('');
       const gpBody=document.getElementById('ofs-gp-tbody');
-      if(gpBody){const gpD={};rows.forEach(r=>{if(!gpD[r.grupo])gpD[r.grupo]={total:0,concl:0,inic:0,pend:0,nconc:0,susp:0,canc:0,tecs:new Set()};const d=gpD[r.grupo];d.total++;d.tecs.add(r.tecnico);if(r.status==='concluído')d.concl++;else if(r.status==='iniciado')d.inic++;else if(r.status==='pendente')d.pend++;else if(r.status==='não concluído')d.nconc++;else if(r.status==='suspenso')d.susp++;else if(r.status==='cancelado')d.canc++;});
+      if(gpBody){const gpD={};rows.forEach(r=>{if(!gpD[r.grupo])gpD[r.grupo]={total:0,concl:0,inic:0,pend:0,nconc:0,susp:0,canc:0,other:0,tecs:new Set()};const d=gpD[r.grupo];d.total++;d.tecs.add(r.tecnico);if(r.status==='concluído')d.concl++;else if(r.status==='iniciado')d.inic++;else if(r.status==='pendente')d.pend++;else if(r.status==='não concluído')d.nconc++;else if(r.status==='suspenso')d.susp++;else if(r.status==='cancelado')d.canc++;else d.other++;});
         gpBody.innerHTML=Object.entries(gpD).map(([g,d])=>{const tx=d.total?Math.round(d.concl/d.total*100):0;const tc=tx>=80?'#22c55e':tx>=60?'#f59e0b':'#ef4444';const isMop=g.includes('MOP');
-          return`<tr style="border-bottom:.5px solid var(--bd)"><td style="padding:7px 8px;font-weight:700">${g} <span class="ofs-gp-tag ${isMop?'MOP':'EPS'}">${isMop?'MOP':'EPS'}</span></td><td style="padding:7px 8px;text-align:right">${d.tecs.size}</td><td style="padding:7px 8px;text-align:right;font-variant-numeric:tabular-nums">${d.total}</td><td style="padding:7px 8px;text-align:right;color:#22c55e;font-variant-numeric:tabular-nums">${d.concl}</td><td style="padding:7px 8px;text-align:right;color:${tc};font-weight:700">${tx}%</td><td style="padding:7px 8px;text-align:right;color:#f59e0b;font-variant-numeric:tabular-nums">${d.pend+d.inic}</td><td style="padding:7px 8px;text-align:right;color:#ef4444;font-variant-numeric:tabular-nums">${d.nconc+d.susp+d.canc}</td></tr>`;
+          return`<tr style="border-bottom:.5px solid var(--bd)"><td style="padding:7px 8px;font-weight:700">${g} <span class="ofs-gp-tag ${isMop?'MOP':'EPS'}">${isMop?'MOP':'EPS'}</span></td><td style="padding:7px 8px;text-align:right">${d.tecs.size}</td><td style="padding:7px 8px;text-align:right;font-variant-numeric:tabular-nums">${d.total}</td><td style="padding:7px 8px;text-align:right;color:#22c55e;font-variant-numeric:tabular-nums">${d.concl}</td><td style="padding:7px 8px;text-align:right;color:${tc};font-weight:700">${tx}%</td><td style="padding:7px 8px;text-align:right;color:#f59e0b;font-variant-numeric:tabular-nums">${d.pend+d.inic+d.other}</td><td style="padding:7px 8px;text-align:right;color:#ef4444;font-variant-numeric:tabular-nums">${d.nconc+d.susp+d.canc}</td></tr>`;
         }).join('');}
     }
   }
@@ -8343,8 +8356,7 @@ function renderOfs(){
   ofsDestroyChart(ofsChRank);
   const ctxRk=document.getElementById('ofs-chRank')?.getContext('2d');
   if(ctxRk){ofsChRank=new Chart(ctxRk,{type:'bar',plugins:DL?[DL]:[],data:{labels:sorted.map(t=>t.nome),datasets:[{data:sorted.map(t=>t.total),backgroundColor:sorted.map((t,i)=>RANK_COLORS[i%RANK_COLORS.length]+'cc'),borderRadius:5,borderSkipped:false,clip:false}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:36,top:4,bottom:4}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.raw} atividades`}},datalabels:DL?{anchor:'end',align:'right',color:'var(--tx2)',font:{size:10,weight:'600'},formatter:v=>v,clip:false}:{display:false}},scales:{x:{grid:{color:'rgba(128,128,128,.1)'},ticks:{color:'var(--tx2)',font:{size:10}}},y:{grid:{display:false},ticks:{color:'var(--tx2)',font:{size:11}}}}}})}
-  const stCounts={};for(const r of rows)stCounts[r.status]=(stCounts[r.status]||0)+1;
-  const stKeys=Object.keys(stCounts);
+  const stKeys=Object.keys(stCounts).sort((a,b)=>(OFS_STATUS_ORDER.indexOf(a)<0?99:OFS_STATUS_ORDER.indexOf(a))-(OFS_STATUS_ORDER.indexOf(b)<0?99:OFS_STATUS_ORDER.indexOf(b))||a.localeCompare(b,'pt-BR'));
   ofsDestroyChart(ofsChStatus);
   const ctxSt=document.getElementById('ofs-chStatus')?.getContext('2d');
   if(ctxSt){ofsChStatus=new Chart(ctxSt,{type:'doughnut',plugins:DL?[DL]:[],data:{labels:stKeys.map(s=>s.charAt(0).toUpperCase()+s.slice(1)),datasets:[{data:stKeys.map(s=>stCounts[s]),backgroundColor:stKeys.map(s=>OFS_STATUS_COLORS[s]||'#94a3b8'),borderWidth:2,borderColor:'transparent',clip:false}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%',layout:{padding:10},plugins:{legend:{position:'right',labels:{color:'var(--tx2)',font:{size:11},boxWidth:11,padding:8}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw} (${Math.round(ctx.raw/(total||1)*100)}%)`}},datalabels:DL?{color:'#fff',font:{size:10,weight:'700'},formatter:(v)=>{const pct=Math.round(v/(total||1)*100);return pct>=7?pct+'%':''},clip:false}:{display:false}}}})}
@@ -8377,11 +8389,7 @@ function ofsRenderCards(rows){
   if(!list.length){cards.innerHTML='<p style="color:var(--tx3);font-size:12px">Nenhum técnico encontrado.</p>';return;}
   cards.innerHTML=list.sort((a,b)=>b.total-a.total).map((t,i)=>{
     const taxa=t.total?Math.round(t.concluido/t.total*100):0;
-    const barItems=[
-      {s:'concluído',v:t.concluido},{s:'iniciado',v:t.iniciado},{s:'pendente',v:t.pendente},
-      {s:'não concluído',v:t.nconc},{s:'suspenso',v:t.susp},{s:'cancelado',v:t.canc},
-      {s:'sem status',v:t.semStatus||0}
-    ].filter(x=>x.v>0);
+    const barItems=Object.entries(t.statusCounts||{}).map(([s,v])=>({s,v})).filter(x=>x.v>0).sort((a,b)=>(OFS_STATUS_ORDER.indexOf(a.s)<0?99:OFS_STATUS_ORDER.indexOf(a.s))-(OFS_STATUS_ORDER.indexOf(b.s)<0?99:OFS_STATUS_ORDER.indexOf(b.s))||a.s.localeCompare(b.s,'pt-BR'));
     const bar=barItems.map(x=>`<div style="width:${Math.round(x.v/t.total*100)}%;background:${OFS_STATUS_COLORS[x.s]||'#94a3b8'};height:100%;transition:width .3s" title="${x.s}: ${x.v}"></div>`).join('');
     const isMop=(t.grupo||'').includes('MOP');
     const semSt=t.semStatus||0;
