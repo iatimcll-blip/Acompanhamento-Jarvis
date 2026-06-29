@@ -283,12 +283,13 @@ body {
 .wpp-loading.hide{opacity:0;pointer-events:none}
 .wpp-qr-box{display:flex;flex-direction:column;align-items:center;gap:16px;max-width:380px;text-align:center}
 .wpp-qr-box h2{font-size:22px;font-weight:400;color:#e9edef}
-.wpp-qr-img-wrap{width:240px;height:240px;background:#fff;border-radius:12px;display:flex;align-items:center;justify-content:center;padding:10px;flex-shrink:0;position:relative}
-#wpp-qr-img{width:100%;height:100%;object-fit:contain;display:none;border-radius:4px}
-.wpp-qr-placeholder{font-size:80px;color:#00a884;animation:wppPulse 1.4s ease-in-out infinite}
+.wpp-qr-img-wrap{width:240px;height:240px;background:#fff;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;overflow:hidden}
+#wpp-qr-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;border-radius:4px}
+.wpp-qr-placeholder{font-size:80px;color:#00a884;animation:wppPulse 1.4s ease-in-out infinite;position:relative;z-index:1}
 .wpp-qr-steps-list{text-align:left;padding-left:16px;color:#8696a0;font-size:13px;line-height:1.7;margin:0}
 .wpp-qr-steps-list li strong{color:#e9edef}
 .wpp-qr-status{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;background:rgba(0,168,132,.12);color:#00a884;font-size:12px;font-weight:600;border:1px solid rgba(0,168,132,.22)}
+.wpp-qr-status.err{background:rgba(255,80,80,.1);color:#ff6b6b;border-color:rgba(255,80,80,.22)}
 /* View de chat ativo */
 .wpp-chat-view{position:absolute;inset:0;display:none;flex-direction:column;z-index:2}
 .wpp-chat-view.show{display:flex}
@@ -329,6 +330,7 @@ body {
 /* Status badge (mantido para compatibilidade JS) */
 #wpp-status{display:none}
 @keyframes wppPulse{0%,100%{transform:scale(1);opacity:.72}50%{transform:scale(1.08);opacity:1}}
+@keyframes wppSpin{to{transform:rotate(360deg)}}
 /* Responsivo */
 @media(max-width:900px){
   .wpp-sidebar{width:100%;height:42%;min-height:260px;border-right:none;border-bottom:1px solid rgba(134,150,160,.13)}
@@ -4706,6 +4708,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <img id="wpp-qr-img" alt="QR Code WhatsApp">
               <i class="ti ti-brand-whatsapp wpp-qr-placeholder" id="wpp-qr-placeholder"></i>
             </div>
+            <div class="wpp-qr-status" id="wpp-qr-status-badge">
+              <i class="ti ti-loader-2" id="wpp-qr-status-icon" style="animation:wppSpin 1s linear infinite"></i>
+              <span id="wpp-qr-status-text">Conectando ao serviço WhatsApp...</span>
+            </div>
             <ol class="wpp-qr-steps-list">
               <li>Abra o WhatsApp no celular</li>
               <li>Toque em <strong>Aparelhos conectados</strong></li>
@@ -8021,7 +8027,14 @@ async function wppFetch(path,opts){
   }
   throw lastErr||new Error('Serviço WhatsApp indisponível');
 }
-function setWppStatus(text,icon='ti-qrcode'){/* mantido para compatibilidade; visual é o overlay QR */}
+function setWppStatus(text,icon='ti-qrcode'){
+  const badge=document.getElementById('wpp-qr-status-badge');
+  const iEl=document.getElementById('wpp-qr-status-icon');
+  const tEl=document.getElementById('wpp-qr-status-text');
+  if(tEl)tEl.textContent=text;
+  if(iEl){iEl.className='ti '+icon;iEl.style.animation=icon==='ti-loader-2'||icon==='ti-refresh'?'wppSpin 1s linear infinite':'';}
+  if(badge){const isErr=icon==='ti-alert-triangle';badge.classList.toggle('err',isErr);}
+}
 function _wppFmtTime(ts){
   const d=new Date(ts*1000),now=new Date();
   const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -8051,7 +8064,14 @@ function setWppLoading(show){
 function renderWppState(st){
   wppBridgeState=st||wppBridgeState||{};
   const qr=document.getElementById('wpp-qr-img'),ph=document.getElementById('wpp-qr-placeholder');
-  if(qr){const hasQr=!!wppBridgeState.qr;qr.style.display=hasQr?'block':'none';if(ph)ph.style.display=hasQr?'none':'';if(hasQr)qr.src=wppBridgeState.qr;}
+  if(qr){
+    const hasQr=!!wppBridgeState.qr;
+    if(hasQr){qr.src=wppBridgeState.qr;qr.style.display='block';}else{qr.style.display='none';}
+    if(ph)ph.style.display=hasQr?'none':'';
+  }
+  const statusMsgs={starting:['Iniciando serviço WhatsApp...','ti-loader-2'],qr:['Aponte o celular para o QR Code','ti-qrcode'],authenticated:['Autenticado — carregando conversas...','ti-loader-2'],ready:['Sessão conectada','ti-check'],auth_failure:['Falha na autenticação','ti-alert-triangle'],disconnected:['Sessão desconectada','ti-alert-triangle'],error:['Erro no serviço WhatsApp','ti-alert-triangle']};
+  const [stText,stIcon]=statusMsgs[wppBridgeState.status]||['Conectando...','ti-loader-2'];
+  setWppStatus(stText,stIcon);
   const ready=wppBridgeState.status==='ready';
   setWppLoading(!ready);
   const input=document.getElementById('wpp-message-input'),btn=document.getElementById('wpp-send-btn');
