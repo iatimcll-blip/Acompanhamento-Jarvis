@@ -7810,6 +7810,7 @@ window.addEventListener('message',function(e){
 /* ─── PRODUTIVIDADE OFS ─── */
 const OFS_KEY='atrix:painel:ofs:v2';
 const OFS_TEC_KEY='atrix:ofs:tecs:v1';
+const OFS_MASTER_PATH='./Fonte/Relatorio_OFS_MOP-EPS.xlsx';
 let ofsTecCustom=[];
 function ofsTecLoad(){try{ofsTecCustom=JSON.parse(localStorage.getItem(OFS_TEC_KEY)||'[]');}catch(e){ofsTecCustom=[];}}
 function ofsTecSave(){try{localStorage.setItem(OFS_TEC_KEY,JSON.stringify(ofsTecCustom));}catch(e){}}
@@ -7992,6 +7993,73 @@ function ofsRowKey(r){
   if(os)return'os:'+os;
   return['tec',normN(r.tecnico),r.dtStr||'',normN(r.tipo),normN(r.status)].join('|');
 }
+function ofsIsMasterFile(f){return /Relatorio_OFS_MOP-EPS|Relatório_OFS_MOP-EPS|\.xlsx?$|\.xls$/i.test(f&&f.name||'')}
+function ofsIsCsvFile(f){return /\.csv$/i.test(f&&f.name||'')}
+async function ofsFetchMasterFromFonte(){
+  try{
+    const res=await fetch(OFS_MASTER_PATH+'?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok)return null;
+    const buf=await res.arrayBuffer();
+    return{name:'Relatorio_OFS_MOP-EPS.xlsx',raw:new Uint8Array(buf),fromFonte:true};
+  }catch(e){
+    console.warn('Falha ao buscar planilha mestre OFS:',e);
+    return null;
+  }
+}
+function ofsWorkbookRowKey(r){
+  const os=String(r['ID da Ordem de Serviço']||r['Ordem de Serviço']||r['OS']||r['os']||'').trim();
+  if(os)return'os:'+normN(os);
+  return['tec',normN(r['Recurso']||r['Técnico']||''),String(r['Data']||''),normN(r['Tipo de Atividade.1']||r['Tipo de Atividade']||''),normN(r['Status da Atividade']||'')].join('|');
+}
+function ofsWorkbookHeaders(ws,rows){
+  const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  const headers=(matrix[0]||[]).map(h=>String(h||'').trim()).filter(Boolean);
+  rows.forEach(r=>Object.keys(r).forEach(k=>{if(k&&!headers.includes(k))headers.push(k)}));
+  ['Tipo_Origem','Estado_Origem','Arquivo_Origem','Data_Adicao','Tipo_Atualização','Recurso_Original','Recurso_Normalizado','MOP_EPS'].forEach(k=>{if(!headers.includes(k))headers.push(k)});
+  return headers;
+}
+function ofsEnrichWorkbookRow(row,fileName,kind){
+  const recurso=String(row['Recurso']||row['Técnico']||'').trim();
+  const normalizado=recurso?canonicTec(recurso):'';
+  const estado=String(row['Estado']||row['UF']||'').trim();
+  return{...row,Tipo_Origem:row['Tipo_Origem']||'OFS',Estado_Origem:row['Estado_Origem']||estado,Arquivo_Origem:row['Arquivo_Origem']||fileName,Data_Adicao:row['Data_Adicao']||new Date().toLocaleDateString('pt-BR'),Tipo_Atualização:row['Tipo_Atualização']||kind,Recurso_Original:row['Recurso_Original']||recurso,Recurso_Normalizado:row['Recurso_Normalizado']||normalizado,MOP_EPS:row['MOP_EPS']||getOfsGrupo(normalizado||recurso)};
+}
+function ofsDownloadWorkbook(blob,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function ofsBuildUpdatedWorkbook(masterFile,csvFiles){
+  if(!masterFile||!csvFiles.length)return null;
+  const wb=XLSX.read(masterFile.raw,{type:'array',cellDates:true});
+  const sheetName=wb.SheetNames.find(n=>n.toLowerCase().includes('dados completos'))||wb.SheetNames[0];
+  const ws=wb.Sheets[sheetName];
+  const masterRows=XLSX.utils.sheet_to_json(ws,{defval:''});
+  const map=new Map();
+  masterRows.forEach(r=>map.set(ofsWorkbookRowKey(r),ofsEnrichWorkbookRow(r,r['Arquivo_Origem']||masterFile.name||'Relatorio_OFS_MOP-EPS.xlsx',r['Tipo_Atualização']||'Original')));
+  const novos=[];
+  csvFiles.forEach(file=>{
+    const csvWb=XLSX.read(file.raw,{type:'array',cellDates:true});
+    const csvWs=csvWb.Sheets[csvWb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(csvWs,{defval:''});
+    rows.forEach(r=>{
+      const row=ofsEnrichWorkbookRow(r,file.name,'Novo');
+      map.set(ofsWorkbookRowKey(row),row);
+      novos.push(row);
+    });
+  });
+  const allRows=[...map.values()];
+  const headers=ofsWorkbookHeaders(ws,allRows);
+  wb.Sheets[sheetName]=XLSX.utils.json_to_sheet(allRows,{header:headers});
+  if(!wb.SheetNames.includes(sheetName))wb.SheetNames.unshift(sheetName);
+  const dadosNovosName=wb.SheetNames.find(n=>n.toLowerCase().includes('dados novos'))||'Dados Novos';
+  wb.Sheets[dadosNovosName]=XLSX.utils.json_to_sheet(novos,{header:headers});
+  if(!wb.SheetNames.includes(dadosNovosName))wb.SheetNames.push(dadosNovosName);
+  const arr=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  return new Blob([arr],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
 function ofsReadRows(raw,fname){
   const wb=XLSX.read(raw,{type:'array',cellDates:true});
   const ws=wb.Sheets['Dados Completos']||wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('dados completos'))]||wb.Sheets[wb.SheetNames[0]];
@@ -8032,18 +8100,21 @@ function procOfs(raw,fname){
   _ofsTecDisp.clear();
   applyOfsRows(ofsReadRows(raw,fname),fname);
 }
-function procOfsFiles(parsedFiles){
+async function procOfsFiles(parsedFiles){
   _ofsTecDisp.clear();
-  const isMaster=f=>/Relatorio_OFS_MOP-EPS|Relatório_OFS_MOP-EPS|\.xlsx?$|\.xls$/i.test(f&&f.name||'');
-  const files=parsedFiles.filter(f=>f&&f.raw).sort((a,b)=>(isMaster(b)?1:0)-(isMaster(a)?1:0));
+  const files=parsedFiles.filter(f=>f&&f.raw).sort((a,b)=>(ofsIsMasterFile(b)?1:0)-(ofsIsMasterFile(a)?1:0));
   if(!files.length)return;
-  const hasMaster=files.some(isMaster);
+  let masterFile=files.find(ofsIsMasterFile)||null;
+  const csvFiles=files.filter(ofsIsCsvFile);
+  if(!masterFile&&csvFiles.length)masterFile=await ofsFetchMasterFromFonte();
+  const allFiles=masterFile&&files.every(f=>f!==masterFile)?[masterFile,...files]:files;
+  const hasMaster=!!masterFile||allFiles.some(ofsIsMasterFile);
   const baseRows=hasMaster?[]:ofsRows.slice();
   const map=new Map();
   baseRows.forEach(r=>map.set(ofsRowKey(r),r));
   let imported=0;
   const labels=[];
-  files.forEach(file=>{
+  allFiles.forEach(file=>{
     const rows=ofsReadRows(file.raw,file.name);
     imported+=rows.length;
     rows.forEach(r=>map.set(ofsRowKey(r),r));
@@ -8052,6 +8123,13 @@ function procOfsFiles(parsedFiles){
   const out=[...map.values()];
   const name=labels.length===1?labels[0]:`${labels.length} arquivos OFS`;
   applyOfsRows(out,name);
+  if(masterFile&&csvFiles.length){
+    const blob=ofsBuildUpdatedWorkbook(masterFile,csvFiles);
+    if(blob){
+      const stamp=new Date().toISOString().slice(0,10);
+      ofsDownloadWorkbook(blob,`Relatorio_OFS_MOP-EPS_atualizado_${stamp}.xlsx`);
+    }
+  }
   _ghToast(`OFS atualizado: ${out.length} registros (${imported} lidos)`, 'var(--green-dk)', 6000);
 }
 function saveOfsState(){
@@ -8388,8 +8466,8 @@ document.getElementById('file-ofs').addEventListener('change',function(e){
     rd.onload=ev=>resolve({name:f.name,raw:new Uint8Array(ev.target.result)});
     rd.onerror=()=>reject(new Error('Falha ao ler '+f.name));
     rd.readAsArrayBuffer(f);
-  }))).then(parsed=>{
-    try{procOfsFiles(parsed)}
+  }))).then(async parsed=>{
+    try{await procOfsFiles(parsed)}
     catch(er){alert('Erro ao carregar base OFS: '+er.message)}
   }).catch(er=>alert('Erro ao carregar base OFS: '+er.message));
   this.value='';
