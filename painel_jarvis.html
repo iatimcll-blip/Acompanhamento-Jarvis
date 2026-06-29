@@ -5103,6 +5103,8 @@ const GH_SYNC_OWNER='iatimcll-blip';
 const GH_SYNC_REPO='Acompanhamento-Jarvis';
 const GH_SYNC_FILE='data/sync-state.json';
 const GH_SYNC_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_SYNC_FILE;
+const GH_OFS_MASTER_FILE='Fonte/Relatorio_OFS_MOP-EPS.xlsx';
+const GH_OFS_MASTER_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_OFS_MASTER_FILE;
 const GH_TOKEN_KEY='atrix:gh-sync-token:v1';
 const USERS_KEY='atrix:usuarios:v1';
 const SESSION_KEY='atrix:sessao:v1';
@@ -8031,6 +8033,34 @@ function ofsDownloadWorkbook(blob,name){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),1500);
 }
+async function ofsBlobToB64(blob){
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  let bin='';
+  for(let i=0;i<bytes.length;i+=4096)bin+=String.fromCharCode(...bytes.subarray(i,Math.min(i+4096,bytes.length)));
+  return btoa(bin);
+}
+async function saveOfsMasterToGithub(blob){
+  const token=getGhToken();
+  if(!token)return false;
+  try{
+    _ghToast('Atualizando planilha OFS em Fonte…','var(--blue)',5000);
+    let sha='';
+    try{
+      const info=await fetch(GH_OFS_MASTER_API,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
+      if(info.ok){const j=await info.json();sha=j.sha||'';}
+    }catch(e){console.warn('Falha ao obter SHA da planilha OFS:',e)}
+    const content=await ofsBlobToB64(blob);
+    const body=JSON.stringify({message:'sync: atualiza Relatorio OFS '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
+    const res=await fetch(GH_OFS_MASTER_API,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
+    if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
+    _ghToast('Planilha OFS consolidada em Fonte ✓','var(--green-dk)',7000);
+    return true;
+  }catch(e){
+    console.warn('Erro ao atualizar planilha OFS no GitHub:',e);
+    _ghToast('Não foi possível gravar a planilha OFS: '+e.message,'var(--red)',8000);
+    return false;
+  }
+}
 function ofsBuildUpdatedWorkbook(masterFile,csvFiles){
   if(!masterFile||!csvFiles.length)return null;
   const wb=XLSX.read(masterFile.raw,{type:'array',cellDates:true});
@@ -8127,7 +8157,8 @@ async function procOfsFiles(parsedFiles){
     const blob=ofsBuildUpdatedWorkbook(masterFile,csvFiles);
     if(blob){
       const stamp=new Date().toISOString().slice(0,10);
-      ofsDownloadWorkbook(blob,`Relatorio_OFS_MOP-EPS_atualizado_${stamp}.xlsx`);
+      const saved=await saveOfsMasterToGithub(blob);
+      if(!saved)ofsDownloadWorkbook(blob,`Relatorio_OFS_MOP-EPS_atualizado_${stamp}.xlsx`);
     }
   }
   _ghToast(`OFS atualizado: ${out.length} registros (${imported} lidos)`, 'var(--green-dk)', 6000);
