@@ -5266,19 +5266,14 @@ async function restoreGhState(){
     const st=await fetchGhRawState();
     /* ignora placeholder (sem dados reais) */
     if(!st||typeof st!=='object')return false;
-    const hasData=Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.ofsRows);
-    if(!hasData&&!st.savedAt)return false;
-    const localRaw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY);
-    let localAt='';try{localAt=(localRaw&&JSON.parse(localRaw).savedAt)||''}catch(_){}
-    const remoteAt=st.savedAt||'';
-    if(!localAt||remoteAt>localAt){
+    if(shouldApplyRemoteState(st)){
       const applied=applyState(st,'Base compartilhada');
-      if(applied){
-        saveLocalState(buildState());
+      if(applied||stateHasBaseData(st)){
+        saveLocalState(st);
         _ghToast('Bases carregadas do GitHub ✓','var(--green-dk)',5000);
       }
       updateCentralStatus();updateClearBtns();
-      return applied;
+      return true;
     }
   }catch(e){console.warn('Erro ao carregar estado do GitHub:',e)}
   return false;
@@ -5544,6 +5539,31 @@ async function idbGet(key){
 function stateMeta(st){
   return{version:st.version,savedAt:st.savedAt,savedBy:st.savedBy,lastAbAt:st.lastAbAt,lastEncAt:st.lastEncAt,lastAbFile:st.lastAbFile,lastEncFile:st.lastEncFile,fuelBaseAt:st.fuelBaseAt,fuelBaseFile:st.fuelBaseFile};
 }
+function stateSignature(st){
+  if(!st||typeof st!=='object')return'';
+  const len=v=>Array.isArray(v)?v.length:0;
+  return[
+    len(st.dAb),st.lastAbAt||'',st.lastAbFile||'',
+    len(st.dEnc),st.lastEncAt||'',st.lastEncFile||'',
+    len(st.dFuelVehicles),len(st.dFuelRequests),len(st.dFuelWithdrawals),len(st.dFuelAportes),st.fuelBaseAt||'',st.fuelBaseFile||'',
+    len(st.ofsRows),(st.ofsMeta&&st.ofsMeta.uploadedAt)||'',(st.ofsMeta&&st.ofsMeta.fname)||''
+  ].join('|');
+}
+function stateHasBaseData(st){return !!(st&&typeof st==='object'&&(Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.ofsRows)))}
+function getLocalStateForSync(){
+  let raw=null;
+  try{raw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY)}catch(_){}
+  if(!raw)return null;
+  try{return JSON.parse(raw)}catch(_){return null}
+}
+function shouldApplyRemoteState(st){
+  if(!stateHasBaseData(st)&&!st.savedAt)return false;
+  const local=getLocalStateForSync();
+  const localAt=(local&&local.savedAt)||'',remoteAt=st.savedAt||'';
+  if(!localAt)return true;
+  if(remoteAt&&remoteAt>=localAt)return true;
+  return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
+}
 function buildState(){return{version:7,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,pausedBusinessH:Number(d.pausedBusinessH||0),slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
@@ -5613,21 +5633,25 @@ function applyState(st,label){
     }
     if(document.getElementById('user-panel').style.display==='flex')renderUsers();
   }
-  dFuelVehicles=normalizeFuelVehicles(st.dFuelVehicles);
-  dFuelRequests=clearLegacyFuelRequests?[]:normalizeFuelRequests(st.dFuelRequests);
-  dFuelWithdrawals=normalizeFuelWithdrawals(st.dFuelWithdrawals);
-  dFuelAportes=normalizeFuelAportes(st.dFuelAportes);
-  if(!dFuelAportes.length&&Number(st.fuelBalanceTotal||st.fuelBalance||0)>0)
-    dFuelAportes=[{id:'APT0',data:new Date().toISOString().slice(0,10),valor:Number(st.fuelBalanceTotal||st.fuelBalance||0),desc:'Aporte migrado'}];
-  fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
-  fuelCardBalance=st.fuelCardBalance===null||st.fuelCardBalance===undefined?null:Number(st.fuelCardBalance||0);
-  fuelCycleStartDay=Math.min(28,Math.max(1,Number(st.fuelCycleStartDay||16)));
-  fuelCycleEndDay=Math.min(28,Math.max(1,Number(st.fuelCycleEndDay||15)));
-  fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
-  fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
-  fuelBaseAt=st.fuelBaseAt||fuelBaseAt||'';
-  fuelBaseFile=st.fuelBaseFile||fuelBaseFile||'';
-  renderFuel();
+  const hasFuelState=Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.dFuelWithdrawals)||Array.isArray(st.dFuelAportes)||st.fuelBaseAt!==undefined||st.fuelBaseFile!==undefined||st.fuelCardBalance!==undefined;
+  if(hasFuelState){
+    dFuelVehicles=normalizeFuelVehicles(st.dFuelVehicles);
+    dFuelRequests=clearLegacyFuelRequests?[]:normalizeFuelRequests(st.dFuelRequests);
+    dFuelWithdrawals=normalizeFuelWithdrawals(st.dFuelWithdrawals);
+    dFuelAportes=normalizeFuelAportes(st.dFuelAportes);
+    if(!dFuelAportes.length&&Number(st.fuelBalanceTotal||st.fuelBalance||0)>0)
+      dFuelAportes=[{id:'APT0',data:new Date().toISOString().slice(0,10),valor:Number(st.fuelBalanceTotal||st.fuelBalance||0),desc:'Aporte migrado'}];
+    fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
+    fuelCardBalance=st.fuelCardBalance===null||st.fuelCardBalance===undefined?null:Number(st.fuelCardBalance||0);
+    fuelCycleStartDay=Math.min(28,Math.max(1,Number(st.fuelCycleStartDay||16)));
+    fuelCycleEndDay=Math.min(28,Math.max(1,Number(st.fuelCycleEndDay||15)));
+    fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
+    fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
+    fuelBaseAt=st.fuelBaseAt||fuelBaseAt||'';
+    fuelBaseFile=st.fuelBaseFile||fuelBaseFile||'';
+    renderFuel();
+    changed=true;
+  }
   if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
     ofsRows=st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)}));
     ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
@@ -5689,11 +5713,9 @@ async function restoreSharedState(){
     const data=await jsonpFetch(url,{action:'state',t:Date.now()});
     const st=data&&data.state;
     if(!st||typeof st!=='object')return false;
-    const localRaw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY);
-    let localAt='';try{localAt=(localRaw&&JSON.parse(localRaw).savedAt)||''}catch(_){}
-    const remoteAt=st.savedAt||'';
-    if(!localAt||remoteAt>=localAt){
-      if(applyState(st,'Base compartilhada'))saveLocalState(buildState());
+    if(shouldApplyRemoteState(st)){
+      const applied=applyState(st,'Base compartilhada');
+      if(applied||stateHasBaseData(st))saveLocalState(st);
       updateCentralStatus();updateClearBtns();
       return true;
     }
