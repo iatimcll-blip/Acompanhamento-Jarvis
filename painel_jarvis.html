@@ -4646,6 +4646,11 @@ canvas {
   border-left-color: var(--blue) !important;
   background: linear-gradient(90deg, rgba(0,122,255,.18), rgba(0,122,255,.07) 48%, var(--surface) 100%) !important;
 }
+#panel-abertos .ab-card.row-purple {
+  border-color: rgba(175,82,222,.42) !important;
+  border-left-color: #af52de !important;
+  background: linear-gradient(90deg, rgba(175,82,222,.24), rgba(175,82,222,.12) 50%, rgba(175,82,222,.07) 100%) !important;
+}
 #panel-abertos .ab-card.row-green .abc-ticket,
 #panel-abertos .ab-card.row-green .abc-main,
 #panel-abertos .ab-card.row-green .abc-sla-panel,
@@ -4677,6 +4682,14 @@ canvas {
 #panel-abertos .ab-card.row-blue .abc-obs {
   background: rgba(0,122,255,.08) !important;
   border-color: rgba(0,122,255,.23) !important;
+}
+#panel-abertos .ab-card.row-purple .abc-ticket,
+#panel-abertos .ab-card.row-purple .abc-main,
+#panel-abertos .ab-card.row-purple .abc-sla-panel,
+#panel-abertos .ab-card.row-purple .abc-prof,
+#panel-abertos .ab-card.row-purple .abc-obs {
+  background: rgba(175,82,222,.11) !important;
+  border-color: rgba(175,82,222,.28) !important;
 }
 #panel-abertos .abc-ticket {
   grid-area: ticket !important;
@@ -6797,6 +6810,7 @@ function isSwapRepair(d){return nk(d&&d.depAtual||'')===nk('CMO - REPARO SWAP')}
 function isOperatorClient(d){const s=nk((d&&d.cliente)||'');return OPERATOR_CLIENTS.some(x=>s.includes(nk(x)))}
 function isPendingSubstatus(v){return nk(v).includes('PENDENTE')}
 function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s.includes('VALIDA')}
+function isPurpleResponsavel(v){return ['SEA','TIM','CLARO','ONLINE','CARAJASNET','MASTERNET','MARTENET','VIVO','IBL'].includes(nk(v))}
 function abStatusCardClass(v){
   const s=nk(fmtSubstatus(v)||v);
   if(s.includes('FECHADO')||s.includes('CANCELADO')||isValidationSubstatus(v))return'row-green';
@@ -7674,7 +7688,8 @@ function renderTAb(){
     const lk=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket" style="color:var(--blue);font-size:11px;margin-left:4px"><i class="ti ti-external-link"></i></a>`:'';
     const idHtml=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.id)}</a>`:eh(d.id);
     const subHtml=canEdit()?`<select class="substatus-select" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
-    const rowCls=abStatusCardClass(d.substatus);
+    const ann=abAnnotations[d.id]||{};
+    const rowCls=isPurpleResponsavel(ann.prof)?'row-purple':abStatusCardClass(d.substatus);
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
@@ -9414,7 +9429,7 @@ function ofsWasManuallyCleared(){return !!(ofsMeta&&(ofsMeta.cleared||ofsMeta.cl
 /* ─── anotações persistentes de chamados abertos ─── */
 let abAnnotations={};
 const AB_ANN_KEY='atrix:ab:annotations:v1';
-const AB_RESPONSAVEIS_FIXOS=['TIM','VIVO','CLARO','CARAJASNET','MARTENET','ONLINE','SEA','ST1','SOS'];
+const AB_RESPONSAVEIS_FIXOS=['TIM','VIVO','CLARO','CARAJASNET','MASTERNET','MARTENET','ONLINE','SEA','IBL','ST1','SOS'];
 function loadAbAnnotations(){try{abAnnotations=JSON.parse(localStorage.getItem(AB_ANN_KEY)||'{}')||{};}catch{abAnnotations={};}}
 function saveAbAnnotation(id,field,value){if(!id)return;if(!abAnnotations[id])abAnnotations[id]={};abAnnotations[id][field]=value;try{localStorage.setItem(AB_ANN_KEY,JSON.stringify(abAnnotations));}catch(e){console.warn('ann save',e);}}
 /* Poda: remove anotações de tickets que não estão mais na base ativa */
@@ -9435,10 +9450,10 @@ function abAnnProfSelect(id){
 }
 function abAnnAssignProf(id,value){
   saveAbAnnotation(id,'prof',value);
-  if(!value)return;
+  if(!value){renderAllAb();return;}
   const item=dAb.find(d=>String(d.id)===String(id));if(!item)return;
   const sk=nk(item.substatus);
-  if(sk.includes('FECHADO')||sk.includes('CANCELADO')||sk.includes('RESPONDIDO')||sk.includes('ATENDIMENTO'))return;
+  if(sk.includes('FECHADO')||sk.includes('CANCELADO')||sk.includes('RESPONDIDO')||sk.includes('ATENDIMENTO')){renderAllAb();return;}
   updateSubstatus(item.rowKey,'Em Atendimento');
 }
 function abAnnProfReadonly(id){const p=(abAnnotations[id]||{}).prof||'';return p?`<span class="ann-readonly">${eh(p)}</span>`:`<span class="ann-empty">—</span>`;}
