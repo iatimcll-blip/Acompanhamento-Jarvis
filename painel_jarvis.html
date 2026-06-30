@@ -4626,6 +4626,58 @@ canvas {
   padding: 12px !important;
   border-left-width: 5px !important;
 }
+#panel-abertos .ab-card.row-green {
+  border-color: rgba(52,199,89,.34) !important;
+  border-left-color: var(--green) !important;
+  background: linear-gradient(90deg, rgba(52,199,89,.18), rgba(52,199,89,.06) 48%, var(--surface) 100%) !important;
+}
+#panel-abertos .ab-card.row-orange {
+  border-color: rgba(255,149,0,.34) !important;
+  border-left-color: var(--orange) !important;
+  background: linear-gradient(90deg, rgba(255,149,0,.20), rgba(255,149,0,.07) 48%, var(--surface) 100%) !important;
+}
+#panel-abertos .ab-card.row-red {
+  border-color: rgba(255,59,48,.34) !important;
+  border-left-color: var(--red) !important;
+  background: linear-gradient(90deg, rgba(255,59,48,.18), rgba(255,59,48,.07) 48%, var(--surface) 100%) !important;
+}
+#panel-abertos .ab-card.row-blue {
+  border-color: rgba(0,122,255,.34) !important;
+  border-left-color: var(--blue) !important;
+  background: linear-gradient(90deg, rgba(0,122,255,.18), rgba(0,122,255,.07) 48%, var(--surface) 100%) !important;
+}
+#panel-abertos .ab-card.row-green .abc-ticket,
+#panel-abertos .ab-card.row-green .abc-main,
+#panel-abertos .ab-card.row-green .abc-sla-panel,
+#panel-abertos .ab-card.row-green .abc-prof,
+#panel-abertos .ab-card.row-green .abc-obs {
+  background: rgba(52,199,89,.08) !important;
+  border-color: rgba(52,199,89,.22) !important;
+}
+#panel-abertos .ab-card.row-orange .abc-ticket,
+#panel-abertos .ab-card.row-orange .abc-main,
+#panel-abertos .ab-card.row-orange .abc-sla-panel,
+#panel-abertos .ab-card.row-orange .abc-prof,
+#panel-abertos .ab-card.row-orange .abc-obs {
+  background: rgba(255,149,0,.09) !important;
+  border-color: rgba(255,149,0,.24) !important;
+}
+#panel-abertos .ab-card.row-red .abc-ticket,
+#panel-abertos .ab-card.row-red .abc-main,
+#panel-abertos .ab-card.row-red .abc-sla-panel,
+#panel-abertos .ab-card.row-red .abc-prof,
+#panel-abertos .ab-card.row-red .abc-obs {
+  background: rgba(255,59,48,.08) !important;
+  border-color: rgba(255,59,48,.24) !important;
+}
+#panel-abertos .ab-card.row-blue .abc-ticket,
+#panel-abertos .ab-card.row-blue .abc-main,
+#panel-abertos .ab-card.row-blue .abc-sla-panel,
+#panel-abertos .ab-card.row-blue .abc-prof,
+#panel-abertos .ab-card.row-blue .abc-obs {
+  background: rgba(0,122,255,.08) !important;
+  border-color: rgba(0,122,255,.23) !important;
+}
 #panel-abertos .abc-ticket {
   grid-area: ticket !important;
   align-content: start !important;
@@ -6745,6 +6797,14 @@ function isSwapRepair(d){return nk(d&&d.depAtual||'')===nk('CMO - REPARO SWAP')}
 function isOperatorClient(d){const s=nk((d&&d.cliente)||'');return OPERATOR_CLIENTS.some(x=>s.includes(nk(x)))}
 function isPendingSubstatus(v){return nk(v).includes('PENDENTE')}
 function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s.includes('VALIDA')}
+function abStatusCardClass(v){
+  const s=nk(fmtSubstatus(v)||v);
+  if(s.includes('FECHADO')||s.includes('CANCELADO')||isValidationSubstatus(v))return'row-green';
+  if((s.includes('PENDENTE')&&s.includes('CLIENTE'))||(s.includes('LIBER')&&s.includes('ACESSO')))return'row-orange';
+  if(s.includes('AGUARDANDO')&&s.includes('DISPONIBIL'))return'row-red';
+  if(s.includes('PENDENTE')&&s.includes('AGENDAMENTO'))return'row-blue';
+  return'';
+}
 function substatusLamp(d){
   if(isPausedSubstatus(d.substatus))return'<span class="sla-lamp lamp-orange" title="SLA congelado por substatus"></span>';
   if(isOperatorClient(d))return'<span class="sla-lamp lamp-blue" title="Operadora: contagem continua"></span>';
@@ -7614,11 +7674,7 @@ function renderTAb(){
     const lk=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket" style="color:var(--blue);font-size:11px;margin-left:4px"><i class="ti ti-external-link"></i></a>`:'';
     const idHtml=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.id)}</a>`:eh(d.id);
     const subHtml=canEdit()?`<select class="substatus-select" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
-    const _sk=nk(d.substatus);
-    const rowCls=(_sk.includes('FECHADO')||_sk.includes('CANCELADO')||isValidationSubstatus(d.substatus)||_sk.includes('RESPONDIDO'))?'row-green':
-      ((_sk.includes('PENDENTE')&&_sk.includes('CLIENTE'))||(_sk.includes('LIBER')&&_sk.includes('ACESSO')))?'row-orange':
-      _sk.includes('DISPONIBIL')?'row-red':
-      (_sk.includes('PENDENTE')&&_sk.includes('AGENDAMENTO'))?'row-blue':'';
+    const rowCls=abStatusCardClass(d.substatus);
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
