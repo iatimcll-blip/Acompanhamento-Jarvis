@@ -18,13 +18,13 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-app.use(cors({ origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN.split(',').map(s => s.trim()) }));
-// Allow HTTPS pages (GitHub Pages) to reach the local bridge via Chrome Private Network Access
+// Allow HTTPS pages (GitHub Pages) to reach the local bridge via Chrome Private Network Access.
+// Must run BEFORE cors(), since cors() answers OPTIONS preflights itself and never calls next().
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
-  if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); return res.sendStatus(204); }
   next();
 });
+app.use(cors({ origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN.split(',').map(s => s.trim()) }));
 app.use(express.json({ limit: '1mb' }));
 
 let client;
@@ -164,6 +164,29 @@ async function startClient() {
     initializing = false;
   }
 }
+
+// Self-healing: a corrupted/locked Chromium profile (common on Windows) can make
+// whatsapp-web.js throw outside any try/catch we control. Without these handlers
+// that throw would kill the whole process instead of just failing the connection.
+let restartTimer = null;
+function scheduleRestart(delayMs = 5000) {
+  if (restartTimer) return;
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    initializing = false;
+    startClient();
+  }, delayMs);
+}
+process.on('uncaughtException', err => {
+  console.error('uncaughtException:', err);
+  setStatus('error', { lastError: err.message || String(err) });
+  scheduleRestart();
+});
+process.on('unhandledRejection', err => {
+  console.error('unhandledRejection:', err);
+  setStatus('error', { lastError: (err && err.message) || String(err) });
+  scheduleRestart();
+});
 
 app.get('/', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', docs: ['/health', '/api/status', '/api/chats'] }));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', authDir: AUTH_DIR, state: publicState() }));
