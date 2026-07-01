@@ -6956,7 +6956,19 @@ const SLA_CLR={'Maior que 24h':'#ff3b30','Entre 12h e 24h':'#ff9500','Entre 8h e
 const SLA_BADGE={'Maior que 24h':'b-red','Entre 12h e 24h':'b-orange','Entre 8h e 12h':'b-yellow','Entre 4h e 8h':'b-green','Até 4h':'b-blue'};
 const AB_ORDEM_UF=['MA','PA','PI','AM','AP'];
 const AB_ORDEM_MOP=['SLN MA','GIGA+ MA','GIGA+ PI','SLN PA','GIGA+ AM','GIGA+ AP','ADX'];
-const AB_ORDEM_SUB=['Pendente Agendamento','Pendente Cliente','Aguardando Liberação De Acesso','Aguardando Disponibilidade Técnica','Encaminhado ao Técnico','Pendente Validação'];
+const AB_SUBSTATUS_PADRAO=[
+  'Aguardando Liberação de Acesso',
+  'Aguardando Disponibilidade Técnica',
+  'Atendido por Parceiro (Operadoras)',
+  'Cancelado',
+  'Encaminhado ao Técnico',
+  'Fechado',
+  'Pendente Agendamento',
+  'Pendente Cliente',
+  'Pendente Validação',
+  'Respondido pelo Cliente'
+];
+const AB_ORDEM_SUB=AB_SUBSTATUS_PADRAO;
 const AGING_MAP={'Maior que 24h':'Maior que 24h','Entre 12h e 24h':'Entre 12h e 24h','Entre 8h e 12h':'Entre 8h e 12h','Entre 4h e 8h':'Entre 4h e 8h','Ate 4h':'Até 4h','Até 4h':'Até 4h','Ate 8h':'Entre 4h e 8h','Até 8h':'Entre 4h e 8h','Ate 12h':'Entre 8h e 12h','Até 12h':'Entre 8h e 12h','Ate 24h':'Entre 12h e 24h','Até 24h':'Entre 12h e 24h'};
 const MOP_CLR={'SLN MA':'#007aff','GIGA+ MA':'#34c759','GIGA+ PI':'#ff6b35','SLN PA':'#af52de','ADX':'#32ade6','MA CAP':'#007aff','MA INT':'#34c759','PI CAP':'#ff6b35','PI INT':'#ff9f0a','PA CAP':'#af52de','PA INT':'#c4439a','AP / AM':'#32ade6'};
 const MOP_QUICK=['SLN MA','GIGA+ MA','GIGA+ PI','SLN PA','ADX'];
@@ -7332,13 +7344,17 @@ function fmtSubstatus(v){
   const s=String(v||'').trim().replace(/\s+/g,' ');
   if(!s)return'';
   const k=nk(s);
+  const padrao=AB_SUBSTATUS_PADRAO.find(x=>nk(x)===k);
+  if(padrao)return padrao;
   if(k.includes('PENDENTE')&&k.includes('AGENDAMENTO'))return'Pendente Agendamento';
   if(k.includes('PENDENTE')&&k.includes('VALID'))return'Pendente Validação';
   if(k.includes('PENDENTE')&&k.includes('CLIENTE'))return'Pendente Cliente';
-  if(k.includes('AGUARDANDO')&&k.includes('LIBER')&&k.includes('ACESSO'))return'Aguardando Liberação De Acesso';
+  if(k.includes('AGUARDANDO')&&k.includes('LIBER')&&k.includes('ACESSO'))return'Aguardando Liberação de Acesso';
   if(k.includes('AGUARDANDO')&&k.includes('DISPONIBILIDADE')&&(k.includes('TECN')||k.includes('TCN')))return'Aguardando Disponibilidade Técnica';
+  if(k.includes('ATENDIDO')&&k.includes('PARCEIRO'))return'Atendido por Parceiro (Operadoras)';
+  if(k.includes('RESPONDIDO')&&k.includes('CLIENTE'))return'Respondido pelo Cliente';
   if(k.includes('ANALISAR')&&k.includes('RESPOSTA'))return'Analisar Resposta';
-  if(k.includes('ENCAMINHADO')&&(k.includes('TECNICO')||k.includes('TCN')))return'Encaminhado Ao Técnico';
+  if(k.includes('ENCAMINHADO')&&(k.includes('TECNICO')||k.includes('TCN')))return'Encaminhado ao Técnico';
   if(k.includes('CANCELADO'))return'Cancelado';
   if(k.includes('FECHADO'))return'Fechado';
   return s.replace(/\uFFFD+/g,'').toLocaleLowerCase('pt-BR').replace(/(^|[\s/-])([a-z0-9\u00c0-\u024f])/gi,(m,p,c)=>p+c.toLocaleUpperCase('pt-BR')).replace(/\bSla\b/g,'SLA').replace(/\bB2b\b/g,'B2B')
@@ -7358,7 +7374,7 @@ function fmtCausaRaiz(v){
   if(k.includes('SEM')&&k.includes('ACAO'))return'Sem Ação';
   return s.replace(/\uFFFD+/g,'').toLocaleLowerCase('pt-BR').replace(/(^|[\s/-])([a-z0-9\u00c0-\u024f])/gi,(m,p,c)=>p+c.toLocaleUpperCase('pt-BR')).replace(/\bPop\b/g,'POP')
 }
-function uniqueSubstatuses(values){const map=new Map();values.map(fmtSubstatus).filter(Boolean).forEach(s=>{const k=nk(s);if(!map.has(k))map.set(k,s)});return[...map.values()].sort((a,b)=>a.localeCompare(b,'pt-BR'))}
+function uniqueSubstatuses(values){const map=new Map();values.map(fmtSubstatus).filter(Boolean).forEach(s=>{const k=nk(s);if(!map.has(k))map.set(k,s)});return[...map.values()].sort(abOrdenarPor(AB_ORDEM_SUB))}
 function safeUrl(v){const raw=String(v||'').trim();if(!raw)return'';try{const u=new URL(raw,window.location&&window.location.href?window.location.href:'http://localhost/');return['http:','https:'].includes(u.protocol)?u.href:''}catch{return''}}
 function bestLink(...vals){for(const v of vals){const u=safeUrl(v);if(u)return u}return''}
 function gv(r,ns){for(const n of ns)if(r[n]!==undefined&&r[n]!=='')return r[n];const m=Object.fromEntries(Object.keys(r).map(k=>[nk(k),k]));for(const n of ns){const k=m[nk(n)];if(k&&r[k]!==undefined&&r[k]!=='')return r[k]}return''}
@@ -7511,7 +7527,7 @@ function encRuleStats(d){
 function parseOpeningDate(v){if(v===undefined||v===null||v==='')return null;if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v).trim();if(!raw)return null;const iso=new Date(raw);if(!isNaN(iso))return iso;const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const y=Number(m[3].length===2?'20'+m[3]:m[3]);const d=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(d)?null:d}
 function fmtReportDate(v){const d=parseOpeningDate(v);if(!d)return String(v||'').trim()||'-';const hasTime=d.getHours()||d.getMinutes()||d.getSeconds();return hasTime?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}
 function hoursSince(d){return d?Math.max(0,(Date.now()-d.getTime())/3600000):0}
-const PAUSE_SUBSTATUS=['Pendente Cliente','Pendente Agendamento','Pendente Valida\u00e7\u00e3o','Cancelado','Fechado','Aguardando Libera\u00e7\u00e3o De Acesso'];
+const PAUSE_SUBSTATUS=['Pendente Cliente','Pendente Agendamento','Pendente Valida\u00e7\u00e3o','Cancelado','Fechado','Aguardando Libera\u00e7\u00e3o de Acesso'];
 const OPERATOR_CLIENTS=['OPERADORA','OPERADORAS','TIM','CLARO','VIVO','ONLINE'];
 function isPausedSubstatus(v){const s=nk(v);return PAUSE_SUBSTATUS.some(x=>s===nk(x)||s.includes(nk(x)))||(s.includes('PENDENTE')&&(s.includes('CLIENTE')||s.includes('AGENDAMENTO')||s.includes('VALIDA')))||s.includes('CANCELADO')||s.includes('FECHADO')||(s.includes('LIBER')&&s.includes('ACESSO'))}
 function isSwapRepair(d){return nk(d&&d.depAtual||'')===nk('CMO - REPARO SWAP')}
@@ -8352,7 +8368,7 @@ function rChAb(){
 function fillFiltersAb(){
   const curMop=document.getElementById('f-mop')?.value||'';
   const mops=[...new Set(dAb.map(d=>d.mop).filter(Boolean))].sort();
-  const subs=uniqueSubstatuses(dAb.map(d=>d.substatus));
+  const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);
   const ufs=[...new Set(dAb.map(d=>d.uf).filter(Boolean))].sort();
   document.getElementById('f-mop').innerHTML='<option value="">Todos MOP/EPS</option>'+mops.map(m=>`<option value="${eh(m)}">${eh(m)}</option>`).join('');
   if(curMop&&mops.includes(curMop))document.getElementById('f-mop').value=curMop;
@@ -8361,7 +8377,7 @@ function fillFiltersAb(){
   document.getElementById('f-faixa').innerHTML='<option value="">Todas as faixas</option>'+SLA_ORDER.map(f=>`<option value="${eh(f)}">${eh(f)}</option>`).join('');
   renderMopQuick();
 }
-function getSubstatusOptions(current){const cur=fmtSubstatus(current);const subs=uniqueSubstatuses([...PAUSE_SUBSTATUS,...dAb.map(d=>d.substatus)]);if(cur&&!subs.some(s=>nk(s)===nk(cur)))subs.unshift(cur);return subs.map(s=>`<option value="${eh(s)}"${nk(s)===nk(cur)?' selected':''}>${eh(s)}</option>`).join('')}
+function getSubstatusOptions(current){const cur=fmtSubstatus(current);const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);if(cur&&!subs.some(s=>nk(s)===nk(cur)))subs.unshift(cur);return subs.map(s=>`<option value="${eh(s)}"${nk(s)===nk(cur)?' selected':''}>${eh(s)}</option>`).join('')}
 function updateSubstatus(rowKey,value){
   if(!canEdit())return;
   const item=dAb.find(d=>String(d.rowKey)===String(rowKey)||String(d.id)===String(rowKey));if(!item)return;
