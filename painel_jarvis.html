@@ -297,6 +297,12 @@ body {
 .wpp-qr-placeholder{font-size:72px;color:#25d366;animation:wppPulse 1.4s ease-in-out infinite;position:relative;z-index:1}
 .wpp-qr-status{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;background:rgba(37,211,102,.12);color:#25d366;font-size:13px;font-weight:600;border:.5px solid rgba(37,211,102,.3)}
 .wpp-qr-status.err{background:rgba(255,59,48,.12);color:#ff6b6b;border-color:rgba(255,59,48,.3)}
+.wpp-bridge-diag{width:100%;border:.5px solid rgba(118,118,128,.32);background:rgba(28,28,30,.78);color:#a1a1aa;border-radius:12px;padding:9px 11px;font-size:11px;line-height:1.35;text-align:left;word-break:break-word}
+.wpp-bridge-diag.ok{border-color:rgba(37,211,102,.32);background:rgba(37,211,102,.10);color:#b7f7cb}
+.wpp-bridge-diag.err{border-color:rgba(255,59,48,.32);background:rgba(255,59,48,.10);color:#ffb4ad}
+.wpp-bridge-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.wpp-bridge-actions button{height:30px;border-radius:999px;border:.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.09);color:#fff;font-size:11px;font-weight:700;padding:0 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.wpp-bridge-actions button:hover{background:rgba(255,255,255,.16)}
 .wpp-qr-steps-list{text-align:left;padding-left:18px;color:#8e8e93;font-size:14px;line-height:1.7;margin:0}
 .wpp-qr-steps-list li strong{color:#fff}
 /* Chat view */
@@ -6437,6 +6443,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <i class="ti ti-loader-2" id="wpp-qr-status-icon" style="animation:wppSpin 1s linear infinite"></i>
               <span id="wpp-qr-status-text">Conectando ao serviço WhatsApp...</span>
             </div>
+            <div class="wpp-bridge-diag" id="wpp-bridge-diag">Bridge: aguardando diagnóstico...</div>
+            <div class="wpp-bridge-actions">
+              <button type="button" onclick="refreshWhatsAppPanel()"><i class="ti ti-refresh"></i>Atualizar</button>
+              <button type="button" onclick="restartWppBridge()"><i class="ti ti-rotate-clockwise"></i>Reiniciar bridge</button>
+              <button type="button" onclick="openWhatsAppExternal()"><i class="ti ti-settings"></i>Configurar URL</button>
+            </div>
             <ol class="wpp-qr-steps-list">
               <li>Abra o WhatsApp no celular</li>
               <li>Toque em <strong>Aparelhos conectados</strong></li>
@@ -7863,6 +7875,46 @@ async function restoreRemoteState(){
   const ghOk=await restoreGhState();
   if(!ghOk)await restoreSharedState();
 }
+
+/* ── Atrix Agent: exportar chamados e consumir atualizações ────────────── */
+async function pushAtrixTicketsJson(){
+  if(!getGhToken()||!dAb.length)return;
+  const tickets=dAb.map(d=>({rowKey:d.rowKey,id:d.id,ticketId:d.ticketId||'',cliente:d.cliente||'',link:d.link||'',substatus:d.substatus||'',uf:d.uf||'',cidade:d.cidade||''})).filter(t=>t.link);
+  if(!tickets.length)return;
+  const path='data/atrix_tickets.json';
+  const apiUrl=`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/contents/${path}`;
+  const hdrs={Authorization:'token '+getGhToken(),Accept:'application/vnd.github.v3+json','Content-Type':'application/json'};
+  try{
+    let sha='';
+    const info=await fetch(apiUrl,{headers:hdrs,cache:'no-store'});
+    if(info.ok){const j=await info.json();sha=j.sha||'';}
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(tickets,null,2))));
+    await fetch(apiUrl,{method:'PUT',headers:hdrs,body:JSON.stringify({message:`chore: exportar chamados B2B (${tickets.length})`,content,...(sha?{sha}:{})})});
+    console.log(`[Atrix Agent] ${tickets.length} chamado(s) exportados para GitHub.`);
+  }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados:',e);}
+}
+
+async function loadAtrixUpdates(){
+  const rawUrl=`https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/data/atrix_updates.json`;
+  try{
+    const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return;
+    const updates=await r.json();
+    let count=0;
+    dAb.forEach(ticket=>{
+      const up=updates[ticket.id]||updates[ticket.ticketId]||null;
+      if(!up||!up.substatus)return;
+      if(up.substatus!==ticket.substatus){ticket.substatus=up.substatus;count++;}
+    });
+    if(count>0){renderAllAb();console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);}
+  }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
+}
+
+async function exportAtrixTicketsManual(){
+  if(!getGhToken()){alert('Configure o Token GitHub nas configurações de sincronização antes de exportar.');return;}
+  await pushAtrixTicketsJson();
+  _ghToast(`${dAb.filter(d=>d.link).length} chamados exportados para o agente Atrix.`,'var(--green)',4000);
+}
 function restoreState(){
   try{
     const raw=localStorage.getItem(STORAGE_KEY);
@@ -8125,6 +8177,7 @@ function procAb(raw,fname){
   document.getElementById('empty-ab').style.display='none';
   document.getElementById('dash-ab').style.display='block';
   saveState();autoSyncAfterBaseUpload('B2B Abertos');updateClearBtns();
+  setTimeout(pushAtrixTicketsJson,2000);
 }
 
 /* ─── PROCESS ENCERRADOS ─── */
@@ -9873,7 +9926,7 @@ function playWppSound(){
     setTimeout(()=>{try{ctx.close();}catch(_){}},600);
   }catch(_){}
 }
-const WPP_BRIDGE_RAILWAY='https://mcll-painel-acionamentos-production.up.railway.app';
+const WPP_BRIDGE_RAILWAY='';
 const WPP_BRIDGE_LOCAL='http://localhost:8788';
 const WPP_BRIDGE_DEFAULT=WPP_BRIDGE_LOCAL;
 const WPP_BRIDGE_KEY='jarvis:wpp:bridge-url';
@@ -9890,6 +9943,12 @@ function wppSearch(q){wppSearchQuery=(q||'').toLowerCase();renderWppChats();}
 function wppBridgeUrl(){return(wppActiveBridgeUrl||localStorage.getItem(WPP_BRIDGE_KEY)||WPP_BRIDGE_DEFAULT).replace(/\/+$/,'')}
 function wppBridgeCandidates(){return[...new Set([localStorage.getItem(WPP_BRIDGE_KEY),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]}
 function wppWsUrl(){return wppBridgeUrl().replace(/^http/i,'ws')+'/ws'}
+function setWppDiag(text,kind=''){
+  const el=document.getElementById('wpp-bridge-diag');if(!el)return;
+  el.textContent=text;
+  el.classList.toggle('ok',kind==='ok');
+  el.classList.toggle('err',kind==='err');
+}
 async function wppFetch(path,opts){
   let lastErr=null;
   for(const base of wppBridgeCandidates()){
@@ -9898,8 +9957,9 @@ async function wppFetch(path,opts){
       const data=await res.json().catch(()=>null);
       if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));
       wppActiveBridgeUrl=base;
+      setWppDiag('Bridge conectado: '+base,'ok');
       return data;
-    }catch(e){lastErr=e}
+    }catch(e){lastErr=e;setWppDiag('Falha no bridge '+base+': '+(e&&e.message?e.message:e),'err')}
   }
   throw lastErr||new Error('Serviço WhatsApp indisponível');
 }
@@ -9953,6 +10013,7 @@ function renderWppState(st){
   const statusMsgs={starting:['Iniciando serviço WhatsApp...','ti-loader-2'],qr:['Aponte o celular para o QR Code','ti-qrcode'],authenticated:['Autenticado — carregando conversas...','ti-loader-2'],ready:['Sessão conectada','ti-check'],auth_failure:['Falha na autenticação','ti-alert-triangle'],disconnected:['Sessão desconectada','ti-alert-triangle'],error:['Erro no serviço WhatsApp','ti-alert-triangle']};
   const [stText,stIcon]=statusMsgs[wppBridgeState.status]||['Conectando...','ti-loader-2'];
   setWppStatus(stText,stIcon);
+  if(wppBridgeState.status)setWppDiag('Bridge conectado: '+wppBridgeUrl()+' | Status: '+wppBridgeState.status,'ok');
   const ready=wppBridgeState.status==='ready';
   setWppLoading(!ready);
   const input=document.getElementById('wpp-message-input'),btn=document.getElementById('wpp-send-btn');
@@ -10062,15 +10123,33 @@ function setMonitorLoading(show){
 function loadWhatsAppPanel(force=false){
   wppFilterLoad();
   setWppLoading(true);
-  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats();}).catch(()=>{connectWppBridge(force);});
+  setWppDiag('Testando bridge: '+wppBridgeCandidates().join(' | '));
+  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats();}).catch(e=>{setWppDiag('Serviço WhatsApp indisponível. Inicie o bridge em D:\\Acompanhamento Jarvis\\iniciar-whatsapp-bridge.bat ou configure a URL Railway correta. Detalhe: '+(e&&e.message?e.message:e),'err');connectWppBridge(force);});
 }
 function refreshWhatsAppPanel(){
   loadWhatsAppPanel(true);
   loadWppChats();
 }
+async function restartWppBridge(){
+  setWppStatus('Reiniciando bridge WhatsApp...','ti-refresh');
+  setWppDiag('Solicitando reinício em '+wppBridgeUrl());
+  try{
+    const st=await wppFetch('/api/restart',{method:'POST',body:'{}'});
+    renderWppState(st);
+    connectWppBridge(true);
+    _ghToast('Bridge WhatsApp reiniciado.','var(--green)',3500);
+  }catch(e){
+    setWppStatus('Não foi possível reiniciar o bridge','ti-alert-triangle');
+    setWppDiag('Falha ao reiniciar: '+(e&&e.message?e.message:e),'err');
+  }
+}
 function openWhatsAppExternal(){
-  const next=prompt('URL do Jarvis WhatsApp Bridge',wppBridgeUrl());
-  if(next){localStorage.setItem(WPP_BRIDGE_KEY,next.replace(/\/+$/,''));loadWhatsAppPanel(true)}
+  const next=prompt('URL do Jarvis WhatsApp Bridge',localStorage.getItem(WPP_BRIDGE_KEY)||wppBridgeUrl());
+  if(next===null)return;
+  const clean=next.trim().replace(/\/+$/,'');
+  if(clean)localStorage.setItem(WPP_BRIDGE_KEY,clean);else localStorage.removeItem(WPP_BRIDGE_KEY);
+  wppActiveBridgeUrl='';
+  loadWhatsAppPanel(true);
 }
 function openWppFilter(){
   wppFilterLoad();
