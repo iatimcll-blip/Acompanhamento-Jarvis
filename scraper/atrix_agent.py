@@ -188,50 +188,65 @@ def extract_substatus(page: Page, ticket: dict) -> str | None:
 
     try:
         page.goto(link, wait_until='domcontentloaded', timeout=30_000)
-        # SPA com hash — aguarda renderização do Angular/React
-        page.wait_for_timeout(2_500)
+
+        # SPA com hash routing — aguarda os selects serem renderizados pelo JS.
+        # Sem isso, o DOM pode estar vazio quando tentamos extrair.
+        try:
+            page.wait_for_selector('select', timeout=15_000)
+        except PwTimeout:
+            log.warning(f'[{ticket_id}] SPA não renderizou selects em 15s.')
+            return None
 
         # Seletor manual via .env (override)
         if ATRIX_SUB_SEL:
             val = _select_value(page, ATRIX_SUB_SEL)
             if val:
                 return val
-            log.debug(f'[{ticket_id}] Seletor override "{ATRIX_SUB_SEL}" não encontrou valor.')
+            log.debug(f'[{ticket_id}] Override "{ATRIX_SUB_SEL}" sem valor.')
 
-        # Tentativa automática
+        # 1. Tentativa pelos atributos name/id
         for sel in _SUB_SELECTORS:
             val = _select_value(page, sel)
             if val:
                 log.debug(f'[{ticket_id}] substatus via "{sel}": {val!r}')
                 return val
 
-        # Busca por label contendo "substatus" próximo a um <select>
+        # 2. Busca JavaScript: label "Substatus *" → select adjacente;
+        #    fallback: 2º select da página (Status=1º, Substatus=2º conforme layout Atrix)
         val = page.evaluate('''() => {
-            const labels = [...document.querySelectorAll("label")];
-            for (const lbl of labels) {
+            function selText(el) {
+                if (!el || el.tagName !== "SELECT") return null;
+                const opt = el.options[el.selectedIndex];
+                return opt ? opt.text.trim() : null;
+            }
+            // Label "Substatus *" → select vinculado
+            for (const lbl of document.querySelectorAll("label")) {
                 if (!lbl.textContent.toLowerCase().includes("substatus")) continue;
                 const forId = lbl.getAttribute("for");
-                const sel = forId
-                    ? document.getElementById(forId)
-                    : lbl.nextElementSibling || lbl.parentElement?.querySelector("select");
-                if (sel && sel.tagName === "SELECT") {
-                    const opt = sel.options[sel.selectedIndex];
-                    return opt ? opt.text.trim() : null;
-                }
+                let el = forId ? document.getElementById(forId) : null;
+                if (!el) el = lbl.nextElementSibling;
+                if (!el) el = lbl.closest("div, td, th")
+                               ? lbl.closest("div, td, th").querySelector("select")
+                               : null;
+                const v = selText(el);
+                if (v) return v;
             }
+            // Fallback posicional: 2º select = Substatus (1º = Status)
+            const selects = [...document.querySelectorAll("select")];
+            if (selects.length >= 2) return selText(selects[1]);
             return null;
         }''')
         if val:
-            log.debug(f'[{ticket_id}] substatus via label-search: {val!r}')
+            log.debug(f'[{ticket_id}] substatus via JS: {val!r}')
             return val
 
-        # Debug: salva screenshot para inspeção manual
+        # Debug: screenshot para inspeção manual do layout real
         if DEBUG:
             shot = Path(f'debug_{ticket_id}.png')
             page.screenshot(path=str(shot), full_page=True)
             log.debug(
-                f'[{ticket_id}] Substatus não encontrado. Screenshot em {shot}.\n'
-                f'  → Inspecione a página e defina ATRIX_SUBSTATUS_SELECTOR no .env'
+                f'[{ticket_id}] Screenshot salvo em {shot}.\n'
+                f'  Inspecione o HTML e defina ATRIX_SUBSTATUS_SELECTOR no .env'
             )
         else:
             log.warning(f'[{ticket_id}] Substatus não encontrado em {link}')
