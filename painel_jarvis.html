@@ -2313,6 +2313,15 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
   max-width: min(260px, 42vw);
 }
 
+/* ── Atrix Agent: badge de última sincronização ── */
+.atrix-sync-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--border,rgba(0,0,0,.1));border-radius:7px;padding:3px 8px;margin-left:8px;vertical-align:middle;white-space:nowrap;line-height:1.2;transition:background .2s,border-color .2s,color .2s}
+[data-theme=dark] .atrix-sync-badge{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12)}
+.atrix-sync-badge i{font-size:11px;flex-shrink:0}
+.atrix-sync-badge.fresh{color:var(--green-dk,#15803d);border-color:var(--green,#22c55e);background:var(--green-bg,rgba(34,197,94,.08))}
+.atrix-sync-badge.fresh i{color:var(--green-dk,#15803d)}
+.atrix-sync-badge.stale{color:var(--orange,#f97316);border-color:var(--orange,#f97316);background:rgba(249,115,22,.07)}
+.atrix-sync-badge.stale i{color:var(--orange,#f97316)}
+
 /* ID do ticket maior e em destaque */
 .abc-id {
   font-size: 15px !important;
@@ -5797,7 +5806,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div class="g3">
         <div class="card" style="grid-column:span 1">
-          <div class="card-hd"><span class="card-title">Por Substatus</span></div>
+          <div class="card-hd">
+            <span class="card-title">Por Substatus</span>
+            <span class="atrix-sync-badge" id="atrix-sync-badge" style="display:none" title="Última atualização automática via Atrix Agent">
+              <i class="ti ti-robot"></i>
+              <span id="atrix-sync-ts">--/--/---- --:--:--</span>
+            </span>
+          </div>
           <div id="sub-ab"></div>
         </div>
       </div>
@@ -7284,7 +7299,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+  hideLogin();restoreState();restoreActiveTab();applyPermissions();restoreAtrixTimestamp();setTimeout(loadAtrixUpdates,3000);
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -7304,7 +7319,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+      hideLogin();restoreState();restoreActiveTab();applyPermissions();restoreAtrixTimestamp();setTimeout(loadAtrixUpdates,3000);
       return;
     }
   }
@@ -7895,12 +7910,38 @@ async function pushAtrixTicketsJson(){
   }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados:',e);}
 }
 
+function _renderAtrixTs(isoStr){
+  const badge=document.getElementById('atrix-sync-badge');
+  const txt=document.getElementById('atrix-sync-ts');
+  if(!badge||!txt||!isoStr)return;
+  try{
+    const d=new Date(isoStr);
+    if(isNaN(d.getTime()))return;
+    const pad=n=>String(n).padStart(2,'0');
+    txt.textContent=`${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    badge.style.display='';
+    const ageMin=(Date.now()-d.getTime())/60000;
+    badge.classList.remove('fresh','stale');
+    if(ageMin<35)badge.classList.add('fresh');       // verde: atualizado há menos de 35 min
+    else if(ageMin>120)badge.classList.add('stale'); // laranja: mais de 2h sem atualizar
+  }catch(_){}
+}
+
+function restoreAtrixTimestamp(){
+  const saved=localStorage.getItem('jarvis:atrix:lastUpdate');
+  if(saved)_renderAtrixTs(saved);
+}
+
 async function loadAtrixUpdates(){
   const rawUrl=`https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/data/atrix_updates.json`;
   try{
     const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
     if(!r.ok)return;
     const updates=await r.json();
+    // Timestamp = updatedAt mais recente entre todos os chamados no JSON (= última vez que o agente rodou)
+    let latestAt='';
+    Object.values(updates).forEach(up=>{if(up.updatedAt&&up.updatedAt>latestAt)latestAt=up.updatedAt;});
+    if(latestAt){localStorage.setItem('jarvis:atrix:lastUpdate',latestAt);_renderAtrixTs(latestAt);}
     let count=0;
     dAb.forEach(ticket=>{
       const up=updates[ticket.id]||updates[ticket.ticketId]||null;
