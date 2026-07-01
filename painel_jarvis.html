@@ -7156,6 +7156,9 @@ function isSwapRepair(d){return nk(d&&d.depAtual||'')===nk('CMO - REPARO SWAP')}
 function isOperatorClient(d){const s=nk((d&&d.cliente)||'');return OPERATOR_CLIENTS.some(x=>s.includes(nk(x)))}
 function isPendingSubstatus(v){return nk(v).includes('PENDENTE')}
 function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s.includes('VALIDA')}
+function abIsInactiveForCount(c){const s=nk(c&&c.substatus);return s.includes('CANCELADO')||s.includes('FECHADO')||isValidationSubstatus(c&&c.substatus)}
+function abActiveCount(list){return(Array.isArray(list)?list:[]).filter(c=>!abIsInactiveForCount(c)).length}
+function refreshAbBadge(){const el=document.getElementById('nb-ab');if(el)el.textContent=abActiveCount(dAb)}
 function isPurpleResponsavel(v){return ['SEA','TIM','CLARO','ONLINE','CARAJASNET','MASTERNET','MARTENET','VIVO','IBL'].includes(nk(v))}
 function abStatusCardClass(v){
   const s=nk(fmtSubstatus(v)||v);
@@ -7287,7 +7290,7 @@ function applyState(st,label){
   const clearLegacyFuelRequests=Number(st.version||0)<6;
   if(Array.isArray(st.dAb)){
     dAb=normalizeAbState(st.dAb);
-    document.getElementById('nb-ab').textContent=dAb.length;
+    refreshAbBadge();
     if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
     if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
     fillFiltersAb();renderAllAb();startRefresh();
@@ -7702,7 +7705,7 @@ function saveModalAb(){
   const rowKey=Date.now();
   const item={rowKey,id,cliente,assunto:'',uf,cidade,regiao:'',substatus:substatus||'',link:'',openedAt:new Date(),originalSlaH:slaH,slaLimitH:8,pausedBusinessH:0,pauseStart:null,mop,slaH,faixa,statusSla:status};
   dAb.push(item);
-  document.getElementById('nb-ab').textContent=dAb.length;
+  refreshAbBadge();
   fillFiltersAb();renderAllAb();saveState();
   closeModalAb();
 }
@@ -7736,7 +7739,7 @@ function procAb(raw,fname){
     item.statusSla=statusSla(item.slaH,mop,slaLimitH);
     return item;
   });
-  document.getElementById('nb-ab').textContent=dAb.length;
+  refreshAbBadge();
   lastAbFile=fname||'';
   lastAbAt=now2();updateUploadTimes();
   podaAbAnnotations(); // apaga anotações de tickets que saíram da base
@@ -7919,7 +7922,7 @@ function renderMopQuick(){
   const cur=activeMopAb();
   const btns=['',...MOP_QUICK].map(m=>{
     const label=m||'Todos',active=cur===m?' active':'';
-    const count=m?dAb.filter(d=>d.mop===m).length:dAb.length;
+    const count=m?abActiveCount(dAb.filter(d=>d.mop===m)):abActiveCount(dAb);
     return`<button type="button" class="quick-mop-btn${active}" onclick="setMopQuick('${eh(m)}')" title="${count} chamados">${eh(label)} <span style="opacity:.72">${count}</span></button>`;
   }).join('');
   el.innerHTML=`<span class="quick-mop-label">Dashboard Cluster's</span>${btns}`;
@@ -8057,8 +8060,7 @@ function abOrdenarPor(ordem){
   };
 }
 function abResumoWhatsappAtivo(c){
-  const s=nk(c&&c.substatus);
-  return !(s.includes('CANCELADO')||s.includes('FECHADO')||isValidationSubstatus(c&&c.substatus));
+  return !abIsInactiveForCount(c);
 }
 function abResumoWhatsappScope(chamados){
   return (Array.isArray(chamados)?chamados:[]).filter(abResumoWhatsappAtivo);
@@ -10653,7 +10655,7 @@ function atxSetPill(id,cls,text){
   el.textContent=text;
 }
 function renderExecutiveDashboard(){
-  const ab=dAb.length,enc=dEnc.length,ofs=(typeof ofsRows!=='undefined'?ofsRows.length:0);
+  const ab=abActiveCount(dAb),enc=dEnc.length,ofs=(typeof ofsRows!=='undefined'?ofsRows.length:0);
   const rede=(typeof rdeBD!=='undefined'?rdeBD.length:0)+(typeof rdeAD!=='undefined'?rdeAD.length:0);
   const fuelBal=typeof fuelBalance==='function'?fuelBalance():null;
   const fuelAvail=fuelBal?fuelBal.available:0;
