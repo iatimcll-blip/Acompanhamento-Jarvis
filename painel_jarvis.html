@@ -5030,6 +5030,63 @@ canvas {
   padding: 1px 0 !important;
   font-size: 10.5px !important;
 }
+#panel-combustivel #mrow-fuel #fuel-route-calculator {
+  grid-column: 1 / -1 !important;
+  order: 0 !important;
+  min-height: 0 !important;
+  padding: 10px 12px !important;
+  margin: 0 !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-head {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 8px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-head .card-title {
+  display: block !important;
+  line-height: 1.1 !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-head small {
+  display: block !important;
+  margin-top: 3px !important;
+  color: var(--tx3) !important;
+  font-size: 10.5px !important;
+  line-height: 1.25 !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-form {
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(94px, .55fr) auto auto auto !important;
+  gap: 6px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-form .finput,
+#panel-combustivel #mrow-fuel .fuel-route-form .card-action,
+#panel-combustivel #mrow-fuel .fuel-route-toggle {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-result {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-result-card {
+  min-height: 48px !important;
+  padding: 7px 9px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-result-card span {
+  margin-bottom: 3px !important;
+  font-size: 9.5px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-result-card b {
+  font-size: clamp(15px, 1.5vw, 20px) !important;
+}
+#panel-combustivel #mrow-fuel .fuel-route-note {
+  margin-top: 6px !important;
+  font-size: 10.5px !important;
+}
 @media (max-width: 900px) {
   #panel-combustivel #mrow-fuel .fuel-manual-pair {
     grid-template-columns: 1fr !important;
@@ -5039,6 +5096,10 @@ canvas {
   #panel-combustivel #mrow-fuel .fuel-manual-pair .fuel-aporte-card {
     height: auto !important;
     min-height: 136px !important;
+  }
+  #panel-combustivel #mrow-fuel .fuel-route-form,
+  #panel-combustivel #mrow-fuel .fuel-route-result {
+    grid-template-columns: 1fr !important;
   }
 }
 </style>
@@ -5776,27 +5837,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div id="fuel-balance-summary"></div>
     </div>
     <div id="fuel-extra-projection" style="margin-bottom:16px"></div>
-    <div class="fuel-route-card" id="fuel-route-calculator">
-      <div class="card-hd">
-        <span class="card-title">Calculadora de rota e crédito</span>
-      </div>
-      <div class="fuel-route-form">
-        <input class="finput" id="fuel-route-from" placeholder="Cidade A / origem">
-        <input class="finput" id="fuel-route-to" placeholder="Cidade B / destino">
-        <input class="finput" id="fuel-route-rate" type="number" step="0.01" min="0" placeholder="R$ por km">
-        <label class="fuel-route-toggle"><input id="fuel-route-roundtrip" type="checkbox"> Ida e volta</label>
-        <button class="card-action" id="fuel-route-action" onclick="calcFuelRoute()">Calcular</button>
-      </div>
-      <div class="fuel-route-result" id="fuel-route-result">
-        <div class="fuel-route-result-card"><span>Distância</span><b>-- km</b></div>
-        <div class="fuel-route-result-card"><span>Valor sugerido</span><b>R$ 0,00</b></div>
-        <div class="fuel-route-result-card"><span>Base de cálculo</span><b>--</b></div>
-      </div>
-      <div class="fuel-route-note" id="fuel-route-note">Informe as cidades e o valor por km para calcular o crédito recomendado. A rota usa distância por estrada quando disponível.</div>
-      <div style="display:flex;justify-content:flex-end;margin-top:10px">
-        <button class="card-action" onclick="useFuelRouteValue()">Usar valor na solicitação</button>
-      </div>
-    </div>
 
     <!-- 2. KPIs e métricas -->
     <div class="section-hd fuel-consumo-title">Consumo de Combustíveis <span class="sh-line"></span></div>
@@ -7026,12 +7066,23 @@ function fuelRouteRender(distanceKm,value,base,note){
   el.innerHTML=`<div class="fuel-route-result-card"><span>Distância</span><b>${Number(distanceKm||0).toLocaleString('pt-BR',{maximumFractionDigits:1})} km</b></div><div class="fuel-route-result-card"><span>Valor sugerido</span><b>${brl(value)}</b></div><div class="fuel-route-result-card"><span>Base de cálculo</span><b>${eh(base||'--')}</b></div>`;
   fuelRouteStatus(note||'Cálculo concluído.');
 }
+function fuelRouteCardMarkup(){
+  const savedRate=eh(localStorage.getItem(FUEL_ROUTE_RATE_KEY)||'');
+  return `<div class="fuel-route-card" id="fuel-route-calculator"><div class="fuel-route-head"><div><span class="card-title">Calculadora de rota e crédito</span><small>Pesquise como: Cidade/UF ou Cidade - UF. Ex: Fortaleza/CE</small></div><button class="card-action" onclick="clearFuelRoute()">Limpar</button></div><div class="fuel-route-form"><input class="finput" id="fuel-route-from" placeholder="Cidade A / UF"><input class="finput" id="fuel-route-to" placeholder="Cidade B / UF"><input class="finput" id="fuel-route-rate" type="number" step="0.01" min="0" value="${savedRate}" placeholder="R$ por km"><label class="fuel-route-toggle"><input id="fuel-route-roundtrip" type="checkbox"> Ida e volta</label><button class="card-action" id="fuel-route-action" onclick="calcFuelRoute()">Calcular</button><button class="card-action" onclick="useFuelRouteValue()">Usar na solicitação</button></div><div class="fuel-route-result" id="fuel-route-result"><div class="fuel-route-result-card"><span>Distância</span><b>-- km</b></div><div class="fuel-route-result-card"><span>Valor sugerido</span><b>R$ 0,00</b></div><div class="fuel-route-result-card"><span>Base</span><b>--</b></div></div><div class="fuel-route-note" id="fuel-route-note">Informe origem, destino e valor por km. A distância usa rota por estrada quando disponível.</div></div>`;
+}
+function clearFuelRoute(){
+  ['fuel-route-from','fuel-route-to','fuel-route-rate'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const round=document.getElementById('fuel-route-roundtrip');if(round)round.checked=false;
+  localStorage.removeItem(FUEL_ROUTE_RATE_KEY);
+  fuelRouteLast=null;
+  fuelRouteRender(0,0,'--','Informe origem, destino e valor por km. Ex: Cidade/UF ou Cidade - UF.');
+}
 async function fuelRouteGeocode(city){
   const raw=String(city||'').trim();
   if(!raw)throw new Error('Informe as duas cidades.');
   const ufMap={AC:'Acre',AL:'Alagoas',AP:'Amapá',AM:'Amazonas',BA:'Bahia',CE:'Ceará',DF:'Distrito Federal',ES:'Espírito Santo',GO:'Goiás',MA:'Maranhão',MT:'Mato Grosso',MS:'Mato Grosso do Sul',MG:'Minas Gerais',PA:'Pará',PB:'Paraíba',PR:'Paraná',PE:'Pernambuco',PI:'Piauí',RJ:'Rio de Janeiro',RN:'Rio Grande do Norte',RS:'Rio Grande do Sul',RO:'Rondônia',RR:'Roraima',SC:'Santa Catarina',SP:'São Paulo',SE:'Sergipe',TO:'Tocantins'};
-  const m=raw.match(/^(.+?)[,\s/-]+([A-Z]{2})$/i);
-  const uf=m?m[2].toUpperCase():'',state=ufMap[uf]||'',q=(m?m[1]:raw).trim();
+  const m=raw.match(/^(.+?)\s*(?:[,/|-]\s*|\s+)([A-Z]{2})$/i);
+  const uf=m?m[2].toUpperCase():'',state=ufMap[uf]||'',q=(m?m[1]:raw).replace(/\s*[-/,]\s*$/,'').trim();
   const url='https://geocoding-api.open-meteo.com/v1/search?count=10&language=pt&format=json&name='+encodeURIComponent(q);
   const res=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});
   if(!res.ok)throw new Error('Não foi possível localizar '+raw+'.');
@@ -8959,7 +9010,6 @@ function copiarFuelVTable(btn){
 }
 function renderFuel(){
   ensureFuelData();
-  fuelRouteInit();
   const validRequests=fuelPeriodRequests();
   const fuelCompras=fuelPurchaseRequests(),fuelCreditos=fuelCreditRequests(),fuelDebitos=fuelDebitRequests();
   const stCreditos=fuelCreditos.filter(r=>String(r.placa||'').toUpperCase().trim()==='STB3E91');
@@ -8983,7 +9033,8 @@ function renderFuel(){
   const aporteHistory=dFuelAportes.slice().sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(a=>`<div class="fuel-aporte-mini-row"><span>${fmtFuelDatetime(a.data)}</span><b>${brl(a.valor)}</b></div>`).join('')||'<div class="fuel-aporte-mini-row"><span>Nenhum aporte</span><b>-</b></div>';
   const manualControls=canEdit()?`<div class="mc c-green fuel-manual-card fuel-manual-inline admin-only"><div class="mc-label">Atualizar Saldo Disponível</div><div class="mc-val" id="fuel-card-balance-current" style="color:var(--green-dk)">${brl(bal.available)}</div><div class="mc-sub">ajuste manual do saldo combustível/cartão</div><div class="fuel-manual-form"><input class="finput" id="fuel-card-balance-quick" type="number" step="0.01" min="0" placeholder="Novo saldo R$"><span class="card-action" onclick="setFuelCardBalanceQuick()">Atualizar</span></div></div><div class="mc c-blue fuel-manual-card fuel-manual-inline fuel-aporte-card admin-only"><div class="mc-label">Aporte Manual</div><div class="mc-val" id="fuel-aporte-total-current">${brl(fuelBalanceTotal)}</div><div class="mc-sub">registro manual de aporte no ciclo</div><div class="fuel-manual-form"><input class="finput" id="fuel-aporte-date-quick" type="date"><input class="finput" id="fuel-aporte-valor-quick" type="number" step="0.01" min="0" placeholder="Valor R$"><input class="finput fuel-manual-wide" id="fuel-aporte-desc-quick" placeholder="Descrição"><span class="card-action" onclick="addFuelAporteQuick()">Registrar</span></div><div class="fuel-aporte-mini">${aporteHistory}</div></div>`:'';
   const manualCards=manualControls?`<div class="fuel-manual-pair">${manualControls}</div>`:'';
-  document.getElementById('mrow-fuel').innerHTML=`${manualCards}<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito STB3E91</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito STB3E91</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-blue"><div class="mc-label">Cartão Próprio</div><div class="mc-val">${brl(fuelTotalProprio)}</div><div class="mc-sub">${fuelComprasProprio.length} compra${fuelComprasProprio.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Cartão Coringa</div><div class="mc-val" style="color:var(--red)">${brl(fuelTotalCoringa)}</div><div class="mc-sub">${fuelComprasCoringa.length} compra${fuelComprasCoringa.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
+  document.getElementById('mrow-fuel').innerHTML=`${manualCards}${fuelRouteCardMarkup()}<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito STB3E91</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito STB3E91</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-blue"><div class="mc-label">Cartão Próprio</div><div class="mc-val">${brl(fuelTotalProprio)}</div><div class="mc-sub">${fuelComprasProprio.length} compra${fuelComprasProprio.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Cartão Coringa</div><div class="mc-val" style="color:var(--red)">${brl(fuelTotalCoringa)}</div><div class="mc-sub">${fuelComprasCoringa.length} compra${fuelComprasCoringa.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
+  fuelRouteInit();
   const top=fuelProjection()[0]||['-',{valor:0,litros:0,count:0}];
   const nextSuggestion=fuelNextMonthSuggestion();
   const driverOptions=fuelDriverOptions();if(selectedFuelDriver&&!driverOptions.includes(selectedFuelDriver))selectedFuelDriver='';
