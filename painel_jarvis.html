@@ -2313,7 +2313,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
   max-width: min(260px, 42vw);
 }
 
-/* ── Atrix Agent: badge de última sincronização ── */
+/* ── Atrix Agent: badge no header do bloco substatus ── */
 .atrix-sync-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--border,rgba(0,0,0,.1));border-radius:7px;padding:3px 8px;margin-left:8px;vertical-align:middle;white-space:nowrap;line-height:1.2;transition:background .2s,border-color .2s,color .2s}
 [data-theme=dark] .atrix-sync-badge{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12)}
 .atrix-sync-badge i{font-size:11px;flex-shrink:0}
@@ -2321,6 +2321,14 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .atrix-sync-badge.fresh i{color:var(--green-dk,#15803d)}
 .atrix-sync-badge.stale{color:var(--orange,#f97316);border-color:var(--orange,#f97316);background:rgba(249,115,22,.07)}
 .atrix-sync-badge.stale i{color:var(--orange,#f97316)}
+/* ── Atrix Agent: timestamp por chamado no card ── */
+.atrix-card-ts{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--border,rgba(0,0,0,.09));border-radius:5px;padding:1px 5px;margin-left:6px;white-space:nowrap;vertical-align:middle;line-height:1.4;flex-shrink:0}
+[data-theme=dark] .atrix-card-ts{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}
+.atrix-card-ts i{font-size:9px;flex-shrink:0}
+.atrix-card-ts.fresh{color:var(--green-dk,#15803d);border-color:var(--green,#22c55e);background:var(--green-bg,rgba(34,197,94,.07))}
+.atrix-card-ts.fresh i{color:var(--green-dk,#15803d)}
+.atrix-card-ts.stale{color:var(--orange,#f97316);border-color:rgba(249,115,22,.4);background:rgba(249,115,22,.06)}
+.atrix-card-ts.stale i{color:var(--orange,#f97316)}
 
 /* ID do ticket maior e em destaque */
 .abc-id {
@@ -7029,6 +7037,7 @@ const CLUSTER_INFO={
 const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/AP'];
 
 let dAb=[],dEnc=[];
+let atrixUpdateMap={};  // {ticketId → updatedAt ISO} — populado por loadAtrixUpdates()
 let aleloCardImage=null,aleloCardImageAt='';
 let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false;
 let editingFuelPlate='',editingFuelRequestId='',editingFuelWithdrawalId='',selectedFuelDriver='';
@@ -7930,6 +7939,20 @@ function _renderAtrixTs(isoStr){
 function restoreAtrixTimestamp(){
   const saved=localStorage.getItem('jarvis:atrix:lastUpdate');
   if(saved)_renderAtrixTs(saved);
+  try{const m=localStorage.getItem('jarvis:atrix:updateMap');if(m){atrixUpdateMap=JSON.parse(m)||{};}}catch(_){}
+}
+
+function _atrixTsBadge(ticketId){
+  const iso=atrixUpdateMap[ticketId];
+  if(!iso)return'';
+  try{
+    const d=new Date(iso);if(isNaN(d.getTime()))return'';
+    const pad=n=>String(n).padStart(2,'0');
+    const ts=`${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const ageMin=(Date.now()-d.getTime())/60000;
+    const cls=ageMin<35?'atrix-card-ts fresh':ageMin>120?'atrix-card-ts stale':'atrix-card-ts';
+    return`<span class="${cls}" title="Substatus atualizado pelo Agente Atrix em ${ts}"><i class="ti ti-robot"></i>${ts}</span>`;
+  }catch(_){return'';}
 }
 
 async function loadAtrixUpdates(){
@@ -7938,9 +7961,13 @@ async function loadAtrixUpdates(){
     const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
     if(!r.ok)return;
     const updates=await r.json();
-    // Timestamp = updatedAt mais recente entre todos os chamados no JSON (= última vez que o agente rodou)
     let latestAt='';
-    Object.values(updates).forEach(up=>{if(up.updatedAt&&up.updatedAt>latestAt)latestAt=up.updatedAt;});
+    // Popula o mapa de timestamps por ticket
+    atrixUpdateMap={};
+    Object.entries(updates).forEach(([tid,up])=>{
+      if(up.updatedAt){atrixUpdateMap[tid]=up.updatedAt;if(up.updatedAt>latestAt)latestAt=up.updatedAt;}
+    });
+    try{localStorage.setItem('jarvis:atrix:updateMap',JSON.stringify(atrixUpdateMap));}catch(_){}
     if(latestAt){localStorage.setItem('jarvis:atrix:lastUpdate',latestAt);_renderAtrixTs(latestAt);}
     let count=0;
     dAb.forEach(ticket=>{
@@ -7948,7 +7975,8 @@ async function loadAtrixUpdates(){
       if(!up||!up.substatus)return;
       if(up.substatus!==ticket.substatus){ticket.substatus=up.substatus;count++;}
     });
-    if(count>0){renderAllAb();console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);}
+    if(count>0||latestAt)renderAllAb();
+    if(count>0)console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
 }
 
@@ -8516,7 +8544,7 @@ function renderTAb(){
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
-    return`<div class="ab-card ${rowCls}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span></span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
