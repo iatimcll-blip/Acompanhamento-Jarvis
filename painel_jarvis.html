@@ -3209,6 +3209,7 @@ tbody tr:last-child td {
 #panel-combustivel .fuel-gauge { order: 2; }
 #panel-combustivel .fuel-manual-cards { order: 3; margin-bottom: 0 !important; }
 #panel-combustivel #fuel-extra-projection { order: 4; margin-bottom: 0 !important; }
+#panel-combustivel #fuel-route-calculator { order: 5; }
 #panel-combustivel .fuel-consumo-title { order: 5; margin-top: 2px !important; }
 #panel-combustivel #mrow-fuel { order: 6; margin-bottom: 0 !important; }
 #panel-combustivel .fuel-forms-admin { order: 7; }
@@ -3242,6 +3243,66 @@ tbody tr:last-child td {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   align-content: stretch;
+}
+#panel-combustivel .fuel-route-card {
+  padding: 14px;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+#panel-combustivel .fuel-route-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.25fr) minmax(180px, 1.25fr) minmax(120px, .75fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+#panel-combustivel .fuel-route-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: .5px solid var(--bd);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--tx2);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#panel-combustivel .fuel-route-result {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+#panel-combustivel .fuel-route-result-card {
+  min-height: 74px;
+  padding: 11px 12px;
+  border: .5px solid var(--bd);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--surface2), rgba(142,142,147,.04));
+}
+#panel-combustivel .fuel-route-result-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--tx3);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+#panel-combustivel .fuel-route-result-card b {
+  color: var(--tx);
+  font-size: clamp(18px, 2.2vw, 26px);
+  line-height: 1.05;
+}
+#panel-combustivel .fuel-route-note {
+  margin-top: 8px;
+  color: var(--tx3);
+  font-size: 11px;
+  line-height: 1.35;
 }
 #panel-combustivel .fuel-manual-cards {
   grid-template-columns: repeat(2, minmax(240px, 1fr));
@@ -3652,6 +3713,8 @@ tbody tr:last-child td {
   #panel-combustivel .fuel-manual-cards { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-manual-form { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-manual-form .fuel-manual-wide { grid-column: auto; }
+  #panel-combustivel .fuel-route-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #panel-combustivel .fuel-route-result { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-consumo-layout { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-split { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-split-pane { max-height: none; }
@@ -3679,6 +3742,7 @@ tbody tr:last-child td {
     width: 100%;
   }
   #panel-combustivel .fuel-request-filters { grid-template-columns: 1fr; }
+  #panel-combustivel .fuel-route-form { grid-template-columns: 1fr; }
   #panel-combustivel #mrow-fuel .fuel-manual-inline {
     grid-column: auto !important;
     grid-template-columns: 1fr;
@@ -5591,6 +5655,27 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div id="fuel-balance-summary"></div>
     </div>
     <div id="fuel-extra-projection" style="margin-bottom:16px"></div>
+    <div class="fuel-route-card" id="fuel-route-calculator">
+      <div class="card-hd">
+        <span class="card-title">Calculadora de rota e crédito</span>
+      </div>
+      <div class="fuel-route-form">
+        <input class="finput" id="fuel-route-from" placeholder="Cidade A / origem">
+        <input class="finput" id="fuel-route-to" placeholder="Cidade B / destino">
+        <input class="finput" id="fuel-route-rate" type="number" step="0.01" min="0" placeholder="R$ por km">
+        <label class="fuel-route-toggle"><input id="fuel-route-roundtrip" type="checkbox"> Ida e volta</label>
+        <button class="card-action" id="fuel-route-action" onclick="calcFuelRoute()">Calcular</button>
+      </div>
+      <div class="fuel-route-result" id="fuel-route-result">
+        <div class="fuel-route-result-card"><span>Distância</span><b>-- km</b></div>
+        <div class="fuel-route-result-card"><span>Valor sugerido</span><b>R$ 0,00</b></div>
+        <div class="fuel-route-result-card"><span>Base de cálculo</span><b>--</b></div>
+      </div>
+      <div class="fuel-route-note" id="fuel-route-note">Informe as cidades e o valor por km para calcular o crédito recomendado. A rota usa distância por estrada quando disponível.</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="card-action" onclick="useFuelRouteValue()">Usar valor na solicitação</button>
+      </div>
+    </div>
 
     <!-- 2. KPIs e métricas -->
     <div class="section-hd fuel-consumo-title">Consumo de Combustíveis <span class="sh-line"></span></div>
@@ -6804,6 +6889,80 @@ function titleCasePT(s){if(!s)return s;const sm=new Set(['DE','DA','DO','DAS','D
 function fmtMesLabel(mes){if(!mes)return'';const[y,m]=mes.split('-');return new Date(Number(y),Number(m)-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}
 function pp(v){return v.toFixed(1).replace('.',',')}
 function brl(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2})}
+const FUEL_ROUTE_RATE_KEY='atrix:fuel-route-rate:v1';
+let fuelRouteLast=null;
+function fuelRouteInit(){
+  const rate=document.getElementById('fuel-route-rate');
+  if(rate&&!rate.value)rate.value=localStorage.getItem(FUEL_ROUTE_RATE_KEY)||'';
+}
+function fuelRouteStatus(msg,busy=false){
+  const note=document.getElementById('fuel-route-note'),btn=document.getElementById('fuel-route-action');
+  if(note)note.textContent=msg;
+  if(btn){btn.disabled=!!busy;btn.textContent=busy?'Calculando...':'Calcular';}
+}
+function fuelRouteRender(distanceKm,value,base,note){
+  const el=document.getElementById('fuel-route-result');if(!el)return;
+  el.innerHTML=`<div class="fuel-route-result-card"><span>Distância</span><b>${Number(distanceKm||0).toLocaleString('pt-BR',{maximumFractionDigits:1})} km</b></div><div class="fuel-route-result-card"><span>Valor sugerido</span><b>${brl(value)}</b></div><div class="fuel-route-result-card"><span>Base de cálculo</span><b>${eh(base||'--')}</b></div>`;
+  fuelRouteStatus(note||'Cálculo concluído.');
+}
+async function fuelRouteGeocode(city){
+  const raw=String(city||'').trim();
+  if(!raw)throw new Error('Informe as duas cidades.');
+  const ufMap={AC:'Acre',AL:'Alagoas',AP:'Amapá',AM:'Amazonas',BA:'Bahia',CE:'Ceará',DF:'Distrito Federal',ES:'Espírito Santo',GO:'Goiás',MA:'Maranhão',MT:'Mato Grosso',MS:'Mato Grosso do Sul',MG:'Minas Gerais',PA:'Pará',PB:'Paraíba',PR:'Paraná',PE:'Pernambuco',PI:'Piauí',RJ:'Rio de Janeiro',RN:'Rio Grande do Norte',RS:'Rio Grande do Sul',RO:'Rondônia',RR:'Roraima',SC:'Santa Catarina',SP:'São Paulo',SE:'Sergipe',TO:'Tocantins'};
+  const m=raw.match(/^(.+?)[,\s/-]+([A-Z]{2})$/i);
+  const uf=m?m[2].toUpperCase():'',state=ufMap[uf]||'',q=(m?m[1]:raw).trim();
+  const url='https://geocoding-api.open-meteo.com/v1/search?count=10&language=pt&format=json&name='+encodeURIComponent(q);
+  const res=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});
+  if(!res.ok)throw new Error('Não foi possível localizar '+raw+'.');
+  const data=await res.json();
+  const list=(data.results||[]).filter(x=>x.country_code==='BR');
+  const hit=(state?list.find(x=>nk(x.admin1).includes(nk(state))):null)||list[0]||data.results&&data.results[0];
+  if(!hit)throw new Error('Cidade não encontrada: '+raw+'.');
+  return{lat:Number(hit.latitude),lon:Number(hit.longitude),label:[hit.name,hit.admin1].filter(Boolean).join(' - ')};
+}
+function fuelRouteHaversineKm(a,b){
+  const R=6371,toRad=n=>Number(n)*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat),dLon=toRad(b.lon-a.lon),la1=toRad(a.lat),la2=toRad(b.lat);
+  const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+async function fuelRouteDrivingKm(a,b){
+  const url=`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false&alternatives=false&steps=false`;
+  const res=await fetch(url,{cache:'no-store'});
+  if(!res.ok)throw new Error('Rota indisponível.');
+  const data=await res.json(),dist=Number(data&&data.routes&&data.routes[0]&&data.routes[0].distance);
+  if(!Number.isFinite(dist)||dist<=0)throw new Error('Rota indisponível.');
+  return dist/1000;
+}
+async function calcFuelRoute(){
+  const fromEl=document.getElementById('fuel-route-from'),toEl=document.getElementById('fuel-route-to'),rateEl=document.getElementById('fuel-route-rate');
+  const from=fromEl&&fromEl.value.trim(),to=toEl&&toEl.value.trim(),rate=Number(rateEl&&rateEl.value||0);
+  if(!from||!to){alert('Informe a cidade de origem e destino.');return}
+  if(!rate){alert('Informe o valor por km.');return}
+  try{
+    fuelRouteStatus('Localizando cidades e calculando rota por estrada...',true);
+    localStorage.setItem(FUEL_ROUTE_RATE_KEY,String(rate));
+    const [a,b]=await Promise.all([fuelRouteGeocode(from),fuelRouteGeocode(to)]);
+    let oneWayKm=0,method='estrada';
+    try{oneWayKm=await fuelRouteDrivingKm(a,b);}catch{oneWayKm=fuelRouteHaversineKm(a,b)*1.25;method='estimado';}
+    const round=!!document.getElementById('fuel-route-roundtrip')?.checked,totalKm=oneWayKm*(round?2:1),value=totalKm*rate;
+    const base=`${round?'ida e volta':'ida'} x ${brl(rate)}/km`;
+    const note=method==='estrada'?'Distância calculada por rota de estrada.':'Rota por estrada indisponível; distância estimada por linha reta ajustada.';
+    fuelRouteLast={from,to,totalKm,value,rate,round,method};
+    fuelRouteRender(totalKm,value,base,note);
+  }catch(e){fuelRouteStatus(e&&e.message?e.message:'Erro ao calcular rota.');}
+}
+function useFuelRouteValue(){
+  if(!fuelRouteLast){alert('Calcule uma rota antes de usar o valor.');return}
+  const val=document.getElementById('fuel-req-valor');if(!val){alert('Campo de solicitação não encontrado.');return}
+  val.value=Number(fuelRouteLast.value||0).toFixed(2);
+  const obs=document.getElementById('fuel-req-obs');
+  if(obs){
+    const rota=`Rota ${fuelRouteLast.from} > ${fuelRouteLast.to} | ${fuelRouteLast.totalKm.toLocaleString('pt-BR',{maximumFractionDigits:1})} km | ${fuelRouteLast.round?'ida e volta':'ida'}`;
+    obs.value=obs.value?obs.value+' | '+rota:rota;
+  }
+  val.focus();
+}
 function fmtFuelDatetime(v){if(!v)return'—';const s=String(v);const m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return s;const[,y,mo,d,h,mi,se]=m;return h?`${d}/${mo}/${y} ${h}:${mi||'00'}:${se||'00'}`:`${d}/${mo}/${y}`;}
 function encRuleStats(d){
   const total=d.length||0;
@@ -8679,6 +8838,7 @@ function copiarFuelVTable(btn){
 }
 function renderFuel(){
   ensureFuelData();
+  fuelRouteInit();
   const validRequests=fuelPeriodRequests();
   const fuelCompras=fuelPurchaseRequests(),fuelCreditos=fuelCreditRequests(),fuelDebitos=fuelDebitRequests();
   const stCreditos=fuelCreditos.filter(r=>String(r.placa||'').toUpperCase().trim()==='STB3E91');
