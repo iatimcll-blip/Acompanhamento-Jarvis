@@ -371,6 +371,8 @@ body {
 .mon-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .mon-action { border: .5px solid var(--bd2); background: var(--surface2); color: var(--tx2); border-radius: 8px; min-height: 32px; padding: 7px 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; transition: opacity .13s, border-color .13s, transform .13s; white-space: nowrap; }
 .mon-action:hover { opacity: .88; border-color: rgba(14,165,233,.45); transform: translateY(-1px); }
+.mon-unread-pill { min-height: 32px; padding: 7px 11px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: .5px solid rgba(255,59,48,.24); background: rgba(255,59,48,.10); color: var(--red); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.mon-unread-pill i { font-size: 14px; }
 .mon-frame-wrap { min-height: 560px; position: relative; background: var(--surface2); border: .5px solid var(--bd); border-radius: var(--rl); box-shadow: var(--shadow-sm); overflow: hidden; }
 .mon-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--surface2); }
 .mon-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--surface2); color: var(--tx3); font-size: 12px; pointer-events: none; transition: opacity .18s, visibility .18s; z-index: 1; }
@@ -406,6 +408,11 @@ body {
 .mon-tag.ref { color: #10b981; background: rgba(16,185,129,.11); border-color: rgba(16,185,129,.26); }
 .mon-tag.unread { color: var(--red); background: var(--red-bg); border-color: rgba(255,59,48,.26); }
 .mon-body { color: var(--tx2); font-size: 11px; line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 138px; overflow: hidden; }
+.mon-msg.expanded .mon-body { max-height: none; overflow: visible; color: var(--tx); }
+.mon-msg-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 7px; border-top: .5px solid var(--bd); }
+.mon-msg-btn { border: .5px solid var(--bd); background: var(--surface2); color: var(--tx2); border-radius: 7px; min-height: 24px; padding: 4px 7px; display: inline-flex; align-items: center; gap: 5px; font: 800 9px/1 inherit; text-transform: uppercase; letter-spacing: .03em; cursor: pointer; white-space: nowrap; }
+.mon-msg-btn:hover { color: var(--tx); background: var(--surface3); }
+.mon-msg-hint { color: var(--tx3); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
 .mon-empty { height: 100%; min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; color: var(--tx3); font-size: 11px; padding: 20px 12px; border: .5px dashed var(--bd); border-radius: 10px; background: var(--surface2); }
 .mon-empty i { font-size: 24px; color: var(--tx3); }
 .mon-foot { color: var(--tx3); font-size: 10px; padding: 0 2px 2px; }
@@ -7003,6 +7010,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="mon-status" id="monitor-status"><i class="ti ti-layout-grid"></i><span>Blocos: Massiva · Infraestrutura · Gerencial · Wanderson</span></div>
         <div class="mon-actions">
+          <span class="mon-unread-pill" id="monitor-unread-pill" style="display:none"><i class="ti ti-bell-ringing"></i><span>0 novas não lidas</span></span>
           <button type="button" class="mon-action" onclick="refreshMonitorPanel()"><i class="ti ti-refresh"></i><span>Atualizar</span></button>
           <button type="button" class="mon-action" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><span>WhatsApp</span></button>
         </div>
@@ -9770,6 +9778,27 @@ function fuelRequestDate(r){
   const d=new Date(raw.length>10?raw:raw+'T00:00:00');
   return isNaN(d)?null:d;
 }
+function fuelRequestDayKey(r){
+  const d=fuelRequestDate(r);
+  if(!d)return String(r&&r.data||'').slice(0,10);
+  const p=n=>String(n).padStart(2,'0');
+  return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function fuelRequestCrossKey(r){
+  const placa=String(r&&r.placa||'').toUpperCase().trim();
+  const cents=Math.round(Math.abs(Number(r&&r.valor||0))*100);
+  return placa&&cents?`${placa}|${fuelRequestDayKey(r)}|${cents}`:'';
+}
+function fuelCompileRequests(rows){
+  const list=Array.isArray(rows)?rows.slice():[];
+  const aleloCompraKeys=new Set();
+  list.forEach(r=>{if(fuelIsAleloImport(r)&&fuelTxKind(r)==='compra'){const k=fuelRequestCrossKey(r);if(k)aleloCompraKeys.add(k);}});
+  return list.filter(r=>{
+    if(fuelIsAleloImport(r)||fuelTxKind(r)!=='compra')return true;
+    const k=fuelRequestCrossKey(r);
+    return !k||!aleloCompraKeys.has(k);
+  });
+}
 function fuelInRenewalPeriod(r,win=fuelCycleWindow()){
   const d=fuelRequestDate(r);
   if(!d)return false;
@@ -9779,7 +9808,8 @@ function fuelInRenewalPeriod(r,win=fuelCycleWindow()){
 }
 function fuelPeriodRequests(){
   const win=fuelCycleWindow();
-  return fuelValidRequests().filter(r=>r&&r.source==='alelo-base'?fuelInRenewalPeriod(r,win):true);
+  const rows=fuelValidRequests().filter(r=>r&&r.source==='alelo-base'?fuelInRenewalPeriod(r,win):true);
+  return fuelCompileRequests(rows);
 }
 function fuelIsCoringaPlate(placa){return String(fuelVehicleByPlate(placa).tipoCartao||'').toLowerCase()==='coringa'}
 function fuelPurchaseRequests(){return fuelPeriodRequests().filter(r=>fuelTxKind(r)==='compra')}
@@ -10954,6 +10984,7 @@ function connectWppBridge(force=false){
         if(msg.message&&(msg.message.from===wppActiveChat||msg.message.to===wppActiveChat)){wppMessages.push(msg.message);renderWppMessages();}
         const srcId=msg.message&&msg.message.from;
         if(activeTab!=='whatsapp'&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();playWppSound();}
+        scheduleMonitorRefresh();
         loadWppChats();
       }else if(msg.state&&msg.state.status==='ready'){loadWppChats();}
     }catch(err){console.warn('WhatsApp ws:',err)}};
@@ -11078,11 +11109,15 @@ const MON_GROUPS={
 };
 const MON_INFRA_REFS=['EPS-SLN MA CAP','EPS-SLN PA PA CAP','EPS-ADX','EPS-SLN PA INT'];
 const MON_READ_KEY='jarvis:monitor:read:v1';
-let monReadIds=new Set(),monLastData={massiva:[],infra:[],gerencial:[],wanderson:[]},monLastStatus='Monitor pronto';
+const MON_SEEN_KEY='jarvis:monitor:seen:v1';
+const MON_AUDIO_SRC='monitor-alerta.mp3';
+let monReadIds=new Set(),monSeenIds=new Set(),monExpandedIds=new Set(),monLastData={massiva:[],infra:[],gerencial:[],wanderson:[]},monLastStatus='Monitor pronto',monNotifyInitialized=false,monRefreshTimer=null;
 function monLoadState(){
   try{monReadIds=new Set(JSON.parse(localStorage.getItem(MON_READ_KEY)||'[]'));}catch(e){monReadIds=new Set();}
+  try{monSeenIds=new Set(JSON.parse(localStorage.getItem(MON_SEEN_KEY)||'[]'));}catch(e){monSeenIds=new Set();}
 }
 function monSaveRead(){try{localStorage.setItem(MON_READ_KEY,JSON.stringify([...monReadIds].slice(-1200)));}catch(e){}}
+function monSaveSeen(){try{localStorage.setItem(MON_SEEN_KEY,JSON.stringify([...monSeenIds].slice(-1600)));}catch(e){}}
 function monHash(s){let h=0;for(let i=0;i<String(s).length;i++){h=((h<<5)-h+String(s).charCodeAt(i))|0;}return Math.abs(h).toString(36);}
 function monMsgId(key,chat,msg,body){return`${key}:${monHash([monChatName(chat),msg&&msg.id&&typeof msg.id==='object'?JSON.stringify(msg.id):msg&&msg.id,msg&&msg.timestamp,body.slice(0,140)].join('|'))}`;}
 function monTicketKey(t){
@@ -11168,7 +11203,46 @@ function monPushItem(bucket,key,chat,msg,extra={}){
   const body=monMsgBody(msg);if(!body)return;
   if(!monIsToday(msg&&msg.timestamp))return;
   const id=monMsgId(key,chat,msg,body);
-  bucket[key].push({id,source:monChatName(chat),body,time:monMsgTime(msg),ts:Number(msg.timestamp)||0,tickets:extra.tickets||monExtractTickets(body),tags:extra.tags||[],ref:extra.ref||'',uf:extra.uf||'',cidade:extra.cidade||'',read:monReadIds.has(id)});
+  bucket[key].push({id,chatId:chat&&chat.id||'',source:monChatName(chat),body,time:monMsgTime(msg),ts:Number(msg.timestamp)||0,tickets:extra.tickets||monExtractTickets(body),tags:extra.tags||[],ref:extra.ref||'',uf:extra.uf||'',cidade:extra.cidade||'',read:monReadIds.has(id)});
+}
+function monFlatItems(data=monLastData){
+  return['massiva','infra','gerencial','wanderson'].flatMap(k=>monDedupeItems((data&&data[k])||[]).map(it=>({...it,_block:k})));
+}
+function monFindItem(id){
+  return monFlatItems(monLastData).find(it=>it.id===id)||null;
+}
+function playMonitorSound(){
+  const fallback=()=>playWppSound();
+  try{
+    const audio=new Audio(MON_AUDIO_SRC);
+    audio.preload='auto';
+    audio.volume=.78;
+    audio.addEventListener('loadedmetadata',()=>{try{audio.currentTime=Math.min(5,Math.max(0,(audio.duration||14)-.2));}catch(_){}},{once:true});
+    audio.addEventListener('error',fallback,{once:true});
+    audio.addEventListener('timeupdate',()=>{if(audio.currentTime>=13){audio.pause();audio.currentTime=5;}});
+    const p=audio.play();
+    if(p&&p.catch)p.catch(fallback);
+    setTimeout(()=>{try{audio.pause();audio.currentTime=5;}catch(_){}},8200);
+  }catch(e){fallback();}
+}
+function monUpdateUnreadNotification(items){
+  const all=Array.isArray(items)?items:monFlatItems(monLastData);
+  const unread=all.filter(it=>it&&!it.read);
+  const pill=document.getElementById('monitor-unread-pill');
+  if(pill){
+    if(unread.length){
+      pill.style.display='';
+      pill.innerHTML=`<i class="ti ti-bell-ringing"></i><span>${unread.length} nova${unread.length!==1?'s':''} não lida${unread.length!==1?'s':''}</span>`;
+    }else pill.style.display='none';
+  }
+  const fresh=unread.filter(it=>it.id&&!monSeenIds.has(it.id));
+  if(monNotifyInitialized&&fresh.length){
+    _ghToast(`${fresh.length} nova${fresh.length!==1?'s':''} mensagem${fresh.length!==1?'s':''} no Monitor`,'var(--red)',6000);
+    playMonitorSound();
+  }
+  unread.forEach(it=>{if(it.id)monSeenIds.add(it.id);});
+  monSaveSeen();
+  monNotifyInitialized=true;
 }
 function monMsgCard(item){
   const tickets=(item.tickets||[]).map(t=>`<span class="mon-tag ticket"><i class="ti ti-ticket"></i>${eh(t)}</span>`).join('');
@@ -11177,7 +11251,14 @@ function monMsgCard(item){
   const tags=(item.tags||[]).map(t=>`<span class="mon-tag">${eh(t)}</span>`).join('');
   const unread=item.read?'':`<span class="mon-tag unread"><i class="ti ti-bell"></i>Não lida</span>`;
   const dup=item.dupCount>1?`<span class="mon-tag"><i class="ti ti-copy"></i>${item.dupCount} ocorrências</span>`:'';
-  return`<article class="mon-msg${item.read?'':' unread'}" onclick="monMarkRead('${eh(item.id)}')" title="Clique para marcar como lida"><div class="mon-msg-top"><span class="mon-source" title="${eh(item.source)}">${eh(item.source)}</span><span class="mon-time">${eh(item.time||'')}</span></div><div class="mon-tags">${unread}${tickets}${local}${ref}${tags}${dup}</div><div class="mon-body">${eh(item.body.length>700?item.body.slice(0,697)+'...':item.body)}</div></article>`;
+  const expanded=monExpandedIds.has(item.id);
+  const body=expanded?item.body:(item.body.length>700?item.body.slice(0,697)+'...':item.body);
+  return`<article class="mon-msg${item.read?'':' unread'}${expanded?' expanded':''}" onclick="monToggleExpand('${eh(item.id)}')" title="Clique para ler a mensagem completa"><div class="mon-msg-top"><span class="mon-source" title="${eh(item.source)}">${eh(item.source)}</span><span class="mon-time">${eh(item.time||'')}</span></div><div class="mon-tags">${unread}${tickets}${local}${ref}${tags}${dup}</div><div class="mon-body">${eh(body)}</div><div class="mon-msg-actions"><span class="mon-msg-hint">${expanded?'Mensagem completa':'Clique para expandir'}</span><button type="button" class="mon-msg-btn" onclick="monReplyMessage('${eh(item.id)}',event)"><i class="ti ti-message-reply"></i>Responder</button></div></article>`;
+}
+function monToggleExpand(id){
+  if(!id)return;
+  if(monExpandedIds.has(id))monExpandedIds.delete(id);else monExpandedIds.add(id);
+  monMarkRead(id);
 }
 function monMarkRead(id){
   if(!id)return;
@@ -11191,15 +11272,30 @@ function monMarkBlockRead(key){
   monSaveRead();
   renderMonitorBlocks(monLastData,monLastStatus,true);
 }
+async function monReplyMessage(id,ev){
+  if(ev){ev.preventDefault();ev.stopPropagation();}
+  const item=monFindItem(id);
+  if(!item||!item.chatId){alert('Não foi possível identificar a conversa de origem para responder.');return;}
+  const body=prompt(`Responder em ${item.source}:`,'');
+  if(!body||!body.trim())return;
+  try{
+    await wppFetch('/api/send-message',{method:'POST',body:JSON.stringify({to:item.chatId,body:body.trim()})});
+    monMarkRead(id);
+    _ghToast('Resposta enviada pelo WhatsApp Bridge.','var(--green-dk)',5000);
+  }catch(e){alert('Erro ao responder mensagem: '+(e&&e.message?e.message:e));}
+}
 function renderMonitorBlocks(data,statusText){
   monLastData=data||monLastData;monLastStatus=statusText||monLastStatus;
+  const allItems=[];
   ['massiva','infra','gerencial','wanderson'].forEach(k=>{
     const list=document.getElementById('mon-list-'+k),count=document.getElementById('mon-count-'+k);
     const base=(monLastData&&monLastData[k]||[]);
     const items=monDedupeItems(base).sort((a,b)=>b.ts-a.ts).slice(0,60);
+    allItems.push(...items);
     if(count)count.textContent=items.length;
     if(list)list.innerHTML=items.length?items.map(monMsgCard).join(''):`<div class="mon-empty"><i class="ti ti-inbox"></i><strong>Sem mensagens classificadas</strong><span>As novas mensagens aparecerão aqui quando atenderem aos filtros.</span></div>`;
   });
+  monUpdateUnreadNotification(allItems);
   const st=document.getElementById('monitor-status');
   if(st)st.innerHTML=`<i class="ti ti-layout-grid"></i><span>${eh(statusText||'Monitor pronto')}</span>`;
 }
@@ -11244,11 +11340,16 @@ async function loadMonitorPanel(force=false){
   }finally{setMonitorLoading(false);}
 }
 function refreshMonitorPanel(){loadMonitorPanel(true);}
+function scheduleMonitorRefresh(delay=800){
+  clearTimeout(monRefreshTimer);
+  monRefreshTimer=setTimeout(()=>{if(activeTab==='monitor')loadMonitorPanel(true);},delay);
+}
 window.addEventListener('message',function(e){
   if(e.origin!==WPP_PANEL_ORIGIN)return;
   if(!e.data||typeof e.data!=='object')return;
   if(e.data.type==='wpp_new_message'){
     if(activeTab!=='whatsapp'){wppUnreadCount++;updateWppBadge();playWppSound();}
+    scheduleMonitorRefresh();
   }else if(e.data.type==='wpp_message_count'){
     const novo=Math.max(0,Number(e.data.count)||0);
     if(activeTab!=='whatsapp'){
@@ -11257,6 +11358,7 @@ window.addEventListener('message',function(e){
       wppInitialized=true;
       updateWppBadge();
       if(cresceu)playWppSound();
+      if(cresceu)scheduleMonitorRefresh();
     }else{wppInitialized=true;}
   }
 });
