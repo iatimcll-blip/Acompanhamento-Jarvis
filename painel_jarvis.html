@@ -10189,12 +10189,85 @@ function _renderFuelVTable(){
     return`<tr style="${rowClr}"><td class="tid" style="font-weight:700;color:#1c1c1e">${eh(v.placa)}</td><td>${eh(v.modelo)}</td><td>${eh(v.ano)}</td><td>${eh(v.condutor)}</td><td>${eh(repairPtBR(v.setor))}</td><td>${eh(v.superior)}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelCardType('${eh(v.placa)}',this.value)"><option value="Próprio"${(v.tipoCartao||'Próprio')==='Próprio'?' selected':''}>Próprio</option><option value="Coringa"${v.tipoCartao==='Coringa'?' selected':''}>Coringa</option></select>`:eh(v.tipoCartao||'Próprio')}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelStatus('${eh(v.placa)}',this.value)">${FUEL_STATUS.map(s=>`<option value="${s}"${s===v.status?' selected':''}>${s}</option>`).join('')}</select>`:eh(v.status)}</td><td>${obsCell}</td><td class="admin-only"><span class="card-action" onclick="editFuelVehicle('${eh(v.placa)}')">Editar</span></td></tr>`;
   }).join('');
 }
-function copiarFuelVTable(btn){
+function fuelEnsureHtml2Canvas(){
+  return new Promise(resolve=>{
+    if(window.html2canvas)return resolve(true);
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload=()=>resolve(true);
+    s.onerror=()=>resolve(false);
+    document.head.appendChild(s);
+  });
+}
+function fuelVehicleTablePayload(){
+  const table=document.querySelector('#fuel-split-left table');
+  if(!table)return{text:'',html:''};
+  const clean=cell=>{
+    const ctl=cell.querySelector('select,input,textarea');
+    return (ctl?ctl.value:cell.innerText||cell.textContent||'').replace(/\s+/g,' ').trim();
+  };
+  const headers=[...table.tHead.rows[0].cells].slice(0,9).map(clean);
+  const rows=[...table.tBodies[0].rows].map(tr=>[...tr.cells].slice(0,9).map(clean));
+  const text=[headers,...rows].map(r=>r.join('\t')).join('\n');
+  const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const html='<table><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
+  return{text,html};
+}
+async function fuelCopyTablePayload(payload){
+  if(!payload||!payload.text)throw new Error('Tabela sem dados para copiar.');
+  if(navigator.clipboard&&window.ClipboardItem&&navigator.clipboard.write&&window.isSecureContext){
+    try{
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html':new Blob([payload.html],{type:'text/html'}),
+        'text/plain':new Blob([payload.text],{type:'text/plain'})
+      })]);
+      return;
+    }catch(e){console.warn('fuel html clipboard',e);}
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    try{await navigator.clipboard.writeText(payload.text);return;}catch(e){console.warn('fuel text clipboard',e);}
+  }
+  const ta=document.createElement('textarea');
+  ta.value=payload.text;ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  const ok=document.execCommand&&document.execCommand('copy');
+  document.body.removeChild(ta);
+  if(!ok)throw new Error('Área de transferência bloqueada.');
+}
+async function copiarFuelVTable(btn){
   const el=document.getElementById('fuel-split-left');if(!el)return;
-  const orig=btn.innerHTML;btn.innerHTML='<i class="ti ti-loader-2" style="font-size:11px;vertical-align:-1px"></i> Copiando…';btn.disabled=true;
-  html2canvas(el,{scale:2,useCORS:true,backgroundColor:getComputedStyle(document.body).getPropertyValue('--surface')||'#fff'}).then(cv=>{
-    cv.toBlob(blob=>{if(blob&&navigator.clipboard&&window.ClipboardItem){navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(()=>{btn.innerHTML='<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Copiado!';setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},2000);}).catch(()=>{btn.innerHTML=orig;btn.disabled=false;alert('Não foi possível copiar para a área de transferência.');});}else{btn.innerHTML=orig;btn.disabled=false;alert('Navegador não suporta cópia de imagem.');}});
-  }).catch(()=>{btn.innerHTML=orig;btn.disabled=false;});
+  const orig=btn.innerHTML;
+  const done=(html,delay=2000)=>{btn.innerHTML=html;setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},delay)};
+  btn.innerHTML='<i class="ti ti-loader-2" style="font-size:11px;vertical-align:-1px"></i> Copiando...';btn.disabled=true;
+  try{
+    const canImage=await fuelEnsureHtml2Canvas();
+    if(canImage&&navigator.clipboard&&window.ClipboardItem&&navigator.clipboard.write&&window.isSecureContext){
+      try{
+        const hidden=[...el.querySelectorAll('button,.card-action,.fv-frow')].map(n=>[n,n.style.visibility]);
+        hidden.forEach(([n])=>n.style.visibility='hidden');
+        let cv;
+        try{
+          const bg=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#fff';
+          cv=await html2canvas(el,{scale:2,useCORS:true,backgroundColor:bg,logging:false});
+        }finally{
+          hidden.forEach(([n,v])=>n.style.visibility=v);
+        }
+        const blob=await new Promise(resolve=>cv.toBlob(resolve,'image/png'));
+        if(blob){
+          await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+          done('<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Imagem copiada!');
+          return;
+        }
+      }catch(e){console.warn('fuel image clipboard',e);}
+    }
+    await fuelCopyTablePayload(fuelVehicleTablePayload());
+    done('<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Tabela copiada!');
+  }catch(e){
+    console.warn('copiarFuelVTable',e);
+    const payload=fuelVehicleTablePayload();
+    btn.innerHTML=orig;btn.disabled=false;
+    prompt('Não foi possível copiar automaticamente. Copie a tabela abaixo:',payload.text||'');
+  }
 }
 function renderFuel(){
   ensureFuelData();
