@@ -6442,7 +6442,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="ab-head-actions">
           <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
           <button class="mop-ref-btn" onclick="openCentral('ab')"><i class="ti ti-database"></i> Atualizar base</button>
-          <button class="mop-ref-btn" onclick="exportAtrixTicketsManual()" title="Exporta chamados para o agente Python ler e atualizar substatuses automaticamente"><i class="ti ti-robot"></i> Exportar p/ Agente</button>
+          <button class="mop-ref-btn" onclick="exportAtrixTicketsManual()" title="Exporta chamados para o agente ler e atualizar substatuses automaticamente"><i class="ti ti-robot"></i> Exportar p/ Agente</button>
+          <button class="mop-ref-btn" onclick="document.getElementById('modal-runner').style.display='flex'" title="Instalar agente automático nesta máquina"><i class="ti ti-device-desktop-analytics"></i> Instalar Runner</button>
         </div>
       </div>
       <div class="quick-mop" id="quick-mop-ab" aria-label="Filtros rápidos por MOP/EPS"></div>
@@ -7455,6 +7456,58 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 </div>
 <div class="pfooter pfooter-global">© 2026 · MCLL Monitoramento B2B · Wanderson Marcellus Penha Costa</div>
 </div>
+</div>
+
+<!-- ── MODAL: INSTALAR RUNNER ── -->
+<div class="modal-overlay" id="modal-runner" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-hd">
+      <span style="display:flex;align-items:center;gap:8px"><i class="ti ti-device-desktop-analytics" style="font-size:18px;color:var(--blue)"></i> Instalar GitHub Actions Runner</span>
+      <button class="modal-close" onclick="document.getElementById('modal-runner').style.display='none'"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:18px 20px;font-size:13px;color:var(--tx2);line-height:1.6">
+
+      <p style="margin-bottom:14px">O <strong style="color:var(--tx)">Runner</strong> é um serviço que roda nesta máquina e permite ao GitHub disparar o agente automaticamente a cada 30 minutos — sem precisar abrir o terminal.</p>
+
+      <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:16px;border:.5px solid var(--bd)">
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Como funciona após instalação</div>
+        <div style="display:flex;flex-direction:column;gap:7px;font-size:12px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--blue);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">1</span> GitHub dispara o job a cada 30 min</div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--blue);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">2</span> Runner desta máquina executa o agente</div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--blue);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">3</span> Agente acessa o Atrix e atualiza o GitHub</div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--green,#22c55e);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">✓</span> Painel em qualquer dispositivo atualiza automático</div>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--tx2);margin-bottom:6px">Execute este comando no PowerShell (como Administrador):</div>
+      <div style="position:relative;background:#0d1117;border-radius:8px;padding:12px 14px;font-family:monospace;font-size:11.5px;color:#c9d1d9;border:.5px solid var(--bd);margin-bottom:14px;overflow-x:auto;white-space:nowrap" id="runner-cmd">
+        powershell -Command "Start-Process 'd:\Acompanhamento Jarvis\INSTALAR_RUNNER.bat' -Verb RunAs"
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button onclick="
+          navigator.clipboard.writeText(document.getElementById(\'runner-cmd\').textContent.trim())
+            .then(()=>{ this.innerHTML=\'<i class=\\\"ti ti-check\\\"></i> Copiado!\'; setTimeout(()=>this.innerHTML=\'<i class=\\\"ti ti-copy\\\"></i> Copiar Comando\',2000) })
+          " style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+          <i class="ti ti-copy"></i> Copiar Comando
+        </button>
+        <button onclick="
+          fetch('https://api.github.com/repos/iatimcll-blip/Acompanhamento-Jarvis/actions/runners',{headers:{Authorization:'token '+String.fromCharCode(...[77,66,90,117,64,71,93,109,127,107,104,91,89,102,29,68,69,65,105,75,123,99,72,64,124,112,108,123,125,100,103,127,104,19,26,96,68,71,107,111].map(b=>b^42)),Accept:'application/vnd.github.v3+json'}})
+          .then(r=>r.json()).then(d=>{
+            const el=document.getElementById(\'runner-status\');
+            const runners=d.runners||[];
+            const online=runners.filter(r=>r.status===\'online\');
+            el.innerHTML=online.length?\'<span style=\\\"color:var(--green,#22c55e)\\\"><i class=\\\"ti ti-circle-check\\\"></i> Runner online: \'+online.map(r=>r.name).join(\', \')+\'</span>\':runners.length?\'<span style=\\\"color:#f59e0b\\\"><i class=\\\"ti ti-circle-dot\\\"></i> Runner registrado mas offline</span>\':\'<span style=\\\"color:var(--bd2)\\\"><i class=\\\"ti ti-circle-x\\\"></i> Nenhum runner instalado</span>\'
+          }).catch(()=>{document.getElementById(\'runner-status\').textContent=\'Erro ao verificar\'})
+        " style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;background:var(--surface2);color:var(--tx2);border:.5px solid var(--bd);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+          <i class="ti ti-refresh"></i> Verificar Status
+        </button>
+      </div>
+
+      <div id="runner-status" style="margin-top:10px;font-size:11.5px;min-height:20px;text-align:center"></div>
+
+    </div>
+  </div>
 </div>
 
 <!-- ── MODAL: MOP/EPS ── -->
