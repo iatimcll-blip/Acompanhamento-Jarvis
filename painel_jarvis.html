@@ -7019,6 +7019,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="mon-status" id="monitor-status"><i class="ti ti-layout-grid"></i><span>Blocos: Massiva · Infraestrutura · Gerencial · Wanderson</span></div>
         <div class="mon-actions">
           <span class="mon-unread-pill" id="monitor-unread-pill" style="display:none"><i class="ti ti-bell-ringing"></i><span>0 novas não lidas</span></span>
+          <button type="button" class="mon-action" onclick="testMonitorNotification()"><i class="ti ti-bell-ringing"></i><span>Testar alerta</span></button>
           <button type="button" class="mon-action" onclick="refreshMonitorPanel()"><i class="ti ti-refresh"></i><span>Atualizar</span></button>
           <button type="button" class="mon-action" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><span>WhatsApp</span></button>
         </div>
@@ -11381,6 +11382,24 @@ function refreshMonitorPanel(){loadMonitorPanel(true);}
 function scheduleMonitorRefresh(delay=800){
   clearTimeout(monRefreshTimer);
   monRefreshTimer=setTimeout(()=>{if(activeTab==='monitor')loadMonitorPanel(true);},delay);
+}
+function testMonitorNotification(){
+  monLoadState();
+  const now=new Date(),ts=Math.floor(now.getTime()/1000),id='TESTE-MONITOR-'+now.getTime();
+  const item={
+    id,chatId:'',source:'Teste do Monitor',
+    body:'Mensagem de teste para validar notificação, contador de não lidas, expansão para leitura completa e alerta sonoro do Painel Monitor.',
+    time:now.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
+    ts,tickets:['Teste: '+String(ts).slice(-6)],tags:['Teste'],ref:'',uf:'',cidade:'',read:false
+  };
+  monReadIds.delete(id);monSeenIds.delete(id);
+  monLastData={...monLastData,wanderson:[item,...(monLastData.wanderson||[]).filter(x=>!String(x.id||'').startsWith('TESTE-MONITOR-')).slice(0,20)]};
+  const prevInit=monNotifyInitialized;
+  monNotifyInitialized=false;
+  renderMonitorBlocks(monLastData,'Teste de notificação criado · '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+  monNotifyInitialized=prevInit||true;
+  _ghToast('Teste do Monitor: notificação visual e áudio acionados.','var(--blue)',6000);
+  playMonitorSound();
 }
 window.addEventListener('message',function(e){
   if(e.origin!==WPP_PANEL_ORIGIN)return;
