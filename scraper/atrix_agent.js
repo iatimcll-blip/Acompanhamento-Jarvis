@@ -25,7 +25,7 @@ const ATRIX_SUB_SEL = process.env.ATRIX_SUBSTATUS_SELECTOR || '';
 const GH_TOKEN      = process.env.GITHUB_TOKEN  || '';
 const GH_REPO       = process.env.GITHUB_REPO   || 'iatimcll-blip/Acompanhamento-Jarvis';
 const GH_BRANCH     = process.env.GITHUB_BRANCH || 'main';
-const INTERVAL_MIN  = parseInt(process.env.INTERVAL_MINUTES || '30', 10);
+const INTERVAL_MIN  = parseInt(process.env.INTERVAL_MINUTES || '90', 10);
 const DELAY_MS      = parseFloat(process.env.DELAY_SECONDS  || '2') * 1000;
 const DEBUG         = ['1','true','yes'].includes((process.env.DEBUG || '').toLowerCase());
 const SINGLE_CYCLE  = ['1','true','yes'].includes((process.env.SINGLE_CYCLE || '').toLowerCase());
@@ -126,15 +126,37 @@ async function loadUpdates() {
   return { updates: content ? JSON.parse(content) : {}, sha };
 }
 
-async function saveUpdates(updates, sha) {
+// Salva atrix_updates.json com proteção contra escrita concorrente — mais de uma
+// máquina pode rodar o agente ao mesmo tempo (redundância/failover). Se o PUT falhar
+// por conflito de sha (409, alguém salvou primeiro), busca a versão mais recente,
+// mescla por chamado preferindo o registro com updatedAt mais novo, e tenta de novo.
+async function saveUpdates(updates, sha, attempt = 1) {
   const ts = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  await ghPutFile(
-    GH_UPDATES_FILE,
-    JSON.stringify(updates, null, 2),
-    sha,
-    `chore: substatus Atrix (${ts}) [${Object.keys(updates).length} chamados]`
-  );
-  info(`atrix_updates.json salvo (${Object.keys(updates).length} chamados).`);
+  try {
+    await ghPutFile(
+      GH_UPDATES_FILE,
+      JSON.stringify(updates, null, 2),
+      sha,
+      `chore: substatus Atrix (${ts}) [${Object.keys(updates).length} chamados]`
+    );
+    info(`atrix_updates.json salvo (${Object.keys(updates).length} chamados).`);
+  } catch (e) {
+    const isConflict = /GitHub 409/.test(e.message);
+    if (!isConflict || attempt >= 4) throw e;
+
+    warn(`Conflito ao salvar (outra maquina atualizou primeiro) — mesclando e tentando novamente (${attempt}/3)...`);
+    await new Promise(r => setTimeout(r, 500 * attempt));
+    const { content, sha: freshSha } = await ghGetFile(GH_UPDATES_FILE);
+    const remote = content ? JSON.parse(content) : {};
+    const merged = { ...remote };
+    for (const [tid, up] of Object.entries(updates)) {
+      const other = remote[tid];
+      if (!other || !other.updatedAt || (up.updatedAt && up.updatedAt > other.updatedAt)) {
+        merged[tid] = up;
+      }
+    }
+    await saveUpdates(merged, freshSha, attempt + 1);
+  }
 }
 
 // ── Login automático ──────────────────────────────────────────────────────────
@@ -180,11 +202,19 @@ const SELECTORS = [
   'select[id*="substatus"]',
   'select[name*="substatus"]',
   'select[class*="substatus"]',
-  'select[name="status"]',
 ];
 
 // Valores que indicam campo vazio/não preenchido — ignorar
 const BLANK_VALUES = new Set(['selecione','seleccione','select','nenhum','none','','—','-','--']);
+
+// Quando o Status da página contém uma destas palavras, ela tem prioridade sobre
+// o Substatus encontrado — regra de negócio: ticket fechado/cancelado sempre prevalece.
+const CLOSED_CANCELLED_MAP = { fechado: 'Fechado', cancelado: 'Cancelado', encerrado: 'Encerrado', closed: 'Fechado', cancelled: 'Cancelado' };
+function closedCancelledFrom(statusText) {
+  if (!statusText) return null;
+  const m = statusText.match(/\b(fechado|cancelado|encerrado|closed|cancelled)\b/i);
+  return m ? CLOSED_CANCELLED_MAP[m[1].toLowerCase()] : null;
+}
 
 async function selText(page, selector) {
   const el = await page.$(selector);
@@ -202,61 +232,31 @@ async function extractSubstatus(page, ticket) {
     await page.goto(ticket.link, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    // Helper: detectar status Fechado/Cancelado no texto da página
-    const checkClosedStatus = () => page.evaluate(() => {
-      const txt = document.body.innerText || '';
-      const m = txt.match(/Status\s*:\s*(Fechado|Cancelado|Encerrado|Closed|Cancelled)/i);
-      return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : null;
-    });
-
-    // ── Aguardar selects carregarem (SPA com hash routing) ───────────────────────
-    // Quando o ticket está fechado o SPA pode não ter selects de substatus,
-    // mas pode ter selects de navegação — aguardamos e depois filtramos.
-    try {
-      await page.waitForSelector('select', { timeout: 12000 });
-    } catch {
-      // Sem nenhum select: verificar se é ticket fechado/cancelado
-      const cs = await checkClosedStatus();
-      if (cs) { info(`[${tid}] Status: ${cs} (encerrado)`); return cs; }
-      warn(`[${tid}] SPA nao renderizou selects em 12s.`);
-      return null;
-    }
-
-    // ── Estratégia 2: seletor personalizado via .env ──────────────────────────────
-    if (ATRIX_SUB_SEL) {
-      const v = await selText(page, ATRIX_SUB_SEL);
-      if (v) { dbg(`[${tid}] override selector: ${v}`); return v; }
-    }
-
-    // ── Estratégia 3: seletores nominais (name/id/class com "substatus") ─────────
-    for (const sel of SELECTORS) {
-      const v = await selText(page, sel);
-      if (v) { dbg(`[${tid}] via "${sel}": ${v}`); return v; }
-    }
-
-    // ── Estratégia 4: buscar célula/label com texto "Substatus" e select adjacente ─
-    // NÃO usa fallback posicional (ss[1]) pois capta campos errados (técnico, prioridade)
-    const v = await page.evaluate((blanks) => {
+    // Helper: extrai o valor do Status da página (rótulo, select ou texto), sem restringir
+    // a valores específicos — usado como fallback quando nenhum substatus é encontrado.
+    // Ordem por confiabilidade: rótulo explícito > select nomeado > texto solto (evita
+    // pegar selects de filtro/navegação que não pertencem ao ticket).
+    const extractPageStatus = () => page.evaluate((blanks) => {
       const optText = el => {
         if (!el || el.tagName !== 'SELECT') return null;
         const opt = el.options[el.selectedIndex];
         const t = opt ? opt.text.trim() : '';
         return t && !blanks.includes(t.toLowerCase()) ? t : null;
       };
+      // Normaliza rótulo removendo hífen e pontuação de campo obrigatório (":", "*")
+      // no final — "Status *", "Status:" e "Status" devem casar igual.
+      const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
 
-      // Percorrer td, th, span, div, label, dt que contenham somente "Substatus"
+      // 1. Rótulo/célula "Status" com select adjacente (mesma estrutura do Substatus)
       for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
-        const cellTxt = cell.textContent.trim().toLowerCase();
-        if (cellTxt !== 'substatus' && !cellTxt.startsWith('substatus:') && !cellTxt.startsWith('sub-status')) continue;
+        if (normLabel(cell.textContent) !== 'status') continue;
 
-        // Célula irmã (tabela horizontal)
         const next = cell.nextElementSibling;
         if (next) {
           const sel = next.tagName === 'SELECT' ? next : next.querySelector('select');
           const t = optText(sel);
           if (t) return t;
         }
-        // Select dentro da linha/container pai
         const row = cell.closest('tr,div,fieldset,dl,form');
         if (row) {
           const sel = row.querySelector('select');
@@ -264,15 +264,115 @@ async function extractSubstatus(page, ticket) {
           if (t) return t;
         }
       }
+
+      // 2. Select nomeado "status" (excluindo variantes de "substatus")
+      for (const sel of document.querySelectorAll('select')) {
+        const id = (sel.id || '').toLowerCase();
+        const name = (sel.name || '').toLowerCase();
+        if (id.includes('sub') || name.includes('sub')) continue;
+        if (id.includes('status') || name.includes('status')) {
+          const t = optText(sel);
+          if (t) return t;
+        }
+      }
+
+      // 3. Texto solto "Status : <valor>" em qualquer lugar da página — corta antes de
+      // "Substatus"/espaço duplo para não colar com o campo seguinte na mesma linha.
+      const txt = document.body.innerText || '';
+      const m = txt.match(/Status\s*:\s*([^\n\r]{1,40}?)(?:\s{2,}|\s*Substatus\b|$)/i);
+      if (m) {
+        const v = m[1].trim();
+        if (v && !blanks.includes(v.toLowerCase())) return v;
+      }
       return null;
     }, [...BLANK_VALUES]);
 
-    if (v) { dbg(`[${tid}] via estrutura Substatus: ${v}`); return v; }
+    // ── Aguardar selects carregarem (SPA com hash routing) ───────────────────────
+    // Quando o ticket está fechado o SPA pode não ter selects de substatus,
+    // mas pode ter selects de navegação — aguardamos e depois filtramos.
+    try {
+      await page.waitForSelector('select', { timeout: 12000 });
+    } catch {
+      // Sem nenhum select: usar o Status encontrado na página, se houver
+      const st = await extractPageStatus();
+      const cc0 = closedCancelledFrom(st);
+      if (cc0) { info(`[${tid}] Status: ${cc0} (fechado/cancelado)`); return cc0; }
+      if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return st; }
+      warn(`[${tid}] SPA nao renderizou selects em 12s.`);
+      return null;
+    }
 
-    // ── Verificação final: ticket fechado/cancelado (página já renderizada) ──────
-    // SPA tinha selects de navegação mas nenhum de substatus — checar status
-    const cs = await checkClosedStatus();
-    if (cs) { info(`[${tid}] Status: ${cs} (encerrado)`); return cs; }
+    // ── Coleta o Substatus por todas as estratégias, sem retornar ainda ──────────
+    // O Status da página é sempre conferido depois: se indicar Fechado/Cancelado,
+    // tem prioridade sobre o Substatus encontrado (regra de negócio).
+    let sub = null;
+
+    // Estratégia 2: seletor personalizado via .env
+    if (ATRIX_SUB_SEL) {
+      sub = await selText(page, ATRIX_SUB_SEL);
+      if (sub) dbg(`[${tid}] override selector: ${sub}`);
+    }
+
+    // Estratégia 3: seletores nominais (name/id/class com "substatus")
+    if (!sub) {
+      for (const sel of SELECTORS) {
+        const found = await selText(page, sel);
+        if (found) { sub = found; dbg(`[${tid}] via "${sel}": ${found}`); break; }
+      }
+    }
+
+    // Estratégia 4: buscar célula/label com texto "Substatus" e select adjacente
+    // NÃO usa fallback posicional (ss[1]) pois capta campos errados (técnico, prioridade)
+    if (!sub) {
+      sub = await page.evaluate((blanks) => {
+        const optText = el => {
+          if (!el || el.tagName !== 'SELECT') return null;
+          const opt = el.options[el.selectedIndex];
+          const t = opt ? opt.text.trim() : '';
+          return t && !blanks.includes(t.toLowerCase()) ? t : null;
+        };
+
+        // Normaliza rótulo removendo hífen e pontuação de campo obrigatório (":", "*")
+        // no final — "Substatus *", "Sub-Status:" e "Substatus" devem casar igual.
+        const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
+
+        // Percorrer td, th, span, div, label, dt que contenham somente "Substatus"
+        for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
+          if (normLabel(cell.textContent) !== 'substatus') continue;
+
+          // Célula irmã (tabela horizontal)
+          const next = cell.nextElementSibling;
+          if (next) {
+            const sel = next.tagName === 'SELECT' ? next : next.querySelector('select');
+            const t = optText(sel);
+            if (t) return t;
+          }
+          // Select dentro da linha/container pai
+          const row = cell.closest('tr,div,fieldset,dl,form');
+          if (row) {
+            const sel = row.querySelector('select');
+            const t = optText(sel);
+            if (t) return t;
+          }
+        }
+        return null;
+      }, [...BLANK_VALUES]);
+      if (sub) dbg(`[${tid}] via estrutura Substatus: ${sub}`);
+    }
+
+    // ── Estratégia 5: o Status da página tem prioridade quando indica Fechado/Cancelado ──
+    const pageStatus = await extractPageStatus();
+    const cc = closedCancelledFrom(pageStatus);
+    if (cc) {
+      if (sub && sub.trim().toLowerCase() !== cc.trim().toLowerCase()) info(`[${tid}] Status indica ${cc} — sobrepondo substatus "${sub}"`);
+      else info(`[${tid}] Status: ${cc} (fechado/cancelado)`);
+      return cc;
+    }
+
+    if (sub) return sub;
+
+    // ── Fallback final: nenhum substatus encontrado — usar o Status da página ────
+    if (pageStatus) { info(`[${tid}] Substatus nao encontrado — usando Status: ${pageStatus}`); return pageStatus; }
 
     // Nenhuma estratégia encontrou valor válido
     if (DEBUG) {
