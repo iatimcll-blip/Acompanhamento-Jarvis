@@ -401,6 +401,9 @@ body {
 .mon-msg-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .mon-source { min-width: 0; color: var(--tx); font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mon-time { flex-shrink: 0; color: var(--tx3); font-size: 10px; font-variant-numeric: tabular-nums; }
+.mon-sender { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; margin: -2px 0 6px; color: var(--tx2); font-size: 10px; font-weight: 700; }
+.mon-sender i { color: var(--blue); font-size: 12px; }
+.mon-sender b { color: var(--tx); font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mon-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .mon-tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 6px; border-radius: 6px; background: var(--surface2); border: .5px solid var(--bd); color: var(--tx2); font-size: 9px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
 .mon-tag.ticket { color: #0ea5e9; background: rgba(14,165,233,.10); border-color: rgba(14,165,233,.28); }
@@ -11242,11 +11245,29 @@ function monMsgTime(m){
   return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
 function monMsgBody(m){return String((m&&(m.body||m.caption||m.text))||'').trim();}
+function monFormatSenderId(id){
+  const raw=String(id||'').trim();
+  if(!raw)return'';
+  const base=raw.replace(/@.+$/,'').replace(/\D/g,'');
+  if(!base)return raw.replace(/@.+$/,'');
+  if(base.length>=12)return`+${base.slice(0,2)} ${base.slice(2,4)} ${base.slice(4)}`;
+  if(base.length>=10)return`+55 ${base.slice(0,2)} ${base.slice(2)}`;
+  return base;
+}
+function monSenderName(msg,chat){
+  if(!msg)return monChatName(chat);
+  if(msg.fromMe)return'Você';
+  const named=String(msg.senderName||msg.authorName||msg.notifyName||msg.pushname||msg.senderNumber||'').trim();
+  if(named)return named;
+  const id=String(msg.author||msg.senderId||msg.from||'').trim();
+  if(id)return monFormatSenderId(id);
+  return monChatName(chat);
+}
 function monPushItem(bucket,key,chat,msg,extra={}){
   const body=monMsgBody(msg);if(!body)return;
   if(!monIsToday(msg&&msg.timestamp))return;
   const id=monMsgId(key,chat,msg,body);
-  bucket[key].push({id,chatId:chat&&chat.id||'',source:monChatName(chat),body,time:monMsgTime(msg),ts:Number(msg.timestamp)||0,tickets:extra.tickets||monExtractTickets(body),tags:extra.tags||[],ref:extra.ref||'',uf:extra.uf||'',cidade:extra.cidade||'',read:monReadIds.has(id)});
+  bucket[key].push({id,chatId:chat&&chat.id||'',source:monChatName(chat),sender:monSenderName(msg,chat),senderId:String(msg&&msg.author||msg&&msg.senderId||msg&&msg.from||''),body,time:monMsgTime(msg),ts:Number(msg.timestamp)||0,tickets:extra.tickets||monExtractTickets(body),tags:extra.tags||[],ref:extra.ref||'',uf:extra.uf||'',cidade:extra.cidade||'',read:monReadIds.has(id)});
 }
 function monFlatItems(data=monLastData){
   return['massiva','infra','gerencial','wanderson'].flatMap(k=>monDedupeItems((data&&data[k])||[]).map(it=>({...it,_block:k})));
@@ -11357,7 +11378,8 @@ function monMsgCard(item){
   const dup=item.dupCount>1?`<span class="mon-tag"><i class="ti ti-copy"></i>${item.dupCount} ocorrências</span>`:'';
   const expanded=monExpandedIds.has(item.id);
   const body=expanded?item.body:(item.body.length>700?item.body.slice(0,697)+'...':item.body);
-  return`<article class="mon-msg${item.read?'':' unread'}${expanded?' expanded':''}" onclick="monToggleExpand('${eh(item.id)}')" title="Clique para ler a mensagem completa"><div class="mon-msg-top"><span class="mon-source" title="${eh(item.source)}">${eh(item.source)}</span><span class="mon-time">${eh(item.time||'')}</span></div><div class="mon-tags">${unread}${tickets}${local}${ref}${tags}${dup}</div><div class="mon-body">${eh(body)}</div><div class="mon-msg-actions"><span class="mon-msg-hint">${expanded?'Mensagem completa':'Clique para expandir'}</span><button type="button" class="mon-msg-btn" onclick="monReplyMessage('${eh(item.id)}',event)"><i class="ti ti-message-reply"></i>Responder</button></div></article>`;
+  const sender=item.sender?`<div class="mon-sender" title="${eh(item.senderId||item.sender)}"><i class="ti ti-user-circle"></i><span>Enviado por</span><b>${eh(item.sender)}</b></div>`:'';
+  return`<article class="mon-msg${item.read?'':' unread'}${expanded?' expanded':''}" onclick="monToggleExpand('${eh(item.id)}')" title="Clique para ler a mensagem completa"><div class="mon-msg-top"><span class="mon-source" title="${eh(item.source)}">${eh(item.source)}</span><span class="mon-time">${eh(item.time||'')}</span></div>${sender}<div class="mon-tags">${unread}${tickets}${local}${ref}${tags}${dup}</div><div class="mon-body">${eh(body)}</div><div class="mon-msg-actions"><span class="mon-msg-hint">${expanded?'Mensagem completa':'Clique para expandir'}</span><button type="button" class="mon-msg-btn" onclick="monReplyMessage('${eh(item.id)}',event)"><i class="ti ti-message-reply"></i>Responder</button></div></article>`;
 }
 function monToggleExpand(id){
   if(!id)return;
@@ -11454,6 +11476,7 @@ function testMonitorNotification(){
   const now=new Date(),ts=Math.floor(now.getTime()/1000),id='TESTE-MONITOR-'+now.getTime();
   const item={
     id,chatId:'',source:'Teste do Monitor',
+    sender:'Contato de teste',senderId:'559899999999@c.us',
     body:'Mensagem de teste para validar notificação, contador de não lidas, expansão para leitura completa e alerta sonoro do Painel Monitor.',
     time:now.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
     ts,tickets:['Teste: '+String(ts).slice(-6)],tags:['Teste'],ref:'',uf:'',cidade:'',read:false
