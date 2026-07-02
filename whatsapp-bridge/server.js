@@ -29,6 +29,7 @@ app.use(express.json({ limit: '1mb' }));
 
 let client;
 let initializing = false;
+const contactCache = new Map();
 const state = {
   status: 'starting',
   qr: '',
@@ -78,12 +79,37 @@ function summarizeChat(chat) {
   };
 }
 
-function summarizeMessage(message) {
+async function contactSummary(id) {
+  const key = String(id || '').trim();
+  if (!key || !client) return { id: key, name: '', number: '' };
+  if (contactCache.has(key)) return contactCache.get(key);
+  try {
+    const contact = await client.getContactById(key);
+    const item = {
+      id: key,
+      name: contact.name || contact.pushname || contact.shortName || contact.number || key.replace(/@.+$/, ''),
+      number: contact.number || key.replace(/@.+$/, '')
+    };
+    contactCache.set(key, item);
+    return item;
+  } catch (_err) {
+    const item = { id: key, name: key.replace(/@.+$/, ''), number: key.replace(/@.+$/, '') };
+    contactCache.set(key, item);
+    return item;
+  }
+}
+
+async function summarizeMessage(message) {
+  const senderId = message.author || (message.fromMe ? message.to : message.from) || '';
+  const sender = await contactSummary(senderId);
   return {
     id: message.id && message.id._serialized,
     from: message.from,
     to: message.to,
     author: message.author || '',
+    senderId,
+    senderName: sender.name || '',
+    senderNumber: sender.number || '',
     body: message.body || '',
     fromMe: !!message.fromMe,
     timestamp: message.timestamp || 0,
@@ -146,14 +172,14 @@ async function startClient() {
   });
   client.on('auth_failure', msg => setStatus('auth_failure', { lastError: String(msg || 'Falha de autenticação') }));
   client.on('disconnected', reason => setStatus('disconnected', { lastError: String(reason || 'Sessão desconectada') }));
-  client.on('message', message => {
+  client.on('message', async message => {
     state.unread += 1;
     touch();
-    broadcast('message', { message: summarizeMessage(message) });
+    broadcast('message', { message: await summarizeMessage(message) });
   });
-  client.on('message_create', message => {
+  client.on('message_create', async message => {
     touch();
-    broadcast('message_create', { message: summarizeMessage(message) });
+    broadcast('message_create', { message: await summarizeMessage(message) });
   });
 
   try {
@@ -228,7 +254,7 @@ app.get('/api/chats/:id/messages', async (req, res) => {
     const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
     const chat = await client.getChatById(req.params.id);
     const messages = await chat.fetchMessages({ limit });
-    res.json(messages.map(summarizeMessage));
+    res.json(await Promise.all(messages.map(summarizeMessage)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -244,7 +270,7 @@ app.post('/api/send-message', async (req, res) => {
   }
   try {
     const msg = await client.sendMessage(to, body);
-    res.json({ ok: true, message: summarizeMessage(msg) });
+    res.json({ ok: true, message: await summarizeMessage(msg) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
