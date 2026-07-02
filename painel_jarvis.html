@@ -7019,6 +7019,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="mon-status" id="monitor-status"><i class="ti ti-layout-grid"></i><span>Blocos: Massiva · Infraestrutura · Gerencial · Wanderson</span></div>
         <div class="mon-actions">
           <span class="mon-unread-pill" id="monitor-unread-pill" style="display:none"><i class="ti ti-bell-ringing"></i><span>0 novas não lidas</span></span>
+          <label class="mon-action" title="Anexar áudio local para o alerta"><i class="ti ti-music"></i><span id="monitor-audio-label">Anexar áudio</span><input type="file" accept="audio/*" style="display:none" onchange="monUploadAudio(this)"></label>
           <button type="button" class="mon-action" onclick="testMonitorNotification()"><i class="ti ti-bell-ringing"></i><span>Testar alerta</span></button>
           <button type="button" class="mon-action" onclick="refreshMonitorPanel()"><i class="ti ti-refresh"></i><span>Atualizar</span></button>
           <button type="button" class="mon-action" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><span>WhatsApp</span></button>
@@ -11150,7 +11151,10 @@ const MON_INFRA_REFS=['EPS-SLN MA CAP','EPS-SLN PA PA CAP','EPS-ADX','EPS-SLN PA
 const MON_READ_KEY='jarvis:monitor:read:v1';
 const MON_SEEN_KEY='jarvis:monitor:seen:v1';
 const MON_AUDIO_SRC='monitor-alerta.mp3';
-let monReadIds=new Set(),monSeenIds=new Set(),monExpandedIds=new Set(),monLastData={massiva:[],infra:[],gerencial:[],wanderson:[]},monLastStatus='Monitor pronto',monNotifyInitialized=false,monRefreshTimer=null;
+const MON_AUDIO_DB='jarvis-monitor-audio';
+const MON_AUDIO_STORE='files';
+const MON_AUDIO_META_KEY='jarvis:monitor:audio:meta';
+let monReadIds=new Set(),monSeenIds=new Set(),monExpandedIds=new Set(),monLastData={massiva:[],infra:[],gerencial:[],wanderson:[]},monLastStatus='Monitor pronto',monNotifyInitialized=false,monRefreshTimer=null,monAudioObjectUrl='';
 function monLoadState(){
   try{monReadIds=new Set(JSON.parse(localStorage.getItem(MON_READ_KEY)||'[]'));}catch(e){monReadIds=new Set();}
   try{monSeenIds=new Set(JSON.parse(localStorage.getItem(MON_SEEN_KEY)||'[]'));}catch(e){monSeenIds=new Set();}
@@ -11250,10 +11254,62 @@ function monFlatItems(data=monLastData){
 function monFindItem(id){
   return monFlatItems(monLastData).find(it=>it.id===id)||null;
 }
-function playMonitorSound(){
-  const fallback=()=>playWppSound();
+function monAudioDb(){
+  return new Promise((resolve,reject)=>{
+    if(!window.indexedDB)return reject(new Error('IndexedDB indisponível.'));
+    const req=indexedDB.open(MON_AUDIO_DB,1);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(MON_AUDIO_STORE))db.createObjectStore(MON_AUDIO_STORE,{keyPath:'id'});};
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('Falha ao abrir banco de áudio.'));
+  });
+}
+async function monGetStoredAudioUrl(){
+  if(monAudioObjectUrl)return monAudioObjectUrl;
+  const db=await monAudioDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(MON_AUDIO_STORE,'readonly');
+    const req=tx.objectStore(MON_AUDIO_STORE).get('alerta');
+    req.onsuccess=()=>{
+      const rec=req.result;
+      if(!rec||!rec.blob)return resolve('');
+      monAudioObjectUrl=URL.createObjectURL(rec.blob);
+      resolve(monAudioObjectUrl);
+    };
+    req.onerror=()=>reject(req.error||new Error('Falha ao ler áudio.'));
+  });
+}
+async function monSaveAudioFile(file){
+  const db=await monAudioDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(MON_AUDIO_STORE,'readwrite');
+    tx.objectStore(MON_AUDIO_STORE).put({id:'alerta',blob:file,name:file.name,type:file.type||'audio/mpeg',size:file.size,at:new Date().toISOString()});
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error||new Error('Falha ao salvar áudio.'));
+  });
+  if(monAudioObjectUrl)URL.revokeObjectURL(monAudioObjectUrl);
+  monAudioObjectUrl=URL.createObjectURL(file);
+  try{localStorage.setItem(MON_AUDIO_META_KEY,JSON.stringify({name:file.name,size:file.size,at:new Date().toISOString()}));}catch(e){}
+  monUpdateAudioLabel();
+}
+function monUpdateAudioLabel(){
+  const el=document.getElementById('monitor-audio-label');if(!el)return;
+  let meta=null;try{meta=JSON.parse(localStorage.getItem(MON_AUDIO_META_KEY)||'null');}catch(e){}
+  el.textContent=meta&&meta.name?'Áudio anexado':'Anexar áudio';
+  el.title=meta&&meta.name?meta.name:'Anexar áudio local para o alerta';
+}
+async function monUploadAudio(input){
+  const file=input&&input.files&&input.files[0];if(input)input.value='';
+  if(!file)return;
+  if(!/^audio\//i.test(file.type||'')&&!/\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name||'')){alert('Selecione um arquivo de áudio válido.');return}
   try{
-    const audio=new Audio(MON_AUDIO_SRC);
+    await monSaveAudioFile(file);
+    _ghToast('Áudio de alerta anexado. Clique em Testar alerta para validar.','var(--green-dk)',6000);
+    playMonitorSound();
+  }catch(e){alert('Não foi possível anexar o áudio: '+(e&&e.message?e.message:e));}
+}
+function monPlayAudioSrc(src,fallback){
+  try{
+    const audio=new Audio(src);
     audio.preload='auto';
     audio.volume=.78;
     audio.addEventListener('loadedmetadata',()=>{try{audio.currentTime=Math.min(5,Math.max(0,(audio.duration||14)-.2));}catch(_){}},{once:true});
@@ -11262,6 +11318,15 @@ function playMonitorSound(){
     const p=audio.play();
     if(p&&p.catch)p.catch(fallback);
     setTimeout(()=>{try{audio.pause();audio.currentTime=5;}catch(_){}},8200);
+  }catch(e){fallback();}
+}
+async function playMonitorSound(){
+  let usedStored=false;
+  const fallback=()=>{usedStored?monPlayAudioSrc(MON_AUDIO_SRC,()=>playWppSound()):playWppSound();};
+  try{
+    const stored=await monGetStoredAudioUrl().catch(()=>'');
+    usedStored=!!stored;
+    monPlayAudioSrc(stored||MON_AUDIO_SRC,fallback);
   }catch(e){fallback();}
 }
 function monUpdateUnreadNotification(items){
@@ -11335,6 +11400,7 @@ function renderMonitorBlocks(data,statusText){
     if(list)list.innerHTML=items.length?items.map(monMsgCard).join(''):`<div class="mon-empty"><i class="ti ti-inbox"></i><strong>Sem mensagens classificadas</strong><span>As novas mensagens aparecerão aqui quando atenderem aos filtros.</span></div>`;
   });
   monUpdateUnreadNotification(allItems);
+  monUpdateAudioLabel();
   const st=document.getElementById('monitor-status');
   if(st)st.innerHTML=`<i class="ti ti-layout-grid"></i><span>${eh(statusText||'Monitor pronto')}</span>`;
 }
