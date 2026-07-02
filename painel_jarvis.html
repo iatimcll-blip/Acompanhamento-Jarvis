@@ -2365,6 +2365,11 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .atrix-sync-badge.fresh i{color:var(--green-dk,#15803d)}
 .atrix-sync-badge.stale{color:var(--orange,#f97316);border-color:var(--orange,#f97316);background:rgba(249,115,22,.07)}
 .atrix-sync-badge.stale i{color:var(--orange,#f97316)}
+.atrix-sync-sep{opacity:.35;padding:0 3px;font-weight:300}
+#atrix-sync-countdown{font-variant-numeric:tabular-nums;letter-spacing:.5px;font-weight:700;opacity:.85}
+#atrix-sync-countdown.cd-soon{color:var(--orange,#f97316)}
+#atrix-sync-countdown.cd-now{color:var(--blue);animation:cdPulse .7s ease-in-out infinite}
+@keyframes cdPulse{0%,100%{opacity:1}50%{opacity:.4}}
 /* ── Atrix Agent: timestamp por chamado no card ── */
 .atrix-card-ts{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--border,rgba(0,0,0,.09));border-radius:5px;padding:1px 5px;margin-left:6px;white-space:nowrap;vertical-align:middle;line-height:1.4;flex-shrink:0}
 [data-theme=dark] .atrix-card-ts{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}
@@ -6482,6 +6487,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <span class="atrix-sync-badge" id="atrix-sync-badge" style="display:none" title="Última atualização automática via Atrix Agent">
               <i class="ti ti-robot"></i>
               <span id="atrix-sync-ts">--/--/---- --:--:--</span>
+              <span class="atrix-sync-sep">·</span>
+              <i class="ti ti-clock" style="font-size:10px;opacity:.7"></i>
+              <span id="atrix-sync-countdown" title="Próxima sincronização automática">--:--</span>
             </span>
           </div>
           <div id="sub-ab"></div>
@@ -8627,6 +8635,35 @@ async function pushAtrixTicketsJson(){
   }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados:',e);}
 }
 
+let _atrixCdTimer=null;
+
+function _startAtrixCountdown(isoStr){
+  if(_atrixCdTimer){clearInterval(_atrixCdTimer);_atrixCdTimer=null;}
+  const el=document.getElementById('atrix-sync-countdown');
+  if(!el)return;
+  const INTERVAL_MS=30*60*1000;
+  const nextSync=new Date(new Date(isoStr).getTime()+INTERVAL_MS);
+  const pad=n=>String(n).padStart(2,'0');
+  function tick(){
+    const rem=nextSync-Date.now();
+    el.classList.remove('cd-soon','cd-now');
+    if(rem<=0){
+      el.textContent='atualizando...';
+      el.classList.add('cd-now');
+      clearInterval(_atrixCdTimer);_atrixCdTimer=null;
+      setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},500);
+      return;
+    }
+    const totalSec=Math.ceil(rem/1000);
+    const min=Math.floor(totalSec/60);
+    const sec=totalSec%60;
+    el.textContent=`${pad(min)}:${pad(sec)}`;
+    if(rem<5*60*1000)el.classList.add('cd-soon');
+  }
+  tick();
+  _atrixCdTimer=setInterval(tick,1000);
+}
+
 function _renderAtrixTs(isoStr){
   const badge=document.getElementById('atrix-sync-badge');
   const txt=document.getElementById('atrix-sync-ts');
@@ -8641,6 +8678,7 @@ function _renderAtrixTs(isoStr){
     badge.classList.remove('fresh','stale');
     if(ageMin<35)badge.classList.add('fresh');       // verde: atualizado há menos de 35 min
     else if(ageMin>120)badge.classList.add('stale'); // laranja: mais de 2h sem atualizar
+    _startAtrixCountdown(isoStr);
   }catch(_){}
 }
 
