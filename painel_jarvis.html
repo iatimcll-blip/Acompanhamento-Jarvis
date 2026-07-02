@@ -8376,6 +8376,7 @@ function stateSignature(st){
     len(st.dAb),st.lastAbAt||'',st.lastAbFile||'',
     len(st.dEnc),st.lastEncAt||'',st.lastEncFile||'',
     len(st.dFuelVehicles),len(st.dFuelRequests),len(st.dFuelWithdrawals),len(st.dFuelAportes),st.fuelBaseAt||'',st.fuelBaseFile||'',
+    st.monitorAudio&&st.monitorAudio.at||'',st.monitorAudio&&st.monitorAudio.url||'',st.monitorAudio&&st.monitorAudio.name||'',
     len(st.ofsRows),(st.ofsMeta&&st.ofsMeta.uploadedAt)||'',(st.ofsMeta&&st.ofsMeta.fname)||'',
     len(rede.BD),len(rede.AD),rede.at||'',rede.fileName||''
   ].join('|');
@@ -8397,7 +8398,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -8465,6 +8466,9 @@ function applyState(st,label){
       if(fresh)currentUser=fresh;
     }
     if(document.getElementById('user-panel').style.display==='flex')renderUsers();
+  }
+  if(st.monitorAudio&&typeof st.monitorAudio==='object'){
+    if(monApplySharedAudio(st.monitorAudio))changed=true;
   }
   const hasFuelState=Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.dFuelWithdrawals)||Array.isArray(st.dFuelAportes)||st.fuelBaseAt!==undefined||st.fuelBaseFile!==undefined||st.fuelCardBalance!==undefined;
   if(hasFuelState){
@@ -11157,7 +11161,7 @@ const MON_AUDIO_SRC='monitor-alerta.mp3';
 const MON_AUDIO_DB='jarvis-monitor-audio';
 const MON_AUDIO_STORE='files';
 const MON_AUDIO_META_KEY='jarvis:monitor:audio:meta';
-let monReadIds=new Set(),monSeenIds=new Set(),monExpandedIds=new Set(),monLastData={massiva:[],infra:[],gerencial:[],wanderson:[]},monLastStatus='Monitor pronto',monNotifyInitialized=false,monRefreshTimer=null,monAudioObjectUrl='';
+let monReadIds=new Set(),monSeenIds=new Set(),monExpandedIds=new Set(),monLastData={massiva:[],infra:[],gerencial:[],wanderson:[]},monLastStatus='Monitor pronto',monNotifyInitialized=false,monRefreshTimer=null,monAudioObjectUrl='',monSharedAudioUrl='',monAudioState=null;
 function monLoadState(){
   try{monReadIds=new Set(JSON.parse(localStorage.getItem(MON_READ_KEY)||'[]'));}catch(e){monReadIds=new Set();}
   try{monSeenIds=new Set(JSON.parse(localStorage.getItem(MON_SEEN_KEY)||'[]'));}catch(e){monSeenIds=new Set();}
@@ -11286,6 +11290,7 @@ function monAudioDb(){
 }
 async function monGetStoredAudioUrl(){
   if(monAudioObjectUrl)return monAudioObjectUrl;
+  if(monSharedAudioUrl)return monSharedAudioUrl;
   const db=await monAudioDb();
   return new Promise((resolve,reject)=>{
     const tx=db.transaction(MON_AUDIO_STORE,'readonly');
@@ -11299,7 +11304,55 @@ async function monGetStoredAudioUrl(){
     req.onerror=()=>reject(req.error||new Error('Falha ao ler áudio.'));
   });
 }
-async function monSaveAudioFile(file){
+function monFileToDataUrl(file){
+  return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(r.error||new Error('Falha ao ler áudio.'));r.readAsDataURL(file);});
+}
+function monFileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      const bytes=new Uint8Array(r.result),chunk=0x8000;let bin='';
+      for(let i=0;i<bytes.length;i+=chunk)bin+=String.fromCharCode(...bytes.subarray(i,i+chunk));
+      resolve(btoa(bin));
+    };
+    r.onerror=()=>reject(r.error||new Error('Falha ao ler áudio.'));
+    r.readAsArrayBuffer(file);
+  });
+}
+async function monPublishAudioToGithub(file){
+  const token=getGhToken&&getGhToken();
+  if(!token)return'';
+  const path='monitor-alerta.mp3';
+  const api='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+path;
+  let sha='';
+  try{
+    const info=await fetch(api+'?ref=main',{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
+    if(info.ok){const j=await info.json();sha=j.sha||'';}
+  }catch(e){}
+  const content=await monFileToBase64(file);
+  const body=JSON.stringify({message:'chore(monitor): atualizar audio de alerta',content,...(sha?{sha}:{}),branch:'main'});
+  const res=await fetch(api,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
+  if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
+  return path+'?v='+Date.now();
+}
+function monSetAudioState(meta){
+  monAudioState=meta&&typeof meta==='object'?meta:null;
+  monSharedAudioUrl=monAudioState?(monAudioState.url||monAudioState.dataUrl||''):'';
+  try{if(monAudioState)localStorage.setItem(MON_AUDIO_META_KEY,JSON.stringify(monAudioState));else localStorage.removeItem(MON_AUDIO_META_KEY);}catch(e){}
+  monUpdateAudioLabel();
+}
+function monApplySharedAudio(meta){
+  if(!meta||typeof meta!=='object')return false;
+  monSetAudioState(meta);
+  if(meta.dataUrl){
+    fetch(meta.dataUrl).then(r=>r.blob()).then(blob=>{
+      const file=new File([blob],meta.name||'monitor-alerta.mp3',{type:meta.type||blob.type||'audio/mpeg'});
+      return monSaveAudioFile(file,false);
+    }).catch(e=>console.warn('Não foi possível cachear áudio compartilhado:',e));
+  }
+  return true;
+}
+async function monSaveAudioFile(file,updateMeta){
   const db=await monAudioDb();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction(MON_AUDIO_STORE,'readwrite');
@@ -11309,14 +11362,14 @@ async function monSaveAudioFile(file){
   });
   if(monAudioObjectUrl)URL.revokeObjectURL(monAudioObjectUrl);
   monAudioObjectUrl=URL.createObjectURL(file);
-  try{localStorage.setItem(MON_AUDIO_META_KEY,JSON.stringify({name:file.name,size:file.size,at:new Date().toISOString()}));}catch(e){}
+  if(updateMeta!==false)try{localStorage.setItem(MON_AUDIO_META_KEY,JSON.stringify({name:file.name,size:file.size,type:file.type||'audio/mpeg',at:new Date().toISOString()}));}catch(e){}
   monUpdateAudioLabel();
 }
 function monUpdateAudioLabel(){
   const el=document.getElementById('monitor-audio-label');if(!el)return;
-  let meta=null;try{meta=JSON.parse(localStorage.getItem(MON_AUDIO_META_KEY)||'null');}catch(e){}
+  let meta=monAudioState;try{meta=meta||JSON.parse(localStorage.getItem(MON_AUDIO_META_KEY)||'null');}catch(e){}
   el.textContent=meta&&meta.name?'Áudio anexado':'Anexar áudio';
-  el.title=meta&&meta.name?meta.name:'Anexar áudio local para o alerta';
+  el.title=meta&&meta.name?(meta.name+(meta.url?' · padrão compartilhado':'')):'Anexar áudio local para o alerta';
 }
 async function monUploadAudio(input){
   const file=input&&input.files&&input.files[0];if(input)input.value='';
@@ -11324,7 +11377,19 @@ async function monUploadAudio(input){
   if(!/^audio\//i.test(file.type||'')&&!/\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name||'')){alert('Selecione um arquivo de áudio válido.');return}
   try{
     await monSaveAudioFile(file);
-    _ghToast('Áudio de alerta anexado. Clique em Testar alerta para validar.','var(--green-dk)',6000);
+    _ghToast('Publicando áudio padrão do Monitor...','var(--blue)',5000);
+    let meta={name:file.name,size:file.size,type:file.type||'audio/mpeg',at:new Date().toISOString()};
+    try{
+      const url=await monPublishAudioToGithub(file);
+      if(url)meta={...meta,url};
+    }catch(e){
+      console.warn('Áudio não publicado no GitHub, usando estado compartilhado:',e);
+      meta={...meta,dataUrl:await monFileToDataUrl(file)};
+    }
+    monSetAudioState(meta);
+    saveState();
+    if(canEdit()){setTimeout(()=>{if(getGhToken())saveGhState(false);else saveSharedState(buildState(),false);},200);}
+    _ghToast('Áudio de alerta virou padrão para todos os acessos. Clique em Testar alerta para validar.','var(--green-dk)',7000);
     playMonitorSound();
   }catch(e){alert('Não foi possível anexar o áudio: '+(e&&e.message?e.message:e));}
 }
