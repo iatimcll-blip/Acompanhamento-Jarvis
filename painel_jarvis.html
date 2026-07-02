@@ -7022,7 +7022,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="mon-status" id="monitor-status"><i class="ti ti-layout-grid"></i><span>Blocos: Massiva · Infraestrutura · Gerencial · Wanderson</span></div>
         <div class="mon-actions">
           <span class="mon-unread-pill" id="monitor-unread-pill" style="display:none"><i class="ti ti-bell-ringing"></i><span>0 novas não lidas</span></span>
-          <label class="mon-action" title="Anexar áudio local para o alerta"><i class="ti ti-music"></i><span id="monitor-audio-label">Anexar áudio</span><input type="file" accept="audio/*" style="display:none" onchange="monUploadAudio(this)"></label>
+          <label class="mon-action" title="Anexar áudio local para o alerta"><i class="ti ti-music"></i><span id="monitor-audio-label">Anexar áudio</span><input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac" style="display:none" onchange="monUploadAudio(this)"></label>
           <button type="button" class="mon-action" onclick="testMonitorNotification()"><i class="ti ti-bell-ringing"></i><span>Testar alerta</span></button>
           <button type="button" class="mon-action" onclick="refreshMonitorPanel()"><i class="ti ti-refresh"></i><span>Atualizar</span></button>
           <button type="button" class="mon-action" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><span>WhatsApp</span></button>
@@ -11319,6 +11319,23 @@ function monFileToBase64(file){
     r.readAsArrayBuffer(file);
   });
 }
+async function monIsAudioFile(file){
+  if(!file)return false;
+  const name=String(file.name||'').toLowerCase().trim();
+  const type=String(file.type||'').toLowerCase().trim();
+  if(/^audio\//.test(type))return true;
+  if(/\.(mp3|mpeg|wav|ogg|oga|m4a|aac|webm)$/i.test(name))return true;
+  try{
+    const head=new Uint8Array(await file.slice(0,16).arrayBuffer());
+    const txt=String.fromCharCode(...head);
+    if(txt.startsWith('ID3'))return true;
+    if(head[0]===0xff&&(head[1]&0xe0)===0xe0)return true;
+    if(txt.startsWith('RIFF')&&txt.slice(8,12)==='WAVE')return true;
+    if(txt.startsWith('OggS'))return true;
+    if(txt.slice(4,8)==='ftyp')return true;
+  }catch(e){}
+  return false;
+}
 async function monPublishAudioToGithub(file){
   const token=getGhToken&&getGhToken();
   if(!token)return'';
@@ -11374,7 +11391,7 @@ function monUpdateAudioLabel(){
 async function monUploadAudio(input){
   const file=input&&input.files&&input.files[0];if(input)input.value='';
   if(!file)return;
-  if(!/^audio\//i.test(file.type||'')&&!/\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name||'')){alert('Selecione um arquivo de áudio válido.');return}
+  if(!(await monIsAudioFile(file))){alert('Selecione um arquivo de áudio válido.');return}
   try{
     await monSaveAudioFile(file);
     _ghToast('Publicando áudio padrão do Monitor...','var(--blue)',5000);
