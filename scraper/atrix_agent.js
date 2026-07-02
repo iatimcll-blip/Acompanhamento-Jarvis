@@ -183,68 +183,108 @@ const SELECTORS = [
   'select[name="status"]',
 ];
 
-async function getSelectText(page, selector) {
+// Valores que indicam campo vazio/não preenchido — ignorar
+const BLANK_VALUES = new Set(['selecione','seleccione','select','nenhum','none','','—','-','--']);
+
+async function selText(page, selector) {
   const el = await page.$(selector);
   if (!el) return null;
-  const val = await el.evaluate(
-    el => el.options[el.selectedIndex] ? el.options[el.selectedIndex].text.trim() : ''
-  );
-  return val || null;
+  const v = await el.evaluate(el => {
+    const opt = el.options && el.options[el.selectedIndex];
+    return opt ? opt.text.trim() : '';
+  });
+  return v && !BLANK_VALUES.has(v.toLowerCase()) ? v : null;
 }
 
 async function extractSubstatus(page, ticket) {
   const tid = ticket.id || ticket.ticketId || '?';
   try {
     await page.goto(ticket.link, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
 
+    // Helper: detectar status Fechado/Cancelado no texto da página
+    const checkClosedStatus = () => page.evaluate(() => {
+      const txt = document.body.innerText || '';
+      const m = txt.match(/Status\s*:\s*(Fechado|Cancelado|Encerrado|Closed|Cancelled)/i);
+      return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : null;
+    });
+
+    // ── Aguardar selects carregarem (SPA com hash routing) ───────────────────────
+    // Quando o ticket está fechado o SPA pode não ter selects de substatus,
+    // mas pode ter selects de navegação — aguardamos e depois filtramos.
     try {
-      await page.waitForSelector('select', { timeout: 15000 });
+      await page.waitForSelector('select', { timeout: 12000 });
     } catch {
-      warn(`[${tid}] SPA nao renderizou selects em 15s.`);
+      // Sem nenhum select: verificar se é ticket fechado/cancelado
+      const cs = await checkClosedStatus();
+      if (cs) { info(`[${tid}] Status: ${cs} (encerrado)`); return cs; }
+      warn(`[${tid}] SPA nao renderizou selects em 12s.`);
       return null;
     }
 
+    // ── Estratégia 2: seletor personalizado via .env ──────────────────────────────
     if (ATRIX_SUB_SEL) {
-      const v = await getSelectText(page, ATRIX_SUB_SEL);
-      if (v) { dbg(`[${tid}] override: ${v}`); return v; }
+      const v = await selText(page, ATRIX_SUB_SEL);
+      if (v) { dbg(`[${tid}] override selector: ${v}`); return v; }
     }
 
+    // ── Estratégia 3: seletores nominais (name/id/class com "substatus") ─────────
     for (const sel of SELECTORS) {
-      const v = await getSelectText(page, sel);
+      const v = await selText(page, sel);
       if (v) { dbg(`[${tid}] via "${sel}": ${v}`); return v; }
     }
 
-    const v = await page.evaluate(() => {
-      const selText = el => {
+    // ── Estratégia 4: buscar célula/label com texto "Substatus" e select adjacente ─
+    // NÃO usa fallback posicional (ss[1]) pois capta campos errados (técnico, prioridade)
+    const v = await page.evaluate((blanks) => {
+      const optText = el => {
         if (!el || el.tagName !== 'SELECT') return null;
         const opt = el.options[el.selectedIndex];
-        return opt ? opt.text.trim() : null;
+        const t = opt ? opt.text.trim() : '';
+        return t && !blanks.includes(t.toLowerCase()) ? t : null;
       };
-      for (const lbl of document.querySelectorAll('label')) {
-        if (!lbl.textContent.toLowerCase().includes('substatus')) continue;
-        const forId = lbl.getAttribute('for');
-        let el = forId ? document.getElementById(forId) : null;
-        if (!el) el = lbl.nextElementSibling;
-        if (!el) { const p = lbl.closest('div,td,th'); if (p) el = p.querySelector('select'); }
-        const t = selText(el);
-        if (t) return t;
+
+      // Percorrer td, th, span, div, label, dt que contenham somente "Substatus"
+      for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
+        const cellTxt = cell.textContent.trim().toLowerCase();
+        if (cellTxt !== 'substatus' && !cellTxt.startsWith('substatus:') && !cellTxt.startsWith('sub-status')) continue;
+
+        // Célula irmã (tabela horizontal)
+        const next = cell.nextElementSibling;
+        if (next) {
+          const sel = next.tagName === 'SELECT' ? next : next.querySelector('select');
+          const t = optText(sel);
+          if (t) return t;
+        }
+        // Select dentro da linha/container pai
+        const row = cell.closest('tr,div,fieldset,dl,form');
+        if (row) {
+          const sel = row.querySelector('select');
+          const t = optText(sel);
+          if (t) return t;
+        }
       }
-      const ss = [...document.querySelectorAll('select')];
-      return ss.length >= 2 ? selText(ss[1]) : null;
-    });
+      return null;
+    }, [...BLANK_VALUES]);
 
-    if (v) { dbg(`[${tid}] via JS: ${v}`); return v; }
+    if (v) { dbg(`[${tid}] via estrutura Substatus: ${v}`); return v; }
 
+    // ── Verificação final: ticket fechado/cancelado (página já renderizada) ──────
+    // SPA tinha selects de navegação mas nenhum de substatus — checar status
+    const cs = await checkClosedStatus();
+    if (cs) { info(`[${tid}] Status: ${cs} (encerrado)`); return cs; }
+
+    // Nenhuma estratégia encontrou valor válido
     if (DEBUG) {
       const shot = path.join(__dirname, `debug_${tid}.png`);
       await page.screenshot({ path: shot, fullPage: true });
-      dbg(`[${tid}] Screenshot em ${shot}. Defina ATRIX_SUBSTATUS_SELECTOR no .env`);
+      dbg(`[${tid}] Screenshot salvo: ${shot} — defina ATRIX_SUBSTATUS_SELECTOR no .env`);
     } else {
       warn(`[${tid}] Substatus nao encontrado.`);
     }
     return null;
   } catch (e) {
-    if (e.name === 'TimeoutError') warn(`[${tid}] Timeout.`);
+    if (e.name === 'TimeoutError') warn(`[${tid}] Timeout ao carregar ticket.`);
     else error(`[${tid}] Erro: ${e.message}`);
     return null;
   }
