@@ -979,6 +979,9 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
   transition: border-color .13s, box-shadow .13s;
 }
 .substatus-select:focus { border-color: var(--blue); }
+.substatus-manual { border-color: #f59e0b !important; }
+.sub-manual-lock { display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:#f59e0b;color:#000;font-size:8px;font-weight:900;cursor:pointer;flex-shrink:0;margin-left:2px;line-height:1;user-select:none }
+.sub-manual-lock:hover { background:#d97706; color:#fff }
 .substatus-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; min-width: 0; }
 /* annotation cells */
 .td-ann { min-width: 130px; }
@@ -7755,6 +7758,7 @@ let wppUnreadCount=0,wppInitialized=false;
 let refreshTimer=null;
 const STORAGE_KEY='atrix:painel:bases:v1';
 const STORAGE_META_KEY='atrix:painel:bases:meta:v1';
+const MANUAL_SUB_KEY='jarvis:ab:manualSub';
 const IDB_NAME='atrix-jarvis-store';
 const IDB_STORE='kv';
 const ACTIVE_TAB_KEY='atrix:painel:aba:v1';
@@ -8672,6 +8676,7 @@ async function loadAtrixUpdates(){
     dAb.forEach(ticket=>{
       const up=updates[ticket.id]||updates[ticket.ticketId]||null;
       if(!up||!up.substatus)return;
+      if(_hasManualSub(ticket.id||ticket.ticketId))return;
       if(up.substatus!==ticket.substatus){ticket.substatus=up.substatus;count++;}
     });
     if(count>0||latestAt)renderAllAb();
@@ -9200,6 +9205,12 @@ function fillFiltersAb(){
   renderMopQuick();
 }
 function getSubstatusOptions(current){const cur=fmtSubstatus(current);const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);if(cur&&!subs.some(s=>nk(s)===nk(cur)))subs.unshift(cur);return subs.map(s=>`<option value="${eh(s)}"${nk(s)===nk(cur)?' selected':''}>${eh(s)}</option>`).join('')}
+function _manualSubMap(){try{return JSON.parse(localStorage.getItem(MANUAL_SUB_KEY)||'{}')}catch(_){return{}}}
+function _saveManualSub(id){if(!id)return;try{const m=_manualSubMap();m[String(id)]=1;localStorage.setItem(MANUAL_SUB_KEY,JSON.stringify(m))}catch(_){}}
+function _hasManualSub(id){if(!id)return false;try{return!!_manualSubMap()[String(id)]}catch(_){return false}}
+function _clearManualSub(id){if(!id)return;try{const m=_manualSubMap();delete m[String(id)];localStorage.setItem(MANUAL_SUB_KEY,JSON.stringify(m))}catch(_){}}
+function _clearManualSubByRowKey(rowKey){const item=dAb.find(d=>String(d.rowKey)===String(rowKey));if(item){_clearManualSub(item.id||item.ticketId);renderTAb();}}
+
 function updateSubstatus(rowKey,value){
   if(!canEdit())return;
   const item=dAb.find(d=>String(d.rowKey)===String(rowKey)||String(d.id)===String(rowKey));if(!item)return;
@@ -9210,6 +9221,7 @@ function updateSubstatus(rowKey,value){
     if(wasPaused&&!willPause&&item.pauseStart){item.pausedBusinessH=Number(item.pausedBusinessH||0)+businessHoursBetween(item.pauseStart,now);item.pauseStart=null}
   }
   item.substatus=next;
+  _saveManualSub(item.id||item.ticketId);
   if(willPause)item.pauseStart=now;
   item.slaH=computeSlaHours(item,now);item.faixa=cf(item.slaH);item.statusSla=statusSla(item.slaH,item.mop,item.slaLimitH);
   fillFiltersAb();renderAllAb();saveState()
@@ -9237,7 +9249,8 @@ function renderTAb(){
     const cleanLink=safeUrl(d.link);
     const lk=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket" style="color:var(--blue);font-size:11px;margin-left:4px"><i class="ti ti-external-link"></i></a>`:'';
     const idHtml=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.id)}</a>`:eh(d.id);
-    const subHtml=canEdit()?`<select class="substatus-select" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
+    const _mSub=_hasManualSub(d.id||d.ticketId);
+    const subHtml=canEdit()?`<select class="substatus-select${_mSub?' substatus-manual':''}" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>${_mSub?`<span class="sub-manual-lock" title="Fixado manualmente — agente não sobrescreve. Clique para liberar." onclick="event.stopPropagation();_clearManualSubByRowKey(${d.rowKey})">M</span>`:''}`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
     const ann=abAnnotations[d.id]||{};
     const rowCls=isPurpleResponsavel(ann.prof)?'row-purple':abStatusCardClass(d.substatus);
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
