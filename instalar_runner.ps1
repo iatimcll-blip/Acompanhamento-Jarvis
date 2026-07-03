@@ -106,7 +106,7 @@ $zipPath | ForEach-Object { if (Test-Path $_) { [System.IO.File]::Delete($_) } }
 # ── Concluído ─────────────────────────────────────────────────────────────────
 [System.Windows.Forms.MessageBox]::Show(
     "Runner instalado com sucesso!`n`n" +
-    "O GitHub Actions agora roda o agente nesta máquina automaticamente a cada 30 minutos.`n`n" +
+    "O GitHub Actions agora roda o agente nesta máquina automaticamente a cada 90 minutos.`n`n" +
     "Em qualquer outro dispositivo, abra o painel — ele lê do GitHub sem precisar de nada instalado.",
     "Jarvis — Runner Instalado", "OK", "Information") | Out-Null
 
