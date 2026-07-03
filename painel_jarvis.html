@@ -6117,6 +6117,7 @@ canvas {
 <input type="file" id="file-ab" accept=".xlsx,.xls" style="display:none">
 <input type="file" id="file-enc" accept=".xlsx,.xls" style="display:none">
 <input type="file" id="file-fuel" accept=".csv" style="display:none">
+<input type="file" id="file-fuel-veiculos" accept=".xlsx,.xls,.csv" style="display:none">
 <input type="file" id="file-ofs" accept=".xlsx,.xls,.csv" multiple style="display:none">
 <input type="file" id="file-rede" accept=".xlsx,.xls" style="display:none">
 <div class="login-screen" id="login-screen" style="display:none">
@@ -6972,7 +6973,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="section-hd fuel-data-title">Dados da Frota <span class="sh-line"></span></div>
     <div class="fuel-split" id="fuel-split">
       <div class="fuel-split-pane" id="fuel-split-left">
-        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button></div></div>
+        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button></div></div>
         <div class="tw"><table><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><select class="fv-fsel" id="fv-f-setor" onchange="setFuelVF('setor',this.value)"><option value="">Todos</option></select></th><th><select class="fv-fsel" id="fv-f-superior" onchange="setFuelVF('superior',this.value)"><option value="">Todos</option></select></th><th><select class="fv-fsel" id="fv-f-tipoCartao" onchange="setFuelVF('tipoCartao',this.value)"><option value="">Todos</option><option value="Próprio">Próprio</option><option value="Coringa">Coringa</option></select></th><th><select class="fv-fsel" id="fv-f-status" onchange="setFuelVF('status',this.value)"><option value="">Todos</option><option value="Ativo">Ativo</option><option value="Inativo">Inativo</option><option value="Oficina">Oficina</option><option value="Bloqueado">Bloqueado</option></select></th><th></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
       </div>
       <div class="fuel-split-handle" id="fuel-split-handle" title="Arraste para redimensionar os painéis"></div>
@@ -7776,7 +7777,7 @@ let selMes='';
 let encChartBucket='';
 let selRepMes='',selRepSemana='',selRepCluster='',selRepCausa='',selRepSeg='',selRepSrch='';
 let activeTab='dashboard';
-let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='';
+let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='';
 let wppUnreadCount=0,wppInitialized=false;
 let refreshTimer=null;
 const STORAGE_KEY='atrix:painel:bases:v1';
@@ -7797,6 +7798,24 @@ const GH_OFS_MASTER_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYN
 const GH_TOKEN_KEY='atrix:gh-sync-token:v1';
 const USERS_KEY='atrix:usuarios:v1';
 const SESSION_KEY='atrix:sessao:v1';
+/* Rastreia o savedAt do último estado remoto que ESTE dispositivo conhece — usado
+   para detectar, antes de cada envio, se outro dispositivo sincronizou algo mais
+   novo nesse meio-tempo (evita apagar bases anexadas em outro PC). */
+const GH_LAST_KNOWN_KEY='atrix:gh-last-known-savedAt:v1';
+function _getLastKnownRemoteSavedAt(){try{return localStorage.getItem(GH_LAST_KNOWN_KEY)||''}catch(_){return''}}
+function _setLastKnownRemoteSavedAt(v){try{if(v)localStorage.setItem(GH_LAST_KNOWN_KEY,v)}catch(_){}}
+/* Mescla um array remoto com o local por chave única — local prevalece em caso de
+   conflito na MESMA chave (edição feita agora, ainda não enviada), mas registros
+   que só existem de um dos lados (ex.: base anexada em outro PC, ou item recém
+   adicionado aqui) são preservados dos dois. Diferente de um replace puro. */
+function _mergeArraysByKey(localArr,remoteArr,keyFn){
+  if(!Array.isArray(remoteArr))return Array.isArray(localArr)?localArr:[];
+  if(!Array.isArray(localArr))return remoteArr;
+  const map=new Map();
+  remoteArr.forEach(x=>{const k=keyFn(x);if(k!==undefined&&k!==null&&k!=='')map.set(k,x)});
+  localArr.forEach(x=>{const k=keyFn(x);if(k!==undefined&&k!==null&&k!=='')map.set(k,x)});
+  return[...map.values()];
+}
 let currentUser=null;
 let remoteSaveTimer=null;
 let remoteSaveWarned=false;
@@ -7933,7 +7952,28 @@ async function saveGhState(manual=false){
   const el=document.getElementById('sync-status');
   try{
     if(el){el.textContent='Salvando no GitHub…';el.style.color='var(--blue)'}
-    const content=await _ghStateToB64(buildState());
+    /* Antes de enviar: se outro dispositivo já sincronizou algo mais novo do que a
+       última vez que ESTE dispositivo soube do estado remoto, mescla (por chave —
+       placa/rowKey/id/protocolo) os dados remotos que ainda não tínhamos com os
+       nossos, em vez de simplesmente substituir. Isso preserva tanto uma base
+       anexada em outro PC quanto a edição que está sendo enviada agora daqui —
+       um applyState() puro (replace) apagaria uma das duas. */
+    try{
+      const remoteSt=await fetchGhRawState();
+      const lastKnown=_getLastKnownRemoteSavedAt();
+      if(remoteSt&&remoteSt.savedAt&&lastKnown&&remoteSt.savedAt>lastKnown){
+        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+        dEnc=_mergeArraysByKey(dEnc,normalizeEncState(remoteSt.dEnc),x=>x.protocolo||x.os);
+        dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+        dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
+        dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
+        dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
+        if(Array.isArray(remoteSt.ofsRows))ofsRows=_mergeArraysByKey(ofsRows,remoteSt.ofsRows,ofsWorkbookRowKey);
+        renderAllAb();renderAllEnc();renderPanelRepetidos();renderFuel();
+      }
+    }catch(_){}
+    const builtState=buildState();
+    const content=await _ghStateToB64(builtState);
     let sha='';
     try{
       const info=await fetch(GH_SYNC_API,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
@@ -7942,6 +7982,7 @@ async function saveGhState(manual=false){
     const body=JSON.stringify({message:'sync: painel '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
     const res=await fetch(GH_SYNC_API,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
     if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
+    _setLastKnownRemoteSavedAt(builtState.savedAt);
     const msg='Sincronizado com GitHub em '+now2();
     if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
     _ghToast('Sync GitHub ✓ '+now2(),'var(--green-dk)');
@@ -7962,6 +8003,7 @@ async function restoreGhState(){
     const st=await fetchGhRawState();
     /* ignora placeholder (sem dados reais) */
     if(!st||typeof st!=='object')return false;
+    if(st.savedAt)_setLastKnownRemoteSavedAt(st.savedAt);
     if(shouldApplyRemoteState(st)){
       const applied=applyState(st,'Base compartilhada');
       if(applied||stateHasBaseData(st)){
@@ -8416,7 +8458,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -8505,6 +8547,9 @@ function applyState(st,label){
     fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
     if(Object.prototype.hasOwnProperty.call(st,'fuelBaseAt'))fuelBaseAt=st.fuelBaseAt||'';
     if(Object.prototype.hasOwnProperty.call(st,'fuelBaseFile'))fuelBaseFile=st.fuelBaseFile||'';
+    if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseAt'))fuelVeiculosBaseAt=st.fuelVeiculosBaseAt||'';
+    if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseFile'))fuelVeiculosBaseFile=st.fuelVeiculosBaseFile||'';
+    const fvTsEl=document.getElementById('fv-base-ts');if(fvTsEl)fvTsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
     renderFuel();
     changed=true;
   }
@@ -8826,6 +8871,13 @@ document.getElementById('file-fuel').addEventListener('change',function(e){
   const rd=new FileReader();
   rd.onload=ev=>{try{importFuelAlelo(String(ev.target.result||''),f.name)}catch(er){alert('Erro Alelo: '+er.message)}};
   rd.readAsText(f,'windows-1252');this.value='';
+});
+document.getElementById('file-fuel-veiculos').addEventListener('change',function(e){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.toUpperCase().includes('VEICULO')||n.toUpperCase().includes('VEÍCULO'))||wb.SheetNames[0];procFuelVeiculos(XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''}),f.name)}catch(er){alert('Erro ao ler planilha de veículos: '+er.message)}};
+  rd.readAsArrayBuffer(f);this.value='';
 });
 
 /* ─── PROCESS ABERTOS ─── */
@@ -9929,6 +9981,42 @@ function addFuelVehicle(){
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles);
   clearFuelVehicleForm();
   renderFuel();saveState();
+}
+/* Anexar planilha de Veículos e Condutores — atualiza/adiciona por placa (upsert),
+   nunca substitui a base inteira: veículos já cadastrados que não aparecem na
+   planilha permanecem intactos (evita perder cadastros manuais em cada reenvio). */
+function procFuelVeiculos(raw,fname){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return}
+  if(!Array.isArray(raw)||!raw.length){alert('Planilha vazia ou em formato não reconhecido.');return}
+  const novos=raw.map(r=>{
+    const placa=String(gv(r,['Placa','PLACA','placa'])||'').toUpperCase().trim();
+    if(!placa)return null;
+    const item={placa};
+    const modelo=String(gv(r,['Modelo','MODELO','modelo'])||'').toUpperCase().trim();if(modelo)item.modelo=modelo;
+    const ano=String(gv(r,['Ano','ANO','ano'])||'').trim();if(ano)item.ano=ano;
+    const condutor=titleCasePT(repairPtBR(String(gv(r,['Condutor','CONDUTOR','condutor'])||'').trim()));if(condutor)item.condutor=condutor;
+    const setor=repairPtBR(String(gv(r,['Setor','SETOR','setor'])||'').trim());if(setor)item.setor=setor;
+    const superior=titleCasePT(repairPtBR(String(gv(r,['Superior','SUPERIOR','superior'])||'').trim()));if(superior)item.superior=superior;
+    const tipo=String(gv(r,['Tipo','TIPO','Combustível','Combustivel'])||'').trim();if(tipo)item.tipo=tipo;
+    const tipoCartaoRaw=String(gv(r,['Tipo cartão','Tipo Cartao','TIPO_CARTAO','tipoCartao','Cartão'])||'').trim();
+    if(tipoCartaoRaw)item.tipoCartao=nk(tipoCartaoRaw)==='CORINGA'?'Coringa':'Próprio';
+    const statusRaw=String(gv(r,['Status','STATUS','status'])||'').trim();
+    if(statusRaw){const st=FUEL_STATUS.find(s=>nk(s)===nk(statusRaw));if(st)item.status=st;}
+    const obsStatus=String(gv(r,['Obs','OBS','obs','Observação','Observacao'])||'').trim();if(obsStatus)item.obsStatus=obsStatus;
+    return item;
+  }).filter(Boolean);
+  if(!novos.length){alert('Nenhuma linha válida encontrada — é necessário ao menos a coluna Placa.');return}
+  const map=new Map(dFuelVehicles.map(v=>[v.placa,v]));
+  let atualizados=0,adicionados=0;
+  novos.forEach(v=>{
+    if(map.has(v.placa))atualizados++;else adicionados++;
+    map.set(v.placa,{...map.get(v.placa),...v});
+  });
+  dFuelVehicles=normalizeFuelVehicles([...map.values()]);
+  fuelVeiculosBaseAt=now2();fuelVeiculosBaseFile=fname||'';
+  const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
+  renderFuel();saveState();
+  alert(`Base de veículos processada: ${adicionados} adicionado(s), ${atualizados} atualizado(s). Os demais veículos já cadastrados foram mantidos.`);
 }
 function deleteFuelVehicle(){
   if(!canEdit()||!editingFuelPlate)return;
