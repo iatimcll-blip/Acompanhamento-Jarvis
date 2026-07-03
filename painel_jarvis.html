@@ -8274,9 +8274,9 @@ function useFuelRouteValue(){
 function fmtFuelDatetime(v){if(!v)return'—';const s=String(v);const m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return s;const[,y,mo,d,h,mi,se]=m;return h?`${d}/${mo}/${y} ${h}:${mi||'00'}:${se||'00'}`:`${d}/${mo}/${y}`;}
 function encRuleStats(d){
   const total=d.length||0;
-  const prazo=d.filter(x=>encBucket(x.tempoTotal)==='prazo').length;
-  const intermediario=d.filter(x=>encBucket(x.tempoTotal)==='intermediario').length;
-  const outlier=d.filter(x=>encBucket(x.tempoTotal)==='outlier').length;
+  const prazo=d.filter(x=>x.dentro8h).length;
+  const intermediario=d.filter(x=>!x.dentro8h&&!x.outlier24h).length;
+  const outlier=d.filter(x=>x.outlier24h).length;
   const fora8=intermediario+outlier;
   const pct=n=>total?n/total*100:0;
   const pPrazo=pct(prazo),pInter=pct(intermediario),pOut=pct(outlier),pFora8=pct(fora8);
@@ -8321,12 +8321,28 @@ function computeSlaHours(d,now=new Date()){if(d.dynamicSheetSla){const base=Numb
 function slaBaseLimit(r){const v=gv(r,['SLA Base','SLA Meta','Meta SLA','Prazo SLA','SLA Prazo','SLA Contratado','SLA Limite','SLA limite (h)','Prazo (h)','Prazo']);return v===''?0:ph(v)}
 function statusSla(slaH,mop,limitH){const m={'MA CAP':8,'MA INT':8,'PI CAP':8,'PI INT':8,'PA CAP':8,'PA INT':8,'AP / AM':4,'SLN MA':8,'SLN PA':8,'GIGA+ MA':8,'GIGA+ PI':8,'ADX':4};const lim=limitH||m[mop]||8;return slaH>lim?'FORA DO PRAZO':'NO PRAZO'}
 function refreshAbTimes(){const now=new Date();dAb.forEach(d=>{d.slaH=computeSlaHours(d,now);d.faixa=cf(d.slaH);d.statusSla=statusSla(d.slaH,d.mop,d.slaLimitH)})}
+/* Trava contra o refresh de 1s recriar o DOM (e derrubar o dropdown nativo) bem no
+   instante em que o usuário clica no select de substatus/anotações. Marcada já no
+   pointerdown (antes do foco existir) para fechar a janela de corrida com o setInterval. */
+let abInteractionLock=false;
+document.addEventListener('pointerdown',e=>{
+  const t=e.target.closest&&e.target.closest('.substatus-select,.ann-sel,.ann-obs');
+  if(t)abInteractionLock=true;
+},true);
+document.addEventListener('focusin',e=>{
+  const t=e.target.closest&&e.target.closest('.substatus-select,.ann-sel,.ann-obs');
+  if(t)abInteractionLock=true;
+});
+document.addEventListener('focusout',e=>{
+  const t=e.target.closest&&e.target.closest('.substatus-select,.ann-sel,.ann-obs');
+  if(t)setTimeout(()=>{abInteractionLock=false;},300);
+});
 function startRefresh(){
   if(refreshTimer)clearInterval(refreshTimer);
   refreshTimer=setInterval(()=>{
     if(!dAb.length)return;
     refreshAbTimes();
-    const ae=document.activeElement;if(ae&&(ae.classList.contains('substatus-select')||ae.classList.contains('ann-sel')||ae.classList.contains('ann-obs')))return;
+    const ae=document.activeElement;if(abInteractionLock||(ae&&(ae.classList.contains('substatus-select')||ae.classList.contains('ann-sel')||ae.classList.contains('ann-obs'))))return;
     renderTAb();
   },1000);
 }
@@ -8430,13 +8446,14 @@ function applyState(st,label){
     refreshAbBadge();
     if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
     if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
-    fillFiltersAb();renderAllAb();startRefresh();
+    fillFiltersAb();if(!abInteractionLock)renderAllAb();startRefresh();
     document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
     document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
     changed=true;
   }
   if(Array.isArray(st.dEnc)){
     dEnc=normalizeEncState(st.dEnc);
+    encChartBucket='';
     document.getElementById('nb-enc').textContent=dEnc.length;
     if(Object.prototype.hasOwnProperty.call(st,'lastEncAt'))lastEncAt=st.lastEncAt||'';
     if(Object.prototype.hasOwnProperty.call(st,'lastEncFile'))lastEncFile=st.lastEncFile||'';
@@ -8734,7 +8751,7 @@ async function loadAtrixUpdates(){
       if(_hasManualSub(ticket.id||ticket.ticketId))return;
       if(up.substatus!==ticket.substatus){ticket.substatus=up.substatus;count++;}
     });
-    if(count>0||latestAt)renderAllAb();
+    if((count>0||latestAt)&&!abInteractionLock)renderAllAb();
     if(count>0)console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
 }
@@ -8838,7 +8855,7 @@ async function clearAb(){
 async function clearEnc(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Encerrados? Isso também limpará B2B Repetidos.'))return;
-  dEnc=[];lastEncAt='';lastEncFile='';updateUploadTimes();
+  dEnc=[];lastEncAt='';lastEncFile='';encChartBucket='';updateUploadTimes();
   const nbEnc=document.getElementById('nb-enc');if(nbEnc)nbEnc.textContent='0';
   const nbRep=document.getElementById('nb-rep');if(nbRep)nbRep.textContent='0';
   const empty=document.getElementById('empty-enc');if(empty)empty.style.display='';
@@ -8965,7 +8982,9 @@ function saveModalAb(){
   const item={rowKey,id,cliente,assunto:'',uf,cidade,regiao:'',substatus:substatus||'',link:'',openedAt:new Date(),originalSlaH:slaH,slaLimitH:8,pausedBusinessH:0,pauseStart:null,mop,slaH,faixa,statusSla:status};
   dAb.push(item);
   refreshAbBadge();
-  fillFiltersAb();renderAllAb();saveState();
+  document.getElementById('empty-ab').style.display='none';
+  document.getElementById('dash-ab').style.display='block';
+  fillFiltersAb();renderAllAb();startRefresh();saveState();
   closeModalAb();
 }
 function procAb(raw,fname){
@@ -9011,6 +9030,7 @@ function procAb(raw,fname){
 
 /* ─── PROCESS ENCERRADOS ─── */
 function procEnc(raw,fname){
+  encChartBucket='';
   dEnc=raw.filter(r=>r['ticket_id']||r['protocolo']).map(r=>{
     const protocolo=String(r['protocolo']||r['ticket_id']||'').trim();
     const cliente=String(colVal(r,10,['Cliente','cliente'])||'').trim();
@@ -9338,7 +9358,7 @@ function abConstruirPivot(chamados){
   chamados.forEach(c=>{if(c.uf&&!ufs.includes(c.uf))ufs.push(c.uf);});
   const mapa={};
   chamados.forEach(c=>{
-    const s=c.substatus||'—',m=c.mop||'—',uf=c.uf||'—';
+    const s=fmtSubstatus(c.substatus)||'—',m=c.mop||'—',uf=c.uf||'—';
     (mapa[s]=mapa[s]||{});(mapa[s][m]=mapa[s][m]||{});
     mapa[s][m][uf]=(mapa[s][m][uf]||0)+1;
   });
@@ -9686,8 +9706,8 @@ function renderExecReport(d){
     const k=x.cluster;if(!k)return;
     if(!clusterMap[k])clusterMap[k]={total:0,fora8:0,outlier:0};
     clusterMap[k].total++;
-    if(encBucket(x.tempoTotal)!=='prazo')clusterMap[k].fora8++;
-    if(encBucket(x.tempoTotal)==='outlier')clusterMap[k].outlier++;
+    if(!x.dentro8h)clusterMap[k].fora8++;
+    if(x.outlier24h)clusterMap[k].outlier++;
   });
   const clusterLines=CLUSTER_ORDER.filter(k=>clusterMap[k]&&clusterMap[k].total>0).map(k=>{
     const g=clusterMap[k];return`${k}: ${g.fora8}/${g.total} (${pp(g.fora8/g.total*100)}%)`;
@@ -10542,11 +10562,14 @@ function repScope(){
 function buildRepMap(data){
   const map=new Map();
   data.forEach(x=>{
-    // Separa os repetidos por NumPlan (col F) + Cliente ID (col J).
+    // Separa os repetidos por NumPlan (col F), com Cliente ID (col J) como fallback.
+    // Usa sempre o mesmo identificador como chave (nunca mistura os dois) para não
+    // fragmentar o histórico do mesmo cliente quando o preenchimento é inconsistente
+    // entre chamados (ex.: um chamado com numplan+clienteId e outro só com numplan).
     // O nome do cliente fica como título visual do grupo.
     const np=String(x.numplan||'').trim();
     const ci=String(x.clienteId||'').trim();
-    const key=np&&ci?`${np}|${ci}`:np?`NP:${np}`:ci?`CI:${ci}`:nk(x.cliente)||null;
+    const key=np?`NP:${np}`:ci?`CI:${ci}`:nk(x.cliente)||null;
     if(!key)return;
     if(!map.has(key)){
       // Escolher melhor nome de exibição: prefere campo não-genérico
@@ -10813,7 +10836,7 @@ function exportRepCSV(){
   const csv=[hdr,...data].map(r=>r.map(v=>'"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='jarvis_repetidos_'+(selWeek||'all')+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  a.download='jarvis_repetidos_'+(selRepSemana||'all')+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
 /* ─── WHATSAPP BADGE ─── */
