@@ -623,6 +623,7 @@ body {
 }
 .card-action { font-size: 11px; color: var(--blue); cursor: pointer; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 .card-action:hover { opacity: .7; }
+.card-action.ab-eye-active { color: var(--orange); }
 
 /* ─── CLUSTER CARDS ─── */
 .cluster-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(124px,1fr)); gap: 8px; margin-bottom: 16px; }
@@ -6506,6 +6507,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Chamados em aberto</span>
           <div class="tsec-meta">
             <span id="cnt-ab" style="color:var(--tx3)"></span>
+            <span class="card-action" id="ab-toggle-hide-inactive" onclick="toggleAbHideInactive()" title="Ocultar chamados Cancelados, Fechados ou Pendente Validação."><i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados</span>
             <span class="card-action admin-only" onclick="openModalAb()" style="color:var(--blue)"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar chamado</span>
             <span class="card-action" onclick="exportCSV('ab')"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar CSV</span>
           </div>
@@ -7776,6 +7778,7 @@ let fuelRFilter={q:'',tipo:'',tipoCartao:'',dataIni:'',dataFim:''};
 function setFuelRF(k,v){fuelRFilter[k]=String(v||'').trim();renderFuelRequestsTable();}
 function clearFuelRF(){fuelRFilter={q:'',tipo:'',tipoCartao:'',dataIni:'',dataFim:''};['fuel-rf-q','fuel-rf-tipo','fuel-rf-cartao','fuel-rf-ini','fuel-rf-fim'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});renderFuelRequestsTable();}
 let scAb='slaH',sdAb=-1,scEnc='tempoTotal',sdEnc=-1;
+let abHideInactive=localStorage.getItem('jarvis:ab:hideInactive')==='1';
 let chAb=null,chEnc=null,chSem=null,chFuel=null,chFuelProj=null,chFuelTop=null;
 let selWeek='';
 let selCluster='';
@@ -9372,11 +9375,23 @@ function gFAb(){
   if(mop)f=f.filter(d=>d.mop===mop);if(faixa)f=f.filter(d=>d.faixa===faixa);
   if(sub)f=f.filter(d=>fmtSubstatus(d.substatus)===sub);if(uf)f=f.filter(d=>d.uf===uf);
   if(srch)f=f.filter(d=>nk(d.cliente).includes(nk(srch))||nk(d.id).includes(nk(srch)));
+  if(abHideInactive)f=f.filter(d=>!abIsInactiveForCount(d));
   return f.slice().sort((a,b)=>typeof a[scAb]==='number'?(a[scAb]-b[scAb])*sdAb:String(a[scAb]).localeCompare(String(b[scAb]))*sdAb);
+}
+function toggleAbHideInactive(){
+  abHideInactive=!abHideInactive;
+  try{localStorage.setItem('jarvis:ab:hideInactive',abHideInactive?'1':'0');}catch(_){}
+  renderTAb();
 }
 function renderTAb(){
   const f=gFAb();
   document.getElementById('cnt-ab').textContent=f.length+' de '+dAb.length+' chamados';
+  const eyeBtn=document.getElementById('ab-toggle-hide-inactive');
+  if(eyeBtn){
+    eyeBtn.classList.toggle('ab-eye-active',abHideInactive);
+    eyeBtn.title=abHideInactive?'Chamados Cancelados, Fechados ou Pendente Validação estão ocultos. Clique para mostrar novamente.':'Ocultar chamados Cancelados, Fechados ou Pendente Validação.';
+    eyeBtn.innerHTML=abHideInactive?'<i class="ti ti-eye-off" style="font-size:11px;vertical-align:-1px"></i> Mostrar cancelados/fechados':'<i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados';
+  }
   /* destaque do botão de ordenação ativo */
   const _sortMap={id:'ID',cliente:'Cliente',slaH:'SLA'};
   document.querySelectorAll('.abs-btn').forEach(b=>{b.classList.toggle('abs-active',b.textContent.trim()===(_sortMap[scAb]||''));});
