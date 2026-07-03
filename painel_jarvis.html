@@ -6298,7 +6298,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="nav-btn admin-only" id="clear-ofs-btn" onclick="clearOfs()" title="Limpar base OFS" style="display:none;color:var(--red)"><i class="ti ti-trash"></i></div>
         <!-- Central de Dados -->
         <button class="nav-btn" onclick="openCentral()" title="Central de Dados" style="color:var(--blue)"><i class="ti ti-database"></i></button>
-        <div class="nav-btn" onclick="openReportModal()" title="Gerar Relatório" style="color:var(--blue)"><i class="ti ti-file-text"></i></div>
+        <div class="nav-btn admin-only" onclick="openReportModal()" title="Gerar Relatório" style="color:var(--blue)"><i class="ti ti-file-text"></i></div>
         <div class="nav-btn admin-only" onclick="openUserPanel()" title="Usuários"><i class="ti ti-users"></i></div>
         <div class="nav-btn admin-only" id="sheets-nav-btn" onclick="openSyncSettings()" title="Configurar sincronização entre dispositivos"><i class="ti ti-cloud"></i></div>
         <div class="nav-btn admin-only" onclick="syncNow(true)" title="Sincronizar bases agora"><i class="ti ti-cloud-upload"></i></div>
@@ -6374,7 +6374,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div class="dash-actions">
         <button class="dash-action primary" onclick="openCentral()"><i class="ti ti-database"></i> Carregar bases</button>
-        <button class="dash-action" onclick="openReportModal()"><i class="ti ti-file-text"></i> Gerar relatório</button>
+        <button class="dash-action admin-only" onclick="openReportModal()"><i class="ti ti-file-text"></i> Gerar relatório</button>
         <button class="dash-action admin-only" onclick="switchTab('monitor')"><i class="ti ti-radar"></i> Monitor</button>
       </div>
     </div>
@@ -7885,6 +7885,19 @@ function getUsers(){
 }
 function saveUsers(users){localStorage.setItem(USERS_KEY,JSON.stringify(users))}
 function canEdit(){return currentUser&&currentUser.role==='admin'}
+/* Escopo regional "SLN": usuários marcados só veem MA CAP/NORTE (Rede+Encerrados,
+   campo cluster C/N) e SLN MA/SLN PA (B2B Abertos via mop + OFS via grupo). */
+const SLN_MOPS=['SLN MA','SLN PA'];
+const SLN_RDE_CLUSTERS=['C','N'];
+function isSlnScoped(){return!!(currentUser&&currentUser.scope==='sln')}
+function slnAb(){return isSlnScoped()?dAb.filter(d=>SLN_MOPS.includes(d.mop)):dAb;}
+function slnEnc(){return isSlnScoped()?dEnc.filter(d=>SLN_MOPS.includes(d.mop)):dEnc;}
+function slnOfsRows(){return isSlnScoped()?ofsRows.filter(r=>SLN_MOPS.includes(r.grupo)):ofsRows;}
+function slnRdeCount(){
+  if(!isSlnScoped())return rdeBD.length+rdeAD.length;
+  const flat=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
+  return flat.filter(r=>SLN_RDE_CLUSTERS.includes(r.cl)).length;
+}
 function initials(name){return String(name||'--').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase()||'--'}
 function applyPermissions(){
   document.body.classList.toggle('is-admin',!!canEdit());
@@ -8169,9 +8182,21 @@ function deleteUser(username){
   saveState();
   renderUsers();
 }
+function setUserScope(username,scope){
+  if(!canEdit())return;
+  const users=getUsers().map(u=>u.username===username?{...u,scope}:u);
+  saveUsers(users);
+  saveState();
+  if(currentUser&&currentUser.username===username)currentUser={...currentUser,scope};
+  renderUsers();
+}
 function renderUsers(){
   const users=getUsers();
-  document.getElementById('users-list').innerHTML=users.map(u=>`<div class="user-row"><div><b>${eh(u.username)}</b><div class="user-role">${eh(roleLabel(u.role))}</div></div>${u.username==='admin'?'<span class="user-role">fixo</span>':`<button class="mini-btn" onclick="deleteUser('${eh(u.username)}')">Excluir</button>`}</div>`).join('');
+  document.getElementById('users-list').innerHTML=users.map(u=>{
+    const isViewer=normRole(u.role)==='viewer';
+    const scopeBtn=isViewer?`<button class="mini-btn" title="Clique para alternar o escopo regional" onclick="setUserScope('${eh(u.username)}','${u.scope==='sln'?'all':'sln'}')">${u.scope==='sln'?'Escopo: SLN':'Escopo: Todos'}</button>`:'';
+    return`<div class="user-row"><div><b>${eh(u.username)}</b><div class="user-role">${eh(roleLabel(u.role))}</div></div>${scopeBtn}${u.username==='admin'?'<span class="user-role">fixo</span>':`<button class="mini-btn" onclick="deleteUser('${eh(u.username)}')">Excluir</button>`}</div>`;
+  }).join('');
 }
 
 /* ─── HELPERS ─── */
@@ -8377,7 +8402,7 @@ function isPendingSubstatus(v){return nk(v).includes('PENDENTE')}
 function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s.includes('VALIDA')}
 function abIsInactiveForCount(c){const s=nk(c&&c.substatus);return s.includes('CANCELADO')||s.includes('FECHADO')||isValidationSubstatus(c&&c.substatus)}
 function abActiveCount(list){return(Array.isArray(list)?list:[]).filter(c=>!abIsInactiveForCount(c)).length}
-function refreshAbBadge(){const el=document.getElementById('nb-ab');if(el)el.textContent=abActiveCount(dAb)}
+function refreshAbBadge(){const el=document.getElementById('nb-ab');if(el)el.textContent=abActiveCount(slnAb())}
 function isPurpleResponsavel(v){return ['SEA','TIM','CLARO','ONLINE','CARAJASNET','MASTERNET','MARTENET','VIVO','IBL'].includes(nk(v))}
 function abStatusCardClass(v){
   const s=nk(fmtSubstatus(v)||v);
@@ -8537,7 +8562,7 @@ function applyState(st,label){
   if(Array.isArray(st.dEnc)){
     dEnc=normalizeEncState(st.dEnc);
     encChartBucket='';
-    document.getElementById('nb-enc').textContent=dEnc.length;
+    document.getElementById('nb-enc').textContent=slnEnc().length;
     if(Object.prototype.hasOwnProperty.call(st,'lastEncAt'))lastEncAt=st.lastEncAt||'';
     if(Object.prototype.hasOwnProperty.call(st,'lastEncFile'))lastEncFile=st.lastEncFile||'';
     /* 1. popula mês primeiro para que fillWeekSelector filtre corretamente */
@@ -8605,7 +8630,7 @@ function applyState(st,label){
     ofsRows=ofsDedupeRows(st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)})));
     ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
     saveOfsState();
-    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
+    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
     renderOfs();updateCentralStatus();
     changed=true;
@@ -9167,7 +9192,7 @@ function procEnc(raw,fname){
     const mes=dataFechamentoParsed?`${dataFechamentoParsed.getFullYear()}-${String(dataFechamentoParsed.getMonth()+1).padStart(2,'0')}`:''
     return{protocolo,os,cliente,uf,cidade,cidadeRaw,mop,mes,cluster,clusterCalc,clusterNome,causaRaiz,semana,segmento,faixa,tempoTotal,dentro8h,outlier24h,numplan,clienteId,titulo,clientesAfetados,dataAbertura:fmtReportDate(dataAbertura),dataFechamento:fmtReportDate(dataFechamento),periodoAtendimento:`${fmtReportDate(dataAbertura)} - ${fmtReportDate(dataFechamento)}`};
   });
-  document.getElementById('nb-enc').textContent=dEnc.length;
+  document.getElementById('nb-enc').textContent=slnEnc().length;
   lastEncFile=fname||'';
   lastEncAt=now2();updateUploadTimes();
   fillFiltersEnc();fillWeekSelector();fillClusterSelector();fillMesSelector();
@@ -9286,20 +9311,22 @@ function selectClusterCard(cluster){
 }
 
 /* filtered enc by global selectors */
-function encBase(){return selMes?dEnc.filter(d=>d.mes===selMes):dEnc}
+function encBase(){const base=slnEnc();return selMes?base.filter(d=>d.mes===selMes):base}
 function encWeek(){const b=encBase();return selWeek?b.filter(d=>d.semana===selWeek):b}
 function encScope(){let f=encWeek();if(selCluster)f=f.filter(d=>d.cluster===selCluster);return f}
 
 /* ─── RENDER ABERTOS ─── */
 function activeMopAb(){const el=document.getElementById('f-mop');return el?el.value:''}
-function abScope(){const mop=activeMopAb();return mop?dAb.filter(d=>d.mop===mop):dAb}
+function abScope(){const mop=activeMopAb();const base=slnAb();return mop?base.filter(d=>d.mop===mop):base}
 function setMopQuick(mop){const el=document.getElementById('f-mop');if(el)el.value=mop||'';renderAllAb()}
 function renderMopQuick(){
   const el=document.getElementById('quick-mop-ab');if(!el)return;
   const cur=activeMopAb();
-  const btns=['',...MOP_QUICK].map(m=>{
+  const base=slnAb();
+  const mopOpts=isSlnScoped()?MOP_QUICK.filter(m=>SLN_MOPS.includes(m)):MOP_QUICK;
+  const btns=['',...mopOpts].map(m=>{
     const label=m||'Todos',active=cur===m?' active':'';
-    const count=m?abActiveCount(dAb.filter(d=>d.mop===m)):abActiveCount(dAb);
+    const count=m?abActiveCount(base.filter(d=>d.mop===m)):abActiveCount(base);
     return`<button type="button" class="quick-mop-btn${active}" onclick="setMopQuick('${eh(m)}')" title="${count} chamados">${eh(label)} <span style="opacity:.72">${count}</span></button>`;
   }).join('');
   el.innerHTML=`<span class="quick-mop-label">Dashboard Cluster's</span>${btns}`;
@@ -9366,9 +9393,10 @@ function rChAb(){
 }
 function fillFiltersAb(){
   const curMop=document.getElementById('f-mop')?.value||'';
-  const mops=[...new Set(dAb.map(d=>d.mop).filter(Boolean))].sort();
-  const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);
-  const ufs=[...new Set(dAb.map(d=>d.uf).filter(Boolean))].sort();
+  const baseAb=slnAb();
+  const mops=[...new Set(baseAb.map(d=>d.mop).filter(Boolean))].sort();
+  const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...baseAb.map(d=>d.substatus)]);
+  const ufs=[...new Set(baseAb.map(d=>d.uf).filter(Boolean))].sort();
   document.getElementById('f-mop').innerHTML='<option value="">Todos MOP/EPS</option>'+mops.map(m=>`<option value="${eh(m)}">${eh(m)}</option>`).join('');
   if(curMop&&mops.includes(curMop))document.getElementById('f-mop').value=curMop;
   document.getElementById('f-sub').innerHTML='<option value="">Todos substatus</option>'+subs.map(s=>`<option value="${eh(s)}">${eh(s)}</option>`).join('');
@@ -9402,7 +9430,7 @@ function gFAb(){
   const mop=document.getElementById('f-mop').value,faixa=document.getElementById('f-faixa').value;
   const sub=document.getElementById('f-sub').value,uf=document.getElementById('f-uf').value;
   const srch=(document.getElementById('f-srch-ab').value||'').toLowerCase();
-  let f=dAb;
+  let f=slnAb();
   if(mop)f=f.filter(d=>d.mop===mop);if(faixa)f=f.filter(d=>d.faixa===faixa);
   if(sub)f=f.filter(d=>fmtSubstatus(d.substatus)===sub);if(uf)f=f.filter(d=>d.uf===uf);
   if(srch)f=f.filter(d=>nk(d.cliente).includes(nk(srch))||nk(d.id).includes(nk(srch)));
@@ -9416,7 +9444,7 @@ function toggleAbHideInactive(){
 }
 function renderTAb(){
   const f=gFAb();
-  document.getElementById('cnt-ab').textContent=f.length+' de '+dAb.length+' chamados';
+  document.getElementById('cnt-ab').textContent=f.length+' de '+slnAb().length+' chamados';
   const eyeBtn=document.getElementById('ab-toggle-hide-inactive');
   if(eyeBtn){
     eyeBtn.classList.toggle('ab-eye-active',abHideInactive);
@@ -10721,7 +10749,7 @@ function repScope(){
   const ca=document.getElementById('rep-f-causa')?.value||'';
   const sg=document.getElementById('rep-f-seg')?.value||'';
   const sr=nk(document.getElementById('rep-srch')?.value||'');
-  let f=dEnc.map(d=>({...d,cliente:repText(d.cliente),titulo:repText(d.titulo),cidade:repText(d.cidade),causaRaiz:repText(repCausa(d.causaRaiz)),segmento:repText(d.segmento)}));
+  let f=slnEnc().map(d=>({...d,cliente:repText(d.cliente),titulo:repText(d.titulo),cidade:repText(d.cidade),causaRaiz:repText(repCausa(d.causaRaiz)),segmento:repText(d.segmento)}));
   if(mes)f=f.filter(d=>d.mes===mes);
   if(sem)f=f.filter(d=>d.semana===sem);
   if(cl)f=f.filter(d=>d.cluster===cl);
@@ -12001,7 +12029,7 @@ function canonicTec(raw){
   return _ofsTecDisp.get(canonical);
 }
 function ofsFilteredRows(){
-  let r=ofsRows;
+  let r=slnOfsRows();
   if(ofsFilter.dtStart)r=r.filter(x=>!x.dtStr||x.dtStr>=ofsFilter.dtStart);
   if(ofsFilter.dtEnd)r=r.filter(x=>!x.dtStr||x.dtStr<=ofsFilter.dtEnd);
   if(ofsFilter.uf!=='all')r=r.filter(x=>x.uf===ofsFilter.uf);
@@ -12220,7 +12248,7 @@ function restoreOfsState(){
       ofsMeta=s.meta||{fname:'',loaded:true};
     }
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
-    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
+    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
   }catch(e){console.warn('OFS restore failed:',e);}
 }
@@ -12230,7 +12258,7 @@ async function restoreOfsStateFromIndexedDb(){
     ofsRows=ofsDedupeRows(s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)})));
     ofsMeta=s.meta||{fname:'',loaded:true};
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
-    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=ofsRows.length;nb.style.display=ofsRows.length?'':'none';}
+    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
     renderOfs();updateCentralStatus();
   }catch(e){console.warn('OFS IndexedDB restore failed:',e)}
@@ -12583,7 +12611,8 @@ function ofsOpenTec(nome){
   const allTecs=ofsCalcTecnicos(ofsFilteredRows());
   const grpTecs=allTecs.filter(t=>t.grupo===tec.grupo).sort((a,b)=>b.total-a.total);
   document.getElementById('ofs-group-label').textContent=tec.grupo||'—';
-  document.getElementById('ofs-group-badge').textContent=grpTecs.length+' técnico'+(grpTecs.length!==1?'s':'');
+  const grpTotalChamados=grpTecs.reduce((a,t)=>a+(t.total||0),0);
+  document.getElementById('ofs-group-badge').textContent=grpTecs.length+' técnico'+(grpTecs.length!==1?'s':'')+' · '+grpTotalChamados+' chamado'+(grpTotalChamados!==1?'s':'');
   document.getElementById('ofs-group-tbody').innerHTML=grpTecs.map((t,i)=>{
     const isSel=t.nome===nome;
     const tc2=t.taxa>=80?'#22c55e':t.taxa>=60?'#f59e0b':'#ef4444';
@@ -12606,6 +12635,7 @@ function ofsOpenTec(nome){
     </tr>
     <tr id="ofs-gx-${i}" style="display:none;background:rgba(249,115,22,.03)">
       <td colspan="11" style="padding:0 0 0 28px">
+        <div style="padding:6px 8px 0;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em" id="ofs-gx-count-${i}">${t.total} chamado${t.total!==1?'s':''}</div>
         <table style="width:100%;border-collapse:collapse;font-size:11px">
           <thead><tr style="border-bottom:.5px solid var(--bd)">
             <th style="padding:5px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);font-weight:700;text-align:left;white-space:nowrap">Data</th>
@@ -12645,6 +12675,8 @@ function ofsGrpExpand(tr,idx){
   if(isOpen)return;
   // popula atividades deste técnico
   const rows=ofsFilteredRows().filter(r=>r.tecnico===nome).sort((a,b)=>a.dtStr.localeCompare(b.dtStr));
+  const countEl=document.getElementById('ofs-gx-count-'+idx);
+  if(countEl)countEl.textContent=rows.length+' chamado'+(rows.length!==1?'s':'');
   const tbody=document.getElementById('ofs-gx-tbody-'+idx);
   if(tbody){
     tbody.innerHTML=rows.map(r=>{
@@ -12726,8 +12758,8 @@ function atxSetPill(id,cls,text){
   el.textContent=text;
 }
 function renderExecutiveDashboard(){
-  const ab=abActiveCount(dAb),enc=dEnc.length,ofs=(typeof ofsRows!=='undefined'?ofsRows.length:0);
-  const rede=(typeof rdeBD!=='undefined'?rdeBD.length:0)+(typeof rdeAD!=='undefined'?rdeAD.length:0);
+  const ab=abActiveCount(slnAb()),enc=slnEnc().length,ofs=(typeof ofsRows!=='undefined'?slnOfsRows().length:0);
+  const rede=slnRdeCount();
   const fuelBal=typeof fuelBalance==='function'?fuelBalance():null;
   const fuelAvail=fuelBal?fuelBal.available:0;
   let rep=0;
@@ -12905,7 +12937,7 @@ async function saveToGoogleSheets(manual=false){
 }
 
 /* ═══ RELATÓRIO GERENCIAL ═══ */
-function openReportModal(){document.getElementById('modal-report').style.display='flex';}
+function openReportModal(){if(!canEdit())return;document.getElementById('modal-report').style.display='flex';}
 function closeReportModal(){document.getElementById('modal-report').style.display='none';}
 
 /* captura e sanitiza um elemento do DOM para o relatório */
@@ -13495,7 +13527,14 @@ function rdeMonthForWeek(wk){if(!wk)return'';const all=[...rdeBD,...rdeAD];const
 function rdeMname(m){const mo={'01':'jan','02':'fev','03':'mar','04':'abr','05':'mai','06':'jun','07':'jul','08':'ago','09':'set','10':'out','11':'nov','12':'dez'};const p=String(m||'').split('-');return(mo[p[1]]||p[1]||m)+'/'+String(p[0]||'').slice(2);}
 function rdePKey(){return rdeGran==='w'?'w':'m';}
 function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
-function rdeGetAllFlat(){if(rdeTab==='ACESSO')return rdeToFlat(rdeAD,'AC');if(rdeTab==='BACKBONE')return rdeToFlat(rdeBD,'BB');return[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];}
+function rdeGetAllFlat(){
+  let out;
+  if(rdeTab==='ACESSO')out=rdeToFlat(rdeAD,'AC');
+  else if(rdeTab==='BACKBONE')out=rdeToFlat(rdeBD,'BB');
+  else out=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
+  if(isSlnScoped())out=out.filter(r=>SLN_RDE_CLUSTERS.includes(r.cl));
+  return out;
+}
 function rdeGetPreClusterRecs(){const flat=rdeGetAllFlat();const gk=rdePKey();return(rdeGran!=='all'&&rdePeriod)?flat.filter(r=>r[gk]===rdePeriod):flat;}
 function rdeGetDisplayRecs(){let recs=rdeGetPreClusterRecs();if(rdeCluster)recs=recs.filter(r=>rdeClFilter(r.cl));return recs;}
 function rdeAgg2(recs){const n=recs.length;if(!n)return{n:0,prazo:0,outlier:0,tAvg:0,tMed:0};const p=recs.filter(r=>r.p===1).length,o=recs.filter(r=>r.o===1).length;const ts=recs.map(r=>r.t).filter(t=>t>0).sort((a,b)=>a-b);const tAvg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;const tMed=ts.length?(ts.length%2?ts[(ts.length-1)/2]:(ts[ts.length/2-1]+ts[ts.length/2])/2):0;return{n,prazo:p/n*100,outlier:o/n*100,tAvg,tMed};}
