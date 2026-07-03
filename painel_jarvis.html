@@ -928,8 +928,8 @@ body {
 .ab-copy-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:7px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx2);cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;display:inline-flex;align-items:center;gap:5px}
 .ab-copy-btn:hover:not(:disabled){background:var(--surface3);color:var(--tx)}
 .ab-copy-btn:disabled{opacity:.4;cursor:default}
-.ab-copy-btn.ab-copy-ok{background:rgba(52,199,89,.14);border-color:var(--green);color:var(--green-dk,#15803d)}
-.ab-copy-btn.ab-copy-err{background:rgba(255,59,48,.14);border-color:var(--red);color:var(--red)}
+.ab-copy-btn.ab-copy-ok,.ab-copy-btn.ab-copy-ok:hover{background:rgba(52,199,89,.14) !important;border:.5px solid var(--green) !important;color:var(--green-dk,#15803d) !important}
+.ab-copy-btn.ab-copy-err,.ab-copy-btn.ab-copy-err:hover{background:rgba(255,59,48,.14) !important;border:.5px solid var(--red) !important;color:var(--red) !important}
 .ab-pivot-cap{padding:9px 10px;background:var(--surface);border-radius:8px;border:.5px solid var(--bd);max-width:100%;box-sizing:border-box}
 .ab-pivot-copy{padding:0;background:var(--surface);max-width:100%;box-sizing:border-box}
 .ab-pivot-scroll{overflow-x:auto;margin-bottom:0;max-width:100%;padding-bottom:0}
@@ -9426,11 +9426,15 @@ function abCarregarH2C(cb,onErr){
   document.head.appendChild(s);
 }
 function abCopiarImagem(el,btn){
+  /* Suspende o refresh automático de 1s (mesma trava do dropdown de substatus) —
+     sem isso, renderTAb()->renderAbResumo() recria o bloco/pivot no meio da captura
+     ou logo após mostrar "Copiado!", apagando a confirmação antes do usuário ver. */
+  abInteractionLock=true;
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
     btn.classList.remove('ab-copy-ok','ab-copy-err');
     btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
-    setTimeout(()=>{btn.classList.remove('ab-copy-ok','ab-copy-err');btn.innerHTML=orig;},2200);
+    setTimeout(()=>{btn.classList.remove('ab-copy-ok','ab-copy-err');btn.innerHTML=orig;abInteractionLock=false;},2200);
   };
   btn.innerHTML='Gerando…';btn.disabled=true;
   /* oculta botões dentro do elemento capturado */
