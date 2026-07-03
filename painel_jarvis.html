@@ -925,9 +925,11 @@ body {
 .ab-resumo-body{margin-top:12px}
 .ab-section-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 8px}
 .ab-section-title{font-size:12px;font-weight:600;color:var(--tx2)}
-.ab-copy-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:7px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx2);cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .12s}
+.ab-copy-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:7px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx2);cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;display:inline-flex;align-items:center;gap:5px}
 .ab-copy-btn:hover:not(:disabled){background:var(--surface3);color:var(--tx)}
 .ab-copy-btn:disabled{opacity:.4;cursor:default}
+.ab-copy-btn.ab-copy-ok{background:rgba(52,199,89,.14);border-color:var(--green);color:var(--green-dk,#15803d)}
+.ab-copy-btn.ab-copy-err{background:rgba(255,59,48,.14);border-color:var(--red);color:var(--red)}
 .ab-pivot-cap{padding:9px 10px;background:var(--surface);border-radius:8px;border:.5px solid var(--bd);max-width:100%;box-sizing:border-box}
 .ab-pivot-copy{padding:0;background:var(--surface);max-width:100%;box-sizing:border-box}
 .ab-pivot-scroll{overflow-x:auto;margin-bottom:0;max-width:100%;padding-bottom:0}
@@ -9415,16 +9417,22 @@ function abTextoPivot(chamados){
   });
   return t;
 }
-function abCarregarH2C(cb){
+function abCarregarH2C(cb,onErr){
   if(window.html2canvas)return cb();
   const s=document.createElement('script');
   s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-  s.onload=cb;s.onerror=()=>{alert('Falha ao carregar html2canvas.');};
+  s.onload=cb;
+  s.onerror=()=>{alert('Falha ao carregar html2canvas.');if(onErr)onErr();};
   document.head.appendChild(s);
 }
 function abCopiarImagem(el,btn){
-  const orig=btn.textContent;
-  btn.textContent='Gerando…';btn.disabled=true;
+  const orig=btn.innerHTML;
+  const done=(cls,html)=>{
+    btn.classList.remove('ab-copy-ok','ab-copy-err');
+    btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
+    setTimeout(()=>{btn.classList.remove('ab-copy-ok','ab-copy-err');btn.innerHTML=orig;},2200);
+  };
+  btn.innerHTML='Gerando…';btn.disabled=true;
   /* oculta botões dentro do elemento capturado */
   const btns=[...el.querySelectorAll('.ab-copy-btn,button')];
   btns.forEach(b=>b.style.visibility='hidden');
@@ -9438,27 +9446,41 @@ function abCopiarImagem(el,btn){
     if(table)tempStyle(table,'width',Math.max(table.scrollWidth,640)+'px');
   }
   const restoreAll=()=>{btns.forEach(b=>b.style.visibility='');restore.reverse().forEach(([node,prop,val])=>node.style[prop]=val)};
-  abCarregarH2C(async()=>{
-    try{
-      const bg=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#ffffff';
-      const canvas=await html2canvas(el,{backgroundColor:bg,scale:2,useCORS:true,logging:false,allowTaint:true});
-      restoreAll();
-      canvas.toBlob(async blob=>{
-        try{
-          await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-          btn.textContent='Copiado!';
-        }catch{
-          const a=document.createElement('a');
-          a.href=URL.createObjectURL(blob);a.download='resumo-jarvis.png';a.click();
-          btn.textContent='Salvo!';
-        }
-        btn.disabled=false;setTimeout(()=>btn.textContent=orig,2000);
-      },'image/png');
-    }catch(e){
-      restoreAll();
-      btn.textContent='Erro';btn.disabled=false;
-      setTimeout(()=>btn.textContent=orig,2000);
-    }
+
+  /* Gera o blob uma única vez (assíncrono: espera o script do html2canvas + a
+     renderização) e reaproveita a mesma Promise tanto na tentativa de clipboard
+     quanto no fallback de download — evita capturar a imagem duas vezes. */
+  const blobPromise=new Promise((resolve,reject)=>{
+    abCarregarH2C(async()=>{
+      try{
+        const bg=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#ffffff';
+        const canvas=await html2canvas(el,{backgroundColor:bg,scale:2,useCORS:true,logging:false,allowTaint:true});
+        restoreAll();
+        canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('canvas vazio')),'image/png');
+      }catch(e){restoreAll();reject(e);}
+    },()=>{restoreAll();reject(new Error('html2canvas falhou ao carregar'));});
+  });
+
+  const salvarComoArquivo=(blob)=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='resumo-jarvis.png';a.click();
+    done('ab-copy-ok','<i class="ti ti-check"></i> Salvo!');
+  };
+
+  const supportaClipboard=navigator.clipboard&&typeof navigator.clipboard.write==='function'&&typeof window.ClipboardItem==='function';
+  if(!supportaClipboard){
+    blobPromise.then(salvarComoArquivo).catch(()=>done('ab-copy-err','<i class="ti ti-x"></i> Erro'));
+    return;
+  }
+
+  /* IMPORTANTE: o navigator.clipboard.write() precisa ser chamado dentro da mesma
+     "ativação do usuário" do clique (senão o navegador recusa a cópia silenciosamente
+     ou lança erro). Por isso passamos a Promise pendente do blob para o ClipboardItem —
+     a chamada em si é síncrona com o clique, e o navegador aguarda ela resolver depois. */
+  navigator.clipboard.write([new ClipboardItem({'image/png':blobPromise})]).then(()=>{
+    done('ab-copy-ok','<i class="ti ti-check"></i> Copiado!');
+  }).catch(()=>{
+    blobPromise.then(salvarComoArquivo).catch(()=>done('ab-copy-err','<i class="ti ti-x"></i> Erro'));
   });
 }
 function abCopiarPivot(btn){
