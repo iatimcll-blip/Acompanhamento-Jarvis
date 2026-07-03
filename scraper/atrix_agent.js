@@ -472,12 +472,21 @@ async function main() {
     process.exit(1);
   }
 
-  await runCycle();
-
   if (SINGLE_CYCLE) {
+    // CI (GitHub Actions): deixa o erro propagar — uma falha aqui deve marcar o
+    // job como failure (exit 1), para ficar visível no histórico de execuções.
+    await runCycle();
     info('Ciclo unico concluido.');
     process.exit(0);
   }
+
+  // Modo intervalo (processo de longa duração): uma falha pontual no primeiro
+  // ciclo (ex.: timeout de rede logo ao iniciar) não pode derrubar o processo
+  // inteiro — sem isso, o agente ficava parado até o Agendador de Tarefas do
+  // Windows disparar um novo processo (até 90 min depois, ou mais se a máquina
+  // estava suspensa), em vez de tentar de novo no próximo ciclo do próprio loop.
+  try { await runCycle(); }
+  catch (e) { error('Ciclo falhou:', e.message); }
 
   setInterval(async () => {
     try { await runCycle(); }
