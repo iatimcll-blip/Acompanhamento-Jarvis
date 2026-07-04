@@ -8068,26 +8068,43 @@ async function saveGhState(manual=false){
   const el=document.getElementById('sync-status');
   try{
     if(el){el.textContent='Salvando no GitHub…';el.style.color='var(--blue)'}
-    /* Antes de enviar: se outro dispositivo já sincronizou algo mais novo do que a
-       última vez que ESTE dispositivo soube do estado remoto, mescla (por chave —
-       placa/rowKey/id/protocolo) os dados remotos que ainda não tínhamos com os
-       nossos, em vez de simplesmente substituir. Isso preserva tanto uma base
-       anexada em outro PC quanto a edição que está sendo enviada agora daqui —
-       um applyState() puro (replace) apagaria uma das duas. */
-    try{
-      const remoteSt=await fetchGhRawState();
-      const lastKnown=_getLastKnownRemoteSavedAt();
-      if(remoteSt&&remoteSt.savedAt&&lastKnown&&remoteSt.savedAt>lastKnown){
-        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
-        dEnc=_mergeArraysByKey(dEnc,normalizeEncState(remoteSt.dEnc),x=>x.protocolo||x.os);
-        dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
-        dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
-        dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
-        dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
-        if(Array.isArray(remoteSt.ofsRows))ofsRows=_mergeArraysByKey(ofsRows,remoteSt.ofsRows,ofsWorkbookRowKey);
-        renderAllAb();renderAllEnc();renderPanelRepetidos();renderFuel();
+    /* Antes de enviar: mescla (por chave — placa/rowKey/id/protocolo) os dados
+       remotos com os nossos, em vez de simplesmente substituir. Isso preserva
+       tanto uma base anexada em outro PC quanto a edição enviada agora daqui —
+       um applyState() puro (replace) apagaria uma das duas.
+       IMPORTANTE: a mescla precisa rodar mesmo quando este dispositivo/navegador
+       NUNCA sincronizou antes (lastKnown vazio) — por exemplo, a primeira vez que
+       alguém anexa uma base num PC novo. Antes, a condição exigia lastKnown
+       truthy, então esse primeiro envio pulava a mescla e sobrescrevia cegamente
+       as bases que outros dispositivos já tinham anexado no GitHub. */
+    let remoteSt=null;
+    try{remoteSt=await fetchGhRawState();}
+    catch(e){
+      throw new Error('Não foi possível verificar o estado remoto antes de sincronizar (rede instável). Tente novamente para evitar sobrescrever dados de outro dispositivo.');
+    }
+    const lastKnown=_getLastKnownRemoteSavedAt();
+    if(remoteSt&&remoteSt.savedAt&&(!lastKnown||remoteSt.savedAt>lastKnown)){
+      dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+      dEnc=_mergeArraysByKey(dEnc,normalizeEncState(remoteSt.dEnc),x=>x.protocolo||x.os);
+      dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+      dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
+      dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
+      dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
+      if(Array.isArray(remoteSt.ofsRows))ofsRows=_mergeArraysByKey(ofsRows,remoteSt.ofsRows,ofsWorkbookRowKey);
+      /* Rede: BD/AD são arrays posicionais (não objetos com chave natural), então
+         em vez de mesclar linha a linha (arriscado — os índices de mês/semana em
+         rdeM só fazem sentido dentro do mesmo arquivo), preserva a base de Rede
+         remota inteira quando ela for mais recente que a anexada neste dispositivo. */
+      const remoteRde=remoteSt.rdeState;
+      if(remoteRde&&remoteRde.at&&remoteRde.at>(rdeBaseAt||'')){
+        if(Array.isArray(remoteRde.BD))rdeBD=remoteRde.BD;
+        if(Array.isArray(remoteRde.AD))rdeAD=remoteRde.AD;
+        rdeBaseFile=remoteRde.fileName||rdeBaseFile;
+        rdeBaseAt=remoteRde.at;
+        rdeRestoreM(remoteRde.M);
       }
-    }catch(_){}
+      renderAllAb();renderAllEnc();renderPanelRepetidos();renderFuel();renderRede();
+    }
     const builtState=buildState();
     const content=await _ghStateToB64(builtState);
     let sha='';
@@ -9419,7 +9436,8 @@ function renderMopQuick(){
   const el=document.getElementById('quick-mop-ab');if(!el)return;
   const cur=activeMopAb();
   const base=slnAb();
-  const mopOpts=isSlnScoped()?MOP_QUICK.filter(m=>SLN_MOPS.includes(m)):MOP_QUICK;
+  const allowedMops=userAllowedMops();
+  const mopOpts=allowedMops?MOP_QUICK.filter(m=>allowedMops.includes(m)):MOP_QUICK;
   const btns=['',...mopOpts].map(m=>{
     const label=m||'Todos',active=cur===m?' active':'';
     const count=m?abActiveCount(base.filter(d=>d.mop===m)):abActiveCount(base);
