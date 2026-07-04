@@ -2392,6 +2392,11 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .atrix-sync-sep{opacity:.35;padding:0 3px;font-weight:300}
 #atrix-sync-countdown{font-variant-numeric:tabular-nums;letter-spacing:.5px;font-weight:700;opacity:.85}
 #atrix-sync-countdown.cd-soon{color:var(--orange,#f97316)}
+.atrix-start-btn{display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:2px 8px;border-radius:6px;border:.5px solid var(--blue);background:var(--blue-bg,rgba(0,122,255,.1));color:var(--blue);font-size:10px;font-weight:700;font-family:inherit;cursor:pointer;line-height:1.4;transition:background .12s,color .12s,border-color .12s}
+.atrix-start-btn:hover:not(:disabled){background:var(--blue);color:#fff}
+.atrix-start-btn:disabled{opacity:.55;cursor:default}
+.atrix-start-btn.atrix-start-ok,.atrix-start-btn.atrix-start-ok:hover{background:rgba(52,199,89,.14) !important;border-color:var(--green) !important;color:var(--green-dk,#15803d) !important}
+.atrix-start-btn.atrix-start-err,.atrix-start-btn.atrix-start-err:hover{background:rgba(255,59,48,.14) !important;border-color:var(--red) !important;color:var(--red) !important}
 #atrix-sync-countdown.cd-now{color:var(--blue);animation:cdPulse .7s ease-in-out infinite}
 @keyframes cdPulse{0%,100%{opacity:1}50%{opacity:.4}}
 /* ── Atrix Agent: timestamp por chamado no card ── */
@@ -6516,6 +6521,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <span class="atrix-sync-sep">·</span>
               <i class="ti ti-clock" style="font-size:10px;opacity:.7"></i>
               <span id="atrix-sync-countdown" title="Próxima sincronização automática">--:--</span>
+              <button class="atrix-start-btn admin-only" id="atrix-start-btn" onclick="triggerAtrixUpdateNow(this)" title="Inicia o agente agora, sem esperar o ciclo automático. O contador reinicia para a próxima atualização automática."><i class="ti ti-player-play"></i> Iniciar</button>
             </span>
           </div>
           <div id="sub-ab"></div>
@@ -7967,6 +7973,8 @@ function applyPermissions(){
   document.body.classList.toggle('is-admin',!!canEdit());
   document.body.classList.toggle('readonly',!!currentUser&&!canEdit());
   const av=document.getElementById('avatar-label');if(av)av.textContent=initials(currentUser&&currentUser.username);
+  const asb=document.getElementById('atrix-start-btn');
+  if(asb){if(canEdit())asb.style.removeProperty('display');else asb.style.setProperty('display','none','important');}
   applyPanelVisibility();
   if(dAb.length)renderTAb();
   renderFuel();
@@ -8891,7 +8899,7 @@ function _startAtrixCountdown(isoStr){
   if(_atrixCdTimer){clearInterval(_atrixCdTimer);_atrixCdTimer=null;}
   const el=document.getElementById('atrix-sync-countdown');
   if(!el)return;
-  const INTERVAL_MS=30*60*1000;
+  const INTERVAL_MS=90*60*1000;
   const nextSync=new Date(new Date(isoStr).getTime()+INTERVAL_MS);
   const pad=n=>String(n).padStart(2,'0');
   function tick(){
@@ -8912,6 +8920,42 @@ function _startAtrixCountdown(isoStr){
   }
   tick();
   _atrixCdTimer=setInterval(tick,1000);
+}
+
+let _atrixPickupTimer=null;
+async function triggerAtrixUpdateNow(btn){
+  if(!canEdit())return;
+  const orig=btn.innerHTML;
+  const done=(cls,html)=>{
+    btn.classList.remove('atrix-start-ok','atrix-start-err');
+    btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
+    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-err');btn.innerHTML=orig;},3000);
+  };
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Iniciando…';
+  try{
+    const token=getGhToken();
+    if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
+    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/dispatches`,{
+      method:'POST',
+      headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body:JSON.stringify({ref:'main'})
+    });
+    if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status);}
+    done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
+    _ghToast('Atualização do agente Atrix iniciada ✓','var(--green-dk)',5000);
+    /* independente do timer principal: o processo de atualização começa agora,
+       mas o contador visual reinicia normalmente para a PRÓXIMA sincronização
+       automática, como pedido — sem esperar o agente terminar. */
+    _startAtrixCountdown(new Date().toISOString());
+    /* além disso, agenda uma checagem única daqui a alguns minutos para já refletir
+       o resultado deste ciclo assim que o agente (rodando em outra máquina) terminar,
+       sem precisar esperar os 90 min inteiros do próximo ciclo automático. */
+    clearTimeout(_atrixPickupTimer);
+    _atrixPickupTimer=setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},150000);
+  }catch(e){
+    done('atrix-start-err','<i class="ti ti-x"></i> Erro');
+    _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
+  }
 }
 
 function _renderAtrixTs(isoStr){
