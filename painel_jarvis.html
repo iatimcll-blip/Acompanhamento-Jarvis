@@ -8898,6 +8898,7 @@ async function pushAtrixTicketsJson(){
 }
 
 let _atrixCdTimer=null;
+let _atrixRunningNow=false;
 
 function _startAtrixCountdown(isoStr){
   if(_atrixCdTimer){clearInterval(_atrixCdTimer);_atrixCdTimer=null;}
@@ -8907,8 +8908,16 @@ function _startAtrixCountdown(isoStr){
   const nextSync=new Date(new Date(isoStr).getTime()+INTERVAL_MS);
   const pad=n=>String(n).padStart(2,'0');
   function tick(){
-    const rem=nextSync-Date.now();
     el.classList.remove('cd-soon','cd-now');
+    /* enquanto um ciclo disparado pelo botão "Iniciar" está de fato rodando no
+       agente remoto, mostra isso de forma persistente em vez do número regressivo
+       — senão o usuário só vê o timer reiniciar e acha que nada mais aconteceu. */
+    if(_atrixRunningNow){
+      el.textContent='agente rodando…';
+      el.classList.add('cd-now');
+      return;
+    }
+    const rem=nextSync-Date.now();
     if(rem<=0){
       el.textContent='atualizando...';
       el.classList.add('cd-now');
@@ -8946,16 +8955,23 @@ async function triggerAtrixUpdateNow(btn){
     });
     if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status);}
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
-    _ghToast('Atualização do agente Atrix iniciada ✓','var(--green-dk)',5000);
-    /* independente do timer principal: o processo de atualização começa agora,
-       mas o contador visual reinicia normalmente para a PRÓXIMA sincronização
-       automática, como pedido — sem esperar o agente terminar. */
+    _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
+    /* independente do timer principal: o processo de atualização começa agora de
+       verdade (dispatch do workflow no GitHub Actions), e o contador reinicia para
+       a PRÓXIMA sincronização automática. Só que, diferente de antes, o contador
+       mostra "agente rodando…" de forma persistente enquanto o ciclo real está em
+       andamento — em vez de simplesmente exibir o número regressivo, o que dava a
+       falsa impressão de que só o timer tinha sido reiniciado. */
+    _atrixRunningNow=true;
     _startAtrixCountdown(new Date().toISOString());
     /* além disso, agenda uma checagem única daqui a alguns minutos para já refletir
        o resultado deste ciclo assim que o agente (rodando em outra máquina) terminar,
        sem precisar esperar os 90 min inteiros do próximo ciclo automático. */
     clearTimeout(_atrixPickupTimer);
-    _atrixPickupTimer=setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},150000);
+    _atrixPickupTimer=setTimeout(async()=>{
+      if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();
+      _atrixRunningNow=false;
+    },150000);
   }catch(e){
     done('atrix-start-err','<i class="ti ti-x"></i> Erro');
     _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
