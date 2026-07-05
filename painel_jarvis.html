@@ -7013,7 +7013,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="section-hd fuel-data-title">Dados da Frota <span class="sh-line"></span></div>
     <div class="fuel-split" id="fuel-split">
       <div class="fuel-split-pane" id="fuel-split-left">
-        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button></div></div>
+        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button><button class="card-action admin-only" onclick="clearFuelVeiculos()" title="Limpar toda a base de veículos e condutores" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Limpar base</button></div></div>
         <div class="tw"><table><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><select class="fv-fsel" id="fv-f-setor" onchange="setFuelVF('setor',this.value)"><option value="">Todos</option></select></th><th><select class="fv-fsel" id="fv-f-superior" onchange="setFuelVF('superior',this.value)"><option value="">Todos</option></select></th><th><select class="fv-fsel" id="fv-f-tipoCartao" onchange="setFuelVF('tipoCartao',this.value)"><option value="">Todos</option><option value="Próprio">Próprio</option><option value="Coringa">Coringa</option></select></th><th><select class="fv-fsel" id="fv-f-status" onchange="setFuelVF('status',this.value)"><option value="">Todos</option><option value="Ativo">Ativo</option><option value="Inativo">Inativo</option><option value="Oficina">Oficina</option><option value="Bloqueado">Bloqueado</option></select></th><th></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
       </div>
       <div class="fuel-split-handle" id="fuel-split-handle" title="Arraste para redimensionar os painéis"></div>
@@ -7837,7 +7837,7 @@ const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/A
 let dAb=[],dEnc=[];
 let atrixUpdateMap={};  // {ticketId → updatedAt ISO} — populado por loadAtrixUpdates()
 let aleloCardImage=null,aleloCardImageAt='';
-let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false;
+let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false;
 let editingFuelPlate='',editingFuelRequestId='',editingFuelWithdrawalId='',selectedFuelDriver='';
 let fuelVFilter={placa:'',condutor:'',setor:'',superior:'',tipoCartao:'',status:''};
 function setFuelVF(k,v){fuelVFilter[k]=String(v||'').trim();_renderFuelVTable();}
@@ -8099,7 +8099,7 @@ async function saveGhState(manual=false){
     if(remoteSt&&remoteSt.savedAt&&(!lastKnown||remoteSt.savedAt>lastKnown)){
       dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
       dEnc=_mergeArraysByKey(dEnc,normalizeEncState(remoteSt.dEnc),x=>x.protocolo||x.os);
-      dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+      dFuelVehicles=_mergeArraysByKey(dFuelVehicles,(fuelVeiculosCleared&&(!Array.isArray(remoteSt.dFuelVehicles)||!remoteSt.dFuelVehicles.length))?[]:normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
       dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
       dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
       dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
@@ -8647,7 +8647,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -8722,7 +8722,8 @@ function applyState(st,label){
   }
   const hasFuelState=Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.dFuelWithdrawals)||Array.isArray(st.dFuelAportes)||st.fuelBaseAt!==undefined||st.fuelBaseFile!==undefined||st.fuelCardBalance!==undefined;
   if(hasFuelState){
-    dFuelVehicles=normalizeFuelVehicles(st.dFuelVehicles);
+    if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosCleared'))fuelVeiculosCleared=!!st.fuelVeiculosCleared;
+    dFuelVehicles=(fuelVeiculosCleared&&(!Array.isArray(st.dFuelVehicles)||!st.dFuelVehicles.length))?[]:normalizeFuelVehicles(st.dFuelVehicles);
     dFuelRequests=clearLegacyFuelRequests?[]:normalizeFuelRequests(st.dFuelRequests);
     dFuelWithdrawals=normalizeFuelWithdrawals(st.dFuelWithdrawals);
     dFuelAportes=normalizeFuelAportes(st.dFuelAportes);
@@ -10168,7 +10169,7 @@ function renderFuelProjectionDetail(){
 }
 /* FUEL PANEL */
 function ensureFuelData(){
-  if(!dFuelVehicles.length)dFuelVehicles=normalizeFuelVehicles(FUEL_BASE);
+  if(!dFuelVehicles.length&&!fuelVeiculosCleared)dFuelVehicles=normalizeFuelVehicles(FUEL_BASE);
   if(!dFuelRequests.length)dFuelRequests=normalizeFuelRequests([]);
 }
 function fuelVehicleByPlate(placa){const k=String(placa||'').toUpperCase().trim();return dFuelVehicles.find(v=>v.placa===k)||{}}
@@ -10240,6 +10241,7 @@ function addFuelVehicle(){
   if(idx>=0&&(!editingFuelPlate||placa!==editingFuelPlate)){alert('Placa já cadastrada. Edite o registro existente para evitar duplicidade.');return}
   if(editingFuelPlate){const editIdx=dFuelVehicles.findIndex(v=>v.placa===editingFuelPlate);if(editIdx>=0)dFuelVehicles[editIdx]={...dFuelVehicles[editIdx],...item};dFuelRequests=dFuelRequests.map(r=>r.placa===editingFuelPlate?{...r,placa:item.placa,condutor:item.condutor||r.condutor}:r)}else dFuelVehicles.push(item);
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles);
+  fuelVeiculosCleared=false;
   clearFuelVehicleForm();
   renderFuel();saveState();
 }
@@ -10274,10 +10276,19 @@ function procFuelVeiculos(raw,fname){
     map.set(v.placa,{...map.get(v.placa),...v});
   });
   dFuelVehicles=normalizeFuelVehicles([...map.values()]);
+  fuelVeiculosCleared=false;
   fuelVeiculosBaseAt=now2();fuelVeiculosBaseFile=fname||'';
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
   renderFuel();saveState();
   alert(`Base de veículos processada: ${adicionados} adicionado(s), ${atualizados} atualizado(s). Os demais veículos já cadastrados foram mantidos.`);
+}
+async function clearFuelVeiculos(){
+  if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
+  if(!confirm('Limpar toda a base de Veículos e condutores? Essa ação não pode ser desfeita.'))return;
+  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosBaseAt='';fuelVeiculosBaseFile='';
+  const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent='';
+  renderFuel();
+  await persistClearedBase('Veículos e condutores');
 }
 function deleteFuelVehicle(){
   if(!canEdit()||!editingFuelPlate)return;
@@ -10409,7 +10420,7 @@ function importFuelAlelo(text,fname){
   const rows=parseCsvRows(text);
   if(!rows.length)throw new Error('CSV sem dados válidos.');
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles).filter(v=>v.source!=='alelo-base');
-  if(!dFuelVehicles.length)dFuelVehicles=normalizeFuelVehicles(FUEL_BASE);
+  if(!dFuelVehicles.length&&!fuelVeiculosCleared)dFuelVehicles=normalizeFuelVehicles(FUEL_BASE);
   dFuelRequests=dFuelRequests.filter(r=>!fuelIsAleloImport(r));
   /* Limpa créditos Alelo importados por versões anteriores; Aportes ficam apenas manuais. */
   dFuelAportes=dFuelAportes.filter(a=>a.source!=='alelo-base');
