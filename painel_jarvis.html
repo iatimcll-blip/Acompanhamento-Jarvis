@@ -12347,10 +12347,26 @@ function ofsBuildUpdatedWorkbook(masterFile,csvFiles){
   const arr=XLSX.write(wb,{bookType:'xlsx',type:'array'});
   return new Blob([arr],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
+function ofsDateFromFilename(fname){
+  const m=String(fname||'').match(/_(\d{1,2})_(\d{1,2})_(\d{2,4})(?:\s*\(\d+\))?\.csv$/i);
+  if(!m)return null;
+  const dd=parseInt(m[1],10),mm=parseInt(m[2],10);
+  const yy=m[3].length===2?2000+parseInt(m[3],10):parseInt(m[3],10);
+  if(dd<1||dd>31||mm<1||mm>12)return null;
+  const d=new Date(yy,mm-1,dd);
+  return isNaN(d)?null:d;
+}
 function ofsReadRows(raw,fname){
   const wb=XLSX.read(raw,{type:'array',cellDates:true});
   const ws=wb.Sheets['Dados Completos']||wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('dados completos'))]||wb.Sheets[wb.SheetNames[0]];
   const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+  /* Relatorios "Atividades-<recurso>_DD_MM_AA.csv" trazem a data correta no
+     proprio nome do arquivo. Algumas linhas vem com a coluna Data em MM/DD
+     (em vez de DD/MM, o padrao assumido abaixo), invertendo dia/mes — ex:
+     arquivo "..._07_05_26.csv" (7 de maio) gerava dtStr 2026-07-05 (5 de julho).
+     Quando dia e mes parseados batem exatamente com o mes e dia do nome do
+     arquivo (a transposicao classica), usamos a data do arquivo como correta. */
+  const fileDt=ofsDateFromFilename(fname);
   const out=[];
   for(const [rowIndex,r] of rows.entries()){
     const vals=Object.values(r);
@@ -12366,6 +12382,7 @@ function ofsReadRows(raw,fname){
     if(dtRaw instanceof Date)dt=dtRaw;
     else if(typeof dtRaw==='number'&&dtRaw>10000){const d=XLSX.SSF.parse_date_code(dtRaw);if(d)dt=new Date(d.y,d.m-1,d.d);}
     else if(dtRaw){const p=String(dtRaw).trim();const m=p.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);if(m){const y=m[3].length===2?2000+parseInt(m[3]):parseInt(m[3]);dt=new Date(y,parseInt(m[2])-1,parseInt(m[1]));}}
+    if(dt&&fileDt&&dt.getFullYear()===fileDt.getFullYear()&&dt.getDate()===fileDt.getMonth()+1&&dt.getMonth()+1===fileDt.getDate())dt=fileDt;
     const dtStr=dt?`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`:'';
     out.push({tecnico,tipo,status:ofsStatusKey(stRaw),dtStr,uf:getOfsUF(tecnico),grupo:getOfsGrupo(tecnico),ordemServico,os:ordemServico,idOrdemServico,sourceFile:fname||'',sourceRow:rowIndex+2});
   }
