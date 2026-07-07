@@ -13594,25 +13594,25 @@ function rdeRowToRede(r,sheet){
   const mi=rdeMonthIndex(mes&&ano?`${ano}-${mes}`:(mes||openedAt));
   const wi=rdeWeekIndex(rdeGv(r,['semana','week','periodo semanal','período semanal'])||openedAt);
   if(isAC){
-    // Acesso: TME=col R, Prazo flag=col P PRAZO_SEM_PARADA_RELOGIO (1=prazo ok), Outlier flag=col Q OUTLIER_SEM_PARADA_RELOGIO (1=outlier)
-    const colR=rdeColVal(r,'R'),colP=rdeColVal(r,'P'),colQ=rdeColVal(r,'Q');
+    // Acesso: TME=col R, Prazo flag=col N (1=prazo ok), Outlier flag=col Q (1=outlier) — leitura por posição de coluna tem prioridade sobre o nome do cabeçalho
+    const colR=rdeColVal(r,'R'),colN=rdeColVal(r,'N'),colQ=rdeColVal(r,'Q');
     const tempo=rdeNum(rdeGv(r,['TME','tme','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
     const prazoRaw=rdeGv(r,['PRAZO_SEM_PARADA_RELOGIO','prazo sem parada relogio','no prazo','prazo','dentro prazo','dentro_sla','sla prazo','dentro']);
-    const prazo=prazoRaw!==''?rdeBoolish(prazoRaw):(colP!==null?Number(colP)==1:(tempo?tempo<=RDE_MTME:false));
+    const prazo=colN!==null?Number(colN)==1:(prazoRaw!==''?rdeBoolish(prazoRaw):(tempo?tempo<=RDE_MTME:false));
     const outRaw=rdeGv(r,['OUTLIER_SEM_PARADA_RELOGIO','outlier sem parada relogio','outlier','fora outlier','outlier 24h','outlier_24h']);
-    const out=outRaw!==''?rdeBoolish(outRaw):(colQ!==null?Number(colQ)==1:(tempo>24));
+    const out=colQ!==null?Number(colQ)==1:(outRaw!==''?rdeBoolish(outRaw):(tempo>24));
     const cli=rdeNum(rdeGv(r,['CLIENTES AFETADOS','clientes afetados','clientes','cliente afetado','impactados','afetados']));
     const motivo=rdeLabelIndex(rdeM.mo,rdeGv(r,['CAUSA_SIMPLES','ORIGEM','CLASSE_CABO','motivo','causa','causa raiz','falha','tipo encerramento']));
     const detail=rdeCompactDetail(r,'Acesso',cl,mi,wi,prazo,out,tempo,rdeM.mo[motivo]||'Acesso',cli);
     return{kind:'ac',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,cli,motivo,detail]};
   }
-  // Backbone: TMR=col R, Prazo flag=col S (1=prazo ok), Outlier flag=col T (1=outlier)
+  // Backbone: TMR=col R, Prazo flag=col S (1=prazo ok), Outlier flag=col T (1=outlier) — leitura por posição de coluna tem prioridade sobre o nome do cabeçalho
   const colR=rdeColVal(r,'R'),colS=rdeColVal(r,'S'),colT=rdeColVal(r,'T');
   const tempo=rdeNum(rdeGv(r,['TMR','tmr','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
   const prazoRaw=rdeGv(r,['PRAZO_SEM_PARADA_RELOGIO','prazo sem parada relogio','no prazo','prazo','dentro prazo','dentro_sla','sla prazo','dentro']);
-  const prazo=prazoRaw!==''?rdeBoolish(prazoRaw):(colS!==null?Number(colS)==1:(tempo?tempo<=RDE_MTME:false));
+  const prazo=colS!==null?Number(colS)==1:(prazoRaw!==''?rdeBoolish(prazoRaw):(tempo?tempo<=RDE_MTME:false));
   const outRaw=rdeGv(r,['OUTLIER_SEM_PARADA_RELOGIO','outlier sem parada relogio','outlier','fora outlier','outlier 24h','outlier_24h']);
-  const out=outRaw!==''?rdeBoolish(outRaw):(colT!==null?Number(colT)==1:(tempo>24));
+  const out=colT!==null?Number(colT)==1:(outRaw!==''?rdeBoolish(outRaw):(tempo>24));
   const causa=rdeLabelIndex(rdeM.ca,rdeGv(r,['[INCIDENTE - TRECHO DOWN] MOTIVO DA FALHA (REDE)','MOTIVO DA FALHA (REDE)','FALHA','motivo','causa','causa raiz','tipo encerramento']));
   const detail=rdeCompactDetail(r,'Backbone',cl,mi,wi,prazo,out,tempo,rdeM.ca[causa]||'Backbone',0);
   return{kind:'bb',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,causa,detail]};
