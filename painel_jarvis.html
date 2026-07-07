@@ -6706,6 +6706,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </div>
         </div>
         <div class="rede-ctrlrow">
+          <span class="rede-clbl">Ano</span>
+          <div class="rede-seg" id="rde-year-seg"></div>
+        </div>
+        <div class="rede-ctrlrow">
           <span class="rede-clbl">Granularidade</span>
           <div class="rede-seg" id="rde-gran-seg">
             <button class="rede-sgbtn on" data-g="all" onclick="rdeSetGran('all')">Acumulado</button>
@@ -13555,7 +13559,7 @@ const RDE_META_KEY='atrix:rede:meta:v1';
 const RDE_M89_DEF=85,RDE_MOUT_DEF=4.9,RDE_MTME_DEF=6.0;
 let RDE_M89=RDE_M89_DEF,RDE_MOUT=RDE_MOUT_DEF,RDE_MTME=RDE_MTME_DEF;
 let rdeModo='m',rdeSelMonth='',rdeSelWeek='',rdeActiveView='bb',rdeCharts={};
-let rdeTab='ACESSO',rdeGran='all',rdePeriod=null,rdeCluster='',rdeCallsOnRender=false,rdeLineCh2=null,rdeTimeCh2=null,rdeCauseCh2=null,rdeCityCh2=null;
+let rdeTab='ACESSO',rdeGran='all',rdePeriod=null,rdeCluster='',rdeYear='',rdeCallsOnRender=false,rdeLineCh2=null,rdeTimeCh2=null,rdeCauseCh2=null,rdeCityCh2=null;
 const REDE_STORAGE='atrix:rede:bases:v2';
 const REDE_UI_KEY='atrix:rede:ui:v1';
 function rdeNk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase()}
@@ -13590,13 +13594,13 @@ function rdeRowToRede(r,sheet){
   const mi=rdeMonthIndex(mes&&ano?`${ano}-${mes}`:(mes||openedAt));
   const wi=rdeWeekIndex(rdeGv(r,['semana','week','periodo semanal','período semanal'])||openedAt);
   if(isAC){
-    // Acesso: TME=col R, Prazo flag=col N (1=prazo ok), Outlier flag=col O (1=outlier)
-    const colR=rdeColVal(r,'R'),colN=rdeColVal(r,'N'),colO=rdeColVal(r,'O');
+    // Acesso: TME=col R, Prazo flag=col P PRAZO_SEM_PARADA_RELOGIO (1=prazo ok), Outlier flag=col Q OUTLIER_SEM_PARADA_RELOGIO (1=outlier)
+    const colR=rdeColVal(r,'R'),colP=rdeColVal(r,'P'),colQ=rdeColVal(r,'Q');
     const tempo=rdeNum(rdeGv(r,['TME','tme','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
     const prazoRaw=rdeGv(r,['PRAZO_SEM_PARADA_RELOGIO','prazo sem parada relogio','no prazo','prazo','dentro prazo','dentro_sla','sla prazo','dentro']);
-    const prazo=prazoRaw!==''?rdeBoolish(prazoRaw):(colN!==null?Number(colN)==1:(tempo?tempo<=RDE_MTME:false));
+    const prazo=prazoRaw!==''?rdeBoolish(prazoRaw):(colP!==null?Number(colP)==1:(tempo?tempo<=RDE_MTME:false));
     const outRaw=rdeGv(r,['OUTLIER_SEM_PARADA_RELOGIO','outlier sem parada relogio','outlier','fora outlier','outlier 24h','outlier_24h']);
-    const out=outRaw!==''?rdeBoolish(outRaw):(colO!==null?Number(colO)==1:(tempo>24));
+    const out=outRaw!==''?rdeBoolish(outRaw):(colQ!==null?Number(colQ)==1:(tempo>24));
     const cli=rdeNum(rdeGv(r,['CLIENTES AFETADOS','clientes afetados','clientes','cliente afetado','impactados','afetados']));
     const motivo=rdeLabelIndex(rdeM.mo,rdeGv(r,['CAUSA_SIMPLES','ORIGEM','CLASSE_CABO','motivo','causa','causa raiz','falha','tipo encerramento']));
     const detail=rdeCompactDetail(r,'Acesso',cl,mi,wi,prazo,out,tempo,rdeM.mo[motivo]||'Acesso',cli);
@@ -13625,7 +13629,7 @@ function rdeApplyRows(rows,fileName){
   try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
   const fn=document.getElementById('rede-fname');if(fn)fn.textContent=fileName;
   const ts=document.getElementById('rede-ts-text');if(ts)ts.textContent='Anexado '+_now.toLocaleDateString('pt-BR')+' '+_now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
+  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';rdeYear='';rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
 }
 function rdeHasDetail(rows,idx){return Array.isArray(rows)&&rows.some(r=>Array.isArray(r)&&r.length>idx&&r[idx]&&typeof r[idx]==='object')}
 function rdeRestoreM(saved){
@@ -13661,7 +13665,7 @@ async function rdeRestoreBaseFromIndexedDb(){
   try{const st=await idbGet(REDE_STORAGE);if(st)rdeApplyStoredState(st)}
   catch(e){console.warn('rede IndexedDB restore',e)}
 }
-function rdeSaveUI(){try{localStorage.setItem(REDE_UI_KEY,JSON.stringify({tab:rdeTab,gran:rdeGran,period:rdePeriod,cluster:rdeCluster}));}catch(e){}}
+function rdeSaveUI(){try{localStorage.setItem(REDE_UI_KEY,JSON.stringify({tab:rdeTab,gran:rdeGran,period:rdePeriod,cluster:rdeCluster,year:rdeYear}));}catch(e){}}
 function rdeRestoreUI(){
   try{
     const raw=localStorage.getItem(REDE_UI_KEY);if(!raw)return;
@@ -13670,6 +13674,7 @@ function rdeRestoreUI(){
     if(ui.gran&&['all','m','w'].includes(ui.gran))rdeGran=ui.gran;
     if(ui.period)rdePeriod=ui.period;
     if(ui.cluster!==undefined)rdeCluster=ui.cluster||'';
+    if(ui.year!==undefined)rdeYear=ui.year||'';
   }catch(e){console.warn('rede ui restore',e)}
 }
 function rdeMetaLoad(){
@@ -13732,13 +13737,19 @@ function rdeMonthForWeek(wk){if(!wk)return'';const all=[...rdeBD,...rdeAD];const
 function rdeMname(m){const mo={'01':'jan','02':'fev','03':'mar','04':'abr','05':'mai','06':'jun','07':'jul','08':'ago','09':'set','10':'out','11':'nov','12':'dez'};const p=String(m||'').split('-');return(mo[p[1]]||p[1]||m)+'/'+String(p[0]||'').slice(2);}
 function rdePKey(){return rdeGran==='w'?'w':'m';}
 function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
-function rdeGetAllFlat(){
+function rdeTabFlat(){
   let out;
   if(rdeTab==='ACESSO')out=rdeToFlat(rdeAD,'AC');
   else if(rdeTab==='BACKBONE')out=rdeToFlat(rdeBD,'BB');
   else out=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
   const cl=userAllowedClusters();
   if(cl)out=out.filter(r=>cl.includes(r.cl));
+  return out;
+}
+function rdeRecYear(r){return String(r.m||r.w||'').slice(0,4);}
+function rdeGetAllFlat(){
+  let out=rdeTabFlat();
+  if(rdeYear)out=out.filter(r=>rdeRecYear(r)===rdeYear);
   return out;
 }
 function rdeGetPreClusterRecs(){const flat=rdeGetAllFlat();const gk=rdePKey();return(rdeGran!=='all'&&rdePeriod)?flat.filter(r=>r[gk]===rdePeriod):flat;}
@@ -13750,6 +13761,7 @@ function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=null;}else{con
 function rdePeriodClick(p){rdePeriod=p;rdeCallsOnRender=true;rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeClFilter(cl){if(!rdeCluster)return true;if(rdeCluster==='EPS')return cl==='C'||cl==='N';return cl===rdeCluster;}
 function rdeSetCluster(cl){rdeCluster=cl;rdeSyncControls();renderRede();rdeSaveUI();}
+function rdeSetYear(y){rdeYear=y;if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys[keys.length-1]||null;}rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeCopiarGrafico(el,btn){
   if(!el||!btn)return;
   const orig=btn.innerHTML;
@@ -13802,6 +13814,19 @@ function rdeSyncControls(){
     const cnt=b.querySelector('.rede-cnt');
     if(cnt)cnt.textContent=cl===''?preRecs.length:cl==='EPS'?(clCnts['C']||0)+(clCnts['N']||0):(clCnts[cl]||0);
   });
+  // Year buttons: built dynamically from years present in the current tab's data
+  const yearSeg=document.getElementById('rde-year-seg');
+  if(yearSeg){
+    const tabRecs=rdeTabFlat();
+    const passCl=r=>!rdeCluster||rdeClFilter(r.cl);
+    const years=[...new Set(tabRecs.map(rdeRecYear))].filter(Boolean).sort();
+    const totalCnt=tabRecs.filter(passCl).length;
+    yearSeg.innerHTML=`<button class="rede-sgbtn${rdeYear===''?' on':''}" onclick="rdeSetYear('')">Todos <span class="rede-cnt">${totalCnt}</span></button>`+
+      years.map(y=>{
+        const cnt=tabRecs.filter(r=>rdeRecYear(r)===y&&passCl(r)).length;
+        return`<button class="rede-sgbtn${y===rdeYear?' on':''}" onclick="rdeSetYear('${eh(y)}')">${eh(y)} <span class="rede-cnt">${cnt}</span></button>`;
+      }).join('');
+  }
   // Period row
   const pr=document.getElementById('rde-period-row');if(!pr)return;
   if(rdeGran==='all'){pr.style.display='none';return;}
