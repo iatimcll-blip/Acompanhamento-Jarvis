@@ -6537,6 +6537,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Chamados em aberto</span>
           <div class="tsec-meta">
             <span id="cnt-ab" style="color:var(--tx3)"></span>
+            <span class="card-action" onclick="manualRefreshAb()" title="Recalcula o SLA e atualiza a lista de chamados"><i class="ti ti-refresh" style="font-size:11px;vertical-align:-1px"></i> Atualizar</span>
             <span class="card-action" id="ab-toggle-hide-inactive" onclick="toggleAbHideInactive()" title="Ocultar chamados Cancelados, Fechados ou Pendente Validação."><i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados</span>
             <span class="card-action admin-only" onclick="openModalAb()" style="color:var(--blue)"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar chamado</span>
             <span class="card-action" onclick="exportCSV('ab')"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar CSV</span>
@@ -7859,7 +7860,6 @@ let selRepMes='',selRepSemana='',selRepCluster='',selRepCausa='',selRepSeg='',se
 let activeTab='dashboard';
 let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='';
 let wppUnreadCount=0,wppInitialized=false;
-let refreshTimer=null;
 const STORAGE_KEY='atrix:painel:bases:v1';
 const STORAGE_META_KEY='atrix:painel:bases:meta:v1';
 const MANUAL_SUB_KEY='jarvis:ab:manualSub';
@@ -8227,7 +8227,6 @@ async function loginUser(ev){
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
-  if(refreshTimer)clearInterval(refreshTimer);
   closeUserPanel();showLogin('');
 }
 function resetAuthData(){
@@ -8574,20 +8573,10 @@ document.addEventListener('focusout',e=>{
   const t=e.target.closest&&e.target.closest('.substatus-select,.ann-sel,.ann-obs');
   if(t)setTimeout(()=>{abInteractionLock=false;},300);
 });
-function startRefresh(){
-  if(refreshTimer)clearInterval(refreshTimer);
-  /* SLA é medido em horas, então não precisa de granularidade de 1s — o intervalo
-     antigo (1000ms) reconstruía a tabela inteira (todo card/select/textarea) a cada
-     segundo, o tempo todo, gerando CPU/memória suficiente pra derrubar a aba em
-     sessões longas. 20s mantém o relógio "vivo" com uma fração do custo. */
-  refreshTimer=setInterval(()=>{
-    if(!dAb.length)return;
-    refreshAbTimes();
-    const ae=document.activeElement;if(abInteractionLock||(ae&&(ae.classList.contains('substatus-select')||ae.classList.contains('ann-sel')||ae.classList.contains('ann-obs'))))return;
-    renderTAb();
-  },20000);
-}
-function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
+/* Atualização do relógio de SLA é manual (sem setInterval automático) — reconstruir a
+   tabela inteira periodicamente sozinho chegava a sobrecarregar a aba em sessões longas.
+   O usuário atualiza pelo botão "Atualizar" na barra de Chamados em aberto. */
+function manualRefreshAb(){refreshAbTimes();renderTAb();}
 const ATRIX_TICKET_BASE='https://atrix.mobtelecom.com.br/controle/addonmodules.php?module=helpdesk#/app/ticket/';
 function cleanTicketId(v){const s=String(v??'').trim();return s.replace(/\.0+$/,'')}
 function atrixTicketLink(ticketId){const id=cleanTicketId(ticketId);return id?ATRIX_TICKET_BASE+encodeURIComponent(id):''}
@@ -8687,7 +8676,7 @@ function applyState(st,label){
     refreshAbBadge();
     if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
     if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
-    fillFiltersAb();if(!abInteractionLock)renderAllAb();startRefresh();
+    fillFiltersAb();if(!abInteractionLock)renderAllAb();
     document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
     document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
     changed=true;
@@ -9152,7 +9141,7 @@ function clienteAbertoNome(r){
 async function clearAb(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Abertos? Essa ação não pode ser desfeita.'))return;
-  dAb=[];stopRefresh();lastAbAt='';lastAbFile='';updateUploadTimes();
+  dAb=[];lastAbAt='';lastAbFile='';updateUploadTimes();
   const nb=document.getElementById('nb-ab');if(nb)nb.textContent='0';
   const empty=document.getElementById('empty-ab');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ab');if(dash)dash.style.display='none';
@@ -9292,7 +9281,7 @@ function saveModalAb(){
   refreshAbBadge();
   document.getElementById('empty-ab').style.display='none';
   document.getElementById('dash-ab').style.display='block';
-  fillFiltersAb();renderAllAb();startRefresh();saveState();
+  fillFiltersAb();renderAllAb();saveState();
   closeModalAb();
 }
 function procAb(raw,fname){
@@ -9329,7 +9318,7 @@ function procAb(raw,fname){
   lastAbFile=fname||'';
   lastAbAt=now2();updateUploadTimes();
   podaAbAnnotations(); // apaga anotações de tickets que saíram da base
-  fillFiltersAb();renderAllAb();startRefresh();
+  fillFiltersAb();renderAllAb();
   document.getElementById('empty-ab').style.display='none';
   document.getElementById('dash-ab').style.display='block';
   saveState();autoSyncAfterBaseUpload('B2B Abertos');updateClearBtns();
@@ -13061,11 +13050,6 @@ function switchTab(tab,persist=true){
   if(isMon)loadMonitorPanel();
   if(isWpp){wppUnreadCount=0;updateWppBadge();loadWhatsAppPanel();}
   if(isDash)renderExecutiveDashboard();
-  /* O relógio de SLA (refreshTimer, 1s) só precisa rodar com a aba Abertos visível —
-     antes rodava o tempo todo em segundo plano, reconstruindo a tabela inteira a cada
-     segundo mesmo em outros painéis, o que sobrecarregava a aba em sessões longas. */
-  if(isAb){if(dAb.length){refreshAbTimes();if(!abInteractionLock)renderTAb();startRefresh();}}
-  else stopRefresh();
   updateShellTitle(tab);
   closeMobileNav();
   updateClearBtns();
