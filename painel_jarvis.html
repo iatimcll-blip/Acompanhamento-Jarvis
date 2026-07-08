@@ -9034,14 +9034,23 @@ async function loadAtrixUpdates(){
     dAb.forEach(ticket=>{
       const up=updates[ticket.id]||updates[ticket.ticketId]||null;
       if(!up||!up.substatus)return;
-      if(up.substatus!==ticket.substatus){
-        ticket.substatus=up.substatus;
+      const next=fmtSubstatus(up.substatus);
+      if(next!==ticket.substatus){
+        /* Mesma lógica de pausa/retomada de SLA por substatus usada em updateSubstatus() —
+           antes essa troca automática só trocava o texto do substatus sem pausar/retomar o
+           relógio, então chamados atualizados pelo agente Atrix não respeitavam a pausa. */
+        const now=new Date(),wasPaused=isPausedSubstatus(ticket.substatus),willPause=isPausedSubstatus(next);
+        if(ticket.dynamicSheetSla){ticket.slaH=computeSlaHours(ticket,now);ticket.sheetSlaH=ticket.slaH;ticket.slaBaseAt=now.toISOString();ticket.pauseStart=null;ticket.pausedBusinessH=0;}
+        else if(wasPaused&&!willPause&&ticket.pauseStart){ticket.pausedBusinessH=Number(ticket.pausedBusinessH||0)+businessHoursBetween(ticket.pauseStart,now);ticket.pauseStart=null;}
+        ticket.substatus=next;
+        if(willPause)ticket.pauseStart=now;
+        ticket.slaH=computeSlaHours(ticket,now);ticket.faixa=cf(ticket.slaH);ticket.statusSla=statusSla(ticket.slaH,ticket.mop,ticket.slaLimitH);
         _clearManualSub(ticket.id||ticket.ticketId);
         count++;
       }
     });
     if((count>0||latestAt)&&!abInteractionLock)renderAllAb();
-    if(count>0)console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);
+    if(count>0){console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);saveState();}
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
 }
 
