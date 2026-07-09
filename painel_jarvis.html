@@ -14064,6 +14064,7 @@ const _rde4PtPlugin={
 let rde4Ch={outM:null,outD:null,przM:null,przD:null,tmeM:null,tmeD:null,qtdM:null,qtdD:null};
 let rde4SelMes='';
 function _rde4Destroy(k){if(rde4Ch[k]){try{rde4Ch[k].destroy();}catch(e){}rde4Ch[k]=null;}}
+function _rde4DestroyAll(){Object.keys(rde4Ch).forEach(_rde4Destroy);}
 function _rde4AggMonth(recs){
   const map={};
   recs.forEach(r=>{const mk=r.m||'';if(!mk)return;if(!map[mk])map[mk]={key:mk,n:0,p:0,o:0,tSum:0};map[mk].n++;map[mk].p+=r.p;map[mk].o+=r.o;map[mk].tSum+=(r.t||0);});
@@ -14087,7 +14088,10 @@ function _rde4BarColors(vals,meta,higherOk){return vals.map(v=>higherOk?(v>=meta
 function _rde4DotColors(vals,meta,higherOk){return vals.map(v=>higherOk?(v>=meta?'#34c759':'#ff3b30'):(v<=meta?'#34c759':'#ff3b30'));}
 function _rde4QtdBg(vals){const mx=Math.max(...vals,1);return vals.map(v=>{const r=v/mx;const R=Math.round(30+r*(15-30)),G=Math.round(58+r*(84-58)),B=Math.round(91+r*(163-91));return`rgba(${R},${G},${B},0.85)`;});}
 function rde4RenderAll(recs){
-  if(!recs||!recs.length)return;
+  /* Antes, um filtro (Cluster/aba/mês) que resultasse em zero registros fazia a função
+     retornar cedo sem limpar os gráficos — o gráfico anterior (de antes do filtro)
+     ficava na tela mostrando dados que não correspondem mais à seleção atual. */
+  if(!recs||!recs.length){_rde4DestroyAll();return;}
   const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
   const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
   const isAC=rdeTab==='ACESSO',tl=rdeTab==='AMBOS'?'TME/TMR':isAC?'TME':'TMR';
@@ -14095,7 +14099,7 @@ function rde4RenderAll(recs){
   const fmtTme=v=>+(v||0).toFixed(2);
   const baseOpts=(yFmt,yMin,yMax)=>({responsive:true,maintainAspectRatio:false,layout:{padding:{top:28,right:52}},plugins:{legend:{display:false}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>yFmt(v),color:txC},min:yMin,max:yMax},x:{grid:{display:false},ticks:{color:txC,font:{size:10}},maxRotation:45}},spanGaps:true});
   const months=_rde4AggMonth(recs);
-  if(!months.length)return;
+  if(!months.length){_rde4DestroyAll();return;}
   const mKeys=months.map(x=>x.key);
   const mLbls=mKeys.map(mk=>rdeMname(mk));
   if(!rde4SelMes||!mKeys.includes(rde4SelMes))rde4SelMes=mKeys[mKeys.length-1]||'';
