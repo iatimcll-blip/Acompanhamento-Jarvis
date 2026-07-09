@@ -6863,7 +6863,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="rede-cbx" style="padding:0;overflow-x:auto;max-height:440px;overflow-y:auto">
           <table class="rede-dtable" style="font-size:11px">
-            <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th class="rede-num">TME/TMR</th><th style="text-align:center">Prazo</th><th style="text-align:center">Outlier</th><th>Causa</th><th>Criticidade</th></tr></thead>
+            <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th class="rede-num">TME/TMR</th><th style="text-align:center">Prazo</th><th style="text-align:center">Outlier</th><th class="rede-num">Excedente</th><th>Causa</th><th>Criticidade</th></tr></thead>
             <tbody id="rde-calls-body"></tbody>
           </table>
         </div>
@@ -14259,12 +14259,22 @@ function rdeShowCalls(title,flatRecs){
   if(tit)tit.textContent=title+' ('+flatRecs.length+' chamado'+(flatRecs.length===1?'':'s')+')';
   const crCls=r=>{if(r.o===1)return'bd';if(r.p===0)return'wn';return'ok';};
   const crLbl=r=>{if(r.o===1&&r.p===0)return'Crítico';if(r.o===1)return'Outlier';if(r.p===0)return'Fora do Prazo';return'No Prazo';};
+  /* Excedente: quanto o chamado passou da referência de cada indicador — Prazo usa a
+     meta TMR/TME configurada (RDE_MTME); Outlier usa 24h, o mesmo limite que o código
+     já usa internamente quando precisa classificar outlier a partir do tempo bruto. */
+  const RDE_OUT_H=24;
+  const excCell=r=>{
+    const parts=[];
+    if(r.p===0&&r.t>0)parts.push('Prazo +'+Math.max(0,r.t-RDE_MTME).toFixed(2)+'h');
+    if(r.o===1&&r.t>0)parts.push('Outlier +'+Math.max(0,r.t-RDE_OUT_H).toFixed(2)+'h');
+    return parts.length?parts.join(' · '):'—';
+  };
   const sorted=[...flatRecs].sort((a,b)=>{const sa=(a.o===1?2:0)+(a.p===0?1:0),sb=(b.o===1?2:0)+(b.p===0?1:0);return sb-sa;});
   tbody.innerHTML=sorted.map(r=>{
     const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
     const os=String(det.os||det.id||'—'),uf=String(det.uf||'—'),cr=crCls(r);
-    return`<tr><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl(r)}</span></td></tr>`;
-  }).join('')||`<tr><td colspan="9" class="rede-dmuted">Sem chamados para exibir.</td></tr>`;
+    return`<tr><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(excCell(r))}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl(r)}</span></td></tr>`;
+  }).join('')||`<tr><td colspan="10" class="rede-dmuted">Sem chamados para exibir.</td></tr>`;
   el.style.display='block';
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
