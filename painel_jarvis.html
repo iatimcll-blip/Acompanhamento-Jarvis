@@ -902,6 +902,10 @@ body {
 .ab-card.row-red{background:rgba(255,59,48,.10)}
 .ab-card.row-blue{background:var(--blue-bg)}
 .ab-card.row-gray{background:rgba(142,142,147,.12)}
+.ab-card.ab-card-updating{box-shadow:0 0 0 1.5px var(--blue) inset;animation:abCardUpdatingPulse 1.4s ease-in-out infinite}
+@keyframes abCardUpdatingPulse{0%,100%{box-shadow:0 0 0 1.5px var(--blue) inset}50%{box-shadow:0 0 0 1.5px var(--blue-lt) inset}}
+.abc-updating-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:var(--blue);background:var(--blue-bg);border-radius:6px;padding:1px 6px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
+.abc-updating-badge i{font-size:10px}
 .abc-r1{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .abc-id{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0}
 .abc-id a{color:var(--blue);text-decoration:none}.abc-id a:hover{text-decoration:underline}
@@ -1122,6 +1126,8 @@ body.is-admin .cd-upload-btn.admin-only { display: inline-flex !important; }
 body.is-admin .mop-ref-btn.admin-only { display: inline-flex !important; }
 .ofs-apply-btn.admin-only { display: none !important; }
 body.is-admin .ofs-apply-btn.admin-only { display: flex !important; }
+.tsec.admin-only { display: none !important; }
+body.is-admin .tsec.admin-only { display: block !important; }
 .gh-toast{position:fixed;bottom:20px;right:20px;left:auto;max-width:min(360px,calc(100vw - 40px));padding:10px 16px;border-radius:10px;font-size:12px;font-weight:500;line-height:1.4;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.15);transition:opacity .4s;pointer-events:none;background:var(--surface);border:1px solid var(--bd);word-wrap:break-word}
 @media (max-width:600px){.gh-toast{left:12px;right:12px;bottom:12px;max-width:none;font-size:11.5px;padding:9px 13px}}
 
@@ -8531,7 +8537,7 @@ function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s
 function abIsInactiveForCount(c){const s=nk(c&&c.substatus);return s.includes('CANCELADO')||s.includes('FECHADO')||isValidationSubstatus(c&&c.substatus)}
 function abActiveCount(list){return(Array.isArray(list)?list:[]).filter(c=>!abIsInactiveForCount(c)).length}
 function refreshAbBadge(){const el=document.getElementById('nb-ab');if(el)el.textContent=abActiveCount(slnAb())}
-function isPurpleResponsavel(v){return ['SEA','TIM','CLARO','ONLINE','CARAJASNET','MASTERNET','MARTENET','VIVO','IBL'].includes(nk(v))}
+function isPurpleResponsavel(v){return ['SEA','TIM','CLARO','ONLINE','CARAJANET','MASTERNET','VIVO','GARRATELECOM','SOSTELECOM','ST1'].includes(nk(v))}
 function abStatusCardClass(v){
   const s=nk(fmtSubstatus(v)||v);
   if(s.includes('FECHADO')||s.includes('CANCELADO')||isValidationSubstatus(v))return'row-green';
@@ -8965,15 +8971,28 @@ async function triggerAtrixUpdateNow(btn){
        andamento — em vez de simplesmente exibir o número regressivo, o que dava a
        falsa impressão de que só o timer tinha sido reiniciado. */
     _atrixRunningNow=true;
-    _startAtrixCountdown(new Date().toISOString());
-    /* além disso, agenda uma checagem única daqui a alguns minutos para já refletir
+    if(typeof renderTAb==='function')renderTAb();
+    const triggeredAt=new Date().toISOString();
+    _startAtrixCountdown(triggeredAt);
+    /* além disso, faz polling periódico (em vez de uma checagem única) para refletir
        o resultado deste ciclo assim que o agente (rodando em outra máquina) terminar,
-       sem precisar esperar os 90 min inteiros do próximo ciclo automático. */
-    clearTimeout(_atrixPickupTimer);
-    _atrixPickupTimer=setTimeout(async()=>{
+       sem precisar esperar os 90 min inteiros do próximo ciclo automático. Uma checagem
+       única não bastava: o ciclo completo (checkout + npm ci + playwright + varrer os
+       chamados um a um no Atrix) mede na prática ~15 min, bem mais que os 2,5 min que
+       se esperava antes — então a checagem única quase sempre disparava cedo demais e
+       encontrava o updates.json ainda com os dados do ciclo anterior. */
+    clearInterval(_atrixPickupTimer);
+    let atrixPickupTries=0;
+    _atrixPickupTimer=setInterval(async()=>{
+      atrixPickupTries++;
       if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();
-      _atrixRunningNow=false;
-    },150000);
+      const lastUpdate=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
+      if(lastUpdate>triggeredAt||atrixPickupTries>=18){
+        clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
+        _atrixRunningNow=false;
+        if(typeof renderTAb==='function')renderTAb();
+      }
+    },60000);
   }catch(e){
     done('atrix-start-err','<i class="ti ti-x"></i> Erro');
     _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
@@ -9273,7 +9292,7 @@ function onMabSlaChange(){
   const cidade=document.getElementById('mab-cidade').value;
   const mop=normMopByCity(uf,cidade)||'';
   document.getElementById('mab-faixa').value=slaH?cf(slaH):'';
-  document.getElementById('mab-status-sla').value=slaH?statusSla(slaH,mop,8):'';
+  document.getElementById('mab-status-sla').value=slaH?statusSla(slaH,mop,0):'';
 }
 function saveModalAb(){
   if(!canEdit())return;
@@ -9287,9 +9306,9 @@ function saveModalAb(){
   if(!slaH&&slaH!==0){alert('Informe o SLA em horas.');return;}
   const mop=normMopByCity(uf,cidade)||'';
   const faixa=cf(slaH);
-  const status=statusSla(slaH,mop,8);
+  const status=statusSla(slaH,mop,0);
   const rowKey=Date.now();
-  const item={rowKey,id,cliente,assunto:'',uf,cidade,regiao:'',substatus:substatus||'',link:'',openedAt:new Date(),originalSlaH:slaH,slaLimitH:8,pausedBusinessH:0,pauseStart:null,mop,slaH,faixa,statusSla:status};
+  const item={rowKey,id,cliente,assunto:'',uf,cidade,regiao:'',substatus:substatus||'',link:'',openedAt:new Date(),originalSlaH:slaH,slaLimitH:0,pausedBusinessH:0,pauseStart:null,mop,slaH,faixa,statusSla:status};
   dAb.push(item);
   refreshAbBadge();
   document.getElementById('empty-ab').style.display='none';
@@ -9659,7 +9678,9 @@ function renderTAb(){
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
-    return`<div class="ab-card ${rowCls}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    const _updNow=typeof _atrixRunningNow!=='undefined'&&_atrixRunningNow;
+    const updBadge=_updNow?'<span class="abc-updating-badge" title="Agente Atrix atualizando este chamado agora"><i class="ti ti-loader-2" style="animation:wppSpin 1s linear infinite"></i> Atualizando</span>':'';
+    return`<div class="ab-card ${rowCls}${_updNow?' ab-card-updating':''}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div>${updBadge}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
@@ -12028,7 +12049,7 @@ function ofsWasManuallyCleared(){return !!(ofsMeta&&(ofsMeta.cleared||ofsMeta.cl
 /* ─── anotações persistentes de chamados abertos ─── */
 let abAnnotations={};
 const AB_ANN_KEY='atrix:ab:annotations:v1';
-const AB_RESPONSAVEIS_FIXOS=['TIM','VIVO','CLARO','CARAJASNET','MASTERNET','MARTENET','ONLINE','SEA','IBL','ST1','SOS'];
+const AB_RESPONSAVEIS_FIXOS=['Adriano Da Silva Braga','Anderson Ravelly Da Silva Santos','Arllon Souza','Balbino Silva Rosa','Clemilton Mendes Da Silva','Derick Willam Alcantara Silva','Gefferson De Lima Belisario','Igor Leonardo Duarte Basola','Jeandersson Dos Santos Campos','Joardson Foreliza De Assis Castro','Marcos Yuri Bulhao Silva','Moisés Amorim Viana','Renato Augusto Rodrigues Dias','Rodrigo Piaui De Carvalho','Thaylson Pereira Rial','Vagner Gonçalves Das Neves','Valdez Coelho Ferreira Filho','William Alves Santos','Carajanet','Claro','Garra Telecom','MasterNet','Online','SEA','SOS Telecom','ST1','TIM','Vivo'];
 function loadAbAnnotations(){try{abAnnotations=JSON.parse(localStorage.getItem(AB_ANN_KEY)||'{}')||{};}catch{abAnnotations={};}}
 function saveAbAnnotation(id,field,value){if(!id)return;if(!abAnnotations[id])abAnnotations[id]={};abAnnotations[id][field]=value;try{localStorage.setItem(AB_ANN_KEY,JSON.stringify(abAnnotations));}catch(e){console.warn('ann save',e);}}
 /* Poda: remove anotações de tickets que não estão mais na base ativa */
@@ -12039,7 +12060,7 @@ function podaAbAnnotations(){
 }
 function getOfsProfList(){return[...new Set(ofsRows.map(r=>r.tecnico).filter(Boolean))].sort();}
 function getAbResponsavelList(){
-  return [...new Set([...AB_RESPONSAVEIS_FIXOS,...getOfsProfList()])].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return [...AB_RESPONSAVEIS_FIXOS].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 }
 function abAnnProfSelect(id){
   const saved=(abAnnotations[id]||{}).prof||'';
@@ -12979,7 +13000,7 @@ function renderExecutiveDashboard(){
   const fuelBal=typeof fuelBalance==='function'?fuelBalance():null;
   const fuelAvail=fuelBal?fuelBal.available:0;
   let rep=0;
-  try{rep=buildRepMap(repScope()).size}catch(_){rep=0}
+  try{rep=buildRepMap(repScope()).length}catch(_){rep=0}
   const loaded=[ab>0,enc>0,rede>0,ofs>0,(dFuelVehicles.length||dFuelRequests.length||dFuelAportes.length)>0].filter(Boolean).length;
   const alerts=(ab>0&&ab>80?1:0)+(rep>0?1:0)+(rede>0&&rede<20?1:0)+(fuelAvail<0?1:0);
   atxSetText('dash-kpi-ab',atxFmtInt(ab));
