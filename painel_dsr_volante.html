@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel DSR Volante – MCLL Telecom | Alloha Fibra</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#1E2761; --navy-2:#2A3578; --green:#39B54A; --green-d:#2C9A3B;
+    --blue-l:#CADCFC; --bg:#F2F5FB; --card:#FFFFFF; --ink:#1B2340;
+    --muted:#6B7490; --red:#D8443C; --red-bg:#FDECEB; --amber:#E8A020; --amber-bg:#FCF3E0;
+    --line:#E1E7F2;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); font-size:14px;}
+
+  header{background:linear-gradient(120deg,var(--navy) 0%, var(--navy-2) 70%); color:#fff; padding:18px 26px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;}
+  header .brand{display:flex; align-items:center; gap:14px;}
+  header .logo{width:42px; height:42px; border-radius:10px; background:var(--green); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; color:#fff;}
+  header h1{font-size:19px; font-weight:700; letter-spacing:.3px;}
+  header .sub{font-size:12px; color:var(--blue-l); margin-top:2px;}
+  header .period{background:rgba(255,255,255,.12); border:1px solid rgba(202,220,252,.35); padding:8px 14px; border-radius:8px; font-size:12.5px; color:var(--blue-l);}
+  header .period b{color:#fff;}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; padding:16px 26px 0;}
+  .kpi{background:var(--card); border:1px solid var(--line); border-left:4px solid var(--navy); border-radius:10px; padding:12px 14px;}
+  .kpi .v{font-size:24px; font-weight:800; color:var(--navy);}
+  .kpi .l{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-top:2px;}
+  .kpi.ok{border-left-color:var(--green);} .kpi.ok .v{color:var(--green-d);}
+  .kpi.bad{border-left-color:var(--red);} .kpi.bad .v{color:var(--red);}
+  .kpi.warn{border-left-color:var(--amber);} .kpi.warn .v{color:var(--amber);}
+
+  .toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 26px;}
+  .toolbar .grp{display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 10px;}
+  .toolbar label{font-size:12px; color:var(--muted); font-weight:600;}
+  .toolbar select,.toolbar input[type=number]{border:1px solid var(--line); border-radius:6px; padding:5px 7px; font-size:13px; color:var(--ink); background:#fff;}
+  .toolbar input[type=number]{width:58px;}
+  button{border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:700; cursor:pointer; transition:filter .15s;}
+  button:hover{filter:brightness(1.08);}
+  .btn-primary{background:var(--green); color:#fff;}
+  .btn-navy{background:var(--navy); color:#fff;}
+  .btn-ghost{background:#fff; color:var(--navy); border:1px solid var(--line);}
+  .btn-danger{background:#fff; color:var(--red); border:1px solid #F2C7C4;}
+
+  .wrap{padding:0 26px 30px;}
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px;}
+  .panel h2{font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--navy); padding:12px 16px; border-bottom:1px solid var(--line); background:#F8FAFE;}
+
+  .grid-scroll{overflow:auto; max-height:62vh;}
+  table{border-collapse:separate; border-spacing:0; width:max-content; min-width:100%;}
+  th,td{border-bottom:1px solid var(--line); border-right:1px solid var(--line); text-align:center; font-size:11.5px; white-space:nowrap;}
+  thead th{background:var(--navy); color:#fff; padding:6px 4px; position:sticky; top:0; z-index:3; font-weight:600;}
+  thead tr.dow th{top:38px; background:var(--navy-2); color:var(--blue-l); font-size:10px; z-index:3;}
+  thead th.namecol, tbody td.namecol{position:sticky; left:0; z-index:4; background:#F8FAFE; text-align:left; padding:6px 12px; min-width:210px; font-weight:700; color:var(--navy); font-size:12.5px; border-right:2px solid var(--navy);}
+  thead th.namecol{background:var(--navy); color:#fff; z-index:5;}
+  tbody td.namecol .g{display:block; font-weight:400; font-size:10.5px; color:var(--muted);}
+  td.cell{min-width:46px; height:40px; cursor:pointer; position:relative; background:#fff; padding:2px;}
+  td.cell:hover{outline:2px solid var(--navy); outline-offset:-2px;}
+  td.cell .tag{display:block; font-size:9.5px; font-weight:700; border-radius:5px; padding:5px 2px; line-height:1.1;}
+  .st-TRABALHO .tag{background:#EEF3FC; color:#5A6690;}
+  .st-DSR .tag{background:var(--green); color:#fff;}
+  .st-FOLGA .tag{background:var(--blue-l); color:var(--navy);}
+  .st-FERIAS .tag{background:#8FB3F5; color:#fff;}
+  .st-AUSENCIA .tag{background:#D9DEEA; color:#555F7E;}
+  td.cell.dom{background:#FBF9EF;}
+  td.cell.viol{box-shadow:inset 0 0 0 2px var(--red); background:var(--red-bg);}
+  td.cell.warnv{box-shadow:inset 0 0 0 2px var(--amber);}
+  td.cell .lock{position:absolute; top:1px; right:2px; font-size:8px;}
+  td.cell .he{position:absolute; bottom:1px; right:2px; font-size:8.5px; font-weight:800; color:var(--red); background:#fff; border-radius:4px; padding:0 2px; border:1px solid #F2C7C4;}
+
+  .legend{display:flex; flex-wrap:wrap; gap:14px; padding:10px 16px; font-size:11.5px; color:var(--muted); border-top:1px solid var(--line);}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .sw{width:14px; height:14px; border-radius:4px; display:inline-block;}
+
+  #violPanel .body{padding:12px 16px; max-height:240px; overflow:auto;}
+  .vitem{display:flex; gap:8px; align-items:flex-start; padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12.5px;}
+  .vitem.err{background:var(--red-bg); color:#8C2B26; border:1px solid #F2C7C4;}
+  .vitem.warn{background:var(--amber-bg); color:#8A5D0B; border:1px solid #F0DCAE;}
+  .vempty{color:var(--green-d); font-weight:700; padding:8px 4px;}
+
+  /* popover */
+  #pop{position:absolute; z-index:50; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 30px rgba(30,39,97,.25); width:250px; display:none;}
+  #pop .ph{background:var(--navy); color:#fff; padding:9px 12px; border-radius:12px 12px 0 0; font-size:12px; font-weight:700;}
+  #pop .pb{padding:10px 12px;}
+  #pop .opts{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px;}
+  #pop .opts button{padding:7px 4px; font-size:11px; border-radius:7px;}
+  #pop .herow{display:flex; align-items:center; gap:8px; border-top:1px solid var(--line); padding-top:10px; margin-bottom:10px;}
+  #pop .herow label{font-size:12px; font-weight:600; color:var(--navy);}
+  #pop .herow input{width:64px; border:1px solid var(--line); border-radius:6px; padding:5px;}
+  #pop .herow .cap{font-size:10.5px; color:var(--muted);}
+  #pop .pfoot{display:flex; gap:6px; justify-content:space-between;}
+  #pop .pfoot button{font-size:11.5px; padding:7px 10px;}
+
+  .note{font-size:11.5px; color:var(--muted); padding:0 26px 20px; line-height:1.5;}
+  .note b{color:var(--navy);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">M</div>
+    <div>
+      <h1>Painel DSR Volante – Escala Automatizada</h1>
+      <div class="sub">MCLL Telecom · Alloha Fibra · São Luís/MA · Gestor: Aleksei Thomas Oliveira De Abreu</div>
+    </div>
+  </div>
+  <div class="period">Período: <b>15/07/2026</b> a <b>28/08/2026</b> · 45 dias · 7 colaboradores</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi ok"><div class="v" id="kConf">–</div><div class="l">Colaboradores em conformidade</div></div>
+  <div class="kpi bad"><div class="v" id="kViol">–</div><div class="l">Violações críticas</div></div>
+  <div class="kpi warn"><div class="v" id="kWarn">–</div><div class="l">Alertas</div></div>
+  <div class="kpi"><div class="v" id="kDsr">–</div><div class="l">DSRs no período</div></div>
+  <div class="kpi"><div class="v" id="kHe">–</div><div class="l">Horas extras (total)</div></div>
+  <div class="kpi"><div class="v" id="kCob">–</div><div class="l">Cobertura mínima diária</div></div>
+</div>
+
+<div class="toolbar">
+  <button class="btn-primary" onclick="gerarEscala()">⚙ Gerar escala automática</button>
+  <button class="btn-navy" onclick="resolverTudo(); renderAll()">↻ Recalcular (mantém ajustes)</button>
+  <div class="grp">
+    <label>Rotação</label>
+    <select id="cfgModo" onchange="resolverTudo(); renderAll()">
+      <option value="regressivo">Volante regressivo (DSR percorre a semana)</option>
+      <option value="fixo">Escalonado fixo (1 DSR/semana por colaborador)</option>
+    </select>
+  </div>
+  <div class="grp">
+    <label>Máx. dias consecutivos</label>
+    <input type="number" id="cfgMaxConsec" value="6" min="1" max="6" onchange="resolverTudo(); renderAll()">
+  </div>
+  <div class="grp">
+    <label>Limite HE/dia</label>
+    <input type="number" id="cfgMaxHe" value="2" min="0" max="2" step="0.5" onchange="renderAll()">
+  </div>
+  <div class="grp">
+    <label>Alerta domingos trab. seguidos</label>
+    <input type="number" id="cfgDom" value="3" min="1" max="7" onchange="renderAll()">
+  </div>
+  <button class="btn-ghost" onclick="document.getElementById('fileIn').click()">⬆ Importar XLSX</button>
+  <input type="file" id="fileIn" accept=".xlsx" style="display:none" onchange="importarXlsx(this.files[0])">
+  <button class="btn-ghost" onclick="exportarXlsx()">⬇ Exportar XLSX</button>
+  <button class="btn-danger" onclick="limparAjustes()">✕ Limpar ajustes manuais</button>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>Escala – clique em um dia para ajustar (o restante se reorganiza automaticamente)</h2>
+    <div class="grid-scroll"><table id="grid"></table></div>
+    <div class="legend">
+      <span><span class="sw" style="background:#EEF3FC"></span>Trabalho</span>
+      <span><span class="sw" style="background:var(--green)"></span>DSR Volante</span>
+      <span><span class="sw" style="background:var(--blue-l)"></span>Folga</span>
+      <span><span class="sw" style="background:#8FB3F5"></span>Férias</span>
+      <span><span class="sw" style="background:#D9DEEA"></span>Ausência (atestado, INSS, etc.)</span>
+      <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--red)"></span>Violação legal</span>
+      <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--amber)"></span>Alerta</span>
+      <span>🔒 ajuste manual (protegido no recálculo)</span>
+      <span style="color:var(--red); font-weight:700">+2h</span> hora extra
+    </div>
+  </div>
+
+  <div class="panel" id="violPanel">
+    <h2>Auditoria de conformidade – CLT</h2>
+    <div class="body" id="violBody"></div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo, garantindo que todos passem pelo domingo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; quando um ajuste torna impossível cumprir a lei (ex.: 7 dias de trabalho travados em sequência), a violação é destacada em vermelho na grade e detalhada na auditoria.
+</div>
+
+<div id="pop">
+  <div class="ph" id="popTitle"></div>
+  <div class="pb">
+    <div class="opts" id="popOpts"></div>
+    <div class="herow" id="popHeRow">
+      <label>Hora extra</label>
+      <input type="number" id="popHe" min="0" max="2" step="0.5" value="0">
+      <span class="cap">máx. 2h (CLT art. 59)</span>
+    </div>
+    <div class="pfoot">
+      <button class="btn-ghost" onclick="desbloquearCelula()">🔒 Limpar ajuste</button>
+      <button class="btn-ghost" onclick="fecharPop()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= DADOS BASE (da planilha Escala_DSR_Volante.xlsx) ================= */
+const FUNCIONARIOS = [
+  "Clemilton Mendes Da Silva","Elton Jones Sousa Diniz","Igor Henrique Do Nascimento",
+  "Leandro Rodrigues Da Silva","Marcello Luiz Souza","Emidio Bruno Costa Neto","Romulo Jose Do Vale Araujo"
+].map(n=>({nome:n, localidade:"São Luis", uf:"MA", gestor:"Aleksei Thomas Oliveira De Abreu"}));
+
+const D0 = new Date(2026,6,15); // 15/07/2026
+const NDIAS = 45;               // até 28/08/2026
+const DIAS = [];
+for(let i=0;i<NDIAS;i++){ const d=new Date(D0); d.setDate(d.getDate()+i); DIAS.push(d); }
+const DOWPT = ["DOM","SEG","TER","QUA","QUI","SEX","SÁB"];
+const fmt = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+const fmtFull = d => fmt(d)+'/'+d.getFullYear();
+
+/* status */
+const ST = {
+  TRABALHO:{lbl:"TRAB", cls:"st-TRABALHO", rest:false},
+  DSR:{lbl:"DSR", cls:"st-DSR", rest:true},
+  FOLGA:{lbl:"FOLGA", cls:"st-FOLGA", rest:true},
+  FERIAS:{lbl:"FÉRIAS", cls:"st-FERIAS", rest:true},
+  ATESTADO:{lbl:"ATEST", cls:"st-AUSENCIA", rest:true},
+  AFASTADO:{lbl:"AFAST", cls:"st-AUSENCIA", rest:true},
+  INSS:{lbl:"INSS", cls:"st-AUSENCIA", rest:true},
+  TREINAMENTO:{lbl:"TREIN", cls:"st-TRABALHO", rest:false},
+  FALTA:{lbl:"FALTA", cls:"st-AUSENCIA", rest:true}
+};
+const OPCOES = ["TRABALHO","DSR","FOLGA","FERIAS","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
+
+/* grade: grid[e][d] = {st, lock, he} */
+let grid = [];
+function novaGrade(){
+  grid = FUNCIONARIOS.map(()=> DIAS.map(()=> ({st:"TRABALHO", lock:false, he:0})));
+}
+novaGrade();
+
+/* ================= MOTOR DE REGRAS ================= */
+function cfg(){
+  return {
+    maxConsec: Math.min(6, parseInt(document.getElementById('cfgMaxConsec').value)||6),
+    maxHe: Math.min(2, parseFloat(document.getElementById('cfgMaxHe').value)||2),
+    modo: document.getElementById('cfgModo').value,
+    domLim: parseInt(document.getElementById('cfgDom').value)||3
+  };
+}
+
+/* Resolve a escala de um colaborador respeitando células travadas.
+   Estratégia: caminhada dia a dia; DSR programado por rotação; DSR forçado
+   sempre que o contador de dias consecutivos atinge o máximo legal. */
+function resolverColab(ei){
+  const c = cfg();
+  const gap = (c.modo === 'regressivo') ? c.maxConsec : c.maxConsec + 1; // 6 => dia da semana regride; 7 => fixo
+  let alvo = ei % 7;               // escalonamento inicial: 1 colaborador descansando por dia
+  let consec = 0;
+  for(let d=0; d<NDIAS; d++){
+    const cel = grid[ei][d];
+    if(!cel.lock){
+      if(consec >= c.maxConsec){ cel.st = "DSR"; }
+      else if(d === alvo){ cel.st = "DSR"; }
+      else { cel.st = "TRABALHO"; }
+      if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
+    }
+    const rest = ST[cel.st].rest;
+    if(rest){
+      consec = 0;
+      if(cel.st === "DSR" || cel.st === "FOLGA" || cel.st === "FERIAS") alvo = d + gap;
+      else if(d >= alvo) alvo = d + gap;    // ausência também zera a contagem
+    } else {
+      consec++;
+      if(d >= alvo) alvo = d + 1;           // alvo travado com trabalho – empurra p/ próximo dia livre
+    }
+  }
+}
+function resolverTudo(){ for(let e=0;e<FUNCIONARIOS.length;e++) resolverColab(e); }
+
+function gerarEscala(){
+  if(grid.some(r=>r.some(c=>c.lock))){
+    if(!confirm("Gerar do zero apaga os ajustes manuais (🔒). Continuar?")) return;
+  }
+  novaGrade(); resolverTudo(); renderAll();
+}
+function limparAjustes(){
+  grid.forEach(r=>r.forEach(c=>{c.lock=false;}));
+  resolverTudo(); renderAll();
+}
+
+/* ================= AUDITORIA ================= */
+function auditar(){
+  const c = cfg();
+  const viols = [];           // {tipo:'err'|'warn', msg, ei, dias:[...]}
+  const violCells = new Set(); // "e-d"
+  const warnCells = new Set();
+
+  FUNCIONARIOS.forEach((f, ei)=>{
+    let consec = 0, ini = -1;
+    let domSeq = 0;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      const rest = ST[cel.st].rest;
+      if(!rest){
+        if(consec===0) ini = d;
+        consec++;
+        if(consec > c.maxConsec){
+          viols.push({tipo:'err', msg:`${f.nome}: ${consec} dias consecutivos de trabalho até ${fmt(DIAS[d])} – DSR obrigatório antes do 7º dia (Lei 605/49).`});
+          for(let k=ini;k<=d;k++) violCells.add(ei+'-'+k);
+        }
+      } else consec = 0;
+
+      if(DIAS[d].getDay()===0){ // domingo
+        if(!rest){ domSeq++; if(domSeq >= c.domLim){ warnCells.add(ei+'-'+d);
+          viols.push({tipo:'warn', msg:`${f.nome}: ${domSeq}º domingo trabalhado em sequência (${fmt(DIAS[d])}) – avaliar revezamento dominical.`}); } }
+        else domSeq = 0;
+      }
+
+      if(cel.he > c.maxHe){
+        viols.push({tipo:'err', msg:`${f.nome}: ${cel.he}h extras em ${fmt(DIAS[d])} – acima do limite de ${c.maxHe}h/dia (art. 59, CLT).`});
+        violCells.add(ei+'-'+d);
+      }
+    }
+  });
+
+  // cobertura mínima
+  let minCob = Infinity, minDia = null;
+  for(let d=0; d<NDIAS; d++){
+    let ativos = 0;
+    for(let e=0;e<FUNCIONARIOS.length;e++) if(!ST[grid[e][d].st].rest) ativos++;
+    if(ativos < minCob){ minCob = ativos; minDia = d; }
+    if(ativos <= Math.floor(FUNCIONARIOS.length*0.6)){
+      viols.push({tipo:'warn', msg:`Cobertura reduzida em ${fmt(DIAS[d])}: apenas ${ativos}/${FUNCIONARIOS.length} em campo.`});
+    }
+  }
+
+  // colaboradores conformes
+  const nomesErr = new Set(viols.filter(v=>v.tipo==='err').map(v=>v.msg.split(':')[0]));
+  return {viols, violCells, warnCells, minCob, minDia, conformes: FUNCIONARIOS.length - nomesErr.size};
+}
+
+/* ================= RENDER ================= */
+function renderAll(){
+  const aud = auditar();
+  const tbl = document.getElementById('grid');
+  let h = '<thead><tr><th class="namecol">COLABORADOR</th>';
+  DIAS.forEach(d=> h += `<th>${fmt(d)}</th>`);
+  h += '</tr><tr class="dow"><th class="namecol" style="background:var(--navy-2)">São Luís · MA</th>';
+  DIAS.forEach(d=> h += `<th>${DOWPT[d.getDay()]}</th>`);
+  h += '</tr></thead><tbody>';
+
+  FUNCIONARIOS.forEach((f, ei)=>{
+    h += `<tr><td class="namecol">${f.nome}<span class="g">${f.gestor}</span></td>`;
+    DIAS.forEach((d, di)=>{
+      const cel = grid[ei][di], s = ST[cel.st];
+      const cls = ['cell', s.cls];
+      if(d.getDay()===0) cls.push('dom');
+      if(aud.violCells.has(ei+'-'+di)) cls.push('viol');
+      else if(aud.warnCells.has(ei+'-'+di)) cls.push('warnv');
+      h += `<td class="${cls.join(' ')}" onclick="abrirPop(event,${ei},${di})">`+
+           `<span class="tag">${s.lbl}</span>`+
+           (cel.lock?'<span class="lock">🔒</span>':'')+
+           (cel.he>0?`<span class="he">+${cel.he}h</span>`:'')+
+           `</td>`;
+    });
+    h += '</tr>';
+  });
+  h += '</tbody>';
+  tbl.innerHTML = h;
+
+  // KPIs
+  let dsr=0, he=0;
+  grid.forEach(r=>r.forEach(c=>{ if(c.st==='DSR')dsr++; he+=c.he; }));
+  const nErr = aud.viols.filter(v=>v.tipo==='err').length;
+  const nWarn = aud.viols.filter(v=>v.tipo==='warn').length;
+  document.getElementById('kConf').textContent = aud.conformes+'/'+FUNCIONARIOS.length;
+  document.getElementById('kViol').textContent = nErr;
+  document.getElementById('kWarn').textContent = nWarn;
+  document.getElementById('kDsr').textContent = dsr;
+  document.getElementById('kHe').textContent = he.toFixed(1)+'h';
+  document.getElementById('kCob').textContent = aud.minCob+'/'+FUNCIONARIOS.length+(aud.minDia!=null?' ('+fmt(DIAS[aud.minDia])+')':'');
+
+  // auditoria
+  const vb = document.getElementById('violBody');
+  if(aud.viols.length===0){ vb.innerHTML = '<div class="vempty">✅ Escala 100% conforme: nenhum colaborador ultrapassa 6 dias consecutivos e nenhuma jornada excede 2h extras.</div>'; }
+  else {
+    const seen = new Set();
+    vb.innerHTML = aud.viols.filter(v=>{ if(seen.has(v.msg))return false; seen.add(v.msg); return true; })
+      .map(v=>`<div class="vitem ${v.tipo}">${v.tipo==='err'?'❌':'⚠️'} <span>${v.msg}</span></div>`).join('');
+  }
+}
+
+/* ================= POPOVER DE AJUSTE ================= */
+let popE=-1, popD=-1;
+function abrirPop(ev, ei, di){
+  popE=ei; popD=di;
+  const pop = document.getElementById('pop');
+  document.getElementById('popTitle').textContent = FUNCIONARIOS[ei].nome.split(' ')[0]+' · '+fmtFull(DIAS[di])+' ('+DOWPT[DIAS[di].getDay()]+')';
+  const cel = grid[ei][di];
+  document.getElementById('popOpts').innerHTML = OPCOES.map(o=>{
+    const sel = cel.st===o;
+    return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${o==='DSR'?'DSR VOLANTE':o}</button>`;
+  }).join('');
+  const heRow = document.getElementById('popHeRow');
+  const isWork = !ST[cel.st].rest;
+  heRow.style.display = isWork ? 'flex':'none';
+  const heIn = document.getElementById('popHe');
+  heIn.value = cel.he; heIn.max = cfg().maxHe;
+  heIn.onchange = ()=>{
+    let v = parseFloat(heIn.value)||0;
+    if(v > cfg().maxHe){ alert('Limite legal: máximo de '+cfg().maxHe+'h extras por dia (art. 59, CLT).'); v = cfg().maxHe; heIn.value=v; }
+    if(v < 0){ v=0; heIn.value=0; }
+    grid[popE][popD].he = v; grid[popE][popD].lock = true;
+    renderAll();
+  };
+  pop.style.display='block';
+  const r = ev.target.closest('td').getBoundingClientRect();
+  let x = r.left + window.scrollX, y = r.bottom + window.scrollY + 4;
+  if(x + 260 > window.scrollX + document.documentElement.clientWidth) x = window.scrollX + document.documentElement.clientWidth - 264;
+  pop.style.left = x+'px'; pop.style.top = y+'px';
+}
+function setStatus(st){
+  const cel = grid[popE][popD];
+  cel.st = st; cel.lock = true;
+  if(ST[st].rest) cel.he = 0;
+  resolverColab(popE);          // reorganiza o restante do colaborador respeitando o ajuste
+  renderAll();
+  fecharPop();
+}
+function desbloquearCelula(){
+  grid[popE][popD].lock = false; grid[popE][popD].he = 0;
+  resolverColab(popE); renderAll(); fecharPop();
+}
+function fecharPop(){ document.getElementById('pop').style.display='none'; }
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#pop') && !e.target.closest('td.cell')) fecharPop();
+});
+
+/* ================= IMPORT / EXPORT XLSX ================= */
+const MAPA_IMPORT = {"ATIVO":"TRABALHO","TRABALHO":"TRABALHO","DSR VOLANTE":"DSR","DSR":"DSR","FOLGA":"FOLGA",
+  "FÉRIAS":"FERIAS","FERIAS":"FERIAS","ATESTADO":"ATESTADO","AFASTADO":"AFASTADO","INSS":"INSS",
+  "TREINAMENTO":"TREINAMENTO","FALTA":"FALTA"};
+
+function importarXlsx(file){
+  if(!file) return;
+  const fr = new FileReader();
+  fr.onload = e=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true});
+      // localizar linha de datas e linha do cabeçalho COLABORADOR
+      let dateRow = rows.findIndex(r=> r && r.some(v=> v instanceof Date));
+      let headRow = rows.findIndex(r=> r && String(r[0]||'').toUpperCase().includes('COLABORADOR'));
+      if(dateRow<0 || headRow<0){ alert('Layout não reconhecido. Use o mesmo formato da planilha original.'); return; }
+      const dateCols = {};
+      rows[dateRow].forEach((v,ci)=>{ if(v instanceof Date){
+        const idx = Math.round((v - D0)/86400000);
+        if(idx>=0 && idx<NDIAS) dateCols[ci]=idx;
+      }});
+      for(let r=headRow+1; r<rows.length; r++){
+        const nome = rows[r] && rows[r][0]; if(!nome) continue;
+        const ei = FUNCIONARIOS.findIndex(f=> f.nome.trim().toUpperCase() === String(nome).trim().toUpperCase());
+        if(ei<0) continue;
+        Object.entries(dateCols).forEach(([ci,di])=>{
+          let v = rows[r][ci]; if(v==null || v==='') return;
+          v = String(v).toUpperCase().trim();
+          let he = 0;
+          const m = v.match(/\+\s*([\d.,]+)\s*HE/); if(m){ he = parseFloat(m[1].replace(',','.'))||0; v = v.replace(/\s*\+.*$/,'').trim(); }
+          const st = MAPA_IMPORT[v]; if(!st) return;
+          grid[ei][di] = {st, lock:true, he: Math.min(he,2)};
+        });
+      }
+      resolverTudo(); renderAll();
+      alert('Importação concluída. Células importadas ficam travadas (🔒) e o restante foi recalculado.');
+    }catch(err){ alert('Falha ao ler o arquivo: '+err.message); }
+  };
+  fr.readAsArrayBuffer(file);
+  document.getElementById('fileIn').value='';
+}
+
+function exportarXlsx(){
+  const EXPORTA = {TRABALHO:"ATIVO", DSR:"DSR VOLANTE", FOLGA:"FOLGA", FERIAS:"FÉRIAS",
+    ATESTADO:"ATESTADO", AFASTADO:"AFASTADO", INSS:"INSS", TREINAMENTO:"TREINAMENTO", FALTA:"FALTA"};
+  const aoa = [];
+  aoa.push(["","","","","", ...DIAS.map(d=>d)]);
+  aoa.push(["","","","","", ...DIAS.map(d=>DOWPT[d.getDay()])]);
+  aoa.push(["COLABORADOR","FUNÇÃO","LOCALIDADE","UF","GESTOR", ...DIAS.map(()=> "")]);
+  FUNCIONARIOS.forEach((f,ei)=>{
+    aoa.push([f.nome,"",f.localidade,f.uf,f.gestor, ...DIAS.map((_,di)=>{
+      const c = grid[ei][di];
+      return EXPORTA[c.st] + (c.he>0 ? ` +${c.he}HE` : '');
+    })]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa, {cellDates:true});
+  ws['!cols'] = [{wch:32},{wch:10},{wch:12},{wch:5},{wch:32}, ...DIAS.map(()=>({wch:12}))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "DSR VOLANTE");
+  const wl = XLSX.utils.aoa_to_sheet([["STATUS"],["ATIVO"],["DSR VOLANTE"],["FOLGA"],["FÉRIAS"],["ATESTADO"],["AFASTADO"],["INSS"],["TREINAMENTO"],["FALTA"]]);
+  XLSX.utils.book_append_sheet(wb, wl, "LISTA");
+  XLSX.writeFile(wb, "Escala_DSR_Volante_preenchida.xlsx");
+}
+
+/* ================= INICIALIZAÇÃO ================= */
+resolverTudo();
+renderAll();
+</script>
+</body>
+</html>
