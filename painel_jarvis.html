@@ -8229,7 +8229,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);setTimeout(initAtrixAutoUpdate,4000);
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -8248,7 +8248,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);setTimeout(initAtrixAutoUpdate,4000);
       return;
     }
   }
@@ -8908,7 +8908,7 @@ function _startAtrixCountdown(isoStr){
   if(_atrixCdTimer){clearInterval(_atrixCdTimer);_atrixCdTimer=null;}
   const el=document.getElementById('atrix-sync-countdown');
   if(!el)return;
-  const INTERVAL_MS=90*60*1000;
+  const INTERVAL_MS=30*60*1000;
   const nextSync=new Date(new Date(isoStr).getTime()+INTERVAL_MS);
   const pad=n=>String(n).padStart(2,'0');
   function tick(){
@@ -8940,6 +8940,44 @@ function _startAtrixCountdown(isoStr){
 }
 
 let _atrixPickupTimer=null;
+
+/* Dispara o workflow_dispatch do Atrix Agent no GitHub Actions e liga o polling que
+   detecta quando o ciclo remoto termina. Usado tanto pelo botão manual "Iniciar"
+   quanto pelo agendador automático (scheduleAtrixAutoCycle). */
+async function _dispatchAtrixWorkflow(){
+  const token=getGhToken();
+  if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
+  const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/dispatches`,{
+    method:'POST',
+    headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
+    body:JSON.stringify({ref:'main'})
+  });
+  if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status);}
+  /* o contador mostra "agente rodando…" de forma persistente enquanto o ciclo real
+     está em andamento, em vez de exibir o número regressivo, o que dava a falsa
+     impressão de que só o timer tinha sido reiniciado. */
+  _atrixRunningNow=true;
+  if(typeof renderTAb==='function')renderTAb();
+  const triggeredAt=new Date().toISOString();
+  _startAtrixCountdown(triggeredAt);
+  /* polling periódico (em vez de checagem única) para refletir o resultado deste
+     ciclo assim que o agente (rodando em outra máquina) terminar, sem esperar os
+     30 min inteiros do próximo ciclo automático. O ciclo completo (checkout + npm ci
+     + playwright + varrer os chamados um a um no Atrix) mede na prática ~15 min. */
+  clearInterval(_atrixPickupTimer);
+  let atrixPickupTries=0;
+  _atrixPickupTimer=setInterval(async()=>{
+    atrixPickupTries++;
+    if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();
+    const lastUpdate=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
+    if(lastUpdate>triggeredAt||atrixPickupTries>=18){
+      clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
+      _atrixRunningNow=false;
+      if(typeof renderTAb==='function')renderTAb();
+    }
+  },60000);
+}
+
 async function triggerAtrixUpdateNow(btn){
   if(!canEdit())return;
   const orig=btn.innerHTML;
@@ -8954,49 +8992,35 @@ async function triggerAtrixUpdateNow(btn){
      relação a um ciclo que já terminou antes deste clique. */
   if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();
   try{
-    const token=getGhToken();
-    if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
-    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/dispatches`,{
-      method:'POST',
-      headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
-      body:JSON.stringify({ref:'main'})
-    });
-    if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status);}
+    await _dispatchAtrixWorkflow();
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
     _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
-    /* independente do timer principal: o processo de atualização começa agora de
-       verdade (dispatch do workflow no GitHub Actions), e o contador reinicia para
-       a PRÓXIMA sincronização automática. Só que, diferente de antes, o contador
-       mostra "agente rodando…" de forma persistente enquanto o ciclo real está em
-       andamento — em vez de simplesmente exibir o número regressivo, o que dava a
-       falsa impressão de que só o timer tinha sido reiniciado. */
-    _atrixRunningNow=true;
-    if(typeof renderTAb==='function')renderTAb();
-    const triggeredAt=new Date().toISOString();
-    _startAtrixCountdown(triggeredAt);
-    /* além disso, faz polling periódico (em vez de uma checagem única) para refletir
-       o resultado deste ciclo assim que o agente (rodando em outra máquina) terminar,
-       sem precisar esperar os 90 min inteiros do próximo ciclo automático. Uma checagem
-       única não bastava: o ciclo completo (checkout + npm ci + playwright + varrer os
-       chamados um a um no Atrix) mede na prática ~15 min, bem mais que os 2,5 min que
-       se esperava antes — então a checagem única quase sempre disparava cedo demais e
-       encontrava o updates.json ainda com os dados do ciclo anterior. */
-    clearInterval(_atrixPickupTimer);
-    let atrixPickupTries=0;
-    _atrixPickupTimer=setInterval(async()=>{
-      atrixPickupTries++;
-      if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();
-      const lastUpdate=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
-      if(lastUpdate>triggeredAt||atrixPickupTries>=18){
-        clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
-        _atrixRunningNow=false;
-        if(typeof renderTAb==='function')renderTAb();
-      }
-    },60000);
   }catch(e){
     done('atrix-start-err','<i class="ti ti-x"></i> Erro');
     _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
   }
+}
+
+/* ── Agendador automático: começa a rodar a partir da primeira abertura do
+   portal, e se repete a cada 30 min enquanto alguém estiver com o painel aberto —
+   sem cron no GitHub, então não fica tentando atualizar 24h por dia sem uso. ── */
+let _atrixAutoTimer=null;
+async function scheduleAtrixAutoCycle(){
+  if(_atrixAutoTimer){clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;}
+  const AUTO_INTERVAL_MS=30*60*1000;
+  try{if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();}catch(_){}
+  const lastIso=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
+  const ageMs=lastIso?Date.now()-new Date(lastIso).getTime():Infinity;
+  if(ageMs>=AUTO_INTERVAL_MS){
+    try{await _dispatchAtrixWorkflow();}catch(e){console.warn('[Atrix Agent] Falha ao iniciar ciclo automático:',e);}
+    _atrixAutoTimer=setTimeout(scheduleAtrixAutoCycle,AUTO_INTERVAL_MS);
+  }else{
+    _atrixAutoTimer=setTimeout(scheduleAtrixAutoCycle,AUTO_INTERVAL_MS-ageMs);
+  }
+}
+function initAtrixAutoUpdate(){
+  if(!getGhToken())return;
+  scheduleAtrixAutoCycle();
 }
 
 function _renderAtrixTs(isoStr){
