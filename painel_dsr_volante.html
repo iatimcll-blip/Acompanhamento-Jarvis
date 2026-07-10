@@ -77,6 +77,8 @@
   thead tr.dow th.namecol{z-index:6;}
   tr.inativo{opacity:.5;}
   .nc-top{display:flex; align-items:center; gap:6px;}
+  .nc-check{cursor:pointer; flex-shrink:0;}
+  .nc-check-all{display:flex; align-items:center; gap:6px; cursor:pointer; color:inherit;}
   .nc-name{font-weight:700;}
   .nc-badge{font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; background:var(--muted); color:#fff; padding:1px 6px; border-radius:4px;}
   .nc-sub{display:block; font-weight:400; font-size:10.5px; color:var(--muted); margin-top:1px;}
@@ -90,6 +92,7 @@
   .st-DSR .tag{background:var(--red); color:#fff;}
   .st-FOLGA .tag{background:var(--blue-l); color:var(--navy);}
   .st-FERIADO .tag{background:var(--yellow); color:#4A3A00;}
+  .st-SOBREAVISO .tag{background:#DDD6FE; color:#5B21B6;}
   .st-FERIAS .tag{background:#8FB3F5; color:#fff;}
   .st-AUSENCIA .tag{background:#D9DEEA; color:#555F7E;}
   td.cell.dom{background:#FBF9EF;}
@@ -215,11 +218,15 @@
 <div class="wrap">
   <div class="panel">
     <h2>Escala – clique em um dia para ajustar (o restante se reorganiza automaticamente)</h2>
+    <div id="selecaoInfo" style="display:none; padding:7px 16px; font-size:11px; color:var(--navy); background:#EAF0FF; border-bottom:1px solid var(--line)">
+      <span id="selecaoTexto"></span> · <a href="#" onclick="limparSelecaoColab();return false;" style="color:var(--navy)">Limpar seleção</a>
+    </div>
     <div class="grid-scroll"><table id="grid"></table></div>
     <div class="legend">
       <span><span class="sw" style="background:#EEF3FC"></span>Trabalho</span>
       <span><span class="sw" style="background:var(--red)"></span>DSR Volante</span>
-      <span><span class="sw" style="background:var(--blue-l)"></span>Folga</span>
+      <span><span class="sw" style="background:var(--blue-l)"></span>Folga (Banco de Horas)</span>
+      <span><span class="sw" style="background:#DDD6FE"></span>Sobreaviso</span>
       <span><span class="sw" style="background:var(--yellow)"></span>Feriado</span>
       <span><span class="sw" style="background:#8FB3F5"></span>Férias</span>
       <span><span class="sw" style="background:#D9DEEA"></span>Ausência (atestado, INSS, etc.)</span>
@@ -317,8 +324,9 @@ const fmtFull = d => fmt(d)+'/'+d.getFullYear();
 const ST = {
   TRABALHO:{lbl:"TRAB", cls:"st-TRABALHO", rest:false},
   DSR:{lbl:"DSR", cls:"st-DSR", rest:true},
-  FOLGA:{lbl:"FOLGA", cls:"st-FOLGA", rest:true},
+  FOLGA:{lbl:"FOLGA", cls:"st-FOLGA", rest:true}, // mantido só para dados antigos já persistidos — não é mais selecionável (a empresa só tem Folga custeada pelo Banco de Horas)
   FOLGA_BH:{lbl:"FOLGA BH", cls:"st-FOLGA", rest:true},
+  SOBREAVISO:{lbl:"SOBREAVISO", cls:"st-SOBREAVISO", rest:true},
   FERIADO:{lbl:"FERIADO", cls:"st-FERIADO", rest:true},
   FERIAS:{lbl:"FÉRIAS", cls:"st-FERIAS", rest:true},
   ATESTADO:{lbl:"ATEST", cls:"st-AUSENCIA", rest:true},
@@ -328,10 +336,29 @@ const ST = {
   FALTA:{lbl:"FALTA", cls:"st-AUSENCIA", rest:true}
 };
 /* Desconto no Banco de Horas só ocorre para FOLGA_BH (folga custeada pelo banco — inclusive as
-   compensatórias de feriado, geradas automaticamente) e FALTA. A FOLGA "simples" e o DSR/Feriado
-   não mexem no banco. */
+   compensatórias de feriado, geradas automaticamente) e FALTA. Sobreaviso, DSR e Feriado não
+   mexem no banco (se o colaborador for chamado durante o sobreaviso, o tempo trabalhado entra
+   como Plantão, que credita o banco normalmente). */
 const STATUS_DEBITA_BH = ["FOLGA_BH","FALTA"];
-const OPCOES = ["TRABALHO","DSR","FOLGA","FOLGA_BH","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
+/* FOLGA (simples) não é mais oferecida como opção — a empresa só trabalha com Folga custeada
+   pelo Banco de Horas (FOLGA_BH). O status FOLGA continua reconhecido só por compatibilidade
+   com dados antigos já salvos. */
+const OPCOES = ["TRABALHO","DSR","FOLGA_BH","SOBREAVISO","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
+
+/* ================= SELEÇÃO MÚLTIPLA DE COLABORADORES ================= */
+/* Marcando o checkbox de um ou mais colaboradores, o próximo ajuste feito num dia da grade
+   aplica em todos os marcados de uma vez (em vez de só no colaborador da linha clicada). */
+let colabsSelecionados = new Set();
+function toggleSelecaoColab(ei){
+  if(colabsSelecionados.has(ei)) colabsSelecionados.delete(ei); else colabsSelecionados.add(ei);
+  renderAll();
+}
+function toggleSelecionarTodos(){
+  if(colabsSelecionados.size === FUNCIONARIOS.length) colabsSelecionados.clear();
+  else FUNCIONARIOS.forEach((_,ei)=>colabsSelecionados.add(ei));
+  renderAll();
+}
+function limparSelecaoColab(){ colabsSelecionados.clear(); renderAll(); }
 
 /* ================= FERIADOS ================= */
 function calcularPascoa(ano){
@@ -577,6 +604,7 @@ function novaGrade(){
 /* ================= CARREGAR / TROCAR PERÍODO ================= */
 function carregarPeriodo(ano, mes){
   salvarGridPeriodoAtual(); // congela o período que estava aberto antes de trocar
+  colabsSelecionados.clear(); // seleção de colaboradores é só do período atual, não persiste
   periodoAno = ano; periodoMes = mes;
   const {d0, ndias} = periodoDatas(ano, mes);
   D0 = d0; NDIAS = ndias;
@@ -861,7 +889,8 @@ function aplicarSugestaoViolacao(acao, ei, d1, d2){
 function renderAll(){
   const aud = auditar();
   const tbl = document.getElementById('grid');
-  let h = '<thead><tr><th class="namecol">COLABORADOR</th>';
+  const todosMarcados = FUNCIONARIOS.length>0 && colabsSelecionados.size===FUNCIONARIOS.length;
+  let h = `<thead><tr><th class="namecol"><label class="nc-check-all"><input type="checkbox" ${todosMarcados?'checked':''} onchange="toggleSelecionarTodos()"> COLABORADOR</label></th>`;
   DIAS.forEach(d=> h += `<th>${fmt(d)}</th>`);
   h += '</tr><tr class="dow"><th class="namecol" style="background:var(--navy-2)">São Luís · MA</th>';
   DIAS.forEach(d=> h += `<th>${DOWPT[d.getDay()]}</th>`);
@@ -870,8 +899,9 @@ function renderAll(){
   FUNCIONARIOS.forEach((f, ei)=>{
     const bh = calcularBancoHoras(f, ei);
     const bhCls = bh<0 ? 'nc-bh-neg' : 'nc-bh-pos';
+    const marcado = colabsSelecionados.has(ei);
     h += `<tr class="${f.ativo?'':'inativo'}"><td class="namecol">
-      <div class="nc-top"><span class="nc-name">${f.nome}</span>${f.ativo?'':'<span class="nc-badge">Inativo</span>'}</div>
+      <div class="nc-top"><input type="checkbox" class="nc-check" ${marcado?'checked':''} onchange="toggleSelecaoColab(${ei})"><span class="nc-name">${f.nome}</span>${f.ativo?'':'<span class="nc-badge">Inativo</span>'}</div>
       <span class="nc-sub">${f.gestor}</span>
       <div class="nc-bh ${bhCls}" title="Banco de horas: HE + plantões lançados menos 8h por dia de Folga — recalculado a cada alteração">BH: ${bh>=0?'+':''}${bh}h</div>
     </td>`;
@@ -934,6 +964,18 @@ function renderAll(){
   const modalColab = document.getElementById('modalColab');
   if(modalColab && modalColab.classList.contains('show')) renderListaColab();
 
+  // barra de seleção múltipla — próximo ajuste na grade aplica em todos os marcados
+  const selInfo = document.getElementById('selecaoInfo');
+  const selTexto = document.getElementById('selecaoTexto');
+  if(selInfo && selTexto){
+    if(colabsSelecionados.size>0){
+      selInfo.style.display = 'block';
+      selTexto.textContent = `${colabsSelecionados.size} colaborador${colabsSelecionados.size!==1?'es':''} selecionado${colabsSelecionados.size!==1?'s':''} — o próximo ajuste na grade vai aplicar em todos eles`;
+    } else {
+      selInfo.style.display = 'none';
+    }
+  }
+
   ajustarAlturaGrade();
 }
 
@@ -953,38 +995,46 @@ function ajustarAlturaGrade(){
 window.addEventListener('resize', ajustarAlturaGrade);
 
 /* ================= POPOVER DE AJUSTE ================= */
-let popE=-1, popD=-1;
+/* popEis = colaboradores afetados pelo próximo ajuste. Se houver colaboradores marcados
+   (checkbox), o ajuste aplica em TODOS eles para o dia clicado; senão, aplica só no
+   colaborador da célula clicada (comportamento de sempre). */
+let popEis=[], popD=-1;
 function abrirPop(ev, ei, di){
-  popE=ei; popD=di;
+  popEis = colabsSelecionados.size ? [...colabsSelecionados] : [ei];
+  popD = di;
   const pop = document.getElementById('pop');
-  document.getElementById('popTitle').textContent = FUNCIONARIOS[ei].nome.split(' ')[0]+' · '+fmtFull(DIAS[di])+' ('+DOWPT[DIAS[di].getDay()]+')';
-  const cel = grid[ei][di];
+  const unico = popEis.length===1;
+  const tituloQuem = unico ? FUNCIONARIOS[popEis[0]].nome.split(' ')[0] : `${popEis.length} colaboradores selecionados`;
+  document.getElementById('popTitle').textContent = tituloQuem+' · '+fmtFull(DIAS[di])+' ('+DOWPT[DIAS[di].getDay()]+')';
+  const cel = unico ? grid[popEis[0]][di] : null;
   document.getElementById('popOpts').innerHTML = OPCOES.map(o=>{
-    const sel = cel.st===o;
+    const sel = unico && cel.st===o;
     const rotulo = o==='DSR' ? 'DSR VOLANTE' : (o==='FOLGA_BH' ? 'FOLGA (BANCO DE HORAS)' : o);
     return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${rotulo}</button>`;
   }).join('');
-  const isWork = !ST[cel.st].rest;
+  // com vários colaboradores possivelmente em status diferentes, mostra os dois campos
+  // (hora extra e plantão) em vez de tentar adivinhar qual se aplica
+  const isWork = unico ? !ST[cel.st].rest : true;
   const heRow = document.getElementById('popHeRow');
   const plantaoRow = document.getElementById('popPlantaoRow');
-  heRow.style.display = isWork ? 'flex':'none';
-  plantaoRow.style.display = isWork ? 'none':'flex';
+  heRow.style.display = (unico && !isWork) ? 'none' : 'flex';
+  plantaoRow.style.display = (unico && isWork) ? 'none' : 'flex';
   const heIn = document.getElementById('popHe');
-  heIn.value = cel.he; heIn.max = cfg().maxHe;
+  heIn.value = unico ? cel.he : 0; heIn.max = cfg().maxHe;
   heIn.onchange = ()=>{
     let v = parseFloat(heIn.value)||0;
     if(v > cfg().maxHe){ alert('Limite legal: máximo de '+cfg().maxHe+'h extras por dia (art. 59, CLT).'); v = cfg().maxHe; heIn.value=v; }
     if(v < 0){ v=0; heIn.value=0; }
-    grid[popE][popD].he = v; grid[popE][popD].lock = true;
+    popEis.forEach(e=>{ grid[e][popD].he = v; grid[e][popD].lock = true; });
     renderAll();
     lsSave();
   };
   const plantaoIn = document.getElementById('popPlantao');
-  plantaoIn.value = cel.plantao || 0;
+  plantaoIn.value = unico ? (cel.plantao||0) : 0;
   plantaoIn.onchange = ()=>{
     let v = parseFloat(plantaoIn.value)||0;
     if(v < 0){ v=0; plantaoIn.value=0; }
-    grid[popE][popD].plantao = v; grid[popE][popD].lock = true;
+    popEis.forEach(e=>{ grid[e][popD].plantao = v; grid[e][popD].lock = true; });
     renderAll();
     lsSave();
   };
@@ -1005,15 +1055,18 @@ function forcarStatus(ei, d, st){
   resolverColab(ei);
 }
 function setStatus(st){
-  forcarStatus(popE, popD, st);
+  popEis.forEach(ei=> forcarStatus(ei, popD, st));
   renderAll();
   fecharPop();
   lsSave();
 }
 function desbloquearCelula(){
-  const cel = grid[popE][popD];
-  cel.lock = false; cel.he = 0; cel.plantao = 0; cel.feriadoNome = ''; cel.motivoFeriado = false;
-  resolverColab(popE); renderAll(); fecharPop();
+  popEis.forEach(ei=>{
+    const cel = grid[ei][popD];
+    cel.lock = false; cel.he = 0; cel.plantao = 0; cel.feriadoNome = ''; cel.motivoFeriado = false;
+    resolverColab(ei);
+  });
+  renderAll(); fecharPop();
   lsSave();
 }
 function fecharPop(){ document.getElementById('pop').style.display='none'; }
