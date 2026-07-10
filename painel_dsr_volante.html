@@ -105,7 +105,11 @@
   .sw{width:14px; height:14px; border-radius:4px; display:inline-block;}
 
   #violPanel .body{padding:12px 16px; max-height:240px; overflow:auto;}
-  .vitem{display:flex; gap:8px; align-items:flex-start; padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12.5px;}
+  .vitem{padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12.5px;}
+  .vitem-row{display:flex; gap:8px; align-items:flex-start;}
+  .vfix-row{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px 22px;}
+  .vfix-btn{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:6px; border:1px solid currentColor; background:rgba(255,255,255,.55); color:inherit; cursor:pointer; font-family:inherit;}
+  .vfix-btn:hover{background:#fff;}
   .vitem.err{background:var(--red-bg); color:#8C2B26; border:1px solid #F2C7C4;}
   .vitem.warn{background:var(--amber-bg); color:#8A5D0B; border:1px solid #F0DCAE;}
   .vempty{color:var(--green-d); font-weight:700; padding:8px 4px;}
@@ -739,19 +743,19 @@ function auditar(){
         if(consec===0) ini = d;
         consec++;
         if(consec > c.maxConsec){
-          viols.push({tipo:'err', msg:`${f.nome}: ${consec} dias consecutivos de trabalho até ${fmt(DIAS[d])} – DSR obrigatório antes do 7º dia (Lei 605/49).`});
+          viols.push({tipo:'err', codigo:'CONSECUTIVO', ei, dia:d, ini, msg:`${f.nome}: ${consec} dias consecutivos de trabalho até ${fmt(DIAS[d])} – DSR obrigatório antes do 7º dia (Lei 605/49).`});
           for(let k=ini;k<=d;k++) violCells.add(ei+'-'+k);
         }
       } else consec = 0;
 
       if(DIAS[d].getDay()===0){ // domingo
         if(!rest){ domSeq++; if(domSeq >= c.domLim){ warnCells.add(ei+'-'+d);
-          viols.push({tipo:'warn', msg:`${f.nome}: ${domSeq}º domingo trabalhado em sequência (${fmt(DIAS[d])}) – avaliar revezamento dominical.`}); } }
+          viols.push({tipo:'warn', codigo:'DOMINGO_SEQ', ei, dia:d, msg:`${f.nome}: ${domSeq}º domingo trabalhado em sequência (${fmt(DIAS[d])}) – avaliar revezamento dominical.`}); } }
         else domSeq = 0;
       }
 
       if(cel.he > c.maxHe){
-        viols.push({tipo:'err', msg:`${f.nome}: ${cel.he}h extras em ${fmt(DIAS[d])} – acima do limite de ${c.maxHe}h/dia (art. 59, CLT).`});
+        viols.push({tipo:'err', codigo:'HORA_EXTRA', ei, dia:d, msg:`${f.nome}: ${cel.he}h extras em ${fmt(DIAS[d])} – acima do limite de ${c.maxHe}h/dia (art. 59, CLT).`});
         violCells.add(ei+'-'+d);
       }
     }
@@ -760,7 +764,7 @@ function auditar(){
     // travando todos os domingos do colaborador com outro status).
     const trabalhouAlgumDia = grid[ei].some(cc => cc.st==='TRABALHO' || cc.st==='TREINAMENTO' || cc.st==='DSR');
     if(trabalhouAlgumDia && !DIAS.some((d,di)=> d.getDay()===0 && grid[ei][di].st==='DSR')){
-      viols.push({tipo:'warn', msg:`${f.nome}: nenhum DSR caiu em domingo neste período — confira os ajustes manuais nos domingos.`});
+      viols.push({tipo:'warn', codigo:'SEM_DOMINGO_DSR', ei, msg:`${f.nome}: nenhum DSR caiu em domingo neste período — confira os ajustes manuais nos domingos.`});
     }
   });
 
@@ -771,13 +775,60 @@ function auditar(){
     ativosIdx.forEach(ei=>{ if(!ST[grid[ei][d].st].rest) ativos++; });
     if(ativos < minCob){ minCob = ativos; minDia = d; }
     if(ativosIdx.length && ativos <= Math.floor(ativosIdx.length*0.6)){
-      viols.push({tipo:'warn', msg:`Cobertura reduzida em ${fmt(DIAS[d])}: apenas ${ativos}/${ativosIdx.length} em campo.`});
+      viols.push({tipo:'warn', codigo:'COBERTURA', dia:d, msg:`Cobertura reduzida em ${fmt(DIAS[d])}: apenas ${ativos}/${ativosIdx.length} em campo.`});
     }
   }
   if(minCob===Infinity) minCob = 0;
 
   const nomesErr = new Set(viols.filter(v=>v.tipo==='err').map(v=>v.msg.split(':')[0]));
   return {viols, violCells, warnCells, minCob, minDia, conformes: ativosIdx.length - nomesErr.size, totalAtivos: ativosIdx.length};
+}
+
+/* ================= SUGESTÕES DE CORREÇÃO DA AUDITORIA ================= */
+/* Cada violação vira até 3 botões de correção — o gestor escolhe qual aplicar (nenhuma
+   correção é aplicada sozinha). "Cobertura reduzida" não tem correção de 1 clique (mexe em
+   vários colaboradores ao mesmo tempo), então fica só informativa. */
+function sugestoesParaViolacao(v){
+  switch(v.codigo){
+    case 'CONSECUTIVO': {
+      const s = [{label:`Forçar DSR em ${fmt(DIAS[v.dia])}`, acao:'DSR', d1:v.dia, d2:v.dia}];
+      if(v.ini!=null && v.ini!==v.dia) s.push({label:`Forçar DSR no início do bloco (${fmt(DIAS[v.ini])})`, acao:'DSR', d1:v.ini, d2:v.ini});
+      s.push({label:'Destravar este bloco e recalcular', acao:'DESTRAVAR_RECALC', d1:v.ini, d2:v.dia});
+      return s;
+    }
+    case 'HORA_EXTRA':
+      return [
+        {label:`Reduzir para o limite (${cfg().maxHe}h)`, acao:'REDUZIR_HE', d1:v.dia, d2:v.dia},
+        {label:'Zerar a hora extra deste dia', acao:'ZERAR_HE', d1:v.dia, d2:v.dia},
+      ];
+    case 'DOMINGO_SEQ':
+      return [
+        {label:`Forçar DSR em ${fmt(DIAS[v.dia])}`, acao:'DSR', d1:v.dia, d2:v.dia},
+        {label:`Marcar Folga (Banco de Horas) em ${fmt(DIAS[v.dia])}`, acao:'FOLGA_BH', d1:v.dia, d2:v.dia},
+      ];
+    case 'SEM_DOMINGO_DSR': {
+      const domingos = domingosDoPeriodo();
+      return domingos.slice(0,3).map(di=>({label:`Destravar e forçar DSR em ${fmt(DIAS[di])}`, acao:'DSR', d1:di, d2:di}));
+    }
+    default:
+      return [];
+  }
+}
+function aplicarSugestaoViolacao(acao, ei, d1, d2){
+  if(ei==null || d1==null || !grid[ei]) return;
+  switch(acao){
+    case 'DSR': forcarStatus(ei, d1, 'DSR'); break;
+    case 'FOLGA_BH': forcarStatus(ei, d1, 'FOLGA_BH'); break;
+    case 'REDUZIR_HE': grid[ei][d1].he = cfg().maxHe; grid[ei][d1].lock = true; resolverColab(ei); break;
+    case 'ZERAR_HE': grid[ei][d1].he = 0; grid[ei][d1].lock = true; resolverColab(ei); break;
+    case 'DESTRAVAR_RECALC':
+      for(let d=d1; d<=(d2??d1); d++){ if(grid[ei][d]) grid[ei][d].lock = false; }
+      resolverColab(ei);
+      break;
+    default: return;
+  }
+  renderAll();
+  lsSave();
 }
 
 /* ================= RENDER ================= */
@@ -836,7 +887,14 @@ function renderAll(){
   else {
     const seen = new Set();
     vb.innerHTML = aud.viols.filter(v=>{ if(seen.has(v.msg))return false; seen.add(v.msg); return true; })
-      .map(v=>`<div class="vitem ${v.tipo}">${v.tipo==='err'?'❌':'⚠️'} <span>${v.msg}</span></div>`).join('');
+      .map(v=>{
+        const sugestoes = sugestoesParaViolacao(v);
+        const botoes = sugestoes.map(s=>`<button class="vfix-btn" onclick="aplicarSugestaoViolacao('${s.acao}',${v.ei},${s.d1},${s.d2})">${s.label}</button>`).join('');
+        return `<div class="vitem ${v.tipo}">
+          <div class="vitem-row">${v.tipo==='err'?'❌':'⚠️'} <span>${v.msg}</span></div>
+          ${botoes?`<div class="vfix-row">${botoes}</div>`:''}
+        </div>`;
+      }).join('');
   }
 
   // cabeçalho de período
@@ -910,12 +968,18 @@ function abrirPop(ev, ei, di){
   if(x + 260 > window.scrollX + document.documentElement.clientWidth) x = window.scrollX + document.documentElement.clientWidth - 264;
   pop.style.left = x+'px'; pop.style.top = y+'px';
 }
-function setStatus(st){
-  const cel = grid[popE][popD];
+/* Força o status de uma célula específica (trava como ajuste manual) e reorganiza o restante
+   do colaborador ao redor — mesma regra usada pelo popover, reaproveitada pelas sugestões de
+   correção da auditoria. */
+function forcarStatus(ei, d, st){
+  const cel = grid[ei][d];
   cel.st = st; cel.lock = true;
   cel.feriadoNome = ''; cel.motivoFeriado = false;
   if(ST[st].rest){ cel.he = 0; } else { cel.plantao = 0; }
-  resolverColab(popE);          // reorganiza o restante do colaborador respeitando o ajuste
+  resolverColab(ei);
+}
+function setStatus(st){
+  forcarStatus(popE, popD, st);
   renderAll();
   fecharPop();
   lsSave();
