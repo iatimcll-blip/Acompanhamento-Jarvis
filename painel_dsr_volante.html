@@ -213,7 +213,7 @@
 
 <div class="note">
   <b>Horário padrão (jornada 6x1 · 44h semanais):</b> segunda a sexta das 08:00 às 17:00 e sábado das 08:00 às 12:00; qualquer trabalho fora dessa janela (inclusive em dia de DSR, Folga ou Feriado) é <b>Plantão</b> e deve ser lançado no ajuste do dia (campo ao lado da hora extra), somando ao Banco de Horas.<br>
-  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo, garantindo que todos passem pelo domingo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h a cada dia de Folga, recalculado a cada alteração — o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade.
+  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h a cada dia de Folga, recalculado a cada alteração — o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta.
 </div>
 
 <div id="pop">
@@ -414,6 +414,13 @@ function montarDias(){
   DIAS.length = 0;
   for(let i=0;i<NDIAS;i++){ const d=new Date(D0); d.setDate(d.getDate()+i); DIAS.push(d); }
 }
+/* índices (dentro do período atual) de todos os domingos — usado para garantir que cada
+   colaborador tenha ao menos um DSR caindo num domingo. */
+function domingosDoPeriodo(){
+  const lista = [];
+  for(let d=0; d<NDIAS; d++){ if(DIAS[d].getDay()===0) lista.push(d); }
+  return lista;
+}
 function fmtCurta(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
 const MESES_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -558,17 +565,27 @@ function cfg(){
 
 /* Resolve a escala de um colaborador respeitando células travadas.
    Estratégia: caminhada dia a dia; DSR programado por rotação; DSR forçado
-   sempre que o contador de dias consecutivos atinge o máximo legal. Depois,
-   aplica feriados (nacional + municipal da cidade do colaborador) por cima. */
+   sempre que o contador de dias consecutivos atinge o máximo legal, e também
+   forçado no "domingo garantido" do colaborador (ver domingoGarantidoDe), para
+   assegurar ao menos um DSR em domingo no período. Depois, aplica feriados
+   (nacional + municipal da cidade do colaborador) por cima, e por fim confirma
+   (com um mecanismo de reserva) que o domingo de descanso realmente ficou de pé. */
+function domingoGarantidoDe(ei){
+  const domingos = domingosDoPeriodo();
+  if(!domingos.length) return -1;
+  return domingos[ei % domingos.length]; // distribui os domingos-alvo entre os colaboradores
+}
 function resolverColab(ei){
   const c = cfg();
   const gap = (c.modo === 'regressivo') ? c.maxConsec : c.maxConsec + 1; // 6 => dia da semana regride; 7 => fixo
   let alvo = ei % 7;               // escalonamento inicial: 1 colaborador descansando por dia
   let consec = 0;
+  const domingoGarantido = domingoGarantidoDe(ei);
   for(let d=0; d<NDIAS; d++){
     const cel = grid[ei][d];
     if(!cel.lock){
-      if(consec >= c.maxConsec){ cel.st = "DSR"; }
+      if(d === domingoGarantido){ cel.st = "DSR"; }
+      else if(consec >= c.maxConsec){ cel.st = "DSR"; }
       else if(d === alvo){ cel.st = "DSR"; }
       else { cel.st = "TRABALHO"; }
       if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
@@ -584,6 +601,25 @@ function resolverColab(ei){
     }
   }
   aplicarFeriados(ei);
+  garantirDomingoDSR(ei);
+}
+/* Reserva: se o domingo garantido acabou travado por um ajuste manual, ou virou Feriado, ou por
+   qualquer outro motivo nenhum domingo ficou com DSR, procura outro domingo livre (não travado)
+   no período e força ele para DSR. Não mexe em colaborador sem nenhum dia de trabalho/DSR no
+   período inteiro (ex.: férias o período todo), pois a regra de descanso semanal não se aplica. */
+function garantirDomingoDSR(ei){
+  const domingos = domingosDoPeriodo();
+  if(!domingos.length) return;
+  if(domingos.some(d => grid[ei][d].st === 'DSR')) return;
+  const trabalhouAlgumDia = grid[ei].some(c => c.st==='TRABALHO' || c.st==='TREINAMENTO' || c.st==='DSR');
+  if(!trabalhouAlgumDia) return;
+  const elegivel = domingos.find(d=>{
+    const cel = grid[ei][d];
+    return !cel.lock && (cel.st==='TRABALHO' || cel.st==='TREINAMENTO' || cel.st==='FOLGA');
+  });
+  if(elegivel===undefined) return; // todos os domingos travados ou em feriado/férias/ausência — sinalizado na auditoria
+  const cel = grid[ei][elegivel];
+  cel.st = 'DSR'; cel.he = 0; cel.plantao = 0; cel.feriadoNome = ''; cel.motivoFeriado = false;
 }
 /* colaboradores desabilitados saem do motor automático — o restante da escala deles
    fica congelado no que já estava (não é reescrito a cada recálculo). */
@@ -635,6 +671,13 @@ function auditar(){
         viols.push({tipo:'err', msg:`${f.nome}: ${cel.he}h extras em ${fmt(DIAS[d])} – acima do limite de ${c.maxHe}h/dia (art. 59, CLT).`});
         violCells.add(ei+'-'+d);
       }
+    }
+    // ao menos um DSR em domingo no período (o motor tenta garantir isso automaticamente —
+    // este alerta só aparece se nenhum domingo elegível sobrou, geralmente por ajustes manuais
+    // travando todos os domingos do colaborador com outro status).
+    const trabalhouAlgumDia = grid[ei].some(cc => cc.st==='TRABALHO' || cc.st==='TREINAMENTO' || cc.st==='DSR');
+    if(trabalhouAlgumDia && !DIAS.some((d,di)=> d.getDay()===0 && grid[ei][di].st==='DSR')){
+      viols.push({tipo:'warn', msg:`${f.nome}: nenhum DSR caiu em domingo neste período — confira os ajustes manuais nos domingos.`});
     }
   });
 
