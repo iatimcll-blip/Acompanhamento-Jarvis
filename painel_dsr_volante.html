@@ -213,7 +213,7 @@
 
 <div class="note">
   <b>Horário padrão (jornada 6x1 · 44h semanais):</b> segunda a sexta das 08:00 às 17:00 e sábado das 08:00 às 12:00; qualquer trabalho fora dessa janela (inclusive em dia de DSR, Folga ou Feriado) é <b>Plantão</b> e deve ser lançado no ajuste do dia (campo ao lado da hora extra), somando ao Banco de Horas.<br>
-  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo, garantindo que todos passem pelo domingo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h a cada dia de Folga, recalculado a cada alteração — o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o dia anterior ao feriado vira Folga compensatória (Banco de Horas); (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade.
+  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo, garantindo que todos passem pelo domingo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h a cada dia de Folga, recalculado a cada alteração — o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade.
 </div>
 
 <div id="pop">
@@ -357,11 +357,16 @@ function feriadoDoDia(date, localidade){
   return null;
 }
 /* Aplica feriados (nacional + municipal da cidade do colaborador) sobre a grade já resolvida:
-   força o dia para Feriado e, se esse dia estava escalado para trabalho, transforma o dia
-   anterior (se livre para isso) em Folga compensatória custeada pelo Banco de Horas. */
+   força o dia para Feriado e, se esse dia estava escalado para trabalho, gera uma Folga
+   compensatória custeada pelo Banco de Horas. Quando há mais de um feriado nesse período
+   exigindo compensação, a folga alterna de lado a cada ocorrência — 1º feriado compensado
+   recebe a folga no dia ANTERIOR (como antes), o 2º recebe a folga 6 dias DEPOIS, o 3º volta
+   a ser antes, e assim por diante — para não empilhar vários dias de descanso seguidos quando
+   dois feriados caem próximos um do outro. */
 function aplicarFeriados(ei){
   const f = FUNCIONARIOS[ei];
   if(!f) return;
+  let compensacoes = 0;
   for(let d=0; d<NDIAS; d++){
     const cel = grid[ei][d];
     if(cel.lock) continue;
@@ -369,10 +374,17 @@ function aplicarFeriados(ei){
     if(!fer) continue;
     const eraTrabalho = (cel.st==='TRABALHO' || cel.st==='TREINAMENTO');
     cel.st = 'FERIADO'; cel.he = 0; cel.feriadoNome = fer.nome;
-    if(eraTrabalho && d>0){
-      const anterior = grid[ei][d-1];
+    if(!eraTrabalho) continue;
+    compensacoes++;
+    if(compensacoes % 2 === 1){
+      const anterior = d>0 ? grid[ei][d-1] : null;
       if(anterior && !anterior.lock && (anterior.st==='TRABALHO' || anterior.st==='TREINAMENTO')){
         anterior.st = 'FOLGA'; anterior.he = 0; anterior.motivoFeriado = true;
+      }
+    } else {
+      const posterior = (d+6<NDIAS) ? grid[ei][d+6] : null;
+      if(posterior && !posterior.lock && (posterior.st==='TRABALHO' || posterior.st==='TREINAMENTO')){
+        posterior.st = 'FOLGA'; posterior.he = 0; posterior.motivoFeriado = true;
       }
     }
   }
