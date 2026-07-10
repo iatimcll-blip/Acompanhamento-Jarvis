@@ -6859,13 +6859,19 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="rede-cbx" style="min-height:260px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-cause-ch"></canvas></div>
       </div>
       <!-- Executive Report -->
-      <div class="rede-section-title" style="margin-top:20px">Relatório Executivo</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+        <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
+        <span class="card-action" id="rde-report-copy-btn" onclick="rdeCopiarRelatorioTexto(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
       <div class="rede-report-box" id="rde-report"><span style="color:var(--tx3);font-size:11px">Carregue uma base para gerar o relatório automático.</span></div>
       <!-- Calls list (on demand: click on period button or chart bar) -->
       <div id="rde-calls" style="display:none;margin-top:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div class="rede-section-title" style="margin:0" id="rde-calls-title">Chamados</div>
-          <button onclick="document.getElementById('rde-calls').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:20px;line-height:1;padding:0 4px">✕</button>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-calls'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+            <button onclick="document.getElementById('rde-calls').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:20px;line-height:1;padding:0 4px">✕</button>
+          </div>
         </div>
         <div class="rede-cbx" style="padding:0;overflow-x:auto;max-height:440px;overflow-y:auto">
           <table class="rede-dtable" style="font-size:11px">
@@ -13853,6 +13859,31 @@ function rdeCopiarGrafico(el,btn){
   }).catch(()=>{
     blobPromise.then(salvarComoArquivo).catch(()=>done('rde-copy-err','<i class="ti ti-x"></i>'));
   });
+}
+function rdeCopiarRelatorioTexto(el){
+  const btn=el&&el.tagName?el:document.getElementById('rde-report-copy-btn');
+  const rpt=document.getElementById('rde-report');
+  if(!rpt)return;
+  const texto=(rpt.innerText||rpt.textContent||'').trim();
+  if(!texto)return;
+  const orig=btn?btn.innerHTML:'';
+  const done=ok=>{
+    if(!btn)return;
+    btn.innerHTML=ok?'<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Copiado!':'<i class="ti ti-x" style="font-size:11px;vertical-align:-1px"></i> Erro';
+    setTimeout(()=>{btn.innerHTML=orig;},2200);
+  };
+  const fallback=()=>{
+    const ta=document.createElement('textarea');
+    ta.value=texto;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done(true);}catch(e){done(false);}
+    document.body.removeChild(ta);
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(()=>done(true)).catch(fallback);
+  }else{
+    fallback();
+  }
 }
 function rdeSyncControls(){
   document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===rdeTab));
