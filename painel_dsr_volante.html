@@ -213,7 +213,7 @@
 
 <div class="note">
   <b>Horário padrão (jornada 6x1 · 44h semanais):</b> segunda a sexta das 08:00 às 17:00 e sábado das 08:00 às 12:00; qualquer trabalho fora dessa janela (inclusive em dia de DSR, Folga ou Feriado) é <b>Plantão</b> e deve ser lançado no ajuste do dia (campo ao lado da hora extra), somando ao Banco de Horas.<br>
-  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h a cada dia de Folga, recalculado a cada alteração — o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta.
+  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h apenas nos dias marcados como <b>Folga (Banco de Horas)</b> ou <b>Falta</b> — a Folga "simples" não desconta nada, pois representa uma folga sem custeio pelo banco; recalculado a cada alteração, e o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta.
 </div>
 
 <div id="pop">
@@ -289,6 +289,7 @@ const ST = {
   TRABALHO:{lbl:"TRAB", cls:"st-TRABALHO", rest:false},
   DSR:{lbl:"DSR", cls:"st-DSR", rest:true},
   FOLGA:{lbl:"FOLGA", cls:"st-FOLGA", rest:true},
+  FOLGA_BH:{lbl:"FOLGA BH", cls:"st-FOLGA", rest:true},
   FERIADO:{lbl:"FERIADO", cls:"st-FERIADO", rest:true},
   FERIAS:{lbl:"FÉRIAS", cls:"st-FERIAS", rest:true},
   ATESTADO:{lbl:"ATEST", cls:"st-AUSENCIA", rest:true},
@@ -297,7 +298,11 @@ const ST = {
   TREINAMENTO:{lbl:"TREIN", cls:"st-TRABALHO", rest:false},
   FALTA:{lbl:"FALTA", cls:"st-AUSENCIA", rest:true}
 };
-const OPCOES = ["TRABALHO","DSR","FOLGA","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
+/* Desconto no Banco de Horas só ocorre para FOLGA_BH (folga custeada pelo banco — inclusive as
+   compensatórias de feriado, geradas automaticamente) e FALTA. A FOLGA "simples" e o DSR/Feriado
+   não mexem no banco. */
+const STATUS_DEBITA_BH = ["FOLGA_BH","FALTA"];
+const OPCOES = ["TRABALHO","DSR","FOLGA","FOLGA_BH","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
 
 /* ================= FERIADOS ================= */
 function calcularPascoa(ano){
@@ -379,12 +384,12 @@ function aplicarFeriados(ei){
     if(compensacoes % 2 === 1){
       const anterior = d>0 ? grid[ei][d-1] : null;
       if(anterior && !anterior.lock && (anterior.st==='TRABALHO' || anterior.st==='TREINAMENTO')){
-        anterior.st = 'FOLGA'; anterior.he = 0; anterior.motivoFeriado = true;
+        anterior.st = 'FOLGA_BH'; anterior.he = 0; anterior.motivoFeriado = true;
       }
     } else {
       const posterior = (d+6<NDIAS) ? grid[ei][d+6] : null;
       if(posterior && !posterior.lock && (posterior.st==='TRABALHO' || posterior.st==='TREINAMENTO')){
-        posterior.st = 'FOLGA'; posterior.he = 0; posterior.motivoFeriado = true;
+        posterior.st = 'FOLGA_BH'; posterior.he = 0; posterior.motivoFeriado = true;
       }
     }
   }
@@ -509,14 +514,14 @@ function calcularBancoHoras(f, ei){
     const cels = p.porNome && p.porNome[f.nome];
     if(!cels) return;
     cels.forEach(c=>{
-      if(c.st==='FOLGA') saldo -= 8;
+      if(STATUS_DEBITA_BH.includes(c.st)) saldo -= 8;
       else if((c.st==='TRABALHO'||c.st==='TREINAMENTO') && c.he) saldo += Number(c.he)||0;
       if(c.plantao) saldo += Number(c.plantao)||0;
     });
   });
   if(grid[ei]){
     grid[ei].forEach(c=>{
-      if(c.st==='FOLGA') saldo -= 8;
+      if(STATUS_DEBITA_BH.includes(c.st)) saldo -= 8;
       else if((c.st==='TRABALHO'||c.st==='TREINAMENTO') && c.he) saldo += Number(c.he)||0;
       if(c.plantao) saldo += Number(c.plantao)||0;
     });
@@ -777,7 +782,8 @@ function abrirPop(ev, ei, di){
   const cel = grid[ei][di];
   document.getElementById('popOpts').innerHTML = OPCOES.map(o=>{
     const sel = cel.st===o;
-    return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${o==='DSR'?'DSR VOLANTE':o}</button>`;
+    const rotulo = o==='DSR' ? 'DSR VOLANTE' : (o==='FOLGA_BH' ? 'FOLGA (BANCO DE HORAS)' : o);
+    return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${rotulo}</button>`;
   }).join('');
   const isWork = !ST[cel.st].rest;
   const heRow = document.getElementById('popHeRow');
@@ -949,7 +955,7 @@ function removerFeriadoMunicipal(cidade, idx){
 
 /* ================= EXPORT XLSX ================= */
 function exportarXlsx(){
-  const EXPORTA = {TRABALHO:"ATIVO", DSR:"DSR VOLANTE", FOLGA:"FOLGA", FERIADO:"FERIADO", FERIAS:"FÉRIAS",
+  const EXPORTA = {TRABALHO:"ATIVO", DSR:"DSR VOLANTE", FOLGA:"FOLGA", FOLGA_BH:"FOLGA BANCO DE HORAS", FERIADO:"FERIADO", FERIAS:"FÉRIAS",
     ATESTADO:"ATESTADO", AFASTADO:"AFASTADO", INSS:"INSS", TREINAMENTO:"TREINAMENTO", FALTA:"FALTA"};
   const aoa = [];
   aoa.push(["","","","","","", ...DIAS.map(d=>d)]);
@@ -969,7 +975,7 @@ function exportarXlsx(){
   ws['!cols'] = [{wch:32},{wch:10},{wch:12},{wch:5},{wch:32},{wch:16}, ...DIAS.map(()=>({wch:12}))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "DSR VOLANTE");
-  const wl = XLSX.utils.aoa_to_sheet([["STATUS"],["ATIVO"],["DSR VOLANTE"],["FOLGA"],["FERIADO"],["FÉRIAS"],["ATESTADO"],["AFASTADO"],["INSS"],["TREINAMENTO"],["FALTA"]]);
+  const wl = XLSX.utils.aoa_to_sheet([["STATUS"],["ATIVO"],["DSR VOLANTE"],["FOLGA"],["FOLGA BANCO DE HORAS"],["FERIADO"],["FÉRIAS"],["ATESTADO"],["AFASTADO"],["INSS"],["TREINAMENTO"],["FALTA"]]);
   XLSX.utils.book_append_sheet(wb, wl, "LISTA");
   XLSX.writeFile(wb, `Escala_DSR_Volante_${periodoKeyAtual()}.xlsx`);
 }
