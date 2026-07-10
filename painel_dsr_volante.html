@@ -55,9 +55,10 @@
   .panel{background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px;}
   .panel h2{font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--navy); padding:12px 16px; border-bottom:1px solid var(--line); background:#F8FAFE;}
 
-  /* altura ligada à janela (e não a um % fixo) para aproveitar melhor telas grandes e ainda
-     caber em telas pequenas, agora que o topo (header+KPIs+toolbar) ficou sticky. */
-  .grid-scroll{overflow:auto; max-height:calc(100vh - 300px); min-height:220px; overscroll-behavior:contain; scroll-behavior:smooth;
+  /* max-height é recalculado em JS (ajustarAlturaGrade) com base na altura real do topo fixo,
+     pra grade sempre caber exatamente no espaço visível da tela; isto aqui é só o valor antes
+     do primeiro cálculo/enquanto JS não rodou. */
+  .grid-scroll{overflow:auto; max-height:calc(100vh - 320px); min-height:220px; overscroll-behavior:contain; scroll-behavior:smooth;
     scrollbar-width:thin; scrollbar-color:#B9C4E0 #F2F5FB;}
   .grid-scroll::-webkit-scrollbar{height:12px; width:12px;}
   .grid-scroll::-webkit-scrollbar-track{background:#F2F5FB;}
@@ -799,7 +800,24 @@ function renderAll(){
   // se algum modal estiver aberto, mantém as listas atualizadas
   const modalColab = document.getElementById('modalColab');
   if(modalColab && modalColab.classList.contains('show')) renderListaColab();
+
+  ajustarAlturaGrade();
 }
+
+/* Mede a altura real do topo fixo (header + KPIs + toolbar, que pode variar bastante conforme
+   a barra de ferramentas quebra em mais ou menos linhas dependendo da largura da tela) e ajusta
+   a altura da grade para caber exatamente no espaço visível restante da janela — em vez de um
+   valor fixo "chutado", que tanto podia sobrar espaço vazio quanto cortar a grade. */
+function ajustarAlturaGrade(){
+  const zona = document.querySelector('.sticky-top-zone');
+  const gridScroll = document.querySelector('.grid-scroll');
+  if(!zona || !gridScroll || typeof window.innerHeight!=='number') return;
+  const alturaZona = zona.getBoundingClientRect().height;
+  const margem = 40; // respiro entre a grade e o rodapé da tela
+  const disponivel = Math.round(window.innerHeight - alturaZona - margem);
+  gridScroll.style.maxHeight = Math.max(220, disponivel) + 'px';
+}
+window.addEventListener('resize', ajustarAlturaGrade);
 
 /* ================= POPOVER DE AJUSTE ================= */
 let popE=-1, popD=-1;
