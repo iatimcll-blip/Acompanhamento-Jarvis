@@ -182,6 +182,7 @@
   <div class="grp">
     <label>Rotação</label>
     <select id="cfgModo" onchange="resolverTudo(); renderAll(); lsSave();">
+      <option value="mensal" selected>Volante mensal — cobertura constante (recomendado)</option>
       <option value="regressivo">Volante regressivo (DSR percorre a semana)</option>
       <option value="fixo">Escalonado fixo (1 DSR/semana por colaborador)</option>
     </select>
@@ -232,7 +233,7 @@
 
 <div class="note">
   <b>Horário padrão (jornada 6x1 · 44h semanais):</b> segunda a sexta das 08:00 às 17:00 e sábado das 08:00 às 12:00; qualquer trabalho fora dessa janela (inclusive em dia de DSR, Folga ou Feriado) é <b>Plantão</b> e deve ser lançado no ajuste do dia (campo ao lado da hora extra), somando ao Banco de Horas.<br>
-  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante regressivo</b>, o dia de descanso retrocede um dia da semana a cada ciclo (escala de revezamento); (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h apenas nos dias marcados como <b>Folga (Banco de Horas)</b> ou <b>Falta</b> — a Folga "simples" não desconta nada, pois representa uma folga sem custeio pelo banco; recalculado a cada alteração, e o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta.
+  <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante mensal</b> (padrão), cada colaborador descansa num dia fixo da semana durante toda a competência — um por dia, cobertura constante — e esse dia regride uma posição a cada competência (revezamento entre meses, sem convergir vários colaboradores no mesmo dia); no modo <b>volante regressivo</b>, o dia de descanso já retrocede dentro do próprio período; (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático e da auditoria, mas continuam visíveis (linha esmaecida); (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h apenas nos dias marcados como <b>Folga (Banco de Horas)</b> ou <b>Falta</b> — a Folga "simples" não desconta nada, pois representa uma folga sem custeio pelo banco; recalculado a cada alteração, e o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); nos modos mensal e fixo, esse domingo garantido é um DSR <b>adicional</b> que não desloca a âncora semanal do colaborador (só o modo regressivo reancora o ciclo a partir dele); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta.
 </div>
 
 <div id="pop">
@@ -598,40 +599,88 @@ function cfg(){
 }
 
 /* Resolve a escala de um colaborador respeitando células travadas.
-   Estratégia: caminhada dia a dia; DSR programado por rotação; DSR forçado
-   sempre que o contador de dias consecutivos atinge o máximo legal, e também
-   forçado no "domingo garantido" do colaborador (ver domingoGarantidoDe), para
-   assegurar ao menos um DSR em domingo no período. Depois, aplica feriados
-   (nacional + municipal da cidade do colaborador) por cima, e por fim confirma
-   (com um mecanismo de reserva) que o domingo de descanso realmente ficou de pé. */
-function domingoGarantidoDe(ei){
+
+   Modo REGRESSIVO: mantém a lógica original — caminhada dia a dia com um "alvo" que se
+   reancora (alvo = d + gap) a cada DSR/ausência, fazendo o dia de descanso regredir pela
+   semana. Qualquer DSR forçado (limite de 6 dias, ou o domingo garantido) também reancora,
+   por design — é assim que esse modo desloca o dia de folga de propósito.
+
+   Modos MENSAL e FIXO: a folga fica ancorada num dia da semana FIXO durante toda a
+   competência (ver weekdayDe) — nunca se desloca, nem quando o domingo garantido ou o
+   limite de 6 dias força um DSR adicional. Isso evita o problema do modo regressivo (e do
+   domingo garantido, antes) de reancorar o ciclo e, com o tempo, convergir vários
+   colaboradores para os mesmos dias de folga — o que já chegou a derrubar a cobertura da
+   operação para 0/7 em simulação. No modo mensal, a âncora regride uma posição por
+   competência (garante ≤6 dias entre o último DSR de um período e o primeiro do seguinte, e
+   todos passam por todos os dias da semana ao longo de 7 competências); no modo fixo, a
+   âncora nunca muda.
+
+   Em todos os modos: depois de resolvido, aplica feriados (nacional + municipal da cidade do
+   colaborador) por cima, e por fim confirma (com um mecanismo de reserva) que o domingo de
+   descanso realmente ficou de pé. */
+function weekdayDe(ei, modo){
+  if(modo === 'fixo') return DIAS[ei % 7].getDay();
+  // mensal (padrão): a âncora regride uma posição a cada competência
+  const idxPer = periodoAno*12 + (periodoMes-1);
+  return ((ei - idxPer) % 7 + 7) % 7;
+}
+function domingoGarantidoDe(ei, modo){
   const domingos = domingosDoPeriodo();
   if(!domingos.length) return -1;
-  return domingos[ei % domingos.length]; // distribui os domingos-alvo entre os colaboradores
+  if(modo === 'regressivo') return domingos[ei % domingos.length];
+  // mensal/fixo: se a âncora semanal do colaborador já é domingo, não precisa de garantido
+  if(weekdayDe(ei, modo) === 0) return -1;
+  // distribui só entre os ativos cuja âncora não é domingo — no máx. ~1 garantido por domingo
+  const precisam = [];
+  FUNCIONARIOS.forEach((f,idx)=>{
+    if(!f.ativo) return;
+    if(weekdayDe(idx, modo) === 0) return;
+    precisam.push(idx);
+  });
+  const rank = precisam.indexOf(ei);
+  if(rank === -1) return -1;
+  return domingos[rank % domingos.length];
 }
 function resolverColab(ei){
   const c = cfg();
-  const gap = (c.modo === 'regressivo') ? c.maxConsec : c.maxConsec + 1; // 6 => dia da semana regride; 7 => fixo
-  let alvo = ei % 7;               // escalonamento inicial: 1 colaborador descansando por dia
-  let consec = 0;
-  const domingoGarantido = domingoGarantidoDe(ei);
-  for(let d=0; d<NDIAS; d++){
-    const cel = grid[ei][d];
-    if(!cel.lock){
-      if(d === domingoGarantido){ cel.st = "DSR"; }
-      else if(consec >= c.maxConsec){ cel.st = "DSR"; }
-      else if(d === alvo){ cel.st = "DSR"; }
-      else { cel.st = "TRABALHO"; }
-      if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
+  const domingoGarantido = domingoGarantidoDe(ei, c.modo);
+  if(c.modo === 'regressivo'){
+    const gap = c.maxConsec;
+    let alvo = ei % 7;
+    let consec = 0;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(!cel.lock){
+        if(d === domingoGarantido){ cel.st = "DSR"; }
+        else if(consec >= c.maxConsec){ cel.st = "DSR"; }
+        else if(d === alvo){ cel.st = "DSR"; }
+        else { cel.st = "TRABALHO"; }
+        if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
+      }
+      const rest = ST[cel.st].rest;
+      if(rest){
+        consec = 0;
+        if(cel.st === "DSR" || cel.st === "FOLGA" || cel.st === "FERIAS") alvo = d + gap;
+        else if(d >= alvo) alvo = d + gap;    // ausência também zera a contagem
+      } else {
+        consec++;
+        if(d >= alvo) alvo = d + 1;           // alvo travado com trabalho – empurra p/ próximo dia livre
+      }
     }
-    const rest = ST[cel.st].rest;
-    if(rest){
-      consec = 0;
-      if(cel.st === "DSR" || cel.st === "FOLGA" || cel.st === "FERIAS") alvo = d + gap;
-      else if(d >= alvo) alvo = d + gap;    // ausência também zera a contagem
-    } else {
-      consec++;
-      if(d >= alvo) alvo = d + 1;           // alvo travado com trabalho – empurra p/ próximo dia livre
+  } else {
+    // mensal / fixo: âncora fixa por dia da semana, sem reancoragem
+    const wd = weekdayDe(ei, c.modo);
+    let consec = 0;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(!cel.lock){
+        if(DIAS[d].getDay() === wd){ cel.st = "DSR"; }
+        else if(d === domingoGarantido){ cel.st = "DSR"; }
+        else if(consec >= c.maxConsec){ cel.st = "DSR"; }
+        else { cel.st = "TRABALHO"; }
+        if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
+      }
+      consec = ST[cel.st].rest ? 0 : consec+1;
     }
   }
   aplicarFeriados(ei);
