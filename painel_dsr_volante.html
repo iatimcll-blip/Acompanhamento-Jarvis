@@ -51,13 +51,23 @@
   .panel{background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px;}
   .panel h2{font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--navy); padding:12px 16px; border-bottom:1px solid var(--line); background:#F8FAFE;}
 
-  .grid-scroll{overflow:auto; max-height:62vh;}
+  .grid-scroll{overflow:auto; max-height:62vh; min-height:220px; overscroll-behavior:contain; scroll-behavior:smooth;
+    scrollbar-width:thin; scrollbar-color:#B9C4E0 #F2F5FB;}
+  .grid-scroll::-webkit-scrollbar{height:12px; width:12px;}
+  .grid-scroll::-webkit-scrollbar-track{background:#F2F5FB;}
+  .grid-scroll::-webkit-scrollbar-thumb{background:#B9C4E0; border-radius:7px; border:2px solid #F2F5FB;}
+  .grid-scroll::-webkit-scrollbar-thumb:hover{background:var(--navy-2);}
+  .grid-scroll::-webkit-scrollbar-corner{background:#F2F5FB;}
   table{border-collapse:separate; border-spacing:0; width:max-content; min-width:100%;}
   th,td{border-bottom:1px solid var(--line); border-right:1px solid var(--line); text-align:center; font-size:11.5px; white-space:nowrap;}
   thead th{background:var(--navy); color:#fff; padding:6px 4px; position:sticky; top:0; z-index:3; font-weight:600;}
   thead tr.dow th{top:38px; background:var(--navy-2); color:var(--blue-l); font-size:10px; z-index:3;}
-  thead th.namecol, tbody td.namecol{position:sticky; left:0; z-index:4; background:#F8FAFE; text-align:left; padding:6px 12px; min-width:235px; font-weight:700; color:var(--navy); font-size:12.5px; border-right:2px solid var(--navy); white-space:normal;}
+  /* coluna do colaborador fica travada (sticky) na rolagem horizontal, e as duas linhas do
+     cabeçalho ficam travadas (sticky) na rolagem vertical — o "canto" onde as duas travas se
+     cruzam precisa do maior z-index de todos para nunca ficar coberto pelo conteúdo que rola. */
+  thead th.namecol, tbody td.namecol{position:sticky; left:0; z-index:4; background:#F8FAFE; text-align:left; padding:6px 12px; min-width:235px; font-weight:700; color:var(--navy); font-size:12.5px; border-right:2px solid var(--navy); white-space:normal; box-shadow:3px 0 6px -2px rgba(30,39,97,.15);}
   thead th.namecol{background:var(--navy); color:#fff; z-index:5;}
+  thead tr.dow th.namecol{z-index:6;}
   tr.inativo{opacity:.5;}
   .nc-top{display:flex; align-items:center; gap:6px;}
   .nc-name{font-weight:700;}
@@ -873,6 +883,14 @@ function ajustarSaldoInicial(ei, val){
   FUNCIONARIOS[ei].ajusteBH = parseFloat(val)||0;
   renderAll(); renderListaColab(); lsSave();
 }
+/* Reordena FUNCIONARIOS alfabeticamente (A-Z, pt-BR, ignorando acento/caixa) mantendo o grid
+   sincronizado linha a linha — os dois arrays têm que continuar na mesma ordem/índice. */
+function ordenarColaboradoresAZ(){
+  const indices = FUNCIONARIOS.map((_,i)=>i)
+    .sort((a,b)=> FUNCIONARIOS[a].nome.localeCompare(FUNCIONARIOS[b].nome, 'pt-BR', {sensitivity:'base'}));
+  FUNCIONARIOS = indices.map(i=>FUNCIONARIOS[i]);
+  if(grid.length===indices.length) grid = indices.map(i=>grid[i]);
+}
 function incluirColaborador(){
   const nome = document.getElementById('colabNome').value.trim();
   if(!nome){ alert('Informe o nome do colaborador.'); return; }
@@ -882,6 +900,7 @@ function incluirColaborador(){
   const gestor = document.getElementById('colabGestor').value.trim();
   FUNCIONARIOS.push({nome, localidade, uf, gestor, ativo:true, ajusteBH:0});
   grid.push(DIAS.map(()=>({st:"TRABALHO", lock:false, he:0, plantao:0})));
+  ordenarColaboradoresAZ();
   resolverTudo(); renderAll(); renderListaColab(); lsSave();
   document.getElementById('colabNome').value = '';
   document.getElementById('colabNome').focus();
@@ -993,6 +1012,7 @@ function iniciar(){
     STORE = {periodos:{}};
     FUNCIONARIOS = funcionariosPadrao();
   }
+  ordenarColaboradoresAZ();
   if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
   popularSelectPeriodo();
   aplicarCfgSalvo();
