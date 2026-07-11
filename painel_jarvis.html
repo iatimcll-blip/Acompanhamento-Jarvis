@@ -8951,12 +8951,40 @@ function _startAtrixCountdown(isoStr){
 
 let _atrixPickupTimer=null;
 
+/* ── Trava diária + limpeza de execuções presas ──────────────────────────────
+   Regra: ciclos automáticos só rodam a partir do primeiro clique do dia em
+   "Iniciar". Se um ciclo não conseguir concluir (ex: runner offline, fica
+   preso em fila), a trava é limpa e os ciclos automáticos param até o
+   próximo clique manual — evita empilhar execuções presas o dia todo. */
+const ATRIX_GATE_KEY='jarvis:atrix:manualTriggerDate';
+function _atrixTodayStr(){const d=new Date();const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
+function _atrixGateAtivoHoje(){try{return localStorage.getItem(ATRIX_GATE_KEY)===_atrixTodayStr();}catch(_){return false;}}
+function _atrixAtivarGateHoje(){try{localStorage.setItem(ATRIX_GATE_KEY,_atrixTodayStr());}catch(_){}}
+function _atrixLimparGate(){try{localStorage.removeItem(ATRIX_GATE_KEY);}catch(_){}}
+
+async function _cancelarExecucoesPresasAtrix(token){
+  try{
+    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/runs?status=queued&per_page=20`,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'}});
+    if(!res.ok)return;
+    const data=await res.json();
+    const runs=data.workflow_runs||[];
+    for(const run of runs){
+      await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'}}).catch(()=>{});
+    }
+    if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) em fila cancelada(s).`);
+  }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas:',e);}
+}
+
 /* Dispara o workflow_dispatch do Atrix Agent no GitHub Actions e liga o polling que
    detecta quando o ciclo remoto termina. Usado tanto pelo botão manual "Iniciar"
    quanto pelo agendador automático (scheduleAtrixAutoCycle). */
 async function _dispatchAtrixWorkflow(){
   const token=getGhToken();
   if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
+  /* Antes de disparar um novo ciclo, cancela execuções presas em fila (ex: runner
+     offline) de tentativas anteriores — sem isso, cada nova tentativa só empilhava
+     mais uma execução que nunca chegava a rodar. */
+  await _cancelarExecucoesPresasAtrix(token);
   const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/dispatches`,{
     method:'POST',
     headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
@@ -8980,10 +9008,19 @@ async function _dispatchAtrixWorkflow(){
     atrixPickupTries++;
     if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();
     const lastUpdate=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
-    if(lastUpdate>triggeredAt||atrixPickupTries>=18){
+    const sucesso=lastUpdate>triggeredAt;
+    if(sucesso||atrixPickupTries>=18){
       clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
       _atrixRunningNow=false;
       if(typeof renderTAb==='function')renderTAb();
+      if(!sucesso){
+        /* Não concluiu dentro do tempo esperado (provável runner indisponível) —
+           limpa a trava diária e para o agendador automático até o próximo clique
+           manual em "Iniciar". */
+        _atrixLimparGate();
+        if(_atrixAutoTimer){clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;}
+        console.warn('[Atrix Agent] Ciclo não concluiu dentro do tempo esperado — atualizações automáticas pausadas até o próximo clique em "Iniciar".');
+      }
     }
   },60000);
 }
@@ -9003,6 +9040,10 @@ async function triggerAtrixUpdateNow(btn){
   if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();
   try{
     await _dispatchAtrixWorkflow();
+    /* Clique manual bem-sucedido: ativa a trava do dia e (re)liga o agendador
+       automático, que a partir de agora passa a rodar sozinho a cada 30 min. */
+    _atrixAtivarGateHoje();
+    if(!_atrixAutoTimer)scheduleAtrixAutoCycle();
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
     _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
   }catch(e){
@@ -9011,12 +9052,14 @@ async function triggerAtrixUpdateNow(btn){
   }
 }
 
-/* ── Agendador automático: começa a rodar a partir da primeira abertura do
-   portal, e se repete a cada 30 min enquanto alguém estiver com o painel aberto —
-   sem cron no GitHub, então não fica tentando atualizar 24h por dia sem uso. ── */
+/* ── Agendador automático: só começa a rodar depois do primeiro clique do dia
+   em "Iniciar" (trava ATRIX_GATE_KEY), e se repete a cada 30 min enquanto a
+   trava continuar ativa — evita ficar tentando atualizar sozinho o dia todo
+   sem que ninguém tenha confirmado que o agente está disponível hoje. ── */
 let _atrixAutoTimer=null;
 async function scheduleAtrixAutoCycle(){
   if(_atrixAutoTimer){clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;}
+  if(!_atrixGateAtivoHoje())return;
   const AUTO_INTERVAL_MS=30*60*1000;
   try{if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();}catch(_){}
   const lastIso=localStorage.getItem('jarvis:atrix:lastUpdate')||'';

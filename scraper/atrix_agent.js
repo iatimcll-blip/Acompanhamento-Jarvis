@@ -32,6 +32,7 @@ const SINGLE_CYCLE  = ['1','true','yes'].includes((process.env.SINGLE_CYCLE || '
 
 const GH_TICKETS_FILE = 'data/atrix_tickets.json';
 const GH_UPDATES_FILE = 'data/atrix_updates.json';
+const GH_GATE_FILE    = 'data/atrix-gate.json';
 const SESSION_DIR     = path.join(__dirname, '.atrix_session');
 
 // ── Logger ────────────────────────────────────────────────────────────────────
@@ -106,6 +107,25 @@ async function ghPutFile(filePath, contentStr, sha, message) {
   const body = { message, content: Buffer.from(contentStr, 'utf8').toString('base64'), branch: GH_BRANCH };
   if (sha) body.sha = sha;
   await ghRequest('PUT', `/repos/${GH_REPO}/contents/${filePath}`, body);
+}
+
+// ── Trava diária (gate) ──────────────────────────────────────────────────────
+// Ciclos automáticos (schedule) só devem rodar depois que alguém já clicou
+// "Iniciar" (workflow_dispatch) pelo menos uma vez no dia -- evita ficar
+// tentando sincronizar o dia inteiro quando o runner está desligado.
+function todayLocalStr() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+async function loadGate() {
+  const { content, sha } = await ghGetFile(GH_GATE_FILE);
+  return { gate: content ? JSON.parse(content) : {}, sha };
+}
+
+async function saveGate(gate, sha) {
+  await ghPutFile(GH_GATE_FILE, JSON.stringify(gate, null, 2), sha, `chore: gate Atrix ${gate.lastManualTriggerDate || 'reset'}`);
 }
 
 // ── Tickets e Updates ─────────────────────────────────────────────────────────
@@ -473,9 +493,43 @@ async function main() {
   }
 
   if (SINGLE_CYCLE) {
+    const eventName = process.env.GITHUB_EVENT_NAME || '';
+    const today = todayLocalStr();
+
+    if (eventName === 'workflow_dispatch') {
+      // Clique manual em "Iniciar": registra a ativação de hoje para liberar os
+      // ciclos automáticos (schedule) subsequentes no mesmo dia.
+      try {
+        const { gate, sha } = await loadGate();
+        if (gate.lastManualTriggerDate !== today) {
+          await saveGate({ lastManualTriggerDate: today }, sha);
+          info(`Disparo manual registrado para ${today}.`);
+        }
+      } catch (e) { warn('Falha ao registrar disparo manual (gate):', e.message); }
+    } else if (eventName === 'schedule') {
+      // Ciclo automático: só prossegue se já houve um clique manual hoje.
+      try {
+        const { gate } = await loadGate();
+        if (gate.lastManualTriggerDate !== today) {
+          info(`Sem disparo manual hoje (${today}) — ciclo automático ignorado. Clique "Iniciar" no painel para ativar.`);
+          process.exit(0);
+        }
+      } catch (e) { warn('Falha ao verificar gate diário, prosseguindo com o ciclo:', e.message); }
+    }
+
     // CI (GitHub Actions): deixa o erro propagar — uma falha aqui deve marcar o
     // job como failure (exit 1), para ficar visível no histórico de execuções.
-    await runCycle();
+    try {
+      await runCycle();
+    } catch (e) {
+      // Falhou durante o dia: limpa a trava pra não ficar tentando de novo sozinho
+      // até o próximo clique manual em "Iniciar".
+      try {
+        const { gate, sha } = await loadGate();
+        if (gate.lastManualTriggerDate === today) await saveGate({ lastManualTriggerDate: null }, sha);
+      } catch (_) { /* não deixa a limpeza da trava mascarar o erro original */ }
+      throw e;
+    }
     info('Ciclo unico concluido.');
     process.exit(0);
   }
