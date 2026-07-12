@@ -70,6 +70,8 @@
   thead th.namecol{background:var(--navy); color:#fff; z-index:5;}
   thead tr.dow th.namecol{z-index:6;}
   .nc-top{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .nc-check{cursor:pointer; flex-shrink:0;}
+  .nc-check-all{display:flex; align-items:center; gap:6px; cursor:pointer; color:inherit;}
   .nc-name{font-weight:700;}
   .nc-tipo{font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:1px 6px; border-radius:4px; color:#fff;}
   .nc-tipo-te{background:var(--navy-2);}
@@ -253,17 +255,21 @@
   <button class="btn-ghost" onclick="abrirModalFeriados()">🎉 Feriados</button>
   <button class="btn-ghost" onclick="exportarXlsx()">⬇ Exportar XLSX</button>
   <button class="btn-danger" onclick="limparAjustes()">✕ Limpar ajustes manuais</button>
+  <button class="btn-danger" onclick="limparTudo()">🗑 Limpar tudo</button>
 </div>
 </div>
 
 <div class="wrap">
   <div class="panel">
     <h2>Escala – clique em um dia para ajustar (o restante se reorganiza automaticamente)</h2>
+    <div id="selecaoInfo" style="display:none; padding:7px 16px; font-size:11px; color:var(--navy); background:#EAF0FF; border-bottom:1px solid var(--line)">
+      <span id="selecaoTexto"></span> · <a href="#" onclick="limparSelecaoColab();return false;" style="color:var(--navy)">Limpar seleção</a>
+    </div>
     <div class="grid-scroll"><table id="grid"></table></div>
     <div class="legend">
       <span><span class="sw" style="background:#EEF3FC"></span>Livre (fora do rodízio)</span>
       <span><span class="sw" style="background:var(--purple-bg)"></span>Sobreaviso</span>
-      <span><span class="sw" style="background:var(--red)"></span>DSR (fixo aos domingos)</span>
+      <span><span class="sw" style="background:var(--red)"></span>DSR (antecipado, na segunda da semana de plantão)</span>
       <span><span class="sw" style="background:var(--yellow)"></span>Feriado</span>
       <span><span class="sw" style="background:#8FB3F5"></span>Férias</span>
       <span><span class="sw" style="background:#D9DEEA"></span>Ausência (atestado, INSS, etc.)</span>
@@ -283,7 +289,7 @@
   <button class="btn-ghost" id="regrasBtn" onclick="toggleRegras()">📖 Regras <span id="regrasSeta">▾</span></button>
   <div class="note" id="notaRegras" style="display:none">
     <b>Sobreaviso (art. 244, §2º da CLT):</b> o colaborador permanece em regime de prontidão, fora do local de trabalho, aguardando ser chamado a qualquer momento; cada hora de sobreaviso é remunerada à razão de 1/3 do valor da hora normal (o painel calcula as <b>horas</b> de sobreaviso, não o valor monetário — isso depende do salário-hora de cada colaborador).<br>
-    <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo fica mais de <b>7 dias seguidos em sobreaviso</b> — a marcação nunca ultrapassa esse limite; (2) O <b>DSR é fixo e automático aos domingos</b> pra todo mundo — garante a folga semanal (Lei 605/49) sem depender de ajuste manual, a mesma garantia que o Painel DSR Volante sempre assegura; a semana de rodízio vai de <b>segunda-feira a domingo</b>, com o grupo escalado de sobreaviso de segunda a sábado (no máximo 6 dias seguidos) e a próxima equipe assumindo na segunda seguinte; (3) O rodízio é <b>semanal</b>: a cada semana, um grupo de <b>N colaboradores</b> (configurável em "Simultâneos/dia") assume o sobreaviso — os grupos são fatias fixas e sem sobreposição da lista de ativos, garantindo que ninguém pegue duas semanas seguidas (o que poderia ultrapassar os 7 dias); se a quantidade de ativos não for múltipla de N, o último grupo do ciclo fica menor, e a auditoria de cobertura avisa quando isso deixa algum dia abaixo do N configurado; (4) As <b>horas de sobreaviso</b> são calculadas a partir das janelas configuradas em "🕒 Horários de sobreaviso" — dias úteis (segunda a sexta), sábado e domingo/feriados têm janelas próprias; feriados nacionais e municipais usam a janela de domingo/feriado mesmo quando caem num dia de semana; (5) Ajustes manuais (clique numa célula) ficam travados (🔒) e o motor preserva esses dias ao recalcular, sem sobrescrever; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — continuam visíveis (e reativáveis) só dentro de Gerenciar colaboradores; (7) A auditoria avisa quando a <b>cobertura mínima diária</b> configurada (N simultâneos) não é atingida num dia — geralmente por causa de ajustes manuais ou ausências (férias, atestado etc.) do colaborador escalado, exigindo substituição manual; (8) A <b>importação de base</b> (👥 Gerenciar colaboradores → Importar base) aceita uma planilha XLSX com colunas Colaborador, Função (Técnico/Oficial), Equipe, UF, Localidade, G.A e G.O — Localidade e UF não são fixas, vêm exatamente como estiverem na planilha; nomes já cadastrados são atualizados, nomes novos são incluídos como ativos; (9) Quando um colaborador desta escala tem o <b>mesmo nome</b> cadastrado no <a href="painel_dsr_volante.html" style="color:var(--purple)">Painel DSR Volante</a>, os dias marcados aqui como Sobreaviso são aplicados automaticamente lá (status Sobreaviso travado 🔒, que o DSR Volante já trata como descanso na própria auditoria de 6 dias); é uma sincronização só nesse sentido e só adiciona marcações — nunca sobrescreve um dia já travado manualmente por lá, e se a escala de sobreaviso mudar depois, o ajuste precisa ser refeito manualmente lá também; (10) O botão <b>🏖 Férias</b> na lista de colaboradores (dentro de Gerenciar colaboradores) permite cadastrar períodos de férias (data início/fim) — os dias dentro do período são marcados automaticamente como Férias na grade, tirando o colaborador do sobreaviso naqueles dias; se isso deixar a cobertura de alguma semana abaixo do configurado, a auditoria avisa pra o gestor escalar manualmente outro colaborador naqueles dias.
+    <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo fica mais de <b>6 dias seguidos em sobreaviso</b> — o mesmo limite de dias consecutivos do Painel DSR Volante; (2) O <b>DSR é volante e antecipado</b>: na semana em que o colaborador está escalado pro plantão, o próprio dia de descanso dele vira a <b>segunda-feira</b> daquela semana (já começa descansado, antes de entrar de prontidão) — o restante da semana (terça a domingo, no máximo 6 dias) fica de sobreaviso; (3) O rodízio é <b>semanal</b>: a cada semana, um grupo de <b>N colaboradores</b> (configurável em "Simultâneos/dia") assume o sobreaviso — os grupos são fatias fixas e sem sobreposição da lista de ativos ordenada pela <b>âncora pessoal</b> de cada um (a data da primeira vez que apareceu de sobreaviso na grade, manual ou gerada — quem entrou primeiro no sistema roda primeiro), garantindo revezamento justo e estável ao longo do tempo; se a quantidade de ativos não for múltipla de N, o último grupo do ciclo fica menor, e a auditoria de cobertura avisa quando isso deixa algum dia abaixo do N configurado; (4) As <b>horas de sobreaviso</b> são calculadas a partir das janelas configuradas em "🕒 Horários de sobreaviso" — dias úteis (segunda a sexta), sábado e domingo/feriados têm janelas próprias; feriados nacionais e municipais usam a janela de domingo/feriado mesmo quando caem num dia de semana; (5) Ajustes manuais (clique numa célula) ficam travados (🔒) e o motor preserva esses dias ao recalcular, sem sobrescrever; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — continuam visíveis (e reativáveis) só dentro de Gerenciar colaboradores; (7) A auditoria avisa quando a <b>cobertura mínima diária</b> configurada (N simultâneos) não é atingida num dia (segunda-feira não conta, é o dia de DSR de quem está de plantão naquela semana) — geralmente por causa de ajustes manuais ou ausências (férias, atestado etc.) do colaborador escalado, exigindo substituição manual; (8) A <b>importação de base</b> (👥 Gerenciar colaboradores → Importar base) aceita uma planilha XLSX com colunas Colaborador, Função (Técnico/Oficial), Equipe, UF, Localidade, G.A e G.O — Localidade e UF não são fixas, vêm exatamente como estiverem na planilha; nomes já cadastrados são atualizados, nomes novos são incluídos como ativos; (9) Quando um colaborador desta escala tem o <b>mesmo nome</b> cadastrado no <a href="painel_dsr_volante.html" style="color:var(--purple)">Painel DSR Volante</a>, os dias marcados aqui como Sobreaviso são aplicados automaticamente lá (status Sobreaviso travado 🔒, que o DSR Volante já trata como descanso na própria auditoria de 6 dias); é uma sincronização só nesse sentido e só adiciona marcações — nunca sobrescreve um dia já travado manualmente por lá, e se a escala de sobreaviso mudar depois, o ajuste precisa ser refeito manualmente lá também; (10) O botão <b>🏖 Férias</b> na lista de colaboradores (dentro de Gerenciar colaboradores) permite cadastrar períodos de férias (data início/fim) — os dias dentro do período são marcados automaticamente como Férias na grade, tirando o colaborador do sobreaviso naqueles dias; se isso deixar a cobertura de alguma semana abaixo do configurado, a auditoria avisa pra o gestor escalar manualmente outro colaborador naqueles dias; (11) Marcando o checkbox de um ou mais colaboradores (ou "selecionar todos" no cabeçalho da grade, que respeita os filtros de Equipe/Tipo ativos), o próximo ajuste feito num dia da grade aplica em todos os marcados de uma vez — dá pra editar 1, vários ou todos os colaboradores juntos; (12) O botão <b>🗑 Limpar tudo</b> apaga todos os colaboradores, toda a escala salva (todos os períodos), os períodos de férias e as configurações deste Painel Sobreaviso — não afeta o Painel DSR Volante nem outros painéis, e não pode ser desfeito.
   </div>
 </div>
 
@@ -401,6 +407,29 @@ const OPCOES = ["SOBREAVISO","LIVRE","DSR","FERIADO","FERIAS","ATESTADO","AFASTA
 /* ================= FILTROS DE VISUALIZAÇÃO ================= */
 let filtroEquipe = '';
 let filtroTipo = '';
+
+/* ================= SELEÇÃO MÚLTIPLA DE COLABORADORES ================= */
+/* Marcando o checkbox de um ou mais colaboradores, o próximo ajuste feito num dia da grade
+   aplica em todos os marcados de uma vez — dá pra editar só 1, vários ou todos ao mesmo tempo. */
+let colabsSelecionados = new Set();
+function toggleSelecaoColab(ei){
+  if(colabsSelecionados.has(ei)) colabsSelecionados.delete(ei); else colabsSelecionados.add(ei);
+  renderAll();
+}
+function toggleSelecionarTodos(){
+  const visiveisIdx = [];
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(!f.ativo) return;
+    if(filtroEquipe && (f.equipe||'')!==filtroEquipe) return;
+    if(filtroTipo && f.tipo!==filtroTipo) return;
+    visiveisIdx.push(ei);
+  });
+  const todosJaMarcados = visiveisIdx.length>0 && visiveisIdx.every(ei=>colabsSelecionados.has(ei));
+  if(todosJaMarcados) colabsSelecionados.clear();
+  else visiveisIdx.forEach(ei=>colabsSelecionados.add(ei));
+  renderAll();
+}
+function limparSelecaoColab(){ colabsSelecionados.clear(); renderAll(); }
 
 /* ================= FERIADOS (idêntico ao Painel DSR Volante) ================= */
 function calcularPascoa(ano){
@@ -619,12 +648,14 @@ function minutosDeJanela(ini, fim){
   if(fimM <= iniM) fimM += 1440;
   return fimM - iniM;
 }
+function janelaDoDia(cel, date){
+  if(cel.feriadoNome || date.getDay()===0) return CFG_JANELAS.domFer;
+  if(date.getDay()===6) return CFG_JANELAS.sabado;
+  return CFG_JANELAS.semana;
+}
 function horasSobreavisoDia(cel, date){
   if(cel.st !== 'SOBREAVISO') return 0;
-  let janela;
-  if(cel.feriadoNome || date.getDay()===0) janela = CFG_JANELAS.domFer;
-  else if(date.getDay()===6) janela = CFG_JANELAS.sabado;
-  else janela = CFG_JANELAS.semana;
+  const janela = janelaDoDia(cel, date);
   return Math.round((minutosDeJanela(janela.ini, janela.fim)/60)*10)/10;
 }
 function calcularHorasSobreaviso(ei){
@@ -632,6 +663,24 @@ function calcularHorasSobreaviso(ei){
   let total = 0;
   for(let d=0; d<NDIAS; d++) total += horasSobreavisoDia(grid[ei][d], DIAS[d]);
   return Math.round(total*10)/10;
+}
+/* Mostra o horário de início e fim do sobreaviso naquele dia — na data (tooltip/badge da
+   célula) e no popover de ajuste, além da duração já calculada. */
+function fmtHoraCompacta(hhmm){
+  const s = String(hhmm||'');
+  const [h,m] = s.split(':');
+  return (m==='00') ? String(Number(h)) : s;
+}
+function fmtJanelaCompacta(cel, date){
+  if(cel.st !== 'SOBREAVISO') return '';
+  const j = janelaDoDia(cel, date);
+  return `${fmtHoraCompacta(j.ini)}-${fmtHoraCompacta(j.fim)}`;
+}
+function textoJanelaDia(cel, date){
+  if(cel.st !== 'SOBREAVISO') return '';
+  const j = janelaDoDia(cel, date);
+  const horas = horasSobreavisoDia(cel, date);
+  return `Sobreaviso: ${j.ini} às ${j.fim} (${horas}h)`;
 }
 
 /* grade: grid[e][d] = {st, lock, feriadoNome} */
@@ -643,6 +692,7 @@ function novaGrade(){
 /* ================= CARREGAR / TROCAR PERÍODO ================= */
 function carregarPeriodo(ano, mes){
   salvarGridPeriodoAtual();
+  colabsSelecionados.clear(); // seleção de colaboradores é só do período atual, não persiste
   periodoAno = ano; periodoMes = mes;
   const {d0, ndias} = periodoDatas(ano, mes);
   D0 = d0; NDIAS = ndias;
@@ -746,23 +796,40 @@ function sincronizarComDsrVolante(){
   return {sincronizados: diasSincronizados, colaboradores: colaboradoresAtualizados, emComum: colaboradoresEmComum};
 }
 
-function resolverSobreaviso(){
+/* Ordena os ativos pela ÂNCORA pessoal de sobreaviso (data da 1ª marcação de cada um, manual ou
+   gerada) — quem tem âncora mais antiga entra primeiro no rodízio; quem ainda não tem nenhuma
+   marcação registrada entra por último, na ordem em que aparece na lista, até ganhar a própria
+   âncora na primeira vez que for escalado. */
+function ativosOrdenadosPorAncora(){
   const ativos = [];
   FUNCIONARIOS.forEach((f,ei)=>{ if(f.ativo) ativos.push(ei); });
+  const posOriginal = new Map(ativos.map((ei,i)=>[ei,i]));
+  return ativos.slice().sort((a,b)=>{
+    const a1 = FUNCIONARIOS[a].primeiraSobreaviso, b1 = FUNCIONARIOS[b].primeiraSobreaviso;
+    if(a1 && b1) return a1.localeCompare(b1);
+    if(a1 && !b1) return -1;
+    if(!a1 && b1) return 1;
+    return posOriginal.get(a) - posOriginal.get(b);
+  });
+}
+/* Registra a âncora de cada colaborador na primeira vez que aparecer com SOBREAVISO na grade
+   (do período atualmente carregado) — não sobrescreve uma âncora já registrada antes. */
+function registrarPrimeiraSobreaviso(){
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(f.primeiraSobreaviso || !grid[ei]) return;
+    for(let d=0; d<NDIAS; d++){
+      if(grid[ei][d].st==='SOBREAVISO'){ f.primeiraSobreaviso = DIAS[d].toISOString().slice(0,10); break; }
+    }
+  });
+}
+function resolverSobreaviso(){
+  const ativos = ativosOrdenadosPorAncora();
   const L = ativos.length;
   const N = Math.min(cfgN(), L||1);
   const ciclos = L>0 ? Math.max(1, Math.ceil(L/N)) : 1;
   for(let d=0; d<NDIAS; d++){
     const date = DIAS[d];
     if(L===0) continue;
-    // DSR é fixo e automático aos domingos, pra todo mundo — garante a folga semanal (Lei
-    // 605/49) sem depender de ajuste manual, do mesmo jeito que o Painel DSR Volante sempre
-    // garante pelo menos um DSR por período. Segunda a sábado é quando o grupo da semana fica
-    // de sobreaviso (no máximo 6 dias seguidos, bem abaixo do limite de 7).
-    if(date.getDay()===0){
-      ativos.forEach(ei=>{ const cel = grid[ei][d]; if(!cel.lock) cel.st = 'DSR'; });
-      continue;
-    }
     const W = semanaAbsoluta(date);
     const grupo = ((W % ciclos)+ciclos)%ciclos;
     const inicio = grupo*N;
@@ -771,11 +838,17 @@ function resolverSobreaviso(){
     ativos.forEach(ei=>{
       const cel = grid[ei][d];
       if(cel.lock) return;
-      cel.st = assigned.has(ei) ? 'SOBREAVISO' : 'LIVRE';
+      if(!assigned.has(ei)){ cel.st = 'LIVRE'; return; }
+      // DSR volante e antecipado: na semana em que o colaborador está de plantão, o próprio
+      // dia de descanso dele vira a segunda-feira dessa semana (já começa descansado, antes do
+      // plantão), e o restante da semana (terça a domingo — no máximo 6 dias) fica de
+      // sobreaviso, igual ao limite de 6 dias seguidos do Painel DSR Volante.
+      cel.st = (date.getDay()===1) ? 'DSR' : 'SOBREAVISO';
     });
   }
   aplicarFeriados();
   aplicarFeriasCadastradas();
+  registrarPrimeiraSobreaviso();
   _ultimoSyncDsr = sincronizarComDsrVolante();
 }
 let _ultimoSyncDsr = {sincronizados:0, colaboradores:0, emComum:0};
@@ -789,6 +862,21 @@ function gerarEscala(){
 }
 function limparAjustes(){
   grid.forEach(r=>r.forEach(c=>{c.lock=false;}));
+  resolverSobreaviso(); renderAll(); lsSave();
+}
+/* Reset completo: apaga colaboradores, toda a escala salva (todos os períodos), férias e
+   configurações deste painel — não mexe no Painel DSR Volante nem em outros painéis. */
+function limparTudo(){
+  if(!confirm('Isso vai apagar TODOS os colaboradores, toda a escala salva (todos os períodos), os períodos de férias e as configurações deste Painel Sobreaviso. Não afeta o Painel DSR Volante. Essa ação não pode ser desfeita. Continuar?')) return;
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  FUNCIONARIOS = [];
+  grid = [];
+  STORE = {periodos:{}};
+  CFG_JANELAS = {semana:{ini:'20:00',fim:'23:59'}, sabado:{ini:'14:00',fim:'18:00'}, domFer:{ini:'08:00',fim:'18:00'}};
+  colabsSelecionados.clear();
+  feriasAbertoEi = -1;
+  filtroEquipe = ''; filtroTipo = '';
+  document.getElementById('cfgN').value = 1;
   resolverSobreaviso(); renderAll(); lsSave();
 }
 
@@ -808,8 +896,8 @@ function auditar(){
       if(cel.st === 'SOBREAVISO'){
         if(consec===0) ini = d;
         consec++;
-        if(consec > 7){
-          viols.push({tipo:'err', codigo:'CONSECUTIVO', ei, dia:d, ini, msg:`${f.nome}: ${consec} dias seguidos de sobreaviso até ${fmt(DIAS[d])} — limite de 7 dias (folga obrigatória antes do 8º dia).`});
+        if(consec > 6){
+          viols.push({tipo:'err', codigo:'CONSECUTIVO', ei, dia:d, ini, msg:`${f.nome}: ${consec} dias seguidos de sobreaviso até ${fmt(DIAS[d])} — limite de 6 dias, igual ao Painel DSR Volante (folga obrigatória antes do 7º dia).`});
           violCells.add(ei+'-'+d);
         }
       } else consec = 0;
@@ -818,7 +906,7 @@ function auditar(){
 
   let minCob = Infinity, minDia = null;
   for(let d=0; d<NDIAS; d++){
-    if(DIAS[d].getDay()===0) continue; // domingo é DSR universal, não conta cobertura
+    if(DIAS[d].getDay()===1) continue; // segunda é o dia de DSR antecipado de quem está de plantão naquela semana — não conta cobertura
     let cobertos = 0;
     ativosIdx.forEach(ei=>{ if(grid[ei][d].st==='SOBREAVISO') cobertos++; });
     if(cobertos < minCob){ minCob = cobertos; minDia = d; }
@@ -863,21 +951,30 @@ function popularFiltroEquipe(){
 function renderAll(){
   const aud = auditar();
   const tbl = document.getElementById('grid');
-  let h = `<thead><tr><th class="namecol">COLABORADOR</th>`;
+  // "selecionar todos" cobre só quem está visível com os filtros atuais (Equipe/Tipo) — mais
+  // intuitivo do que selecionar gente escondida pelo filtro
+  const visiveisIdx = [];
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(!f.ativo) return;
+    if(filtroEquipe && (f.equipe||'')!==filtroEquipe) return;
+    if(filtroTipo && f.tipo!==filtroTipo) return;
+    visiveisIdx.push(ei);
+  });
+  const todosMarcados = visiveisIdx.length>0 && visiveisIdx.every(ei=>colabsSelecionados.has(ei));
+  let h = `<thead><tr><th class="namecol"><label class="nc-check-all"><input type="checkbox" ${todosMarcados?'checked':''} onchange="toggleSelecionarTodos()"> COLABORADOR</label></th>`;
   DIAS.forEach(d=> h += `<th>${fmt(d)}</th>`);
   h += '</tr><tr class="dow"><th class="namecol" style="background:var(--navy-2)">São Luís · MA</th>';
   DIAS.forEach(d=> h += `<th>${DOWPT[d.getDay()]}</th>`);
   h += '</tr></thead><tbody>';
 
   let horasTotais = 0;
-  FUNCIONARIOS.forEach((f, ei)=>{
-    if(!f.ativo) return; // inativos ficam fora da grade principal — só aparecem em "Gerenciar colaboradores"
-    if(filtroEquipe && (f.equipe||'')!==filtroEquipe) return;
-    if(filtroTipo && f.tipo!==filtroTipo) return;
+  visiveisIdx.forEach(ei=>{
+    const f = FUNCIONARIOS[ei];
     const horas = calcularHorasSobreaviso(ei);
     horasTotais += horas;
+    const marcado = colabsSelecionados.has(ei);
     h += `<tr><td class="namecol">
-      <div class="nc-top"><span class="nc-name">${f.nome}</span><span class="nc-tipo ${f.tipo==='Oficial'?'nc-tipo-of':'nc-tipo-te'}">${f.tipo==='Oficial'?'Oficial':'Técnico'}</span></div>
+      <div class="nc-top"><input type="checkbox" class="nc-check" ${marcado?'checked':''} onchange="toggleSelecaoColab(${ei})"><span class="nc-name">${f.nome}</span><span class="nc-tipo ${f.tipo==='Oficial'?'nc-tipo-of':'nc-tipo-te'}">${f.tipo==='Oficial'?'Oficial':'Técnico'}</span></div>
       <span class="nc-sub">${f.equipe?('Equipe: '+f.equipe):'Sem equipe'} · ${f.localidade||'—'}${f.uf?('/'+f.uf):''}</span>
       <div class="nc-horas" title="Total de horas de sobreaviso no período, calculado pelas janelas configuradas">Sobreaviso: ${horas}h</div>
     </td>`;
@@ -887,13 +984,14 @@ function renderAll(){
       if(d.getDay()===0) cls.push('dom');
       if(aud.violCells.has(ei+'-'+di)) cls.push('viol');
       const horasDia = horasSobreavisoDia(cel, d);
-      const titleBase = cel.feriadoNome || '';
-      const titleAttr = titleBase ? ` title="${titleBase}"` : '';
+      const janelaTxt = cel.st==='SOBREAVISO' ? textoJanelaDia(cel, d) : '';
+      const titleParts = [cel.feriadoNome, janelaTxt].filter(Boolean);
+      const titleAttr = titleParts.length ? ` title="${titleParts.join(' · ')}"` : '';
       h += `<td class="${cls.join(' ')}"${titleAttr} onclick="abrirPop(event,${ei},${di})">`+
            `<span class="tag">${s.lbl}</span>`+
            (cel.feriadoNome?'<span class="fer-badge">🎉</span>':'')+
            (cel.lock?'<span class="lock">🔒</span>':'')+
-           (horasDia>0?`<span class="horas-badge">${horasDia}h</span>`:'')+
+           (horasDia>0?`<span class="horas-badge">${fmtJanelaCompacta(cel,d)}</span>`:'')+
            `</td>`;
     });
     h += '</tr>';
@@ -909,7 +1007,7 @@ function renderAll(){
   document.getElementById('kCob').textContent = aud.minCob+'/'+cfgN()+(aud.minDia!=null?' ('+fmt(DIAS[aud.minDia])+')':'');
 
   const vb = document.getElementById('violBody');
-  if(aud.viols.length===0){ vb.innerHTML = '<div class="vempty">✅ Escala 100% conforme: ninguém passa de 7 dias seguidos de sobreaviso e a cobertura mínima está sendo atingida todos os dias.</div>'; }
+  if(aud.viols.length===0){ vb.innerHTML = '<div class="vempty">✅ Escala 100% conforme: ninguém passa de 6 dias seguidos de sobreaviso e a cobertura mínima está sendo atingida todos os dias.</div>'; }
   else {
     const seen = new Set();
     vb.innerHTML = aud.viols.filter(v=>{ if(seen.has(v.msg))return false; seen.add(v.msg); return true; })
@@ -935,6 +1033,17 @@ function renderAll(){
   const modalColab = document.getElementById('modalColab');
   if(modalColab && modalColab.classList.contains('show')) renderListaColab();
 
+  const selInfo = document.getElementById('selecaoInfo');
+  const selTexto = document.getElementById('selecaoTexto');
+  if(selInfo && selTexto){
+    if(colabsSelecionados.size>0){
+      selInfo.style.display = 'block';
+      selTexto.textContent = `${colabsSelecionados.size} colaborador${colabsSelecionados.size!==1?'es':''} selecionado${colabsSelecionados.size!==1?'s':''} — o próximo ajuste na grade vai aplicar em todos eles`;
+    } else {
+      selInfo.style.display = 'none';
+    }
+  }
+
   ajustarAlturaGrade();
 }
 
@@ -954,21 +1063,26 @@ function ajustarAlturaGrade(){
 window.addEventListener('resize', ajustarAlturaGrade);
 
 /* ================= POPOVER DE AJUSTE ================= */
-let popEi = -1, popD = -1;
+/* popEis = colaboradores afetados pelo próximo ajuste. Se houver colaboradores marcados
+   (checkbox), o ajuste aplica em TODOS eles pro dia clicado; senão, aplica só no colaborador da
+   célula clicada. */
+let popEis = [], popD = -1;
 function abrirPop(ev, ei, di){
-  popEi = ei; popD = di;
+  popEis = colabsSelecionados.size ? [...colabsSelecionados] : [ei];
+  popD = di;
   const pop = document.getElementById('pop');
-  const cel = grid[ei][di];
-  document.getElementById('popTitle').textContent = FUNCIONARIOS[ei].nome.split(' ')[0]+' · '+fmtFull(DIAS[di])+' ('+DOWPT[DIAS[di].getDay()]+')';
+  const unico = popEis.length===1;
+  const tituloQuem = unico ? FUNCIONARIOS[popEis[0]].nome.split(' ')[0] : `${popEis.length} colaboradores selecionados`;
+  document.getElementById('popTitle').textContent = tituloQuem+' · '+fmtFull(DIAS[di])+' ('+DOWPT[DIAS[di].getDay()]+')';
+  const cel = unico ? grid[popEis[0]][di] : null;
   document.getElementById('popOpts').innerHTML = OPCOES.map(o=>{
-    const sel = cel.st===o;
+    const sel = unico && cel.st===o;
     return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${o}</button>`;
   }).join('');
   const horasInfo = document.getElementById('popHorasInfo');
-  if(cel.st==='SOBREAVISO'){
-    const janelaTxt = (cel.feriadoNome || DIAS[di].getDay()===0) ? 'domingo/feriado' : (DIAS[di].getDay()===6 ? 'sábado' : 'dias úteis');
+  if(unico && cel.st==='SOBREAVISO'){
     horasInfo.style.display = 'block';
-    horasInfo.textContent = `${horasSobreavisoDia(cel, DIAS[di])}h de sobreaviso neste dia (janela: ${janelaTxt})`;
+    horasInfo.textContent = textoJanelaDia(cel, DIAS[di]);
   } else {
     horasInfo.style.display = 'none';
   }
@@ -984,14 +1098,16 @@ function forcarStatus(ei, d, st){
   resolverSobreaviso();
 }
 function setStatus(st){
-  forcarStatus(popEi, popD, st);
+  popEis.forEach(ei=> forcarStatus(ei, popD, st));
   renderAll();
   fecharPop();
   lsSave();
 }
 function desbloquearCelula(){
-  const cel = grid[popEi][popD];
-  cel.lock = false;
+  popEis.forEach(ei=>{
+    const cel = grid[ei][popD];
+    cel.lock = false;
+  });
   resolverSobreaviso();
   renderAll(); fecharPop();
   lsSave();
