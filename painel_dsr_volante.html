@@ -83,6 +83,9 @@
   .nc-bh{font-size:10.5px; font-weight:700; margin-top:3px;}
   .nc-bh-pos{color:var(--green-d);}
   .nc-bh-neg{color:var(--red);}
+  .nc-sug-btn{border:none; background:var(--amber-bg); color:#8A5D0B; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:10px; cursor:pointer; flex-shrink:0; white-space:nowrap;}
+  .nc-sug-btn:hover{filter:brightness(.95);}
+  .nc-sug-btn.ativo{background:#8A5D0B; color:#fff;}
   td.cell{min-width:46px; height:40px; cursor:pointer; position:relative; background:#fff; padding:2px;}
   td.cell:hover{outline:2px solid var(--navy); outline-offset:-2px;}
   td.cell .tag{display:block; font-size:9.5px; font-weight:700; border-radius:5px; padding:5px 2px; line-height:1.1;}
@@ -96,10 +99,14 @@
   td.cell.dom{background:#FBF9EF;}
   td.cell.viol{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
   td.cell.warnv{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
+  /* sugestão de hora extra pra reduzir banco de horas negativo — outline tracejado (não
+     conflita com o box-shadow usado por .viol/.warnv, então os dois podem coexistir) */
+  td.cell.sugestao-he{outline:2px dashed #8A5D0B; outline-offset:-2px;}
   td.cell .lock{position:absolute; top:1px; right:2px; font-size:8px;}
   td.cell .fer-badge{position:absolute; top:1px; left:2px; font-size:8px;}
   td.cell .he{position:absolute; bottom:1px; right:2px; font-size:8.5px; font-weight:800; color:var(--red); background:#fff; border-radius:4px; padding:0 2px; border:1px solid #F2C7C4;}
   td.cell .plantao{position:absolute; bottom:1px; right:2px; font-size:8.5px; font-weight:800; color:#fff; background:#7c3aed; border-radius:4px; padding:0 2px;}
+  td.cell .sug-he{position:absolute; bottom:1px; left:2px; font-size:8.5px; font-weight:800; color:#8A5D0B; background:var(--amber-bg); border-radius:4px; padding:0 2px; border:1px solid #F0DCAE;}
 
   .legend{display:flex; flex-wrap:wrap; gap:14px; padding:10px 16px; font-size:11.5px; color:var(--muted); border-top:1px solid var(--line);}
   .legend span{display:inline-flex; align-items:center; gap:5px;}
@@ -304,6 +311,7 @@
       <span>🎉 folga compensatória de feriado</span>
       <span style="color:var(--red); font-weight:700">+2h</span> hora extra
       <span style="color:#7c3aed; font-weight:700">P+2h</span> plantão (fora do horário padrão)
+      <span><span class="sw" style="outline:2px dashed #8A5D0B; outline-offset:-2px; background:#fff"></span>sugestão de hora extra (banco negativo) — ative no botão 💡 ao lado do nome</span>
     </div>
   </div>
 
@@ -317,7 +325,7 @@
   <button class="btn-ghost" id="regrasBtn" onclick="toggleRegras()">📖 Regras <span id="regrasSeta">▾</span></button>
   <div class="note" id="notaRegras" style="display:none">
     <b>Horário padrão (jornada 6x1 · 44h semanais):</b> segunda a sexta das 08:00 às 17:00 e sábado das 08:00 às 12:00; qualquer trabalho fora dessa janela (inclusive em dia de DSR, Folga ou Feriado) é <b>Plantão</b> e deve ser lançado no ajuste do dia (campo ao lado da hora extra), somando ao Banco de Horas.<br>
-    <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante mensal</b> (padrão), cada colaborador descansa num dia fixo da semana durante toda a competência — um por dia, cobertura constante — e esse dia regride uma posição a cada competência (revezamento entre meses, sem convergir vários colaboradores no mesmo dia); no modo <b>volante regressivo</b>, o dia de descanso já retrocede dentro do próprio período; (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — deixam de aparecer na escala e só continuam visíveis (e reativáveis) dentro de Gerenciar colaboradores; (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h apenas nos dias marcados como <b>Folga (Banco de Horas)</b> ou <b>Falta</b> — a Folga "simples" não desconta nada, pois representa uma folga sem custeio pelo banco; recalculado a cada alteração, e o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); nos modos mensal e fixo, esse domingo garantido é um DSR <b>adicional</b> que não desloca a âncora semanal do colaborador (só o modo regressivo reancora o ciclo a partir dele); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta; o motor também evita empilhar <b>2 DSRs seguidos para o mesmo colaborador</b>: nos modos mensal e fixo, se a folga fixa semanal dele cai no sábado ou na segunda-feira — os dois dias vizinhos a um domingo —, a ocorrência dessa folga fixa que ficaria colada ao domingo garantido daquela semana é suprimida, e o vão de dias de trabalho que sobra é redistribuído com um reforço no meio (nunca colado em outro descanso); no modo regressivo, se o domingo garantido cair colado no dia de descanso anterior, ele não é forçado ali — o mecanismo de reserva garante o domingo depois, escolhendo outro dia sem adjacência; (11) A auditoria avisa quando o <b>Banco de Horas</b> de um colaborador fica <b>negativo</b>, com sugestões para corrigir (converter até 3 folgas recentes custeadas pelo banco em Folga simples, zerar o ajuste inicial, ou abrir Gerenciar colaboradores para revisar o saldo); ao marcar manualmente uma nova Folga (Banco de Horas) que deixaria o saldo negativo, o painel avisa antes de aplicar, dando a chance de cancelar.
+    <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo trabalha mais de <b>6 dias consecutivos</b> – o DSR é inserido obrigatoriamente antes do 7º dia (Lei 605/49 e art. 7º, XV, CF); (2) Hora extra limitada a <b>2h/dia</b> (art. 59, CLT) – o painel bloqueia valores acima do limite; (3) No modo <b>volante mensal</b> (padrão), cada colaborador descansa num dia fixo da semana durante toda a competência — um por dia, cobertura constante — e esse dia regride uma posição a cada competência (revezamento entre meses, sem convergir vários colaboradores no mesmo dia); no modo <b>volante regressivo</b>, o dia de descanso já retrocede dentro do próprio período; (4) Ajustes manuais ficam travados (🔒) e o motor reorganiza os demais dias do colaborador respeitando as regras; (5) O <b>período</b> de apuração vai sempre do dia 15 de um mês ao dia 14 do mês seguinte — use o filtro Período para navegar entre competências, salvando automaticamente o que estava aberto; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — deixam de aparecer na escala e só continuam visíveis (e reativáveis) dentro de Gerenciar colaboradores; (7) O <b>Banco de Horas</b> soma horas extras e plantões lançados e desconta 8h apenas nos dias marcados como <b>Folga (Banco de Horas)</b> ou <b>Falta</b> — a Folga "simples" não desconta nada, pois representa uma folga sem custeio pelo banco; recalculado a cada alteração, e o saldo inicial pode ser ajustado em Gerenciar colaboradores; (8) <b>Feriados nacionais</b> são aplicados automaticamente todo ano (inclusive Sexta-feira Santa, calculada pela Páscoa); se a data cair num dia em que o colaborador estava escalado para trabalhar, o motor gera uma Folga compensatória — alternando de lado a cada feriado que precisar de compensação no período: o 1º recebe a folga no dia anterior, o 2º recebe a folga 6 dias depois, o 3º volta a ser antes, e assim por diante, para não empilhar vários dias de descanso seguidos quando dois feriados caem próximos; (9) <b>Feriados municipais</b> de São Luís, Paço do Lumiar e São José de Ribamar ficam em <b>Feriados</b>, com datas de partida já sugeridas — confirme a data oficial do decreto municipal antes de usar para fins de folha de pagamento, e cadastre manualmente quando houver mudança ou feriado facultativo específico da cidade; (10) O motor garante automaticamente que cada colaborador tenha <b>ao menos um DSR caindo num domingo</b> dentro do período, distribuindo domingos diferentes entre os colaboradores (nem todos descansam no mesmo domingo); nos modos mensal e fixo, esse domingo garantido é um DSR <b>adicional</b> que não desloca a âncora semanal do colaborador (só o modo regressivo reancora o ciclo a partir dele); se todos os domingos do colaborador estiverem travados manualmente com outro status, a auditoria mostra um alerta; o motor também evita empilhar <b>2 DSRs seguidos para o mesmo colaborador</b>: nos modos mensal e fixo, se a folga fixa semanal dele cai no sábado ou na segunda-feira — os dois dias vizinhos a um domingo —, a ocorrência dessa folga fixa que ficaria colada ao domingo garantido daquela semana é suprimida, e o vão de dias de trabalho que sobra é redistribuído com um reforço no meio (nunca colado em outro descanso); no modo regressivo, se o domingo garantido cair colado no dia de descanso anterior, ele não é forçado ali — o mecanismo de reserva garante o domingo depois, escolhendo outro dia sem adjacência; (11) A auditoria avisa quando o <b>Banco de Horas</b> de um colaborador fica <b>negativo</b>, com sugestões para corrigir (converter até 3 folgas recentes custeadas pelo banco em Folga simples, zerar o ajuste inicial, ou abrir Gerenciar colaboradores para revisar o saldo); ao marcar manualmente uma nova Folga (Banco de Horas) que deixaria o saldo negativo, o painel avisa antes de aplicar, dando a chance de cancelar; (12) Para quem está com o Banco de Horas negativo, o botão <b>💡 sugestão</b> ao lado do nome mostra (e esconde, se clicado de novo) em quais dias de trabalho ainda há espaço até o limite de hora extra — marcados na grade com contorno tracejado dourado — suficientes para zerar o saldo negativo; é só um apontamento visual, o lançamento da hora extra continua manual pelo popover de cada dia.
   </div>
 </div>
 
@@ -431,6 +439,40 @@ function toggleSelecionarTodos(){
   renderAll();
 }
 function limparSelecaoColab(){ colabsSelecionados.clear(); renderAll(); }
+
+/* ================= SUGESTÃO DE HORA EXTRA (banco de horas negativo) ================= */
+/* Estado só de sessão (não persiste) — cada colaborador tem seu próprio toggle, ligado pelo
+   botão 💡 ao lado do nome (só aparece pra quem está com o banco negativo). */
+let sugestaoHEVisivel = new Set();
+function toggleSugestaoHE(ei){
+  if(sugestaoHEVisivel.has(ei)) sugestaoHEVisivel.delete(ei); else sugestaoHEVisivel.add(ei);
+  renderAll();
+}
+/* Sugere em quais dias de trabalho (com espaço livre até o limite de HE/dia) o colaborador
+   poderia fazer hora extra pra reduzir o banco negativo — devolve um Map dia→horas sugeridas
+   nesse dia, indo do início do período até cobrir o valor negativo (ou até acabar o período).
+   Não altera nada sozinho: é só um apontamento visual, o gestor ainda lança manualmente pelo
+   popover de cada dia. */
+function calcularSugestaoHE(ei){
+  const f = FUNCIONARIOS[ei];
+  const bh = calcularBancoHoras(f, ei);
+  const mapa = new Map();
+  if(bh >= 0) return mapa;
+  const maxHe = cfg().maxHe || 0;
+  if(maxHe <= 0) return mapa;
+  let faltam = -bh;
+  for(let d=0; d<NDIAS && faltam>0.05; d++){
+    const cel = grid[ei][d];
+    if(cel.st !== 'TRABALHO') continue;
+    const heAtual = Number(cel.he)||0;
+    const espaco = maxHe - heAtual;
+    if(espaco <= 0) continue;
+    const usar = Math.min(espaco, faltam);
+    mapa.set(d, Math.round(usar*10)/10);
+    faltam -= usar;
+  }
+  return mapa;
+}
 
 /* ================= FERIADOS ================= */
 function calcularPascoa(ano){
@@ -1028,8 +1070,13 @@ function renderAll(){
     const bh = calcularBancoHoras(f, ei);
     const bhCls = bh<0 ? 'nc-bh-neg' : 'nc-bh-pos';
     const marcado = colabsSelecionados.has(ei);
+    const sugVisivel = bh<0 && sugestaoHEVisivel.has(ei);
+    const sugMapa = sugVisivel ? calcularSugestaoHE(ei) : null;
+    const sugBtn = bh<0
+      ? `<button class="nc-sug-btn${sugVisivel?' ativo':''}" title="${sugVisivel?'Ocultar':'Mostrar'} sugestão de dias pra fazer hora extra e reduzir o banco negativo" onclick="toggleSugestaoHE(${ei})">💡${sugVisivel?' ocultar':' sugestão'}</button>`
+      : '';
     h += `<tr><td class="namecol">
-      <div class="nc-top"><input type="checkbox" class="nc-check" ${marcado?'checked':''} onchange="toggleSelecaoColab(${ei})"><span class="nc-name">${f.nome}</span></div>
+      <div class="nc-top"><input type="checkbox" class="nc-check" ${marcado?'checked':''} onchange="toggleSelecaoColab(${ei})"><span class="nc-name">${f.nome}</span>${sugBtn}</div>
       <span class="nc-sub">${f.gestor}</span>
       <div class="nc-bh ${bhCls}" title="Banco de horas: HE + plantões lançados menos 8h por dia de Folga — recalculado a cada alteração">BH: ${bh>=0?'+':''}${bh}h</div>
     </td>`;
@@ -1039,13 +1086,19 @@ function renderAll(){
       if(d.getDay()===0) cls.push('dom');
       if(aud.violCells.has(ei+'-'+di)) cls.push('viol');
       else if(aud.warnCells.has(ei+'-'+di)) cls.push('warnv');
-      const titleAttr = cel.feriadoNome ? ` title="${cel.feriadoNome}"` : (cel.motivoFeriado ? ` title="Folga compensatória (véspera de feriado)"` : '');
+      const sugHoras = sugMapa ? sugMapa.get(di) : undefined;
+      if(sugHoras!=null) cls.push('sugestao-he');
+      const titleBase = cel.feriadoNome || (cel.motivoFeriado ? 'Folga compensatória (véspera de feriado)' : '');
+      const titleSug = sugHoras!=null ? `Sugestão: +${sugHoras}h de hora extra aqui pra reduzir o banco negativo` : '';
+      const titleFull = [titleBase, titleSug].filter(Boolean).join(' · ');
+      const titleAttr = titleFull ? ` title="${titleFull}"` : '';
       h += `<td class="${cls.join(' ')}"${titleAttr} onclick="abrirPop(event,${ei},${di})">`+
            `<span class="tag">${s.lbl}</span>`+
            (cel.motivoFeriado?'<span class="fer-badge">🎉</span>':'')+
            (cel.lock?'<span class="lock">🔒</span>':'')+
            (cel.he>0?`<span class="he">+${cel.he}h</span>`:'')+
            (cel.plantao>0?`<span class="plantao">P+${cel.plantao}h</span>`:'')+
+           (sugHoras!=null?`<span class="sug-he">💡+${sugHoras}h</span>`:'')+
            `</td>`;
     });
     h += '</tr>';
