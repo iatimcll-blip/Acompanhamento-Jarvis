@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel Sobreaviso – MCLL Telecom | Alloha Fibra</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#1E2761; --navy-2:#2A3578; --green:#39B54A; --green-d:#2C9A3B;
+    --blue-l:#CADCFC; --bg:#F2F5FB; --card:#FFFFFF; --ink:#1B2340;
+    --muted:#6B7490; --red:#D8443C; --red-bg:#FDECEB; --amber:#E8A020; --amber-bg:#FCF3E0;
+    --yellow:#F5C518; --orange:#F97316; --orange-bg:rgba(249,115,22,.10);
+    --purple:#5B21B6; --purple-bg:#DDD6FE;
+    --line:#E1E7F2;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); font-size:14px;}
+
+  .sticky-top-zone{position:sticky; top:0; z-index:20; background:var(--bg); box-shadow:0 4px 12px rgba(30,39,97,.10);}
+
+  header{background:linear-gradient(120deg,var(--navy) 0%, var(--navy-2) 70%); color:#fff; padding:18px 26px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;}
+  header .brand{display:flex; align-items:center; gap:14px;}
+  header .logo{width:42px; height:42px; border-radius:10px; background:var(--purple); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; color:#fff;}
+  header .back-link{color:var(--blue-l); font-size:11px; text-decoration:none; opacity:.85; display:inline-block; margin-bottom:3px; margin-right:10px;}
+  header .back-link:hover{opacity:1; text-decoration:underline;}
+  header h1{font-size:19px; font-weight:700; letter-spacing:.3px;}
+  header .sub{font-size:12px; color:var(--blue-l); margin-top:2px;}
+  header .period{background:rgba(255,255,255,.12); border:1px solid rgba(202,220,252,.35); padding:8px 14px; border-radius:8px; font-size:12.5px; color:var(--blue-l);}
+  header .period b{color:#fff;}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; padding:16px 26px 0;}
+  .kpi{background:var(--card); border:1px solid var(--line); border-left:4px solid var(--navy); border-radius:10px; padding:12px 14px;}
+  .kpi .v{font-size:24px; font-weight:800; color:var(--navy);}
+  .kpi .l{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-top:2px;}
+  .kpi.ok{border-left-color:var(--green);} .kpi.ok .v{color:var(--green-d);}
+  .kpi.bad{border-left-color:var(--red);} .kpi.bad .v{color:var(--red);}
+  .kpi.warn{border-left-color:var(--amber);} .kpi.warn .v{color:var(--amber);}
+  .kpi.purple{border-left-color:var(--purple);} .kpi.purple .v{color:var(--purple);}
+
+  .toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 26px;}
+  .toolbar .grp{display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 10px;}
+  .toolbar label{font-size:12px; color:var(--muted); font-weight:600;}
+  .toolbar select,.toolbar input[type=number]{border:1px solid var(--line); border-radius:6px; padding:5px 7px; font-size:13px; color:var(--ink); background:#fff;}
+  .toolbar input[type=number]{width:58px;}
+  #cfgPeriodo{min-width:230px;}
+  button{border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:700; cursor:pointer; transition:filter .15s;}
+  button:hover{filter:brightness(1.08);}
+  .btn-primary{background:var(--purple); color:#fff;}
+  .btn-navy{background:var(--navy); color:#fff;}
+  .btn-ghost{background:#fff; color:var(--navy); border:1px solid var(--line);}
+  .btn-danger{background:#fff; color:var(--red); border:1px solid #F2C7C4;}
+
+  .wrap{padding:0 26px 30px;}
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px;}
+  .panel h2{font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--navy); padding:12px 16px; border-bottom:1px solid var(--line); background:#F8FAFE;}
+
+  .grid-scroll{overflow:auto; max-height:calc(100vh - 320px); min-height:220px; overscroll-behavior:contain; scroll-behavior:smooth;
+    scrollbar-width:thin; scrollbar-color:#B9C4E0 #F2F5FB;}
+  .grid-scroll::-webkit-scrollbar{height:12px; width:12px;}
+  .grid-scroll::-webkit-scrollbar-track{background:#F2F5FB;}
+  .grid-scroll::-webkit-scrollbar-thumb{background:#B9C4E0; border-radius:7px; border:2px solid #F2F5FB;}
+  .grid-scroll::-webkit-scrollbar-thumb:hover{background:var(--navy-2);}
+  .grid-scroll::-webkit-scrollbar-corner{background:#F2F5FB;}
+  table{border-collapse:separate; border-spacing:0; width:max-content; min-width:100%;}
+  th,td{border-bottom:1px solid var(--line); border-right:1px solid var(--line); text-align:center; font-size:11.5px; white-space:nowrap;}
+  thead th{background:var(--navy); color:#fff; padding:6px 4px; position:sticky; top:0; z-index:3; font-weight:600;}
+  thead tr.dow th{top:38px; background:var(--navy-2); color:var(--blue-l); font-size:10px; z-index:3;}
+  thead th.namecol, tbody td.namecol{position:sticky; left:0; z-index:4; background:#F8FAFE; text-align:left; padding:6px 12px; min-width:235px; font-weight:700; color:var(--navy); font-size:12.5px; border-right:2px solid var(--navy); white-space:normal; box-shadow:3px 0 6px -2px rgba(30,39,97,.15);}
+  thead th.namecol{background:var(--navy); color:#fff; z-index:5;}
+  thead tr.dow th.namecol{z-index:6;}
+  .nc-top{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .nc-name{font-weight:700;}
+  .nc-tipo{font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:1px 6px; border-radius:4px; color:#fff;}
+  .nc-tipo-te{background:var(--navy-2);}
+  .nc-tipo-of{background:var(--purple);}
+  .nc-sub{display:block; font-weight:400; font-size:10.5px; color:var(--muted); margin-top:1px;}
+  .nc-horas{font-size:10.5px; font-weight:700; margin-top:3px; color:var(--purple);}
+  td.cell{min-width:46px; height:40px; cursor:pointer; position:relative; background:#fff; padding:2px;}
+  td.cell:hover{outline:2px solid var(--navy); outline-offset:-2px;}
+  td.cell .tag{display:block; font-size:9.5px; font-weight:700; border-radius:5px; padding:5px 2px; line-height:1.1;}
+  .st-LIVRE .tag{background:#EEF3FC; color:#5A6690;}
+  .st-SOBREAVISO .tag{background:var(--purple-bg); color:var(--purple);}
+  .st-DSR .tag{background:var(--red); color:#fff;}
+  .st-FERIADO .tag{background:var(--yellow); color:#4A3A00;}
+  .st-FERIAS .tag{background:#8FB3F5; color:#fff;}
+  .st-AUSENCIA .tag{background:#D9DEEA; color:#555F7E;}
+  td.cell.dom{background:#FBF9EF;}
+  td.cell.viol{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
+  td.cell.warnv{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
+  td.cell .lock{position:absolute; top:1px; right:2px; font-size:8px;}
+  td.cell .fer-badge{position:absolute; top:1px; left:2px; font-size:8px;}
+  td.cell .horas-badge{position:absolute; bottom:1px; right:2px; font-size:8.5px; font-weight:800; color:var(--purple); background:#fff; border-radius:4px; padding:0 2px; border:1px solid var(--purple-bg);}
+
+  .legend{display:flex; flex-wrap:wrap; gap:14px; padding:10px 16px; font-size:11.5px; color:var(--muted); border-top:1px solid var(--line);}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .sw{width:14px; height:14px; border-radius:4px; display:inline-block;}
+
+  #violPanel .body{padding:12px 16px; max-height:240px; overflow:auto;}
+  .vitem{padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12.5px;}
+  .vitem-row{display:flex; gap:8px; align-items:flex-start;}
+  .vfix-row{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px 22px;}
+  .vfix-btn{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:6px; border:1px solid currentColor; background:rgba(255,255,255,.55); color:inherit; cursor:pointer; font-family:inherit;}
+  .vfix-btn:hover{background:#fff;}
+  .vitem.err{background:var(--red-bg); color:#8C2B26; border:1px solid #F2C7C4;}
+  .vitem.warn{background:var(--amber-bg); color:#8A5D0B; border:1px solid #F0DCAE;}
+  .vempty{color:var(--green-d); font-weight:700; padding:8px 4px;}
+
+  #pop{position:absolute; z-index:50; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 30px rgba(30,39,97,.25); width:250px; display:none;}
+  #pop .ph{background:var(--navy); color:#fff; padding:9px 12px; border-radius:12px 12px 0 0; font-size:12px; font-weight:700;}
+  #pop .pb{padding:10px 12px;}
+  #pop .opts{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px;}
+  #pop .opts button{padding:7px 4px; font-size:10.5px; border-radius:7px;}
+  #pop .horas-info{font-size:11px; color:var(--purple); background:var(--purple-bg); border-radius:6px; padding:6px 8px; margin-bottom:10px;}
+  #pop .pfoot{display:flex; gap:6px; justify-content:space-between;}
+  #pop .pfoot button{font-size:11.5px; padding:7px 10px;}
+
+  .modal-ov{position:fixed; inset:0; background:rgba(20,25,50,.45); z-index:80; display:none; align-items:center; justify-content:center; padding:20px;}
+  .modal-ov.show{display:flex;}
+  .modal-box{background:#fff; border-radius:14px; max-width:720px; width:100%; max-height:85vh; overflow:auto; box-shadow:0 20px 60px rgba(20,25,50,.35);}
+  .modal-box .mh{background:var(--navy); color:#fff; padding:14px 18px; border-radius:14px 14px 0 0; display:flex; align-items:center; justify-content:space-between; font-weight:700; font-size:14px;}
+  .modal-box .mh button{background:none; border:none; color:#fff; font-size:18px; cursor:pointer; padding:2px 8px;}
+  .modal-box .mb{padding:16px 18px;}
+  .colab-add{display:grid; grid-template-columns:1.6fr 1fr 1fr 1.2fr 90px auto; gap:8px; align-items:end; margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--line);}
+  .colab-add label{font-size:10px; color:var(--muted); display:block; margin-bottom:3px;}
+  .colab-add input,.colab-add select{border:1px solid var(--line); border-radius:6px; padding:7px 8px; font-size:12.5px; width:100%;}
+  .colab-row{display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--line); flex-wrap:wrap;}
+  .cr-name{min-width:190px;}
+  .cr-name span{display:block; font-size:11px; color:var(--muted); font-weight:400;}
+  .cr-bh{display:flex; align-items:center; gap:6px; font-size:11.5px;}
+  .cr-bh-total{font-weight:700; white-space:nowrap; color:var(--purple);}
+  .nc-toggle{display:flex; align-items:center; gap:5px; font-size:11.5px; cursor:pointer; user-select:none; white-space:nowrap;}
+  .janela-grid{display:grid; grid-template-columns:1fr 100px 100px; gap:10px; align-items:center; margin-bottom:12px;}
+  .janela-grid label{font-size:12.5px; font-weight:700; color:var(--navy);}
+  .janela-grid input{border:1px solid var(--line); border-radius:6px; padding:6px; font-size:12.5px;}
+  .import-info{font-size:11px; color:var(--muted); background:#F8FAFE; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:14px; line-height:1.5;}
+  .fer-cidade-tit{font-weight:700; color:var(--navy); font-size:12.5px; margin-bottom:4px;}
+  .fer-add-row{display:flex; gap:6px; margin-top:6px;}
+  .fer-add-row input{border:1px solid var(--line); border-radius:6px; padding:5px 6px;}
+
+  .rules-wrap{padding:0 26px 20px;}
+  .rules-wrap #regrasBtn{font-size:11.5px; padding:7px 14px;}
+  .note{font-size:11.5px; color:var(--muted); padding:12px 0 0; line-height:1.5;}
+  .note b{color:var(--navy);}
+
+  @media (max-width: 860px){
+    header{padding:14px 16px;}
+    .kpis{padding:12px 16px 0; gap:8px;}
+    .toolbar{padding:10px 16px; gap:8px;}
+    .wrap{padding:0 14px 24px;}
+    .rules-wrap{padding:0 14px 16px;}
+    .modal-box .mb{padding:14px;}
+    .colab-add{grid-template-columns:1fr 1fr; gap:8px 10px;}
+    .colab-add button{grid-column:1 / -1;}
+  }
+  @media (max-width: 640px){
+    .sticky-top-zone{position:static; box-shadow:none;}
+  }
+  @media (max-width: 520px){
+    body{font-size:13px;}
+    header{flex-direction:column; align-items:flex-start; padding:12px 14px; gap:8px;}
+    header .brand{gap:10px;}
+    header .logo{width:34px; height:34px; font-size:15px; border-radius:8px;}
+    header h1{font-size:16px;}
+    header .sub{font-size:10.5px;}
+    header .period{width:100%; font-size:11px; padding:7px 10px;}
+    .kpis{grid-template-columns:repeat(2, 1fr); padding:10px 12px 0; gap:8px;}
+    .kpi{padding:9px 10px;}
+    .kpi .v{font-size:19px;}
+    .kpi .l{font-size:10px;}
+    .toolbar{flex-direction:column; align-items:stretch; padding:10px 12px; gap:8px;}
+    .toolbar .grp{flex-direction:column; align-items:stretch; gap:4px; width:100%; padding:6px 10px;}
+    .toolbar label{font-size:10.5px;}
+    .toolbar select, .toolbar input[type=number]{width:100%; max-width:100%;}
+    #cfgPeriodo{min-width:0;}
+    .toolbar > button{width:100%;}
+    .wrap{padding:0 10px 20px;}
+    .rules-wrap{padding:0 10px 14px;}
+    .panel h2{font-size:11.5px; padding:10px 12px;}
+    thead th.namecol, tbody td.namecol{min-width:150px; padding:6px 8px; font-size:11px;}
+    td.cell{min-width:38px; height:34px;}
+    td.cell .tag{font-size:8.5px;}
+    .legend{gap:8px; padding:8px 10px; font-size:10.5px;}
+    #violPanel .body{padding:10px 12px;}
+    #pop{width:min(250px, calc(100vw - 24px));}
+    .modal-ov{padding:10px;}
+    .modal-box .mh{padding:12px 14px; font-size:13px;}
+    .colab-add{grid-template-columns:1fr;}
+    .colab-add button{grid-column:auto;}
+    .fer-add-row{flex-wrap:wrap;}
+    .janela-grid{grid-template-columns:1fr; gap:6px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="sticky-top-zone">
+<header>
+  <div class="brand">
+    <div class="logo">S</div>
+    <div>
+      <a class="back-link" href="painel_jarvis.html">← Voltar ao Painel Jarvis</a>
+      <a class="back-link" href="painel_dsr_volante.html">↔ Painel DSR Volante</a>
+      <h1>Painel Sobreaviso – Escala Automatizada</h1>
+      <div class="sub">MCLL Telecom · Alloha Fibra · São Luís/MA · Técnicos e Oficiais</div>
+    </div>
+  </div>
+  <div class="period" id="periodoInfo">Período: carregando…</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi ok"><div class="v" id="kConf">–</div><div class="l">Colaboradores em conformidade</div></div>
+  <div class="kpi bad"><div class="v" id="kViol">–</div><div class="l">Violações críticas</div></div>
+  <div class="kpi warn"><div class="v" id="kWarn">–</div><div class="l">Alertas de cobertura</div></div>
+  <div class="kpi purple"><div class="v" id="kHoras">–</div><div class="l">Horas de sobreaviso (período)</div></div>
+  <div class="kpi"><div class="v" id="kAtivos">–</div><div class="l">Colaboradores ativos</div></div>
+  <div class="kpi"><div class="v" id="kCob">–</div><div class="l">Cobertura mínima diária</div></div>
+</div>
+
+<div class="toolbar">
+  <button class="btn-primary" onclick="gerarEscala()">⚙ Gerar escala automática</button>
+  <button class="btn-navy" onclick="resolverSobreaviso(); renderAll(); lsSave();">↻ Recalcular (mantém ajustes)</button>
+  <div class="grp">
+    <label>Período</label>
+    <select id="cfgPeriodo" onchange="mudarPeriodo()"></select>
+  </div>
+  <div class="grp">
+    <label>Simultâneos/dia</label>
+    <input type="number" id="cfgN" value="1" min="1" max="20" onchange="resolverSobreaviso(); renderAll(); lsSave();">
+  </div>
+  <div class="grp">
+    <label>Equipe</label>
+    <select id="filtroEquipe" onchange="filtroEquipe=this.value; renderAll();"><option value="">Todas as equipes</option></select>
+  </div>
+  <div class="grp">
+    <label>Tipo</label>
+    <select id="filtroTipo" onchange="filtroTipo=this.value; renderAll();">
+      <option value="">Todos</option>
+      <option value="Tecnico">Técnico</option>
+      <option value="Oficial">Oficial</option>
+    </select>
+  </div>
+  <button class="btn-ghost" onclick="abrirModalJanelas()">🕒 Horários de sobreaviso</button>
+  <button class="btn-ghost" onclick="abrirModalColab()">👥 Gerenciar colaboradores</button>
+  <button class="btn-ghost" onclick="abrirModalFeriados()">🎉 Feriados</button>
+  <button class="btn-ghost" onclick="exportarXlsx()">⬇ Exportar XLSX</button>
+  <button class="btn-danger" onclick="limparAjustes()">✕ Limpar ajustes manuais</button>
+</div>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>Escala – clique em um dia para ajustar (o restante se reorganiza automaticamente)</h2>
+    <div class="grid-scroll"><table id="grid"></table></div>
+    <div class="legend">
+      <span><span class="sw" style="background:#EEF3FC"></span>Livre (fora do rodízio)</span>
+      <span><span class="sw" style="background:var(--purple-bg)"></span>Sobreaviso</span>
+      <span><span class="sw" style="background:var(--red)"></span>DSR (fixo aos domingos)</span>
+      <span><span class="sw" style="background:var(--yellow)"></span>Feriado</span>
+      <span><span class="sw" style="background:#8FB3F5"></span>Férias</span>
+      <span><span class="sw" style="background:#D9DEEA"></span>Ausência (atestado, INSS, etc.)</span>
+      <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--orange)"></span>Inconsistência de auditoria</span>
+      <span>🔒 ajuste manual (protegido no recálculo)</span>
+      <span>🎉 feriado (janela de domingo/feriado no cálculo de horas)</span>
+    </div>
+  </div>
+
+  <div class="panel" id="violPanel">
+    <h2>Auditoria de conformidade – CLT (Sobreaviso, art. 244 §2º)</h2>
+    <div class="body" id="violBody"></div>
+  </div>
+</div>
+
+<div class="rules-wrap">
+  <button class="btn-ghost" id="regrasBtn" onclick="toggleRegras()">📖 Regras <span id="regrasSeta">▾</span></button>
+  <div class="note" id="notaRegras" style="display:none">
+    <b>Sobreaviso (art. 244, §2º da CLT):</b> o colaborador permanece em regime de prontidão, fora do local de trabalho, aguardando ser chamado a qualquer momento; cada hora de sobreaviso é remunerada à razão de 1/3 do valor da hora normal (o painel calcula as <b>horas</b> de sobreaviso, não o valor monetário — isso depende do salário-hora de cada colaborador).<br>
+    <b>Regras aplicadas automaticamente:</b> (1) Nenhum colaborador ativo fica mais de <b>7 dias seguidos em sobreaviso</b> — folga obrigatória antes do 8º dia; (2) O <b>DSR é fixo aos domingos</b> para todos, diferente do Painel DSR Volante (lá o dia de descanso reveza entre os dias da semana porque quase todo mundo trabalha ao mesmo tempo; aqui o próprio sobreaviso já reveza por rodízio, então o domingo pode ser um dia universal de descanso/virada); (3) O rodízio é <b>semanal</b> (segunda a sábado): a cada semana, um grupo de <b>N colaboradores</b> (configurável em "Simultâneos/dia") assume o sobreaviso, avançando pela lista de forma cíclica e contínua entre competências, garantindo revezamento justo ao longo do tempo — nunca a mesma pessoa toda semana; (4) As <b>horas de sobreaviso</b> são calculadas a partir das janelas configuradas em "🕒 Horários de sobreaviso" — dias úteis (segunda a sexta), sábado e domingo/feriados têm janelas próprias; feriados nacionais e municipais usam a janela de domingo/feriado mesmo quando caem num dia de semana; (5) Ajustes manuais (clique numa célula) ficam travados (🔒) e o motor preserva esses dias ao recalcular, sem sobrescrever; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — continuam visíveis (e reativáveis) só dentro de Gerenciar colaboradores; (7) A auditoria avisa quando a <b>cobertura mínima diária</b> configurada (N simultâneos) não é atingida num dia — geralmente por causa de ajustes manuais ou ausências (férias, atestado etc.) do colaborador escalado, exigindo substituição manual; (8) A <b>importação de base</b> (👥 Gerenciar colaboradores → Importar base) aceita uma planilha XLSX com colunas Nome, Tipo (Técnico/Oficial) e Equipe — nomes já cadastrados são atualizados, nomes novos são incluídos como ativos.
+  </div>
+</div>
+
+<div id="pop">
+  <div class="ph" id="popTitle"></div>
+  <div class="pb">
+    <div class="opts" id="popOpts"></div>
+    <div class="horas-info" id="popHorasInfo" style="display:none"></div>
+    <div class="pfoot">
+      <button class="btn-ghost" onclick="desbloquearCelula()">🔒 Limpar ajuste</button>
+      <button class="btn-ghost" onclick="fecharPop()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="modalColab">
+  <div class="modal-box">
+    <div class="mh"><span>👥 Gerenciar colaboradores</span><button onclick="fecharModalColab()">✕</button></div>
+    <div class="mb">
+      <div class="import-info">
+        <b>Importar base:</b> planilha XLSX com colunas <b>Nome</b>, <b>Tipo</b> (Técnico ou Oficial) e <b>Equipe</b> (opcional). Nomes já cadastrados têm Tipo/Equipe atualizados; nomes novos entram como ativos.
+        <div style="margin-top:8px">
+          <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none" onchange="importarBaseXlsx(event)">
+          <button class="btn-ghost" onclick="document.getElementById('importFile').click()">⬆ Importar base (XLSX)</button>
+        </div>
+      </div>
+      <div class="colab-add">
+        <div><label>Nome completo</label><input id="colabNome" placeholder="Nome do colaborador"></div>
+        <div><label>Tipo</label>
+          <select id="colabTipo"><option value="Tecnico">Técnico</option><option value="Oficial">Oficial</option></select>
+        </div>
+        <div><label>Equipe</label><input id="colabEquipe" list="equipesList" placeholder="Ex.: Equipe A"></div>
+        <div><label>Localidade</label>
+          <select id="colabLocalidade"><option>São Luis</option><option>Paço do Lumiar</option><option>São José de Ribamar</option></select>
+        </div>
+        <div><label>UF</label>
+          <select id="colabUf"><option>MA</option><option>PA</option><option>PI</option><option>AM</option><option>AP</option></select>
+        </div>
+        <button class="btn-primary" onclick="incluirColaborador()">➕ Incluir</button>
+      </div>
+      <datalist id="equipesList"></datalist>
+      <div id="colabLista"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="modalJanelas">
+  <div class="modal-box">
+    <div class="mh"><span>🕒 Horários de sobreaviso</span><button onclick="fecharModalJanelas()">✕</button></div>
+    <div class="mb">
+      <div class="janela-grid">
+        <label>Segunda a Sexta</label>
+        <input type="time" id="janSemIni"><input type="time" id="janSemFim">
+      </div>
+      <div class="janela-grid">
+        <label>Sábado</label>
+        <input type="time" id="janSabIni"><input type="time" id="janSabFim">
+      </div>
+      <div class="janela-grid">
+        <label>Domingo e Feriados</label>
+        <input type="time" id="janDomIni"><input type="time" id="janDomFim">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px">
+        <button class="btn-ghost" onclick="fecharModalJanelas()">Cancelar</button>
+        <button class="btn-primary" onclick="salvarJanelas()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="modalFeriados">
+  <div class="modal-box">
+    <div class="mh"><span>🎉 Feriados</span><button onclick="fecharModalFeriados()">✕</button></div>
+    <div class="mb">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Nacionais — aplicados automaticamente todo ano</div>
+      <div id="feriadosNacLista" style="margin-bottom:18px"></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Municipais — configure manualmente por cidade (confira a data oficial antes de usar em folha de pagamento)</div>
+      <div id="feriadosMuniLista"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= COLABORADORES (seed inicial de exemplo) ================= */
+function funcionariosPadrao(){
+  return [
+    {nome:"Carlos Eduardo Ferreira", tipo:"Tecnico", equipe:"Equipe A"},
+    {nome:"Marcos Vinicius Alves", tipo:"Tecnico", equipe:"Equipe A"},
+    {nome:"Roberto Nunes Silva", tipo:"Oficial", equipe:"Equipe A"},
+    {nome:"Fernanda Costa Ribeiro", tipo:"Tecnico", equipe:"Equipe B"},
+    {nome:"Julio Cesar Barros", tipo:"Tecnico", equipe:"Equipe B"},
+    {nome:"Patricia Gomes Lima", tipo:"Oficial", equipe:"Equipe B"}
+  ].map(f=>({...f, localidade:"São Luis", uf:"MA", gestor:"Aleksei Thomas Oliveira De Abreu", ativo:true}));
+}
+let FUNCIONARIOS = [];
+
+const DOWPT = ["DOM","SEG","TER","QUA","QUI","SEX","SÁB"];
+const fmt = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+const fmtFull = d => fmt(d)+'/'+d.getFullYear();
+
+const ST = {
+  LIVRE:{lbl:"LIVRE", cls:"st-LIVRE"},
+  SOBREAVISO:{lbl:"SOBREAV.", cls:"st-SOBREAVISO"},
+  DSR:{lbl:"DSR", cls:"st-DSR"},
+  FERIADO:{lbl:"FERIADO", cls:"st-FERIADO"},
+  FERIAS:{lbl:"FÉRIAS", cls:"st-FERIAS"},
+  ATESTADO:{lbl:"ATEST", cls:"st-AUSENCIA"},
+  AFASTADO:{lbl:"AFAST", cls:"st-AUSENCIA"},
+  INSS:{lbl:"INSS", cls:"st-AUSENCIA"},
+  FALTA:{lbl:"FALTA", cls:"st-AUSENCIA"}
+};
+const OPCOES = ["SOBREAVISO","LIVRE","DSR","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","FALTA"];
+
+/* ================= FILTROS DE VISUALIZAÇÃO ================= */
+let filtroEquipe = '';
+let filtroTipo = '';
+
+/* ================= FERIADOS (idêntico ao Painel DSR Volante) ================= */
+function calcularPascoa(ano){
+  const a=ano%19, b=Math.floor(ano/100), c=ano%100, d=Math.floor(b/4), e=b%4,
+        f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30,
+        i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*l)/451),
+        mes=Math.floor((h+l-7*m+114)/31), dia=((h+l-7*m+114)%31)+1;
+  return new Date(ano, mes-1, dia);
+}
+const _feriadosNacCache = {};
+function feriadosNacionais(ano){
+  if(_feriadosNacCache[ano]) return _feriadosNacCache[ano];
+  const pascoa = calcularPascoa(ano);
+  const sextaSanta = new Date(pascoa); sextaSanta.setDate(pascoa.getDate()-2);
+  const lista = [
+    {mes:1, dia:1, nome:'Confraternização Universal'},
+    {mes:sextaSanta.getMonth()+1, dia:sextaSanta.getDate(), nome:'Sexta-feira Santa'},
+    {mes:4, dia:21, nome:'Tiradentes'},
+    {mes:5, dia:1, nome:'Dia do Trabalho'},
+    {mes:9, dia:7, nome:'Independência do Brasil'},
+    {mes:10, dia:12, nome:'Nossa Senhora Aparecida'},
+    {mes:11, dia:2, nome:'Finados'},
+    {mes:11, dia:15, nome:'Proclamação da República'},
+    {mes:12, dia:25, nome:'Natal'}
+  ];
+  _feriadosNacCache[ano] = lista;
+  return lista;
+}
+function feriadosMunicipaisPadrao(){
+  return {
+    'São Luis': [ {mes:9, dia:8, nome:'Aniversário de fundação de São Luís (1612)'} ],
+    'Paço do Lumiar': [],
+    'São José de Ribamar': [ {mes:3, dia:19, nome:'São José (padroeiro)'} ]
+  };
+}
+const CIDADES_MOP = ['São Luis','Paço do Lumiar','São José de Ribamar'];
+function localidadeNormalizada(loc){
+  const s = String(loc||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+  if(s.includes('PACO')) return 'Paço do Lumiar';
+  if(s.includes('RIBAMAR')) return 'São José de Ribamar';
+  return 'São Luis';
+}
+function slugCidade(c){
+  return String(c).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
+}
+function feriadoDoDia(date, localidade){
+  const mes = date.getMonth()+1, dia = date.getDate(), ano = date.getFullYear();
+  const nac = feriadosNacionais(ano).find(f=>f.mes===mes && f.dia===dia);
+  if(nac) return {tipo:'nacional', nome:nac.nome};
+  const cidade = localidadeNormalizada(localidade);
+  const muni = (STORE.feriadosMunicipais && STORE.feriadosMunicipais[cidade]) || [];
+  const m = muni.find(f=>f.mes===mes && f.dia===dia);
+  if(m) return {tipo:'municipal', nome:m.nome, cidade};
+  return null;
+}
+/* Marca o nome do feriado na célula (informativo, usado no cálculo de horas) sem sobrescrever
+   o status de quem já está de sobreaviso naquele dia — só troca pra FERIADO quem estava LIVRE. */
+function aplicarFeriados(){
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(!f.ativo || !grid[ei]) return;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      const fer = feriadoDoDia(DIAS[d], f.localidade);
+      if(!fer){ cel.feriadoNome=''; continue; }
+      cel.feriadoNome = fer.nome;
+      if(!cel.lock && cel.st==='LIVRE') cel.st = 'FERIADO';
+    }
+  });
+}
+
+/* ================= PERÍODO (idêntico ao Painel DSR Volante: dia 15 ao dia 14) ================= */
+let periodoAno = null, periodoMes = null;
+let D0 = null, NDIAS = 0;
+const DIAS = [];
+
+function periodoKey(ano,mes){ return ano+'-'+String(mes).padStart(2,'0'); }
+function periodoKeyAtual(){ return periodoKey(periodoAno, periodoMes); }
+function parsePeriodoKey(k){ const [a,m]=String(k).split('-'); return {ano:Number(a), mes:Number(m)}; }
+function periodoDatas(ano,mes){
+  const d0 = new Date(ano, mes-1, 15);
+  const d1 = new Date(mes===12?ano+1:ano, mes===12?0:mes, 14);
+  const ndias = Math.round((d1-d0)/86400000)+1;
+  return {d0, d1, ndias};
+}
+const PERIODO_MIN_ANO = 2026, PERIODO_MIN_MES = 7;
+function periodoAntesDoMinimo(ano, mes){
+  return (ano < PERIODO_MIN_ANO) || (ano === PERIODO_MIN_ANO && mes < PERIODO_MIN_MES);
+}
+function periodoAtualPadrao(){
+  const hoje = new Date();
+  let ano = hoje.getFullYear(), mes = hoje.getMonth()+1;
+  if(hoje.getDate() < 15){ mes -= 1; if(mes===0){ mes=12; ano--; } }
+  if(periodoAntesDoMinimo(ano, mes)) return {ano: PERIODO_MIN_ANO, mes: PERIODO_MIN_MES};
+  return {ano, mes};
+}
+function montarDias(){
+  DIAS.length = 0;
+  for(let i=0;i<NDIAS;i++){ const d=new Date(D0); d.setDate(d.getDate()+i); DIAS.push(d); }
+}
+function fmtCurta(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+const MESES_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+function popularSelectPeriodo(){
+  const sel = document.getElementById('cfgPeriodo');
+  if(!sel) return;
+  const hoje = new Date();
+  const opts = [];
+  for(let offset=-12; offset<=12; offset++){
+    let mes = hoje.getMonth()+1 + offset, ano = hoje.getFullYear();
+    while(mes<1){ mes+=12; ano--; }
+    while(mes>12){ mes-=12; ano++; }
+    if(!periodoAntesDoMinimo(ano, mes)) opts.push({ano,mes});
+  }
+  if(!opts.some(o=>o.ano===PERIODO_MIN_ANO && o.mes===PERIODO_MIN_MES)) opts.push({ano:PERIODO_MIN_ANO, mes:PERIODO_MIN_MES});
+  if(STORE.periodoAtual){
+    const p = parsePeriodoKey(STORE.periodoAtual);
+    if(p.ano && p.mes && !periodoAntesDoMinimo(p.ano,p.mes) && !opts.some(o=>o.ano===p.ano && o.mes===p.mes)) opts.push(p);
+  }
+  opts.sort((a,b)=> (a.ano*12+a.mes) - (b.ano*12+b.mes));
+  sel.innerHTML = opts.map(o=>{
+    const {d0,d1} = periodoDatas(o.ano,o.mes);
+    const key = periodoKey(o.ano,o.mes);
+    const lbl = `${MESES_PT[o.mes-1]}/${o.ano} (${fmtCurta(d0)} – ${fmtCurta(d1)})`;
+    return `<option value="${key}">${lbl}</option>`;
+  }).join('');
+}
+function atualizarSelectPeriodo(){
+  const sel = document.getElementById('cfgPeriodo');
+  if(sel) sel.value = periodoKeyAtual();
+}
+function mudarPeriodo(){
+  const sel = document.getElementById('cfgPeriodo');
+  const {ano,mes} = parsePeriodoKey(sel.value);
+  carregarPeriodo(ano, mes);
+}
+
+/* ================= PERSISTÊNCIA (localStorage — chave própria, independente do DSR Volante) ================= */
+const LS_KEY = 'sobreaviso:v1';
+let STORE = {periodos:{}};
+let CFG_JANELAS = {
+  semana:{ini:'20:00', fim:'23:59'},
+  sabado:{ini:'14:00', fim:'18:00'},
+  domFer:{ini:'08:00', fim:'18:00'}
+};
+
+function lsLoad(){
+  try{ const raw = localStorage.getItem(LS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return null;
+}
+function salvarGridPeriodoAtual(){
+  if(!grid.length || periodoAno==null) return;
+  const key = periodoKeyAtual();
+  if(!STORE.periodos) STORE.periodos = {};
+  if(!STORE.periodos[key]) STORE.periodos[key] = {porNome:{}};
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(grid[ei]) STORE.periodos[key].porNome[f.nome] = grid[ei].map(c=>({st:c.st, lock:!!c.lock, feriadoNome:c.feriadoNome||''}));
+  });
+}
+function lsSave(){
+  try{
+    salvarGridPeriodoAtual();
+    STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, gestor:f.gestor, ativo:f.ativo}));
+    STORE.cfg = cfg();
+    STORE.janelas = CFG_JANELAS;
+    STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
+    if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+    localStorage.setItem(LS_KEY, JSON.stringify(STORE));
+  }catch(e){ console.warn('Falha ao salvar estado local:', e); }
+}
+function aplicarCfgSalvo(){
+  if(STORE.cfg && STORE.cfg.n) document.getElementById('cfgN').value = STORE.cfg.n;
+  if(STORE.janelas) CFG_JANELAS = STORE.janelas;
+}
+function cfg(){
+  return { n: Math.max(1, parseInt(document.getElementById('cfgN').value)||1) };
+}
+function cfgN(){ return cfg().n; }
+
+/* ================= CÁLCULO DE HORAS DE SOBREAVISO ================= */
+function minutosDeJanela(ini, fim){
+  const [ih,im] = String(ini||'0:0').split(':').map(Number);
+  const [fh,fm] = String(fim||'0:0').split(':').map(Number);
+  let iniM = (ih||0)*60+(im||0), fimM = (fh||0)*60+(fm||0);
+  if(fimM <= iniM) fimM += 1440;
+  return fimM - iniM;
+}
+function horasSobreavisoDia(cel, date){
+  if(cel.st !== 'SOBREAVISO') return 0;
+  let janela;
+  if(cel.feriadoNome || date.getDay()===0) janela = CFG_JANELAS.domFer;
+  else if(date.getDay()===6) janela = CFG_JANELAS.sabado;
+  else janela = CFG_JANELAS.semana;
+  return Math.round((minutosDeJanela(janela.ini, janela.fim)/60)*10)/10;
+}
+function calcularHorasSobreaviso(ei){
+  if(!grid[ei]) return 0;
+  let total = 0;
+  for(let d=0; d<NDIAS; d++) total += horasSobreavisoDia(grid[ei][d], DIAS[d]);
+  return Math.round(total*10)/10;
+}
+
+/* grade: grid[e][d] = {st, lock, feriadoNome} */
+let grid = [];
+function novaGrade(){
+  grid = FUNCIONARIOS.map(()=> DIAS.map(()=> ({st:"LIVRE", lock:false, feriadoNome:""})));
+}
+
+/* ================= CARREGAR / TROCAR PERÍODO ================= */
+function carregarPeriodo(ano, mes){
+  salvarGridPeriodoAtual();
+  periodoAno = ano; periodoMes = mes;
+  const {d0, ndias} = periodoDatas(ano, mes);
+  D0 = d0; NDIAS = ndias;
+  montarDias();
+  const key = periodoKeyAtual();
+  const salvo = STORE.periodos && STORE.periodos[key];
+  grid = FUNCIONARIOS.map(f=>{
+    const cels = salvo && salvo.porNome && salvo.porNome[f.nome];
+    if(cels && cels.length===NDIAS) return cels.map(c=>({st:c.st, lock:!!c.lock, feriadoNome:c.feriadoNome||''}));
+    return DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""}));
+  });
+  resolverSobreaviso();
+  renderAll();
+  atualizarSelectPeriodo();
+  lsSave();
+}
+
+/* ================= MOTOR DE RODÍZIO ================= */
+/* Semana de referência = segunda a domingo. Um índice absoluto de semana (contado a partir de
+   uma data-base fixa) garante rodízio contínuo e determinístico entre competências — quem pegou
+   uma semana num período não tende a pegar a mesma posição no período seguinte. */
+function segundaFeiraDe(date){
+  const d = new Date(date);
+  const dow = d.getDay();
+  const diff = (dow===0 ? -6 : 1-dow);
+  d.setDate(d.getDate()+diff);
+  d.setHours(0,0,0,0);
+  return d;
+}
+const EPOCH_SEGUNDA = new Date(2026,0,5); // primeira segunda-feira de 2026 — data-base fixa do rodízio
+function semanaAbsoluta(date){
+  const seg = segundaFeiraDe(date);
+  return Math.floor((seg - EPOCH_SEGUNDA) / (7*86400000));
+}
+/* Domingo é DSR fixo e universal pra todo mundo (item 7 do pedido) — diferente do DSR Volante,
+   aqui não precisa revezar o dia de descanso porque o próprio sobreaviso já reveza entre
+   colaboradores. Nos demais dias, um grupo de N colaboradores (config "Simultâneos/dia") assume
+   o sobreaviso naquela semana, avançando ciclicamente pela lista de ativos. */
+function resolverSobreaviso(){
+  const ativos = [];
+  FUNCIONARIOS.forEach((f,ei)=>{ if(f.ativo) ativos.push(ei); });
+  const L = ativos.length;
+  const N = Math.min(cfgN(), L||1);
+  for(let d=0; d<NDIAS; d++){
+    const date = DIAS[d];
+    if(date.getDay()===0){
+      ativos.forEach(ei=>{ const cel = grid[ei][d]; if(!cel.lock) cel.st = 'DSR'; });
+      continue;
+    }
+    if(L===0) continue;
+    const W = semanaAbsoluta(date);
+    const assigned = new Set();
+    for(let k=0;k<N;k++) assigned.add(ativos[(W*N + k) % L]);
+    ativos.forEach(ei=>{
+      const cel = grid[ei][d];
+      if(cel.lock) return;
+      cel.st = assigned.has(ei) ? 'SOBREAVISO' : 'LIVRE';
+    });
+  }
+  aplicarFeriados();
+}
+function resolverTudo(){ resolverSobreaviso(); }
+
+function gerarEscala(){
+  if(grid.some(r=>r.some(c=>c.lock))){
+    if(!confirm("Gerar do zero apaga os ajustes manuais (🔒) deste período. Continuar?")) return;
+  }
+  novaGrade(); resolverSobreaviso(); renderAll(); lsSave();
+}
+function limparAjustes(){
+  grid.forEach(r=>r.forEach(c=>{c.lock=false;}));
+  resolverSobreaviso(); renderAll(); lsSave();
+}
+
+/* ================= AUDITORIA ================= */
+function auditar(){
+  const N = cfgN();
+  const viols = [];
+  const violCells = new Set();
+  const ativosIdx = [];
+  FUNCIONARIOS.forEach((f,ei)=>{ if(f.ativo) ativosIdx.push(ei); });
+
+  ativosIdx.forEach(ei=>{
+    const f = FUNCIONARIOS[ei];
+    let consec = 0, ini = -1;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(cel.st === 'SOBREAVISO'){
+        if(consec===0) ini = d;
+        consec++;
+        if(consec > 7){
+          viols.push({tipo:'err', codigo:'CONSECUTIVO', ei, dia:d, ini, msg:`${f.nome}: ${consec} dias seguidos de sobreaviso até ${fmt(DIAS[d])} — limite de 7 dias (folga obrigatória antes do 8º dia).`});
+          violCells.add(ei+'-'+d);
+        }
+      } else consec = 0;
+    }
+  });
+
+  let minCob = Infinity, minDia = null;
+  for(let d=0; d<NDIAS; d++){
+    if(DIAS[d].getDay()===0) continue; // domingo é DSR universal, não conta cobertura
+    let cobertos = 0;
+    ativosIdx.forEach(ei=>{ if(grid[ei][d].st==='SOBREAVISO') cobertos++; });
+    if(cobertos < minCob){ minCob = cobertos; minDia = d; }
+    if(ativosIdx.length && cobertos < N){
+      viols.push({tipo:'warn', codigo:'COBERTURA', dia:d, msg:`Cobertura insuficiente em ${fmt(DIAS[d])}: ${cobertos}/${N} colaborador(es) de sobreaviso.`});
+    }
+  }
+  if(minCob===Infinity) minCob = 0;
+
+  const nomesErr = new Set(viols.filter(v=>v.tipo==='err').map(v=>v.msg.split(':')[0]));
+  return {viols, violCells, minCob, minDia, conformes: ativosIdx.length - nomesErr.size, totalAtivos: ativosIdx.length};
+}
+
+/* ================= SUGESTÕES DE CORREÇÃO DA AUDITORIA ================= */
+function sugestoesParaViolacao(v){
+  switch(v.codigo){
+    case 'CONSECUTIVO':
+      return [
+        {label:`Forçar LIVRE em ${fmt(DIAS[v.dia])}`, acao:'LIVRE', ei:v.ei, d:v.dia},
+        {label:`Forçar DSR em ${fmt(DIAS[v.dia])}`, acao:'DSR', ei:v.ei, d:v.dia},
+      ];
+    default:
+      return [];
+  }
+}
+function aplicarSugestaoViolacao(acao, ei, d){
+  if(ei==null || d==null || !grid[ei]) return;
+  forcarStatus(ei, d, acao);
+  renderAll();
+  lsSave();
+}
+
+/* ================= RENDER ================= */
+function popularFiltroEquipe(){
+  const sel = document.getElementById('filtroEquipe');
+  if(!sel) return;
+  const atual = sel.value;
+  const equipes = [...new Set(FUNCIONARIOS.map(f=>f.equipe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  sel.innerHTML = '<option value="">Todas as equipes</option>' + equipes.map(e=>`<option value="${e}">${e}</option>`).join('');
+  if(equipes.includes(atual)) sel.value = atual; else { sel.value=''; filtroEquipe=''; }
+}
+function renderAll(){
+  const aud = auditar();
+  const tbl = document.getElementById('grid');
+  let h = `<thead><tr><th class="namecol">COLABORADOR</th>`;
+  DIAS.forEach(d=> h += `<th>${fmt(d)}</th>`);
+  h += '</tr><tr class="dow"><th class="namecol" style="background:var(--navy-2)">São Luís · MA</th>';
+  DIAS.forEach(d=> h += `<th>${DOWPT[d.getDay()]}</th>`);
+  h += '</tr></thead><tbody>';
+
+  let horasTotais = 0;
+  FUNCIONARIOS.forEach((f, ei)=>{
+    if(!f.ativo) return; // inativos ficam fora da grade principal — só aparecem em "Gerenciar colaboradores"
+    if(filtroEquipe && (f.equipe||'')!==filtroEquipe) return;
+    if(filtroTipo && f.tipo!==filtroTipo) return;
+    const horas = calcularHorasSobreaviso(ei);
+    horasTotais += horas;
+    h += `<tr><td class="namecol">
+      <div class="nc-top"><span class="nc-name">${f.nome}</span><span class="nc-tipo ${f.tipo==='Oficial'?'nc-tipo-of':'nc-tipo-te'}">${f.tipo==='Oficial'?'Oficial':'Técnico'}</span></div>
+      <span class="nc-sub">${f.equipe?('Equipe: '+f.equipe):'Sem equipe'}${f.gestor?(' · '+f.gestor):''}</span>
+      <div class="nc-horas" title="Total de horas de sobreaviso no período, calculado pelas janelas configuradas">Sobreaviso: ${horas}h</div>
+    </td>`;
+    DIAS.forEach((d, di)=>{
+      const cel = grid[ei][di], s = ST[cel.st];
+      const cls = ['cell', s.cls];
+      if(d.getDay()===0) cls.push('dom');
+      if(aud.violCells.has(ei+'-'+di)) cls.push('viol');
+      const horasDia = horasSobreavisoDia(cel, d);
+      const titleBase = cel.feriadoNome || '';
+      const titleAttr = titleBase ? ` title="${titleBase}"` : '';
+      h += `<td class="${cls.join(' ')}"${titleAttr} onclick="abrirPop(event,${ei},${di})">`+
+           `<span class="tag">${s.lbl}</span>`+
+           (cel.feriadoNome?'<span class="fer-badge">🎉</span>':'')+
+           (cel.lock?'<span class="lock">🔒</span>':'')+
+           (horasDia>0?`<span class="horas-badge">${horasDia}h</span>`:'')+
+           `</td>`;
+    });
+    h += '</tr>';
+  });
+  h += '</tbody>';
+  tbl.innerHTML = h;
+
+  document.getElementById('kConf').textContent = aud.conformes+'/'+aud.totalAtivos;
+  document.getElementById('kViol').textContent = aud.viols.filter(v=>v.tipo==='err').length;
+  document.getElementById('kWarn').textContent = aud.viols.filter(v=>v.tipo==='warn').length;
+  document.getElementById('kHoras').textContent = Math.round(horasTotais*10)/10+'h';
+  document.getElementById('kAtivos').textContent = aud.totalAtivos;
+  document.getElementById('kCob').textContent = aud.minCob+'/'+cfgN()+(aud.minDia!=null?' ('+fmt(DIAS[aud.minDia])+')':'');
+
+  const vb = document.getElementById('violBody');
+  if(aud.viols.length===0){ vb.innerHTML = '<div class="vempty">✅ Escala 100% conforme: ninguém passa de 7 dias seguidos de sobreaviso e a cobertura mínima está sendo atingida todos os dias.</div>'; }
+  else {
+    const seen = new Set();
+    vb.innerHTML = aud.viols.filter(v=>{ if(seen.has(v.msg))return false; seen.add(v.msg); return true; })
+      .map(v=>{
+        const sugestoes = sugestoesParaViolacao(v);
+        const botoes = sugestoes.map(s=>`<button class="vfix-btn" onclick="aplicarSugestaoViolacao('${s.acao}',${s.ei},${s.d})">${s.label}</button>`).join('');
+        return `<div class="vitem ${v.tipo}">
+          <div class="vitem-row">${v.tipo==='err'?'❌':'⚠️'} <span>${v.msg}</span></div>
+          ${botoes?`<div class="vfix-row">${botoes}</div>`:''}
+        </div>`;
+      }).join('');
+  }
+
+  const {d1} = periodoDatas(periodoAno, periodoMes);
+  const ativosN = FUNCIONARIOS.filter(f=>f.ativo).length;
+  const inativosN = FUNCIONARIOS.length - ativosN;
+  const infoEl = document.getElementById('periodoInfo');
+  if(infoEl) infoEl.innerHTML = `Período: <b>${fmtFull(D0)}</b> a <b>${fmtFull(d1)}</b> · ${NDIAS} dias · ${ativosN} colaborador${ativosN!==1?'es':''}${inativosN?` <span style="opacity:.75">(+${inativosN} inativo${inativosN!==1?'s':''})</span>`:''}`;
+
+  popularFiltroEquipe();
+
+  const modalColab = document.getElementById('modalColab');
+  if(modalColab && modalColab.classList.contains('show')) renderListaColab();
+
+  ajustarAlturaGrade();
+}
+
+function ajustarAlturaGrade(){
+  const zona = document.querySelector('.sticky-top-zone');
+  const gridScroll = document.querySelector('.grid-scroll');
+  if(!zona || !gridScroll || typeof window.innerHeight!=='number') return;
+  if(window.innerWidth <= 640){
+    gridScroll.style.maxHeight = 'none';
+    return;
+  }
+  const alturaZona = zona.getBoundingClientRect().height;
+  const margem = 40;
+  const disponivel = Math.round(window.innerHeight - alturaZona - margem);
+  gridScroll.style.maxHeight = Math.max(220, disponivel) + 'px';
+}
+window.addEventListener('resize', ajustarAlturaGrade);
+
+/* ================= POPOVER DE AJUSTE ================= */
+let popEi = -1, popD = -1;
+function abrirPop(ev, ei, di){
+  popEi = ei; popD = di;
+  const pop = document.getElementById('pop');
+  const cel = grid[ei][di];
+  document.getElementById('popTitle').textContent = FUNCIONARIOS[ei].nome.split(' ')[0]+' · '+fmtFull(DIAS[di])+' ('+DOWPT[DIAS[di].getDay()]+')';
+  document.getElementById('popOpts').innerHTML = OPCOES.map(o=>{
+    const sel = cel.st===o;
+    return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${o}</button>`;
+  }).join('');
+  const horasInfo = document.getElementById('popHorasInfo');
+  if(cel.st==='SOBREAVISO'){
+    const janelaTxt = (cel.feriadoNome || DIAS[di].getDay()===0) ? 'domingo/feriado' : (DIAS[di].getDay()===6 ? 'sábado' : 'dias úteis');
+    horasInfo.style.display = 'block';
+    horasInfo.textContent = `${horasSobreavisoDia(cel, DIAS[di])}h de sobreaviso neste dia (janela: ${janelaTxt})`;
+  } else {
+    horasInfo.style.display = 'none';
+  }
+  pop.style.display='block';
+  const r = ev.target.closest('td').getBoundingClientRect();
+  let x = r.left + window.scrollX, y = r.bottom + window.scrollY + 4;
+  if(x + 260 > window.scrollX + document.documentElement.clientWidth) x = window.scrollX + document.documentElement.clientWidth - 264;
+  pop.style.left = x+'px'; pop.style.top = y+'px';
+}
+function forcarStatus(ei, d, st){
+  const cel = grid[ei][d];
+  cel.st = st; cel.lock = true;
+  resolverSobreaviso();
+}
+function setStatus(st){
+  forcarStatus(popEi, popD, st);
+  renderAll();
+  fecharPop();
+  lsSave();
+}
+function desbloquearCelula(){
+  const cel = grid[popEi][popD];
+  cel.lock = false;
+  resolverSobreaviso();
+  renderAll(); fecharPop();
+  lsSave();
+}
+function fecharPop(){ document.getElementById('pop').style.display='none'; }
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#pop') && !e.target.closest('td.cell')) fecharPop();
+});
+
+/* ================= GERENCIAR COLABORADORES ================= */
+function abrirModalColab(){
+  document.getElementById('colabNome').value = '';
+  document.getElementById('colabTipo').value = 'Tecnico';
+  document.getElementById('colabEquipe').value = '';
+  document.getElementById('colabLocalidade').value = 'São Luis';
+  document.getElementById('colabUf').value = 'MA';
+  atualizarDatalistEquipes();
+  renderListaColab();
+  document.getElementById('modalColab').classList.add('show');
+}
+function fecharModalColab(){ document.getElementById('modalColab').classList.remove('show'); }
+function atualizarDatalistEquipes(){
+  const equipes = [...new Set(FUNCIONARIOS.map(f=>f.equipe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const dl = document.getElementById('equipesList');
+  if(dl) dl.innerHTML = equipes.map(e=>`<option value="${e}">`).join('');
+}
+function renderListaColab(){
+  const el = document.getElementById('colabLista');
+  if(!el) return;
+  if(!FUNCIONARIOS.length){ el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px 0">Nenhum colaborador cadastrado.</div>'; return; }
+  el.innerHTML = FUNCIONARIOS.map((f,ei)=>{
+    const horas = calcularHorasSobreaviso(ei);
+    return `<div class="colab-row">
+      <div class="cr-name"><b>${f.nome}</b><span>${f.tipo==='Oficial'?'Oficial':'Técnico'} · ${f.equipe||'sem equipe'} · ${f.uf} · ${f.localidade}</span></div>
+      <label class="nc-toggle"><input type="checkbox" ${f.ativo?'checked':''} onchange="toggleAtivo(${ei})"> ${f.ativo?'Ativo':'Inativo'}</label>
+      <div class="cr-bh"><span class="cr-bh-total">Sobreaviso no período: ${horas}h</span></div>
+      <button class="btn-danger" onclick="removerColaborador(${ei})">✕ Remover</button>
+    </div>`;
+  }).join('');
+}
+function toggleAtivo(ei){
+  FUNCIONARIOS[ei].ativo = !FUNCIONARIOS[ei].ativo;
+  resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
+}
+function ordenarColaboradoresAZ(){
+  const indices = FUNCIONARIOS.map((_,i)=>i)
+    .sort((a,b)=> FUNCIONARIOS[a].nome.localeCompare(FUNCIONARIOS[b].nome, 'pt-BR', {sensitivity:'base'}));
+  FUNCIONARIOS = indices.map(i=>FUNCIONARIOS[i]);
+  if(grid.length===indices.length) grid = indices.map(i=>grid[i]);
+}
+function incluirColaborador(){
+  const nome = document.getElementById('colabNome').value.trim();
+  if(!nome){ alert('Informe o nome do colaborador.'); return; }
+  if(FUNCIONARIOS.some(f=>f.nome.trim().toUpperCase()===nome.toUpperCase())){ alert('Já existe um colaborador com esse nome.'); return; }
+  const tipo = document.getElementById('colabTipo').value;
+  const equipe = document.getElementById('colabEquipe').value.trim();
+  const localidade = document.getElementById('colabLocalidade').value;
+  const uf = document.getElementById('colabUf').value;
+  FUNCIONARIOS.push({nome, tipo, equipe, localidade, uf, gestor:'', ativo:true});
+  grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
+  ordenarColaboradoresAZ();
+  resolverSobreaviso(); renderAll(); renderListaColab(); atualizarDatalistEquipes(); lsSave();
+  document.getElementById('colabNome').value = '';
+  document.getElementById('colabNome').focus();
+}
+function removerColaborador(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!confirm(`Remover ${f.nome} da escala de sobreaviso?`)) return;
+  FUNCIONARIOS.splice(ei,1);
+  grid.splice(ei,1);
+  resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
+}
+/* Importa/atualiza colaboradores a partir de uma planilha XLSX com colunas Nome, Tipo, Equipe
+   (aceita variações de caixa no cabeçalho). Nomes já cadastrados são atualizados; novos entram
+   como ativos, com localidade/UF padrão (ajustáveis depois em Gerenciar colaboradores). */
+function importarBaseXlsx(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      let incluidos=0, atualizados=0;
+      rows.forEach(r=>{
+        const chave = k => { const found = Object.keys(r).find(x=>x.trim().toLowerCase()===k); return found ? String(r[found]).trim() : ''; };
+        const nome = chave('nome');
+        if(!nome) return;
+        const tipoRaw = chave('tipo').toLowerCase();
+        const tipo = tipoRaw.startsWith('ofic') ? 'Oficial' : 'Tecnico';
+        const equipe = chave('equipe');
+        const localidade = chave('localidade') || 'São Luis';
+        const uf = chave('uf') || 'MA';
+        const existente = FUNCIONARIOS.find(f=>f.nome.trim().toUpperCase()===nome.toUpperCase());
+        if(existente){
+          existente.tipo = tipo;
+          if(equipe) existente.equipe = equipe;
+          atualizados++;
+        } else {
+          FUNCIONARIOS.push({nome, tipo, equipe, localidade, uf, gestor:'', ativo:true});
+          grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
+          incluidos++;
+        }
+      });
+      ordenarColaboradoresAZ();
+      resolverSobreaviso(); renderAll(); renderListaColab(); atualizarDatalistEquipes(); lsSave();
+      alert(`Importação concluída: ${incluidos} incluído(s), ${atualizados} atualizado(s).`);
+    }catch(err){
+      alert('Erro ao importar a planilha: '+err.message);
+    }
+    ev.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ================= HORÁRIOS DE SOBREAVISO ================= */
+function abrirModalJanelas(){
+  document.getElementById('janSemIni').value = CFG_JANELAS.semana.ini;
+  document.getElementById('janSemFim').value = CFG_JANELAS.semana.fim;
+  document.getElementById('janSabIni').value = CFG_JANELAS.sabado.ini;
+  document.getElementById('janSabFim').value = CFG_JANELAS.sabado.fim;
+  document.getElementById('janDomIni').value = CFG_JANELAS.domFer.ini;
+  document.getElementById('janDomFim').value = CFG_JANELAS.domFer.fim;
+  document.getElementById('modalJanelas').classList.add('show');
+}
+function fecharModalJanelas(){ document.getElementById('modalJanelas').classList.remove('show'); }
+function salvarJanelas(){
+  CFG_JANELAS = {
+    semana:{ini:document.getElementById('janSemIni').value||'00:00', fim:document.getElementById('janSemFim').value||'00:00'},
+    sabado:{ini:document.getElementById('janSabIni').value||'00:00', fim:document.getElementById('janSabFim').value||'00:00'},
+    domFer:{ini:document.getElementById('janDomIni').value||'00:00', fim:document.getElementById('janDomFim').value||'00:00'}
+  };
+  renderAll(); lsSave();
+  fecharModalJanelas();
+}
+
+/* ================= REGRAS (seção oculta, revelada pelo botão) ================= */
+function toggleRegras(){
+  const nota = document.getElementById('notaRegras');
+  const seta = document.getElementById('regrasSeta');
+  if(!nota) return;
+  const aberta = nota.style.display !== 'none';
+  nota.style.display = aberta ? 'none' : 'block';
+  if(seta) seta.textContent = aberta ? '▾' : '▴';
+}
+
+/* ================= MODAL FERIADOS (idêntico ao Painel DSR Volante) ================= */
+function abrirModalFeriados(){
+  renderFeriadosModal();
+  document.getElementById('modalFeriados').classList.add('show');
+}
+function fecharModalFeriados(){ document.getElementById('modalFeriados').classList.remove('show'); }
+function renderFeriadosModal(){
+  const anoRef = periodoAno || new Date().getFullYear();
+  const nac = [...feriadosNacionais(anoRef), ...feriadosNacionais(anoRef+1)]
+    .filter((f,idx,arr)=> arr.findIndex(x=>x.mes===f.mes && x.dia===f.dia && x.nome===f.nome)===idx)
+    .sort((a,b)=> a.mes-b.mes || a.dia-b.dia);
+  const nacEl = document.getElementById('feriadosNacLista');
+  if(nacEl) nacEl.innerHTML = nac.map(f=>`<div class="colab-row" style="padding:6px 0">
+    <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${f.nome}</span></div>
+  </div>`).join('');
+
+  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  const muniEl = document.getElementById('feriadosMuniLista');
+  if(!muniEl) return;
+  muniEl.innerHTML = CIDADES_MOP.map(cidade=>{
+    const slug = slugCidade(cidade);
+    const lista = (STORE.feriadosMunicipais[cidade] || []).slice().sort((a,b)=>a.mes-b.mes||a.dia-b.dia);
+    const linhas = lista.length ? lista.map((f)=>{
+      const idxReal = STORE.feriadosMunicipais[cidade].indexOf(f);
+      return `<div class="colab-row" style="padding:5px 0">
+        <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${f.nome}</span></div>
+        <button class="btn-danger" onclick="removerFeriadoMunicipal('${cidade}',${idxReal})">✕</button>
+      </div>`;
+    }).join('') : '<div style="color:var(--muted);font-size:11.5px;padding:4px 0">Nenhum feriado cadastrado ainda.</div>';
+    return `<div style="margin-bottom:16px">
+      <div class="fer-cidade-tit">${cidade}</div>
+      ${linhas}
+      <div class="fer-add-row">
+        <input type="number" min="1" max="31" placeholder="Dia" id="fmDia-${slug}" style="width:60px">
+        <input type="number" min="1" max="12" placeholder="Mês" id="fmMes-${slug}" style="width:60px">
+        <input type="text" placeholder="Nome do feriado" id="fmNome-${slug}" style="flex:1">
+        <button class="btn-primary" onclick="incluirFeriadoMunicipal('${cidade}')">➕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function incluirFeriadoMunicipal(cidade){
+  const slug = slugCidade(cidade);
+  const dia = parseInt(document.getElementById('fmDia-'+slug).value);
+  const mes = parseInt(document.getElementById('fmMes-'+slug).value);
+  const nome = document.getElementById('fmNome-'+slug).value.trim();
+  if(!dia || !mes || dia<1 || dia>31 || mes<1 || mes>12){ alert('Informe dia e mês válidos.'); return; }
+  if(!nome){ alert('Informe o nome do feriado.'); return; }
+  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  if(!STORE.feriadosMunicipais[cidade]) STORE.feriadosMunicipais[cidade] = [];
+  STORE.feriadosMunicipais[cidade].push({dia,mes,nome});
+  lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
+}
+function removerFeriadoMunicipal(cidade, idx){
+  if(!confirm('Remover este feriado municipal?')) return;
+  STORE.feriadosMunicipais[cidade].splice(idx,1);
+  lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
+}
+
+/* ================= EXPORT XLSX ================= */
+function exportarXlsx(){
+  const aoa = [];
+  aoa.push(["","","","", ...DIAS.map(d=>d)]);
+  aoa.push(["","","","", ...DIAS.map(d=>DOWPT[d.getDay()])]);
+  aoa.push(["COLABORADOR","TIPO","EQUIPE","HORAS SOBREAVISO (h)", ...DIAS.map(()=> "")]);
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(!f.ativo) return; // exportação sempre só com colaboradores ativos
+    const horas = calcularHorasSobreaviso(ei);
+    aoa.push([f.nome, f.tipo==='Oficial'?'Oficial':'Técnico', f.equipe||'', horas, ...DIAS.map((d,di)=>{
+      const c = grid[ei][di];
+      const hd = horasSobreavisoDia(c, d);
+      return ST[c.st].lbl + (hd>0 ? ` (${hd}h)` : '');
+    })]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa, {cellDates:true});
+  ws['!cols'] = [{wch:32},{wch:10},{wch:16},{wch:18}, ...DIAS.map(()=>({wch:14}))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "SOBREAVISO");
+  XLSX.writeFile(wb, `Escala_Sobreaviso_${periodoKeyAtual()}.xlsx`);
+}
+
+/* ================= INICIALIZAÇÃO ================= */
+function iniciar(){
+  const saved = lsLoad();
+  if(saved && Array.isArray(saved.funcionarios) && saved.funcionarios.length){
+    STORE = saved;
+    FUNCIONARIOS = saved.funcionarios.map(f=>({
+      nome:f.nome, tipo:f.tipo||'Tecnico', equipe:f.equipe||'', localidade:f.localidade||'São Luis', uf:f.uf||'MA', gestor:f.gestor||'',
+      ativo: f.ativo!==false
+    }));
+    if(saved.janelas) CFG_JANELAS = saved.janelas;
+  } else {
+    STORE = {periodos:{}};
+    FUNCIONARIOS = funcionariosPadrao();
+  }
+  ordenarColaboradoresAZ();
+  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  popularSelectPeriodo();
+  aplicarCfgSalvo();
+  let ini = (saved && saved.periodoAtual) ? parsePeriodoKey(saved.periodoAtual) : periodoAtualPadrao();
+  if(!ini.ano || !ini.mes || periodoAntesDoMinimo(ini.ano, ini.mes)) ini = {ano:PERIODO_MIN_ANO, mes:PERIODO_MIN_MES};
+  carregarPeriodo(ini.ano, ini.mes);
+}
+iniciar();
+</script>
+</body>
+</html>
