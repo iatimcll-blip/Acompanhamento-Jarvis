@@ -6213,10 +6213,10 @@ canvas {
         <i class="ti ti-brand-github"></i> GitHub — Sincronização automática <span style="font-size:10px;background:var(--blue);color:#fff;padding:1px 6px;border-radius:20px;font-weight:500">Recomendado</span>
       </div>
       <p style="font-size:11px;color:var(--tx3);margin-bottom:10px;line-height:1.6">
-        Cole um <b>Personal Access Token</b> do GitHub com permissão <code>contents:write</code> no repositório. Qualquer dispositivo lê automaticamente ao abrir o painel; o admin escreve ao anexar bases.
+        Qualquer dispositivo lê as bases e atualizações publicadas sem token. Cole um <b>Personal Access Token</b> apenas nos dispositivos que precisam escrever dados, iniciar o Agente Atrix ou ver o status privado do runner.
       </p>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <input id="gh-token-input" class="finput" type="password" style="flex:1;min-width:200px;font-family:monospace" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+        <input id="gh-token-input" class="finput" type="password" style="flex:1;min-width:200px;font-family:monospace" placeholder="github_pat_... ou ghp_...">
         <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveGhToken()">Salvar Token</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -6229,7 +6229,7 @@ canvas {
           <li>Acesse <b>github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens</b></li>
           <li>Clique em <b>"Generate new token"</b></li>
           <li>Defina expiração e em <b>Repository access</b> selecione apenas este repositório</li>
-          <li>Em <b>Permissions</b>, selecione <b>Contents: Read and write</b> (sincronização de dados)</li>
+          <li>Em <b>Permissions</b>, selecione <b>Contents: Read and write</b> (sincronização de dados e gate público do Agente Atrix)</li>
           <li>Também em <b>Permissions</b>, selecione <b>Actions: Read and write</b> (necessário pro botão "Iniciar" do Agente Atrix) e <b>Administration: Read-only</b> (pro status online/offline do agente aparecer)</li>
           <li>Gere o token, copie e cole no campo acima</li>
         </ol>
@@ -8050,7 +8050,12 @@ async function syncRemoteUsers(){
    (☁ nas configurações). Nunca embutir um token padrão aqui: este arquivo é servido
    publicamente pelo GitHub Pages, e qualquer token no código-fonte fica visível a
    qualquer visitante que abra o "ver código-fonte" da página. */
-function getGhToken(){return localStorage.getItem(GH_TOKEN_KEY)||''}
+function _cleanGhToken(token){return String(token||'').trim()}
+function getGhToken(){return _cleanGhToken(localStorage.getItem(GH_TOKEN_KEY)||'')}
+function ghHeaders(extra={},token=getGhToken()){
+  const tk=_cleanGhToken(token);
+  return {Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(tk?{Authorization:'Bearer '+tk}:{}),...extra};
+}
 
 async function _ghStateToB64(st){
   const json=JSON.stringify(st);
@@ -8093,9 +8098,7 @@ async function _ghB64ToState(b64Content){
 }
 
 async function fetchGhRawState(){
-  const token=getGhToken();
-  const headers={Accept:'application/vnd.github.v3+json',...(token?{Authorization:'token '+token}:{})};
-  const res=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers,cache:'no-store'});
+  const res=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers:ghHeaders(),cache:'no-store'});
   if(!res.ok)return null;
   const j=await res.json();
   if(!j.content)return null;
@@ -8149,11 +8152,11 @@ async function saveGhState(manual=false){
     const content=await _ghStateToB64(builtState);
     let sha='';
     try{
-      const info=await fetch(GH_SYNC_API,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
+      const info=await fetch(GH_SYNC_API,{headers:ghHeaders({},token),cache:'no-store'});
       if(info.ok){const j=await info.json();sha=j.sha||'';}
     }catch{}
     const body=JSON.stringify({message:'sync: painel '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
-    const res=await fetch(GH_SYNC_API,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
+    const res=await fetch(GH_SYNC_API,{method:'PUT',headers:ghHeaders({'Content-Type':'application/json'},token),body});
     if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
     _setLastKnownRemoteSavedAt(builtState.savedAt);
     const msg='Sincronizado com GitHub em '+now2();
@@ -8219,10 +8222,10 @@ function openSyncSettings(){
 }
 
 function saveGhToken(){
-  const val=(document.getElementById('gh-token-input').value||'').trim();
+  const val=_cleanGhToken(document.getElementById('gh-token-input').value||'');
   localStorage.setItem(GH_TOKEN_KEY,val);
   const st=document.getElementById('sync-status');
-  if(st){st.textContent=val?'Token salvo! Clique em "Sincronizar agora" para testar.':'Token removido.';st.style.color=val?'var(--green-dk)':'var(--tx3)'}
+  if(st){st.textContent=val?'Token salvo neste dispositivo. Leituras públicas funcionam nos demais aparelhos; escrita/início usam este token.':'Token removido.';st.style.color=val?'var(--green-dk)':'var(--tx3)'}
 }
 async function loginUser(ev){
   if(ev)ev.preventDefault();
@@ -8907,7 +8910,7 @@ async function pushAtrixTicketsJson(){
   if(!tickets.length)return;
   const path='data/atrix_tickets.json';
   const apiUrl=`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/contents/${path}`;
-  const hdrs={Authorization:'token '+getGhToken(),Accept:'application/vnd.github.v3+json','Content-Type':'application/json'};
+  const hdrs=ghHeaders({'Content-Type':'application/json'});
   try{
     let sha='';
     const info=await fetch(apiUrl,{headers:hdrs,cache:'no-store'});
@@ -8979,7 +8982,7 @@ function _atrixGateAtivoHoje(){try{return localStorage.getItem(ATRIX_GATE_KEY)==
 function _atrixAtivarGateHoje(){try{localStorage.setItem(ATRIX_GATE_KEY,_atrixTodayStr());}catch(_){}}
 function _atrixLimparGate(){try{localStorage.removeItem(ATRIX_GATE_KEY);}catch(_){}}
 function _atrixGhHeaders(token,extra={}){
-  return {Authorization:'Bearer '+String(token||'').trim(),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...extra};
+  return ghHeaders(extra,token);
 }
 async function _atrixReadGhError(res){
   const txt=await res.text().catch(()=>'');
@@ -11982,12 +11985,12 @@ async function monPublishAudioToGithub(file){
   const api='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+path;
   let sha='';
   try{
-    const info=await fetch(api+'?ref=main',{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
+    const info=await fetch(api+'?ref=main',{headers:ghHeaders({},token),cache:'no-store'});
     if(info.ok){const j=await info.json();sha=j.sha||'';}
   }catch(e){}
   const content=await monFileToBase64(file);
   const body=JSON.stringify({message:'chore(monitor): atualizar audio de alerta',content,...(sha?{sha}:{}),branch:'main'});
-  const res=await fetch(api,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
+  const res=await fetch(api,{method:'PUT',headers:ghHeaders({'Content-Type':'application/json'},token),body});
   if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
   return path+'?v='+Date.now();
 }
@@ -12534,12 +12537,12 @@ async function saveOfsMasterToGithub(blob){
     _ghToast('Atualizando planilha OFS em Fonte…','var(--blue)',5000);
     let sha='';
     try{
-      const info=await fetch(GH_OFS_MASTER_API,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'},cache:'no-store'});
+      const info=await fetch(GH_OFS_MASTER_API,{headers:ghHeaders({},token),cache:'no-store'});
       if(info.ok){const j=await info.json();sha=j.sha||'';}
     }catch(e){console.warn('Falha ao obter SHA da planilha OFS:',e)}
     const content=await ofsBlobToB64(blob);
     const body=JSON.stringify({message:'sync: atualiza Relatorio OFS '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
-    const res=await fetch(GH_OFS_MASTER_API,{method:'PUT',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body});
+    const res=await fetch(GH_OFS_MASTER_API,{method:'PUT',headers:ghHeaders({'Content-Type':'application/json'},token),body});
     if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
     _ghToast('Planilha OFS consolidada em Fonte ✓','var(--green-dk)',7000);
     return true;
@@ -14545,7 +14548,7 @@ if(bootSync){
 /* ?ghtk=<token> — instala o GitHub token no dispositivo e limpa a URL */
 const bootGhTk=bootParams.get('ghtk');
 if(bootGhTk){
-  try{localStorage.setItem(GH_TOKEN_KEY,bootGhTk);}catch(e){}
+  try{localStorage.setItem(GH_TOKEN_KEY,_cleanGhToken(bootGhTk));}catch(e){}
   history.replaceState(null,'',location.pathname);
 }
 if(bootParams.get('resetauth')==='1'){
@@ -14568,6 +14571,81 @@ rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls()
 updateCentralStatus();
 
 // ── Agente Atrix — Runner modal ───────────────────────────────────────────────
+function _atrixPublicUrl(path){
+  return `https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/${path}`;
+}
+async function _fetchAtrixPublicJson(path){
+  const res=await fetch(_atrixPublicUrl(path)+'?t='+Date.now(),{cache:'no-store'});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return await res.json();
+}
+function _fmtAtrixPublicTs(iso){
+  if(!iso)return'--/--/---- --:--:--';
+  const d=new Date(iso);
+  if(isNaN(d.getTime()))return'--/--/---- --:--:--';
+  const p=n=>String(n).padStart(2,'0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function _atrixPublicSummary(updates,gate){
+  let latestAt='',total=0;
+  if(updates&&typeof updates==='object'){
+    Object.values(updates).forEach(up=>{
+      if(up&&up.updatedAt){total++;if(!latestAt||up.updatedAt>latestAt)latestAt=up.updatedAt;}
+    });
+  }
+  const ageMin=latestAt?(Date.now()-new Date(latestAt).getTime())/60000:Infinity;
+  return {
+    total,
+    latestAt,
+    latestText:_fmtAtrixPublicTs(latestAt),
+    ageMin,
+    fresh:ageMin<45,
+    stale:ageMin>180,
+    gateDate:gate&&gate.lastManualTriggerDate||'',
+    gateAt:gate&&gate.lastManualTriggerAt||'',
+    gateToday:gate&&gate.lastManualTriggerDate===_atrixTodayStr()
+  };
+}
+async function fetchAtrixPublicStatus(){
+  const [updates,gate]=await Promise.all([
+    _fetchAtrixPublicJson('data/atrix_updates.json').catch(e=>({__error:e.message})),
+    _fetchAtrixPublicJson(ATRIX_GATE_FILE).catch(e=>({__error:e.message}))
+  ]);
+  return _atrixPublicSummary(updates&&updates.__error?null:updates,gate&&gate.__error?null:gate);
+}
+function _runnerPublicStatusBlock(status){
+  if(!status)return'';
+  const color=status.fresh?'#22c55e':(status.stale?'#f59e0b':'var(--blue)');
+  const label=status.latestAt?(status.fresh?'Atualizado recentemente':(status.stale?'Sem atualização recente':'Atualizado')):'Sem atualização publicada';
+  const gate=status.gateDate?(status.gateToday?'acionado hoje':'último acionamento '+status.gateDate):'sem acionamento registrado';
+  return '<div style="margin:12px 0;background:var(--surface2);border:.5px solid var(--bd);border-radius:9px;padding:12px 14px;text-align:left">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">'
+    +'<strong style="font-size:12.5px;color:var(--tx)">Atualizações públicas</strong>'
+    +'<span style="font-size:10.5px;font-weight:700;color:'+color+'">'+label+'</span>'
+    +'</div>'
+    +'<div style="display:grid;gap:5px;font-size:11.5px;color:var(--tx2);line-height:1.45">'
+    +'<div><i class="ti ti-clock"></i> Última leitura do Atrix: <strong>'+eh(status.latestText)+'</strong></div>'
+    +'<div><i class="ti ti-database"></i> Chamados com atualização publicada: <strong>'+status.total+'</strong></div>'
+    +'<div><i class="ti ti-player-play"></i> Gate do agente: <strong>'+eh(gate)+'</strong></div>'
+    +'<div style="color:var(--tx3)">Esta verificação não usa token e funciona em qualquer dispositivo.</div>'
+    +'</div></div>';
+}
+async function _fetchAtrixRunnerStatus(token){
+  if(!token)return{kind:'no-token'};
+  const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runners`,{
+    headers:ghHeaders({},token),
+    cache:'no-store'
+  });
+  if(!res.ok)return{kind:'error',error:await _atrixReadGhError(res)};
+  const d=await res.json();
+  const runners=d.runners||[];
+  return {
+    kind:'ok',
+    runners,
+    online:runners.filter(r=>r.status==='online'),
+    offline:runners.filter(r=>r.status==='offline')
+  };
+}
 function openRunnerModal(){
   var modal=document.getElementById('modal-runner');
   var body=document.getElementById('runner-modal-body');
@@ -14584,29 +14662,28 @@ function openRunnerModal(){
     localCmd='powershell -Command "Start-Process \''+bat+'\' -Verb RunAs"';
   }
 
-  fetch('https://api.github.com/repos/iatimcll-blip/Acompanhamento-Jarvis/actions/runners',{
-    headers:{Authorization:'token '+tok,Accept:'application/vnd.github.v3+json','User-Agent':'jarvis-panel'}
-  }).then(function(r){return r.json();}).then(function(d){
-    var runners=d.runners||[];
-    var online=runners.filter(function(r){return r.status==='online';});
-    var offline=runners.filter(function(r){return r.status==='offline';});
-    if(online.length>0){
-      body.innerHTML=_runnerOnlineHTML(online.map(function(r){return r.name;}).join(', '));
-    } else if(offline.length>0){
-      body.innerHTML=_runnerOfflineHTML(offline[0].name,localCmd);
-    } else {
-      body.innerHTML=_runnerInstallHTML(localCmd);
+  Promise.all([fetchAtrixPublicStatus(),_fetchAtrixRunnerStatus(tok)]).then(function(results){
+    var publicStatus=results[0],runner=results[1];
+    if(runner.kind==='ok'&&runner.online.length>0){
+      body.innerHTML=_runnerOnlineHTML(runner.online.map(function(r){return r.name;}).join(', '),publicStatus);
+    }else if(runner.kind==='ok'&&runner.offline.length>0){
+      body.innerHTML=_runnerOfflineHTML(runner.offline[0].name,localCmd,publicStatus);
+    }else if(runner.kind==='ok'){
+      body.innerHTML=_runnerInstallHTML(localCmd,'',false,publicStatus);
+    }else{
+      body.innerHTML=_runnerPublicOnlyHTML(publicStatus,localCmd,runner);
     }
   }).catch(function(){
     body.innerHTML=_runnerInstallHTML(localCmd,true);
   });
 }
 
-function _runnerOnlineHTML(name){
+function _runnerOnlineHTML(name,publicStatus){
   return '<div style="text-align:center;padding:12px 0 8px">'
     +'<div style="font-size:40px;margin-bottom:10px">✅</div>'
     +'<div style="font-size:15px;font-weight:700;color:var(--tx)">Agente Online</div>'
-    +'<div style="color:var(--tx3);font-size:12.5px;margin-top:6px">Runner <strong style="color:var(--tx2)">'+name+'</strong> está ativo</div>'
+    +'<div style="color:var(--tx3);font-size:12.5px;margin-top:6px">Runner <strong style="color:var(--tx2)">'+eh(name)+'</strong> está ativo</div>'
+    +_runnerPublicStatusBlock(publicStatus)
     +'<div style="margin:16px 0;background:var(--surface2);border-radius:9px;padding:14px 16px;font-size:12px;color:var(--tx2);text-align:left;border:.5px solid var(--bd)">'
     +'<div style="display:flex;flex-direction:column;gap:7px">'
     +'<div><i class="ti ti-check" style="color:#22c55e"></i> Após clicar em "Iniciar" 1x no dia, o painel dispara o job a cada 30 min — enquanto esta aba estiver aberta e ativa no navegador</div>'
@@ -14617,19 +14694,37 @@ function _runnerOnlineHTML(name){
     +'</div>';
 }
 
-function _runnerOfflineHTML(name,localCmd){
+function _runnerOfflineHTML(name,localCmd,publicStatus){
   var warn='<div style="background:#7c2d1220;border:.5px solid #f59e0b;border-radius:9px;padding:12px 14px;font-size:12px;color:#f59e0b;margin-bottom:14px">'
-    +'<i class="ti ti-alert-triangle"></i> Runner <strong>'+name+'</strong> está registrado mas <strong>offline</strong>. '
+    +'<i class="ti ti-alert-triangle"></i> Runner <strong>'+eh(name)+'</strong> está registrado mas <strong>offline</strong>. '
     +'Verifique se o serviço está rodando na máquina onde foi instalado.</div>';
-  return '<div>'+warn+_runnerInstallHTML(localCmd,'',true)+'</div>';
+  return '<div>'+warn+_runnerInstallHTML(localCmd,'',true,publicStatus)+'</div>';
 }
 
-function _runnerInstallHTML(localCmd,apiErr,skipTitle){
+function _runnerPublicOnlyHTML(publicStatus,localCmd,runner){
+  var privateMsg='';
+  if(runner&&runner.kind==='no-token'){
+    privateMsg='Status privado do runner não consultado neste dispositivo. Para ver online/offline, salve um token com Administration: Read-only.';
+  }else if(runner&&runner.error){
+    privateMsg=_atrixFriendlyGhError(runner.error);
+  }
+  return '<div style="text-align:center;padding:12px 0 8px">'
+    +'<div style="font-size:34px;margin-bottom:8px">☁️</div>'
+    +'<div style="font-size:15px;font-weight:700;color:var(--tx)">Verificação pública ativa</div>'
+    +'<div style="color:var(--tx3);font-size:12.5px;margin-top:6px">As atualizações do Agente Atrix podem ser verificadas sem token neste aparelho.</div>'
+    +_runnerPublicStatusBlock(publicStatus)
+    +(privateMsg?'<div style="background:var(--surface2);border-radius:7px;padding:8px 12px;font-size:11px;color:var(--tx3);margin-bottom:12px;text-align:left">'+eh(privateMsg)+'</div>':'')
+    +_runnerInstallHTML(localCmd,'',true,null)
+    +'</div>';
+}
+
+function _runnerInstallHTML(localCmd,apiErr,skipTitle,publicStatus){
   var out='';
   if(!skipTitle){
     out+='<p style="margin-bottom:14px;font-size:12.5px">O <strong style="color:var(--tx)">Runner</strong> é um serviço Windows que executa o agente na máquina com acesso ao Atrix. Instale <strong>uma única vez</strong> — depois o painel atualiza em qualquer dispositivo.</p>';
     if(apiErr){out+='<div style="background:var(--surface2);border-radius:7px;padding:8px 12px;font-size:11px;color:var(--tx3);margin-bottom:12px">⚠️ Não foi possível verificar o status — verifique a conexão ou tente novamente.</div>';}
   }
+  out+=_runnerPublicStatusBlock(publicStatus);
   if(localCmd){
     out+='<div style="font-size:11px;font-weight:700;color:var(--tx2);margin-bottom:6px">Execute no PowerShell desta máquina (como Administrador):</div>'
       +'<div id="runner-cmd-local" style="position:relative;background:#0d1117;border-radius:8px;padding:11px 14px;font-family:monospace;font-size:11px;color:#c9d1d9;border:.5px solid var(--bd);margin-bottom:10px;overflow-x:auto;white-space:nowrap">'+localCmd+'</div>'
