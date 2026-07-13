@@ -367,15 +367,27 @@
     <div class="mh"><span>🕒 Horários de sobreaviso</span><button onclick="fecharModalJanelas()">✕</button></div>
     <div class="mb">
       <div class="janela-grid">
-        <label>Segunda a Sexta</label>
+        <label>Segunda a Sexta · noite</label>
         <input type="time" id="janSemIni"><input type="time" id="janSemFim">
       </div>
       <div class="janela-grid">
-        <label>Sábado</label>
+        <label>Terça a Sexta · madrugada</label>
+        <input type="time" id="janTerSexIni"><input type="time" id="janTerSexFim">
+      </div>
+      <div class="janela-grid">
+        <label>Sábado · madrugada</label>
+        <input type="time" id="janSabMadrIni"><input type="time" id="janSabMadrFim">
+      </div>
+      <div class="janela-grid">
+        <label>Sábado · tarde</label>
         <input type="time" id="janSabIni"><input type="time" id="janSabFim">
       </div>
       <div class="janela-grid">
-        <label>Domingo e Feriados</label>
+        <label>Domingo/Feriado · madrugada</label>
+        <input type="time" id="janDomMadrIni"><input type="time" id="janDomMadrFim">
+      </div>
+      <div class="janela-grid">
+        <label>Domingo/Feriado · dia/noite</label>
         <input type="time" id="janDomIni"><input type="time" id="janDomFim">
       </div>
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px">
@@ -674,11 +686,44 @@ function mudarPeriodo(){
 /* ================= PERSISTÊNCIA (localStorage — chave própria, independente do DSR Volante) ================= */
 const LS_KEY = 'sobreaviso:v1';
 let STORE = {periodos:{}};
-let CFG_JANELAS = {
+const JANELAS_PADRAO = {
   semana:{ini:'20:00', fim:'23:59'},
+  terSex:{ini:'00:01', fim:'07:00'},
+  sabadoMadrugada:{ini:'00:01', fim:'07:00'},
   sabado:{ini:'14:00', fim:'18:00'},
-  domFer:{ini:'08:00', fim:'18:00'}
+  domFerMadrugada:{ini:'00:01', fim:'07:00'},
+  domFer:{ini:'08:00', fim:'23:59'}
 };
+let CFG_JANELAS = clonarJanelasPadrao();
+
+function clonarJanelasPadrao(){
+  return JSON.parse(JSON.stringify(JANELAS_PADRAO));
+}
+function janelaIgual(a, b){
+  return !!a && !!b && String(a.ini||'')===String(b.ini||'') && String(a.fim||'')===String(b.fim||'');
+}
+function cfgAntigaPadrao(c){
+  return c && !c.terSex && !c.sabadoMadrugada && !c.domFerMadrugada &&
+    janelaIgual(c.semana, {ini:'20:00', fim:'23:59'}) &&
+    janelaIgual(c.sabado, {ini:'14:00', fim:'18:00'}) &&
+    janelaIgual(c.domFer, {ini:'08:00', fim:'18:00'});
+}
+function normalizarJanela(j, padrao){
+  if(!j || typeof j!=='object') return {...padrao};
+  return {
+    ini: j.ini==null ? padrao.ini : String(j.ini),
+    fim: j.fim==null ? padrao.fim : String(j.fim)
+  };
+}
+function normalizarJanelas(cfgJanelas){
+  const n = clonarJanelasPadrao();
+  if(!cfgJanelas || typeof cfgJanelas!=='object') return n;
+  if(cfgAntigaPadrao(cfgJanelas)) return n;
+  Object.keys(n).forEach(k=>{
+    if(cfgJanelas[k]) n[k] = normalizarJanela(cfgJanelas[k], n[k]);
+  });
+  return n;
+}
 
 function lsLoad(){
   try{ const raw = localStorage.getItem(LS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
@@ -753,7 +798,7 @@ function mesclarEstadoRemotoSobreaviso(remoto){
     remoto.funcionarios.forEach(rf=>{
       const nomeKey = String(rf && rf.nome || '').trim().toUpperCase();
       if(!rf || !rf.nome || nomesLocais.has(nomeKey)) return;
-      FUNCIONARIOS.push({nome:rf.nome, tipo:rf.tipo||'Tecnico', equipe:rf.equipe||'', localidade:rf.localidade||'', uf:rf.uf||'', ga:rf.ga||'', go:rf.go||'', ferias:Array.isArray(rf.ferias)?rf.ferias:[], tecnicoVinculado:rf.tecnicoVinculado||'', janelasCustom:rf.janelasCustom||null, ativo:rf.ativo!==false});
+      FUNCIONARIOS.push({nome:rf.nome, tipo:rf.tipo||'Tecnico', equipe:rf.equipe||'', localidade:rf.localidade||'', uf:rf.uf||'', ga:rf.ga||'', go:rf.go||'', ferias:Array.isArray(rf.ferias)?rf.ferias:[], tecnicoVinculado:rf.tecnicoVinculado||'', janelasCustom:rf.janelasCustom?normalizarJanelas(rf.janelasCustom):null, ativo:rf.ativo!==false});
       grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
       nomesLocais.add(nomeKey);
       mudou = true;
@@ -793,9 +838,9 @@ function agendarEnvioRemoto(){
 }
 function atualizarStoreDaMemoria(){
   salvarGridPeriodoAtual();
-  STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, ga:f.ga, go:f.go, ativo:f.ativo, ferias:f.ferias||[], tecnicoVinculado:f.tecnicoVinculado||'', janelasCustom:f.janelasCustom||null}));
+  STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, ga:f.ga, go:f.go, ativo:f.ativo, ferias:f.ferias||[], tecnicoVinculado:f.tecnicoVinculado||'', janelasCustom:f.janelasCustom?normalizarJanelas(f.janelasCustom):null}));
   STORE.cfg = cfg();
-  STORE.janelas = CFG_JANELAS;
+  STORE.janelas = normalizarJanelas(CFG_JANELAS);
   STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
   if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
 }
@@ -894,7 +939,7 @@ function lsSave(){
 }
 function aplicarCfgSalvo(){
   if(STORE.cfg && STORE.cfg.n) document.getElementById('cfgN').value = STORE.cfg.n;
-  if(STORE.janelas) CFG_JANELAS = STORE.janelas;
+  CFG_JANELAS = normalizarJanelas(STORE.janelas || CFG_JANELAS);
 }
 function cfg(){
   return { n: Math.max(1, parseInt(document.getElementById('cfgN').value)||1) };
@@ -903,31 +948,39 @@ function cfgN(){ return cfg().n; }
 
 /* ================= CÁLCULO DE HORAS DE SOBREAVISO ================= */
 function minutosDeJanela(ini, fim){
+  if(!ini || !fim || ini===fim) return 0;
   const [ih,im] = String(ini||'0:0').split(':').map(Number);
   const [fh,fm] = String(fim||'0:0').split(':').map(Number);
   let iniM = (ih||0)*60+(im||0), fimM = (fh||0)*60+(fm||0);
   if(fimM <= iniM) fimM += 1440;
   return fimM - iniM;
 }
+function janelaAtiva(j){
+  return !!j && !!j.ini && !!j.fim && j.ini!==j.fim && minutosDeJanela(j.ini, j.fim)>0;
+}
 function janelasDoColaborador(ei){
   const f = ei!=null ? FUNCIONARIOS[ei] : null;
-  return (f && f.janelasCustom) ? f.janelasCustom : CFG_JANELAS;
+  return normalizarJanelas((f && f.janelasCustom) ? f.janelasCustom : CFG_JANELAS);
 }
-function janelaConfiguradaDoDia(date, ei, feriadoNome){
+function janelasConfiguradasDoDia(date, ei, feriadoNome){
   const f = ei!=null ? FUNCIONARIOS[ei] : null;
   const cfg = janelasDoColaborador(ei);
   const feriado = feriadoNome || (f ? feriadoDoDia(date, f.localidade) : null);
-  if(feriado || date.getDay()===0) return cfg.domFer;
-  if(date.getDay()===6) return cfg.sabado;
-  return cfg.semana;
+  const dow = date.getDay();
+  let janelas;
+  if(feriado || dow===0) janelas = [cfg.domFerMadrugada, cfg.domFer];
+  else if(dow===6) janelas = [cfg.sabadoMadrugada, cfg.sabado];
+  else if(dow>=2 && dow<=5) janelas = [cfg.terSex, cfg.semana];
+  else janelas = [cfg.semana];
+  return janelas.filter(janelaAtiva);
 }
 function janelaDoDia(cel, date, ei){
-  return janelaConfiguradaDoDia(date, ei, cel && cel.feriadoNome);
+  return janelasConfiguradasDoDia(date, ei, cel && cel.feriadoNome);
 }
 function horasSobreavisoDia(cel, date, ei){
   if(cel.st !== 'SOBREAVISO') return 0;
-  const janela = janelaDoDia(cel, date, ei);
-  return Math.round((minutosDeJanela(janela.ini, janela.fim)/60)*10)/10;
+  const mins = janelaDoDia(cel, date, ei).reduce((acc,j)=>acc+minutosDeJanela(j.ini, j.fim), 0);
+  return Math.round((mins/60)*10)/10;
 }
 function calcularHorasSobreaviso(ei){
   if(!grid[ei]) return 0;
@@ -944,18 +997,21 @@ function fmtHoraCompacta(hhmm){
 }
 function fmtJanelaCompacta(cel, date, ei){
   if(cel.st !== 'SOBREAVISO') return '';
-  const j = janelaDoDia(cel, date, ei);
+  const janelas = janelaDoDia(cel, date, ei);
+  if(janelas.length===0) return '';
+  if(janelas.length>1) return `${horasSobreavisoDia(cel, date, ei)}h`;
+  const j = janelas[0];
   return `${fmtHoraCompacta(j.ini)}-${fmtHoraCompacta(j.fim)}`;
 }
 function textoJanelaDia(cel, date, ei){
   if(cel.st !== 'SOBREAVISO') return '';
-  const j = janelaDoDia(cel, date, ei);
+  const janelas = janelaDoDia(cel, date, ei);
   const horas = horasSobreavisoDia(cel, date, ei);
-  return `Sobreaviso: ${j.ini} às ${j.fim} (${horas}h)`;
+  const texto = janelas.length ? janelas.map(j=>`${j.ini} às ${j.fim}`).join(' e ') : 'sem janela configurada';
+  return `Sobreaviso: ${texto} (${horas}h)`;
 }
 function minutosSobreavisoConfigurado(date, ei){
-  const j = janelaConfiguradaDoDia(date, ei);
-  return minutosDeJanela(j.ini, j.fim);
+  return janelasConfiguradasDoDia(date, ei).reduce((acc,j)=>acc+minutosDeJanela(j.ini, j.fim), 0);
 }
 function ordemSemana(dow){ return dow===0 ? 6 : dow-1; }
 function indicesSemanaSobreaviso(di){
@@ -1404,7 +1460,7 @@ function limparTudo(){
   FUNCIONARIOS = [];
   grid = [];
   STORE = {periodos:{}};
-  CFG_JANELAS = {semana:{ini:'20:00',fim:'23:59'}, sabado:{ini:'14:00',fim:'18:00'}, domFer:{ini:'08:00',fim:'18:00'}};
+  CFG_JANELAS = clonarJanelasPadrao();
   colabsSelecionados.clear();
   feriasAbertoEi = -1;
   filtroEquipe=''; filtroTipo=''; filtroColaborador=''; filtroUf=''; filtroLocalidade=''; filtroGa=''; filtroGo='';
@@ -1810,16 +1866,19 @@ function toggleJanelasPainel(ei){
 function renderJanelasPainel(ei){
   const f = FUNCIONARIOS[ei];
   if(!f) return '';
-  const j = f.janelasCustom || CFG_JANELAS;
+  const j = normalizarJanelas(f.janelasCustom || CFG_JANELAS);
   return `<div class="ferias-painel">
     <label class="nc-toggle" style="margin-bottom:8px">
       <input type="checkbox" id="janAtiva-${ei}" ${f.janelasCustom?'checked':''} onchange="document.getElementById('janCampos-${ei}').style.display=this.checked?'grid':'none'">
       Usar horário próprio (substitui o padrão só pra este colaborador)
     </label>
     <div class="janela-grid" id="janCampos-${ei}" style="display:${f.janelasCustom?'grid':'none'}">
-      <label>Segunda a sexta</label><input type="time" id="janIndSemIni-${ei}" value="${j.semana.ini}"><input type="time" id="janIndSemFim-${ei}" value="${j.semana.fim}">
-      <label>Sábado</label><input type="time" id="janIndSabIni-${ei}" value="${j.sabado.ini}"><input type="time" id="janIndSabFim-${ei}" value="${j.sabado.fim}">
-      <label>Domingo e feriados</label><input type="time" id="janIndDomIni-${ei}" value="${j.domFer.ini}"><input type="time" id="janIndDomFim-${ei}" value="${j.domFer.fim}">
+      <label>Segunda a sexta · noite</label><input type="time" id="janIndSemIni-${ei}" value="${j.semana.ini}"><input type="time" id="janIndSemFim-${ei}" value="${j.semana.fim}">
+      <label>Terça a sexta · madrugada</label><input type="time" id="janIndTerSexIni-${ei}" value="${j.terSex.ini}"><input type="time" id="janIndTerSexFim-${ei}" value="${j.terSex.fim}">
+      <label>Sábado · madrugada</label><input type="time" id="janIndSabMadrIni-${ei}" value="${j.sabadoMadrugada.ini}"><input type="time" id="janIndSabMadrFim-${ei}" value="${j.sabadoMadrugada.fim}">
+      <label>Sábado · tarde</label><input type="time" id="janIndSabIni-${ei}" value="${j.sabado.ini}"><input type="time" id="janIndSabFim-${ei}" value="${j.sabado.fim}">
+      <label>Domingo/Feriado · madrugada</label><input type="time" id="janIndDomMadrIni-${ei}" value="${j.domFerMadrugada.ini}"><input type="time" id="janIndDomMadrFim-${ei}" value="${j.domFerMadrugada.fim}">
+      <label>Domingo/Feriado · dia/noite</label><input type="time" id="janIndDomIni-${ei}" value="${j.domFer.ini}"><input type="time" id="janIndDomFim-${ei}" value="${j.domFer.fim}">
     </div>
     <div class="ferias-add-row">
       <button class="btn-primary" onclick="salvarJanelasIndividuais(${ei})">💾 Salvar horário deste colaborador</button>
@@ -1833,11 +1892,14 @@ function salvarJanelasIndividuais(ei){
   if(!ativa){
     f.janelasCustom = null;
   } else {
-    f.janelasCustom = {
-      semana:{ini:document.getElementById('janIndSemIni-'+ei).value||'00:00', fim:document.getElementById('janIndSemFim-'+ei).value||'00:00'},
-      sabado:{ini:document.getElementById('janIndSabIni-'+ei).value||'00:00', fim:document.getElementById('janIndSabFim-'+ei).value||'00:00'},
-      domFer:{ini:document.getElementById('janIndDomIni-'+ei).value||'00:00', fim:document.getElementById('janIndDomFim-'+ei).value||'00:00'}
-    };
+    f.janelasCustom = normalizarJanelas({
+      semana:{ini:document.getElementById('janIndSemIni-'+ei).value||'', fim:document.getElementById('janIndSemFim-'+ei).value||''},
+      terSex:{ini:document.getElementById('janIndTerSexIni-'+ei).value||'', fim:document.getElementById('janIndTerSexFim-'+ei).value||''},
+      sabadoMadrugada:{ini:document.getElementById('janIndSabMadrIni-'+ei).value||'', fim:document.getElementById('janIndSabMadrFim-'+ei).value||''},
+      sabado:{ini:document.getElementById('janIndSabIni-'+ei).value||'', fim:document.getElementById('janIndSabFim-'+ei).value||''},
+      domFerMadrugada:{ini:document.getElementById('janIndDomMadrIni-'+ei).value||'', fim:document.getElementById('janIndDomMadrFim-'+ei).value||''},
+      domFer:{ini:document.getElementById('janIndDomIni-'+ei).value||'', fim:document.getElementById('janIndDomFim-'+ei).value||''}
+    });
   }
   renderAll(); renderListaColab(); lsSave();
 }
@@ -2108,21 +2170,31 @@ function importarBaseXlsx(ev){
 
 /* ================= HORÁRIOS DE SOBREAVISO ================= */
 function abrirModalJanelas(){
+  CFG_JANELAS = normalizarJanelas(CFG_JANELAS);
   document.getElementById('janSemIni').value = CFG_JANELAS.semana.ini;
   document.getElementById('janSemFim').value = CFG_JANELAS.semana.fim;
+  document.getElementById('janTerSexIni').value = CFG_JANELAS.terSex.ini;
+  document.getElementById('janTerSexFim').value = CFG_JANELAS.terSex.fim;
+  document.getElementById('janSabMadrIni').value = CFG_JANELAS.sabadoMadrugada.ini;
+  document.getElementById('janSabMadrFim').value = CFG_JANELAS.sabadoMadrugada.fim;
   document.getElementById('janSabIni').value = CFG_JANELAS.sabado.ini;
   document.getElementById('janSabFim').value = CFG_JANELAS.sabado.fim;
+  document.getElementById('janDomMadrIni').value = CFG_JANELAS.domFerMadrugada.ini;
+  document.getElementById('janDomMadrFim').value = CFG_JANELAS.domFerMadrugada.fim;
   document.getElementById('janDomIni').value = CFG_JANELAS.domFer.ini;
   document.getElementById('janDomFim').value = CFG_JANELAS.domFer.fim;
   document.getElementById('modalJanelas').classList.add('show');
 }
 function fecharModalJanelas(){ document.getElementById('modalJanelas').classList.remove('show'); }
 function salvarJanelas(){
-  CFG_JANELAS = {
-    semana:{ini:document.getElementById('janSemIni').value||'00:00', fim:document.getElementById('janSemFim').value||'00:00'},
-    sabado:{ini:document.getElementById('janSabIni').value||'00:00', fim:document.getElementById('janSabFim').value||'00:00'},
-    domFer:{ini:document.getElementById('janDomIni').value||'00:00', fim:document.getElementById('janDomFim').value||'00:00'}
-  };
+  CFG_JANELAS = normalizarJanelas({
+    semana:{ini:document.getElementById('janSemIni').value||'', fim:document.getElementById('janSemFim').value||''},
+    terSex:{ini:document.getElementById('janTerSexIni').value||'', fim:document.getElementById('janTerSexFim').value||''},
+    sabadoMadrugada:{ini:document.getElementById('janSabMadrIni').value||'', fim:document.getElementById('janSabMadrFim').value||''},
+    sabado:{ini:document.getElementById('janSabIni').value||'', fim:document.getElementById('janSabFim').value||''},
+    domFerMadrugada:{ini:document.getElementById('janDomMadrIni').value||'', fim:document.getElementById('janDomMadrFim').value||''},
+    domFer:{ini:document.getElementById('janDomIni').value||'', fim:document.getElementById('janDomFim').value||''}
+  });
   renderAll(); lsSave();
   fecharModalJanelas();
 }
@@ -2227,10 +2299,10 @@ function iniciar(){
       nome:f.nome, tipo:f.tipo||'Tecnico', equipe:f.equipe||'', localidade:f.localidade||'', uf:f.uf||'', ga:f.ga||'', go:f.go||'',
       ferias: Array.isArray(f.ferias) ? f.ferias : [],
       tecnicoVinculado: f.tecnicoVinculado||'',
-      janelasCustom: f.janelasCustom||null,
+      janelasCustom: f.janelasCustom?normalizarJanelas(f.janelasCustom):null,
       ativo: f.ativo!==false
     }));
-    if(saved.janelas) CFG_JANELAS = saved.janelas;
+    if(saved.janelas) CFG_JANELAS = normalizarJanelas(saved.janelas);
   } else {
     STORE = {periodos:{}};
     // Sem base salva: começa vazio — colaboradores só entram por cadastro manual (👥
