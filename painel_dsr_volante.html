@@ -151,6 +151,7 @@
   .cr-bh{display:flex; align-items:center; gap:6px; font-size:11.5px;}
   .cr-bh input{width:70px; border:1px solid var(--line); border-radius:6px; padding:4px 6px;}
   .cr-bh-total{font-weight:700; white-space:nowrap;}
+  .cr-actions{display:flex; gap:6px;}
   .nc-toggle{display:flex; align-items:center; gap:5px; font-size:11.5px; cursor:pointer; user-select:none; white-space:nowrap;}
   .fer-cidade-tit{font-weight:700; color:var(--navy); font-size:12.5px; margin-bottom:4px;}
   .fer-add-row{display:flex; gap:6px; margin-top:6px;}
@@ -364,7 +365,8 @@
           <select id="colabUf"><option>MA</option><option>PA</option><option>PI</option><option>AM</option><option>AP</option></select>
         </div>
         <div><label>Gestor</label><input id="colabGestor" placeholder="Gestor responsável"></div>
-        <button class="btn-primary" onclick="incluirColaborador()">➕ Incluir</button>
+        <button class="btn-primary" id="btnIncluirColab" onclick="incluirColaborador()">➕ Incluir</button>
+        <button class="btn-ghost" id="btnCancelarEdicao" onclick="cancelarEdicaoColab()" style="display:none">Cancelar edição</button>
       </div>
       <div id="colabLista"></div>
     </div>
@@ -1463,10 +1465,7 @@ document.addEventListener('click', e=>{
 
 /* ================= GERENCIAR COLABORADORES (habilitar/desabilitar + incluir/excluir) ================= */
 function abrirModalColab(){
-  document.getElementById('colabNome').value = '';
-  document.getElementById('colabLocalidade').value = 'São Luis';
-  document.getElementById('colabUf').value = 'MA';
-  document.getElementById('colabGestor').value = (FUNCIONARIOS[0] && FUNCIONARIOS[0].gestor) || '';
+  cancelarEdicaoColab();
   renderListaColab();
   document.getElementById('modalColab').classList.add('show');
 }
@@ -1479,16 +1478,59 @@ function renderListaColab(){
   el.innerHTML = FUNCIONARIOS.map((f,ei)=>{
     const bh = calcularBancoHoras(f, ei);
     return `<div class="colab-row">
-      <div class="cr-name"><b>${f.nome}</b><span>${f.uf} · ${f.localidade}</span></div>
+      <div class="cr-name"><b>${f.nome}</b><span>${f.uf} · ${f.localidade}${f.gestor?(' · Gestor: '+f.gestor):''}</span></div>
       <label class="nc-toggle"><input type="checkbox" ${f.ativo?'checked':''} onchange="toggleAtivo(${ei})"> ${f.ativo?'Ativo':'Inativo'}</label>
       <div class="cr-bh">
         <label style="font-size:10px;color:var(--muted)">Saldo inicial (h)&nbsp;</label>
         <input type="number" step="0.5" value="${f.ajusteBH||0}" onchange="ajustarSaldoInicial(${ei}, this.value)">
         <span class="cr-bh-total">Saldo atual: ${bh>=0?'+':''}${bh}h</span>
       </div>
-      <button class="btn-danger" onclick="removerColaborador(${ei})">✕ Remover</button>
+      <div class="cr-actions">
+        <button class="btn-ghost" onclick="editarColaborador(${ei})">✏ Editar</button>
+        <button class="btn-danger" onclick="removerColaborador(${ei})">✕ Remover</button>
+      </div>
     </div>`;
   }).join('');
+}
+/* Edição em linha: reaproveita o mesmo formulário de inclusão, pré-preenchido — evita ter que
+   remover e recadastrar um colaborador só pra corrigir um erro de digitação. Rastreado pelo
+   NOME original (não pelo índice), porque o índice pode mudar se outra linha for removida ou
+   se a lista for reordenada alfabeticamente enquanto o formulário está aberto. */
+let editandoNomeOriginal = null;
+function editarColaborador(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!f) return;
+  editandoNomeOriginal = f.nome;
+  document.getElementById('colabNome').value = f.nome;
+  document.getElementById('colabLocalidade').value = f.localidade || 'São Luis';
+  document.getElementById('colabUf').value = f.uf || 'MA';
+  document.getElementById('colabGestor').value = f.gestor || '';
+  document.getElementById('btnIncluirColab').textContent = '💾 Salvar edição';
+  document.getElementById('btnCancelarEdicao').style.display = 'inline-block';
+  document.getElementById('colabNome').focus();
+}
+function cancelarEdicaoColab(){
+  editandoNomeOriginal = null;
+  document.getElementById('colabNome').value = '';
+  document.getElementById('colabLocalidade').value = 'São Luis';
+  document.getElementById('colabUf').value = 'MA';
+  document.getElementById('colabGestor').value = (FUNCIONARIOS[0] && FUNCIONARIOS[0].gestor) || '';
+  document.getElementById('btnIncluirColab').textContent = '➕ Incluir';
+  document.getElementById('btnCancelarEdicao').style.display = 'none';
+}
+/* Se o nome mudar durante a edição, migra o histórico de Banco de Horas (guardado por nome em
+   cada período salvo) pro nome novo — sem isso, o saldo de períodos anteriores ficaria "preso"
+   no nome antigo e o colaborador pareceria começar do zero, quebrando a continuidade que o
+   próprio removerColaborador já promete ("se o nome for recadastrado depois, o Banco de Horas
+   retoma de onde parou"). */
+function _migrarHistoricoBancoHoras(nomeAntigo, nomeNovo){
+  if(nomeAntigo === nomeNovo || !STORE.periodos) return;
+  Object.values(STORE.periodos).forEach(p=>{
+    if(p && p.porNome && p.porNome[nomeAntigo] && !p.porNome[nomeNovo]){
+      p.porNome[nomeNovo] = p.porNome[nomeAntigo];
+      delete p.porNome[nomeAntigo];
+    }
+  });
 }
 function toggleAtivo(ei){
   FUNCIONARIOS[ei].ativo = !FUNCIONARIOS[ei].ativo;
@@ -1509,15 +1551,23 @@ function ordenarColaboradoresAZ(){
 function incluirColaborador(){
   const nome = document.getElementById('colabNome').value.trim();
   if(!nome){ alert('Informe o nome do colaborador.'); return; }
-  if(FUNCIONARIOS.some(f=>f.nome.trim().toUpperCase()===nome.toUpperCase())){ alert('Já existe um colaborador com esse nome.'); return; }
+  const idxEditando = editandoNomeOriginal!=null ? FUNCIONARIOS.findIndex(f=>f.nome===editandoNomeOriginal) : -1;
+  const duplicado = FUNCIONARIOS.some((f,i)=> i!==idxEditando && f.nome.trim().toUpperCase()===nome.toUpperCase());
+  if(duplicado){ alert('Já existe um colaborador com esse nome.'); return; }
   const localidade = document.getElementById('colabLocalidade').value;
   const uf = document.getElementById('colabUf').value;
   const gestor = document.getElementById('colabGestor').value.trim();
-  FUNCIONARIOS.push({nome, localidade, uf, gestor, ativo:true, ajusteBH:0});
-  grid.push(DIAS.map(()=>({st:"TRABALHO", lock:false, he:0, plantao:0})));
+  if(idxEditando >= 0){
+    const nomeAntigo = FUNCIONARIOS[idxEditando].nome;
+    if(nomeAntigo !== nome) _migrarHistoricoBancoHoras(nomeAntigo, nome);
+    Object.assign(FUNCIONARIOS[idxEditando], {nome, localidade, uf, gestor});
+  } else {
+    FUNCIONARIOS.push({nome, localidade, uf, gestor, ativo:true, ajusteBH:0});
+    grid.push(DIAS.map(()=>({st:"TRABALHO", lock:false, he:0, plantao:0})));
+  }
   ordenarColaboradoresAZ();
+  cancelarEdicaoColab();
   resolverTudo(); renderAll(); renderListaColab(); lsSave();
-  document.getElementById('colabNome').value = '';
   document.getElementById('colabNome').focus();
 }
 function removerColaborador(ei){
