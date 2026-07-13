@@ -1233,8 +1233,40 @@ function aplicarRodizioAutomatico(){
    âncora pessoal de sobreaviso e sincronização (local e remota) com o DSR Volante. Roda
    depois de QUALQUER alteração (incluir/remover colaborador, importar base, marcar férias
    etc.) — nunca inventa SOBREAVISO/DSR do zero, só ajusta o que a grade já tem. */
+/* Regra fixa de negócio: colaboradores na hierarquia de um G.O. específico sempre descansam
+   no domingo (DSR fixo), independente do rodízio/referência do DSR Volante — roda depois de
+   aplicarDsrDoDsrVolante() de propósito, pra ter prioridade se o colaborador também for
+   compartilhado com o DSR Volante. Comparação por G.O. ignora acento/caixa/espaço (evita
+   depender de digitação idêntica na planilha ou no cadastro manual). */
+const GO_DSR_FIXO_DOMINGO = ['Ivandro Pessoa da Nobrega Alencar'];
+function _normalizarNomeGO(s){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
+}
+function aplicarDsrFixoDomingo(){
+  const alvos = new Set(GO_DSR_FIXO_DOMINGO.map(_normalizarNomeGO));
+  if(!alvos.size) return false;
+  let mudou = false;
+  FUNCIONARIOS.forEach((f, ei)=>{
+    if(!f.ativo || !grid[ei]) return;
+    if(!alvos.has(_normalizarNomeGO(f.go))) return;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(cel.lock) continue; // respeita ajuste manual já feito aqui
+      const domingo = DIAS[d].getDay()===0;
+      if(domingo){
+        if(cel.st !== 'DSR'){ cel.st = 'DSR'; mudou = true; }
+      } else if(cel.st === 'DSR'){
+        // DSR fora do domingo pra quem tem DSR fixo aos domingos — volta a ser sobreaviso.
+        cel.st = 'SOBREAVISO';
+        mudou = true;
+      }
+    }
+  });
+  return mudou;
+}
 function resolverSobreaviso(){
   aplicarDsrDoDsrVolante();
+  aplicarDsrFixoDomingo();
   aplicarFeriados();
   aplicarFeriasCadastradas();
   registrarPrimeiraSobreaviso();
