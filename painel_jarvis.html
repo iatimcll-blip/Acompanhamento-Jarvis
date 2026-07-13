@@ -2409,6 +2409,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .atrix-start-btn.atrix-start-ok,.atrix-start-btn.atrix-start-ok:hover{background:rgba(52,199,89,.14) !important;border-color:var(--green) !important;color:var(--green-dk,#15803d) !important}
 .atrix-start-btn.atrix-start-err,.atrix-start-btn.atrix-start-err:hover{background:rgba(255,59,48,.14) !important;border-color:var(--red) !important;color:var(--red) !important}
 #atrix-sync-countdown.cd-now{color:var(--blue);animation:cdPulse .7s ease-in-out infinite}
+#atrix-sync-countdown.atrix-pausado{color:var(--tx3);animation:none}
 @keyframes cdPulse{0%,100%{opacity:1}50%{opacity:.4}}
 /* ── Atrix Agent: timestamp por chamado no card ── */
 .atrix-card-ts{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--border,rgba(0,0,0,.09));border-radius:5px;padding:1px 5px;margin-left:6px;white-space:nowrap;vertical-align:middle;line-height:1.4;flex-shrink:0}
@@ -8937,6 +8938,13 @@ function _startAtrixCountdown(isoStr){
       el.classList.add('cd-now');
       return;
     }
+    /* aba em segundo plano: o agendador automático está pausado (scheduleAtrixAutoCycle),
+       então o número regressivo ficaria enganoso — mostra o estado real em vez disso. */
+    if(!_atrixPainelAtivo()){
+      el.textContent='pausado (aba inativa)';
+      el.classList.add('atrix-pausado');
+      return;
+    }
     const rem=nextSync-Date.now();
     if(rem<=0){
       el.textContent='atualizando...';
@@ -9059,13 +9067,21 @@ async function triggerAtrixUpdateNow(btn){
 }
 
 /* ── Agendador automático: só começa a rodar depois do primeiro clique do dia
-   em "Iniciar" (trava ATRIX_GATE_KEY), e se repete a cada 30 min enquanto a
-   trava continuar ativa — evita ficar tentando atualizar sozinho o dia todo
-   sem que ninguém tenha confirmado que o agente está disponível hoje. ── */
+   em "Iniciar" (trava ATRIX_GATE_KEY), e só continua repetindo a cada 30 min
+   enquanto ESTE painel estiver aberto e ativo (aba visível) no navegador — se o
+   usuário troca de aba, minimiza ou fecha, os ciclos automáticos param aqui
+   (o agendador só existe em memória desta página); assim que a aba volta a
+   ficar visível, retoma sozinho de onde parou, sem precisar clicar em
+   "Iniciar" de novo (a trava do dia já está ativa). ── */
 let _atrixAutoTimer=null;
+function _atrixPainelAtivo(){
+  return typeof document==='undefined' || document.visibilityState==='visible';
+}
 async function scheduleAtrixAutoCycle(){
   if(_atrixAutoTimer){clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;}
   if(!_atrixGateAtivoHoje())return;
+  if(!_atrixPainelAtivo()){_renderAtrixPausado(true);return;} // retoma sozinho no 'visibilitychange'
+  _renderAtrixPausado(false);
   const AUTO_INTERVAL_MS=30*60*1000;
   try{if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();}catch(_){}
   const lastIso=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
@@ -9077,9 +9093,29 @@ async function scheduleAtrixAutoCycle(){
     _atrixAutoTimer=setTimeout(scheduleAtrixAutoCycle,AUTO_INTERVAL_MS-ageMs);
   }
 }
+function _renderAtrixPausado(pausado){
+  const el=document.getElementById('atrix-sync-countdown');
+  if(!el)return;
+  el.classList.toggle('atrix-pausado',!!pausado);
+  if(pausado){el.title='Atualização automática pausada — volte a esta aba para retomar.';}
+  else{el.removeAttribute('title');}
+}
 function initAtrixAutoUpdate(){
   if(!getGhToken())return;
   scheduleAtrixAutoCycle();
+}
+/* Retoma o agendador assim que o painel volta a ficar visível (usuário volta pra
+   aba) — sem isso, o setTimeout já teria disparado escondido em segundo plano
+   (sujeito a throttling do navegador) mesmo com o usuário longe do painel. */
+if(typeof document!=='undefined'){
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible'&&_atrixGateAtivoHoje()&&getGhToken()){
+      scheduleAtrixAutoCycle();
+    }else if(document.visibilityState!=='visible'&&_atrixAutoTimer){
+      clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;
+      _renderAtrixPausado(true);
+    }
+  });
 }
 
 function _renderAtrixTs(isoStr){
@@ -14465,7 +14501,7 @@ function openRunnerModal(){
   modal.style.display='flex';
   body.innerHTML='<div style="text-align:center;padding:24px 0;color:var(--tx3)"><i class="ti ti-loader-2" style="font-size:24px"></i><br><br>Verificando status do agente...</div>';
 
-  var tok=String.fromCharCode(...[77,66,90,117,64,71,93,109,127,107,104,91,89,102,29,68,69,65,105,75,123,99,72,64,124,112,108,123,125,100,103,127,104,19,26,96,68,71,107,111].map(function(b){return b^42;}));
+  var tok=getGhToken();
 
   // Detect if panel is opened from a local file and compute bat path
   var localCmd='';
@@ -14500,7 +14536,7 @@ function _runnerOnlineHTML(name){
     +'<div style="color:var(--tx3);font-size:12.5px;margin-top:6px">Runner <strong style="color:var(--tx2)">'+name+'</strong> está ativo</div>'
     +'<div style="margin:16px 0;background:var(--surface2);border-radius:9px;padding:14px 16px;font-size:12px;color:var(--tx2);text-align:left;border:.5px solid var(--bd)">'
     +'<div style="display:flex;flex-direction:column;gap:7px">'
-    +'<div><i class="ti ti-check" style="color:#22c55e"></i> GitHub dispara o job a cada 30 minutos automaticamente</div>'
+    +'<div><i class="ti ti-check" style="color:#22c55e"></i> Após clicar em "Iniciar" 1x no dia, o painel dispara o job a cada 30 min — enquanto esta aba estiver aberta e ativa no navegador</div>'
     +'<div><i class="ti ti-check" style="color:#22c55e"></i> O agente acessa o Atrix e grava no GitHub</div>'
     +'<div><i class="ti ti-check" style="color:#22c55e"></i> Este painel atualiza em qualquer dispositivo — sem instalação</div>'
     +'</div></div>'
@@ -14534,7 +14570,7 @@ function _runnerInstallHTML(localCmd,apiErr,skipTitle){
   out+='<div style="background:var(--surface2);border-radius:9px;padding:12px 14px;font-size:11.5px;color:var(--tx3);border:.5px solid var(--bd)">'
     +'<div style="font-weight:700;color:var(--tx2);margin-bottom:8px"><i class="ti ti-info-circle"></i> Como funciona após instalação</div>'
     +'<div style="display:flex;flex-direction:column;gap:6px">'
-    +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">1</span>GitHub dispara job a cada 30 min</div>'
+    +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">1</span>Clique em "Iniciar" no painel 1x no dia — a partir daí, o próprio painel dispara o job a cada 30 min enquanto a aba estiver aberta e ativa</div>'
     +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">2</span>Runner desta máquina executa o agente</div>'
     +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">3</span>Agente lê substatus do Atrix e atualiza o GitHub</div>'
     +'<div><span style="background:#22c55e;color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">✓</span>Painel em qualquer dispositivo reflete as mudanças</div>'
