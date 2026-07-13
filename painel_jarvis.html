@@ -2405,6 +2405,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .atrix-start-btn:hover:not(:disabled){background:var(--blue);color:#fff}
 .atrix-start-btn:disabled{opacity:.55;cursor:default}
 .atrix-start-btn.atrix-start-ok,.atrix-start-btn.atrix-start-ok:hover{background:rgba(52,199,89,.14) !important;border-color:var(--green) !important;color:var(--green-dk,#15803d) !important}
+.atrix-start-btn.atrix-start-warn,.atrix-start-btn.atrix-start-warn:hover{background:rgba(255,149,0,.14) !important;border-color:var(--orange,#ff9500) !important;color:var(--orange,#ff9500) !important}
 .atrix-start-btn.atrix-start-err,.atrix-start-btn.atrix-start-err:hover{background:rgba(255,59,48,.14) !important;border-color:var(--red) !important;color:var(--red) !important}
 #atrix-sync-countdown.cd-now{color:var(--blue);animation:cdPulse .7s ease-in-out infinite}
 #atrix-sync-countdown.atrix-pausado{color:var(--tx3);animation:none}
@@ -8970,19 +8971,65 @@ let _atrixPickupTimer=null;
    preso em fila), a trava é limpa e os ciclos automáticos param até o
    próximo clique manual — evita empilhar execuções presas o dia todo. */
 const ATRIX_GATE_KEY='jarvis:atrix:manualTriggerDate';
+const ATRIX_GATE_FILE='data/atrix-gate.json';
+const ATRIX_WORKFLOW_FILE='atrix-sync.yml';
+const ATRIX_WORKFLOW_ID='305518368';
 function _atrixTodayStr(){const d=new Date();const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
 function _atrixGateAtivoHoje(){try{return localStorage.getItem(ATRIX_GATE_KEY)===_atrixTodayStr();}catch(_){return false;}}
 function _atrixAtivarGateHoje(){try{localStorage.setItem(ATRIX_GATE_KEY,_atrixTodayStr());}catch(_){}}
 function _atrixLimparGate(){try{localStorage.removeItem(ATRIX_GATE_KEY);}catch(_){}}
+function _atrixGhHeaders(token,extra={}){
+  return {Authorization:'Bearer '+String(token||'').trim(),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...extra};
+}
+async function _atrixReadGhError(res){
+  const txt=await res.text().catch(()=>'');
+  let body={};
+  try{body=txt?JSON.parse(txt):{};}catch(_){body={message:txt};}
+  return {
+    status:res.status,
+    statusText:res.statusText||'',
+    message:body.message||txt||('HTTP '+res.status),
+    documentation_url:body.documentation_url||'',
+    acceptedScopes:res.headers.get('x-accepted-oauth-scopes')||'',
+    oauthScopes:res.headers.get('x-oauth-scopes')||''
+  };
+}
+function _atrixFriendlyGhError(err){
+  const msg=String(err&&err.message||'');
+  if(err&&err.status===401)return'Token GitHub inválido ou expirado. Gere/atualize o token nas configurações de sincronização.';
+  if(err&&(err.status===403||err.status===404)&&/Resource not accessible by personal access token|Not Found/i.test(msg)){
+    return'Token GitHub sem permissão para iniciar Actions. Edite o token e marque Actions: Read and write, além de Contents: Read and write.';
+  }
+  if(err&&err.status===404)return'Workflow do Agente Atrix não encontrado ou token sem acesso ao workflow.';
+  if(err&&err.status===422)return'GitHub recusou o dispatch do workflow. Confirme se a branch main está ativa e tente novamente.';
+  return msg||'Falha ao chamar a API do GitHub.';
+}
+function _atrixCanFallbackToGate(err){
+  return !!err&&[403,404].includes(Number(err.status));
+}
+async function _touchAtrixGateRemote(token){
+  const apiUrl=`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/contents/${ATRIX_GATE_FILE}`;
+  let sha='';
+  try{
+    const info=await fetch(apiUrl+'?ref=main',{headers:_atrixGhHeaders(token),cache:'no-store'});
+    if(info.ok){const j=await info.json();sha=j.sha||'';}
+  }catch(_){}
+  const gate={lastManualTriggerDate:_atrixTodayStr(),lastManualTriggerAt:new Date().toISOString(),source:'painel_jarvis'};
+  const content=btoa(unescape(encodeURIComponent(JSON.stringify(gate,null,2))));
+  const body=JSON.stringify({message:`chore: gate Atrix ${gate.lastManualTriggerDate}`,content,branch:'main',...(sha?{sha}:{})});
+  const res=await fetch(apiUrl,{method:'PUT',headers:_atrixGhHeaders(token,{'Content-Type':'application/json'}),body});
+  if(!res.ok)throw await _atrixReadGhError(res);
+  return gate;
+}
 
 async function _cancelarExecucoesPresasAtrix(token){
   try{
-    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/runs?status=queued&per_page=20`,{headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'}});
+    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/runs?status=queued&per_page=20`,{headers:_atrixGhHeaders(token)});
     if(!res.ok)return;
     const data=await res.json();
     const runs=data.workflow_runs||[];
     for(const run of runs){
-      await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json'}}).catch(()=>{});
+      await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:_atrixGhHeaders(token)}).catch(()=>{});
     }
     if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) em fila cancelada(s).`);
   }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas:',e);}
@@ -8992,18 +9039,39 @@ async function _cancelarExecucoesPresasAtrix(token){
    detecta quando o ciclo remoto termina. Usado tanto pelo botão manual "Iniciar"
    quanto pelo agendador automático (scheduleAtrixAutoCycle). */
 async function _dispatchAtrixWorkflow(){
-  const token=getGhToken();
+  const token=String(getGhToken()||'').trim();
   if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
+  let gateOk=false;
+  try{
+    await _touchAtrixGateRemote(token);
+    gateOk=true;
+  }catch(e){
+    console.warn('[Atrix Agent] Falha ao registrar gate remoto:',e);
+  }
   /* Antes de disparar um novo ciclo, cancela execuções presas em fila (ex: runner
      offline) de tentativas anteriores — sem isso, cada nova tentativa só empilhava
      mais uma execução que nunca chegava a rodar. */
   await _cancelarExecucoesPresasAtrix(token);
-  const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/atrix-sync.yml/dispatches`,{
-    method:'POST',
-    headers:{Authorization:'token '+token,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
-    body:JSON.stringify({ref:'main'})
-  });
-  if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status);}
+  const refs=[ATRIX_WORKFLOW_FILE,ATRIX_WORKFLOW_ID].filter((v,i,a)=>v&&a.indexOf(v)===i);
+  let lastErr=null;
+  for(const wf of refs){
+    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${encodeURIComponent(wf)}/dispatches`,{
+      method:'POST',
+      headers:_atrixGhHeaders(token,{'Content-Type':'application/json'}),
+      body:JSON.stringify({ref:'main'})
+    });
+    if(res.ok){lastErr=null;break;}
+    lastErr=await _atrixReadGhError(res);
+    if(lastErr.status!==404)break;
+  }
+  if(lastErr){
+    const friendly=_atrixFriendlyGhError(lastErr);
+    if(gateOk&&_atrixCanFallbackToGate(lastErr)){
+      console.warn('[Atrix Agent] Dispatch imediato falhou, mas o gate remoto foi atualizado:',lastErr);
+      return {gateOnly:true,message:friendly};
+    }
+    throw new Error(friendly);
+  }
   /* o contador mostra "agente rodando…" de forma persistente enquanto o ciclo real
      está em andamento, em vez de exibir o número regressivo, o que dava a falsa
      impressão de que só o timer tinha sido reiniciado. */
@@ -9036,15 +9104,16 @@ async function _dispatchAtrixWorkflow(){
       }
     }
   },60000);
+  return {gateOnly:false};
 }
 
 async function triggerAtrixUpdateNow(btn){
   if(!canEdit())return;
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
-    btn.classList.remove('atrix-start-ok','atrix-start-err');
+    btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');
     btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
-    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-err');btn.innerHTML=orig;},3000);
+    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');btn.innerHTML=orig;},3000);
   };
   btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Iniciando…';
   /* Força puxar agora mesmo o que já estiver publicado em data/atrix_updates.json,
@@ -9052,13 +9121,18 @@ async function triggerAtrixUpdateNow(btn){
      relação a um ciclo que já terminou antes deste clique. */
   if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();
   try{
-    await _dispatchAtrixWorkflow();
-    /* Clique manual bem-sucedido: ativa a trava do dia e (re)liga o agendador
-       automático, que a partir de agora passa a rodar sozinho a cada 30 min. */
+    const result=await _dispatchAtrixWorkflow();
+    /* Clique manual aceito: ativa a trava local do dia. O agendador de 30 min só
+       religa quando o dispatch imediato foi aceito pelo GitHub Actions. */
     _atrixAtivarGateHoje();
-    if(!_atrixAutoTimer)scheduleAtrixAutoCycle();
-    done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
-    _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
+    if(result&&result.gateOnly){
+      done('atrix-start-warn','<i class="ti ti-clock"></i> Habilitado');
+      _ghToast('Agente habilitado pelo gate. Para iniciar imediatamente, ajuste o token com Actions: Read and write.','var(--orange)',9000);
+    }else{
+      if(!_atrixAutoTimer)scheduleAtrixAutoCycle();
+      done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
+      _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
+    }
   }catch(e){
     done('atrix-start-err','<i class="ti ti-x"></i> Erro');
     _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
