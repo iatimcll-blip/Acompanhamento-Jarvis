@@ -683,6 +683,18 @@ const GH_SYNC_API_DSR = 'https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYN
 const GH_TOKEN_KEY = 'atrix:gh-sync-token:v1';
 function ghToken(){ return localStorage.getItem(GH_TOKEN_KEY)||''; }
 function ghSetToken(tok){ if(tok) localStorage.setItem(GH_TOKEN_KEY, tok); else localStorage.removeItem(GH_TOKEN_KEY); }
+/* Marca persistente (chave própria, fora do STORE — sobrevive ao localStorage.removeItem(LS_KEY)
+   de limparTudo()) que registra "acabei de zerar tudo aqui, ainda não confirmei que o arquivo
+   remoto também está vazio". Enquanto ela existir, tanto o pull inicial (ao carregar a página)
+   quanto o envio periódico PULAM a mesclagem com o remoto — sem isso, um GitHub que ainda tem
+   os dados de antes do reset (porque o push de limparTudo() falhou, ou não havia token
+   configurado na hora) ressuscitava colaboradores e escala a cada carregamento de página,
+   mesmo depois do reset já ter limpado tudo localmente. Só é removida quando um envio (forçado
+   ou não) confirma sucesso — ou seja, quando o remoto finalmente reflete o vazio. */
+const LIMPEZA_PENDENTE_KEY = 'sobreaviso:limpezaPendente:v1';
+function _limpezaPendente(){ try{ return localStorage.getItem(LIMPEZA_PENDENTE_KEY)==='1'; }catch(e){ return false; } }
+function _marcarLimpezaPendente(){ try{ localStorage.setItem(LIMPEZA_PENDENTE_KEY, '1'); }catch(e){} }
+function _limparMarcaLimpezaPendente(){ try{ localStorage.removeItem(LIMPEZA_PENDENTE_KEY); }catch(e){} }
 async function ghFetchState(api){
   const token = ghToken();
   const headers = {Accept:'application/vnd.github.v3+json', ...(token?{Authorization:'token '+token}:{})};
@@ -753,30 +765,41 @@ function agendarEnvioRemoto(){
   clearTimeout(_ghPushTimer);
   _ghPushTimer = setTimeout(sincronizarEnviarRemoto, 1500);
 }
-/* forcarSobrescrever=true pula o "pull + mescla" antes de enviar — usado só por limparTudo(),
-   porque mesclar traria de volta do GitHub exatamente os colaboradores/períodos que acabaram
-   de ser apagados aqui (a mescla normal trata "o que só existe remoto" como algo a preservar,
-   o que é o comportamento certo no dia a dia mas o errado logo depois de um reset completo). */
+/* forcarSobrescrever=true pula o "pull + mescla" antes de enviar — usado por limparTudo() (e
+   automaticamente sempre que _limpezaPendente() estiver ativa), porque mesclar traria de volta
+   do GitHub exatamente os colaboradores/períodos que acabaram de ser apagados aqui (a mescla
+   normal trata "o que só existe remoto" como algo a preservar, o que é o comportamento certo
+   no dia a dia mas o errado logo depois de um reset completo). */
 async function sincronizarEnviarRemoto(forcarSobrescrever){
   const status = document.getElementById('ghSyncStatus');
-  if(!ghToken()) return;
+  if(!ghToken()) return {ok:false, reason:'sem-token'};
   try{
     if(status){ status.textContent='Sincronizando…'; status.style.color='var(--muted)'; }
-    if(!forcarSobrescrever){
+    if(!forcarSobrescrever && !_limpezaPendente()){
       const remoto = await ghFetchState(GH_SYNC_API);
       if(remoto) mesclarEstadoRemotoSobreaviso(remoto);
     }
     const r = await ghPushState(GH_SYNC_API, STORE);
+    if(r.ok) _limparMarcaLimpezaPendente(); // remoto confirmado vazio (ou o que quer que STORE seja agora)
     if(status){
       status.textContent = r.ok ? ('Sincronizado às '+new Date().toLocaleTimeString('pt-BR').slice(0,5)) : ('Erro: '+r.reason);
       status.style.color = r.ok ? 'var(--green)' : 'var(--red)';
     }
+    return r;
   }catch(e){
     if(status){ status.textContent = 'Erro: '+e.message; status.style.color='var(--red)'; }
+    return {ok:false, reason:e.message};
   }
 }
 async function sincronizarReceberRemotoInicial(){
   try{
+    if(_limpezaPendente()){
+      // Reset feito antes (aqui ou noutro dispositivo com a mesma marca) ainda não foi
+      // confirmado no remoto — tenta empurrar o vazio de novo em vez de mesclar (o que
+      // ressuscitaria exatamente o que o reset apagou).
+      await sincronizarEnviarRemoto(true);
+      return;
+    }
     const remoto = await ghFetchState(GH_SYNC_API);
     if(remoto){
       const mudou = mesclarEstadoRemotoSobreaviso(remoto);
@@ -1201,9 +1224,15 @@ function limparTudo(){
   clearTimeout(_ghPushTimer);
   clearTimeout(_dsrRemotoTimer);
   clearTimeout(_dsrPullRemotoTimer);
+  // Registrada ANTES do envio: mesmo sem token configurado agora (envio abaixo não faz nada
+  // nesse caso), a marca sobrevive a esta sessão e a recarregamentos de página — sem ela, um
+  // token configurado depois (ou uma recarga que puxa o remoto ainda não sobrescrito) traria
+  // os colaboradores/escala apagados de volta.
+  _marcarLimpezaPendente();
   resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
   // Sobrescreve o arquivo remoto direto (sem mesclar) pra o reset também valer pra quem
-  // acessa de outro dispositivo — só acontece se um token estiver configurado.
+  // acessa de outro dispositivo — só confirma e libera a marca acima se o envio realmente
+  // for bem-sucedido (precisa de token configurado).
   sincronizarEnviarRemoto(true);
 }
 
