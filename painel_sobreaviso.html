@@ -1046,6 +1046,21 @@ function agendarPullDsrRemoto(){
     }catch(e){ console.warn('Falha ao buscar DSR do DSR Volante remoto:', e); }
   }, 1500);
 }
+/* Se o Painel DSR Volante já estiver aberto numa aba e o usuário mexer nele (recalcular,
+   travar um dia, trocar de período etc.), essa aba grava direto na chave de localStorage
+   'dsrVolante:v1' — mas se ESTA aba (Sobreaviso) já estava aberta antes disso, ela não
+   perceberia sozinha (localStorage não empurra mudança pra quem já carregou a página).
+   Escuta o evento nativo 'storage' (disparado pelo navegador nas OUTRAS abas da mesma
+   origem sempre que essa chave muda) e recalcula tudo — reaplica a referência de DSR
+   por cima do rodízio, sem precisar dar F5. Espelha o mesmo listener que o Painel DSR
+   Volante já tem pro sentido contrário (SOBREAVISO). */
+window.addEventListener('storage', function(e){
+  if(e.key !== DSR_LS_KEY || periodoAno==null) return;
+  resolverSobreaviso();
+  renderAll();
+  renderListaColab();
+  lsSave();
+});
 
 /* Ordena os ativos pela ÂNCORA pessoal de sobreaviso (data da 1ª marcação de cada um, manual ou
    gerada) — quem tem âncora mais antiga entra primeiro no rodízio; quem ainda não tem nenhuma
