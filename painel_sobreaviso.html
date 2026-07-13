@@ -753,13 +753,19 @@ function agendarEnvioRemoto(){
   clearTimeout(_ghPushTimer);
   _ghPushTimer = setTimeout(sincronizarEnviarRemoto, 1500);
 }
-async function sincronizarEnviarRemoto(){
+/* forcarSobrescrever=true pula o "pull + mescla" antes de enviar — usado só por limparTudo(),
+   porque mesclar traria de volta do GitHub exatamente os colaboradores/períodos que acabaram
+   de ser apagados aqui (a mescla normal trata "o que só existe remoto" como algo a preservar,
+   o que é o comportamento certo no dia a dia mas o errado logo depois de um reset completo). */
+async function sincronizarEnviarRemoto(forcarSobrescrever){
   const status = document.getElementById('ghSyncStatus');
   if(!ghToken()) return;
   try{
     if(status){ status.textContent='Sincronizando…'; status.style.color='var(--muted)'; }
-    const remoto = await ghFetchState(GH_SYNC_API);
-    if(remoto) mesclarEstadoRemotoSobreaviso(remoto);
+    if(!forcarSobrescrever){
+      const remoto = await ghFetchState(GH_SYNC_API);
+      if(remoto) mesclarEstadoRemotoSobreaviso(remoto);
+    }
     const r = await ghPushState(GH_SYNC_API, STORE);
     if(status){
       status.textContent = r.ok ? ('Sincronizado às '+new Date().toLocaleTimeString('pt-BR').slice(0,5)) : ('Erro: '+r.reason);
@@ -1187,9 +1193,18 @@ function limparTudo(){
   CFG_JANELAS = {semana:{ini:'20:00',fim:'23:59'}, sabado:{ini:'14:00',fim:'18:00'}, domFer:{ini:'08:00',fim:'18:00'}};
   colabsSelecionados.clear();
   feriasAbertoEi = -1;
-  filtroEquipe = ''; filtroTipo = '';
+  filtroEquipe=''; filtroTipo=''; filtroColaborador=''; filtroUf=''; filtroLocalidade=''; filtroGa=''; filtroGo='';
   document.getElementById('cfgN').value = 1;
-  resolverSobreaviso(); renderAll(); lsSave();
+  // Cancela qualquer sincronização remota pendente (debounced) — ela ainda tentaria mesclar
+  // com o que existia no GitHub ANTES do reset, trazendo de volta colaboradores/escala que
+  // acabaram de ser apagados aqui.
+  clearTimeout(_ghPushTimer);
+  clearTimeout(_dsrRemotoTimer);
+  clearTimeout(_dsrPullRemotoTimer);
+  resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
+  // Sobrescreve o arquivo remoto direto (sem mesclar) pra o reset também valer pra quem
+  // acessa de outro dispositivo — só acontece se um token estiver configurado.
+  sincronizarEnviarRemoto(true);
 }
 
 /* ================= AUDITORIA ================= */
