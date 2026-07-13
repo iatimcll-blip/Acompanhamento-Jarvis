@@ -284,7 +284,7 @@
 
 <div class="wrap">
   <div class="panel">
-    <h2>Escala – clique em um dia para ajustar (o restante se reorganiza automaticamente)</h2>
+    <h2>Escala – clique em um dia para ajustar ou importe uma programação por datas</h2>
     <div id="selecaoInfo" style="display:none; padding:7px 16px; font-size:11px; color:var(--navy); background:#EAF0FF; border-bottom:1px solid var(--line)">
       <span id="selecaoTexto"></span> · <a href="#" onclick="limparSelecaoColab();return false;" style="color:var(--navy)">Limpar seleção</a>
     </div>
@@ -333,10 +333,10 @@
     <div class="mh"><span>👥 Gerenciar colaboradores</span><button onclick="fecharModalColab()">✕</button></div>
     <div class="mb">
       <div class="import-info">
-        <b>Importar base:</b> planilha XLSX com colunas <b>Colaborador</b>, <b>Função</b> (Técnico ou Oficial), <b>Equipe</b>, <b>UF</b>, <b>Localidade</b>, <b>G.A</b> e <b>G.O</b> (as últimas 5 são opcionais). Localidade e UF não são fixas — vêm exatamente como estiverem na planilha. Nomes já cadastrados têm os demais campos atualizados; nomes novos entram como ativos.
+        <b>Importar base/escala:</b> planilha XLSX com colunas <b>Colaborador</b>, <b>Função</b> (Técnico ou Oficial), <b>Equipe</b>, <b>UF</b>, <b>Localidade</b>, <b>G.A</b> e <b>G.O</b> (opcionais). Se houver colunas com datas, o painel também importa a programação diária (<b>Sobreaviso</b>, <b>DSR</b>, <b>Livre</b>, férias/ausências etc.) e deixa as células travadas para preservar o que foi planejado.
         <div style="margin-top:8px">
           <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none" onchange="importarBaseXlsx(event)">
-          <button class="btn-ghost" onclick="document.getElementById('importFile').click()">⬆ Importar base (XLSX)</button>
+          <button class="btn-ghost" onclick="document.getElementById('importFile').click()">⬆ Importar base/escala (XLSX)</button>
         </div>
       </div>
       <div class="colab-add">
@@ -648,6 +648,10 @@ function popularSelectPeriodo(){
     const p = parsePeriodoKey(STORE.periodoAtual);
     if(p.ano && p.mes && !periodoAntesDoMinimo(p.ano,p.mes) && !opts.some(o=>o.ano===p.ano && o.mes===p.mes)) opts.push(p);
   }
+  Object.keys(STORE.periodos||{}).forEach(k=>{
+    const p = parsePeriodoKey(k);
+    if(p.ano && p.mes && !periodoAntesDoMinimo(p.ano,p.mes) && !opts.some(o=>o.ano===p.ano && o.mes===p.mes)) opts.push(p);
+  });
   opts.sort((a,b)=> (a.ano*12+a.mes) - (b.ano*12+b.mes));
   sel.innerHTML = opts.map(o=>{
     const {d0,d1} = periodoDatas(o.ano,o.mes);
@@ -744,12 +748,13 @@ function mesclarEstadoRemotoSobreaviso(remoto){
   if(!remoto || typeof remoto!=='object') return false;
   let mudou = false;
   if(Array.isArray(remoto.funcionarios)){
-    const nomesLocais = new Set(FUNCIONARIOS.map(f=>f.nome));
+    const nomesLocais = new Set(FUNCIONARIOS.map(f=>String(f.nome||'').trim().toUpperCase()));
     remoto.funcionarios.forEach(rf=>{
-      if(!rf || !rf.nome || nomesLocais.has(rf.nome)) return;
+      const nomeKey = String(rf && rf.nome || '').trim().toUpperCase();
+      if(!rf || !rf.nome || nomesLocais.has(nomeKey)) return;
       FUNCIONARIOS.push({nome:rf.nome, tipo:rf.tipo||'Tecnico', equipe:rf.equipe||'', localidade:rf.localidade||'', uf:rf.uf||'', ga:rf.ga||'', go:rf.go||'', ferias:Array.isArray(rf.ferias)?rf.ferias:[], tecnicoVinculado:rf.tecnicoVinculado||'', janelasCustom:rf.janelasCustom||null, ativo:rf.ativo!==false});
       grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
-      nomesLocais.add(rf.nome);
+      nomesLocais.add(nomeKey);
       mudou = true;
     });
   }
@@ -775,9 +780,30 @@ function mesclarEstadoRemotoSobreaviso(remoto){
   return mudou;
 }
 let _ghPushTimer = null;
+let _syncRemotoInicialConcluido = false;
+let _envioRemotoPendenteAposInicial = false;
 function agendarEnvioRemoto(){
   clearTimeout(_ghPushTimer);
+  if(!_syncRemotoInicialConcluido && !_limpezaPendente()){
+    _envioRemotoPendenteAposInicial = true;
+    return;
+  }
   _ghPushTimer = setTimeout(sincronizarEnviarRemoto, 1500);
+}
+function atualizarStoreDaMemoria(){
+  salvarGridPeriodoAtual();
+  STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, ga:f.ga, go:f.go, ativo:f.ativo, ferias:f.ferias||[], tecnicoVinculado:f.tecnicoVinculado||'', janelasCustom:f.janelasCustom||null}));
+  STORE.cfg = cfg();
+  STORE.janelas = CFG_JANELAS;
+  STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
+  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+}
+function liberarEnvioRemotoInicial(){
+  _syncRemotoInicialConcluido = true;
+  if(_envioRemotoPendenteAposInicial){
+    _envioRemotoPendenteAposInicial = false;
+    agendarEnvioRemoto();
+  }
 }
 /* forcarSobrescrever=true pula o "pull + mescla" antes de enviar — usado por limparTudo() (e
    automaticamente sempre que _limpezaPendente() estiver ativa), porque mesclar traria de volta
@@ -791,8 +817,12 @@ async function sincronizarEnviarRemoto(forcarSobrescrever){
     if(status){ status.textContent='Sincronizando…'; status.style.color='var(--muted)'; }
     if(!forcarSobrescrever && !_limpezaPendente()){
       const remoto = await ghFetchState(GH_SYNC_API);
-      if(remoto) mesclarEstadoRemotoSobreaviso(remoto);
+      if(remoto){
+        const mudou = mesclarEstadoRemotoSobreaviso(remoto);
+        if(mudou){ resolverSobreaviso(); renderAll(); renderListaColab(); }
+      }
     }
+    atualizarStoreDaMemoria();
     const r = await ghPushState(GH_SYNC_API, STORE);
     if(r.ok) _limparMarcaLimpezaPendente(); // remoto confirmado vazio (ou o que quer que STORE seja agora)
     if(status){
@@ -820,6 +850,7 @@ async function sincronizarReceberRemotoInicial(){
       if(mudou){ resolverSobreaviso(); renderAll(); renderListaColab(); lsSave(); }
     }
   }catch(e){ console.warn('Falha ao buscar estado remoto do Sobreaviso:', e); }
+  finally{ liberarEnvioRemotoInicial(); }
 }
 function abrirModalSync(){
   const el = document.getElementById('ghSyncTokenInput');
@@ -855,12 +886,7 @@ function salvarGridPeriodoAtual(){
 }
 function lsSave(){
   try{
-    salvarGridPeriodoAtual();
-    STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, ga:f.ga, go:f.go, ativo:f.ativo, ferias:f.ferias||[], tecnicoVinculado:f.tecnicoVinculado||'', janelasCustom:f.janelasCustom||null}));
-    STORE.cfg = cfg();
-    STORE.janelas = CFG_JANELAS;
-    STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
-    if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+    atualizarStoreDaMemoria();
     localStorage.setItem(LS_KEY, JSON.stringify(STORE));
     agendarEnvioRemoto();
   }catch(e){ console.warn('Falha ao salvar estado local:', e); }
@@ -1794,34 +1820,156 @@ function removerColaborador(ei){
   grid.splice(ei,1);
   resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
 }
-/* Importa/atualiza colaboradores a partir de uma planilha XLSX com colunas Colaborador, Função
-   (Técnico/Oficial), Equipe, UF, Localidade, G.A e G.O — o cabeçalho é normalizado (sem acento/
-   pontuação/caixa) então "Função", "funcao" ou "FUNÇÃO" batem igual, assim como "G.A"/"GA"/"g a".
-   Localidade e UF NÃO são fixas: vêm inteiramente da planilha (ou de texto livre no cadastro
-   manual). Nomes já cadastrados têm os demais campos atualizados; novos entram como ativos. */
+/* Importa/atualiza colaboradores a partir de uma planilha XLSX. Além da base simples
+   (Colaborador, Função, Equipe, UF, Localidade, G.A e G.O), também aceita colunas de datas:
+   cada célula preenchida com SOBREAVISO/DSR/LIVRE/etc. vira programação travada na grade. */
+function _normImportKey(s){
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function _textoImport(v){
+  if(v==null) return '';
+  if(v instanceof Date && !isNaN(v.getTime())) return fmtFull(v);
+  return String(v).replace(/\s+/g,' ').trim();
+}
+function _dataSemHora(d){
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function _anoParaDataImport(dia, mes){
+  const baseAno = periodoAno || new Date().getFullYear();
+  const baseMes = periodoMes || new Date().getMonth()+1;
+  const {d0,d1} = periodoDatas(baseAno, baseMes);
+  const ini = _dataSemHora(d0), fim = _dataSemHora(d1);
+  for(const ano of [baseAno-1, baseAno, baseAno+1]){
+    const dt = new Date(ano, mes-1, dia);
+    if(dt>=ini && dt<=fim) return ano;
+  }
+  return baseAno;
+}
+function _parseDataImport(v){
+  if(v instanceof Date && !isNaN(v.getTime())) return _dataSemHora(v);
+  if(typeof v==='number' && isFinite(v)){
+    const p = XLSX.SSF && XLSX.SSF.parse_date_code ? XLSX.SSF.parse_date_code(v) : null;
+    if(p && p.y && p.m && p.d) return new Date(p.y, p.m-1, p.d);
+  }
+  const s = _textoImport(v);
+  if(!s) return null;
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if(m){
+    const dt = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    return isNaN(dt.getTime()) ? null : _dataSemHora(dt);
+  }
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?$/);
+  if(m){
+    const dia = Number(m[1]), mes = Number(m[2]);
+    if(dia<1 || dia>31 || mes<1 || mes>12) return null;
+    let ano = m[3] ? Number(m[3]) : _anoParaDataImport(dia, mes);
+    if(ano<100) ano += 2000;
+    const dt = new Date(ano, mes-1, dia);
+    return isNaN(dt.getTime()) ? null : _dataSemHora(dt);
+  }
+  if(/\d{4}/.test(s)){
+    const t = Date.parse(s);
+    if(!isNaN(t)) return _dataSemHora(new Date(t));
+  }
+  return null;
+}
+function _periodoDaData(date){
+  let ano = date.getFullYear(), mes = date.getMonth()+1;
+  if(date.getDate()<15){ mes--; if(mes===0){ mes=12; ano--; } }
+  return {ano, mes, key:periodoKey(ano, mes)};
+}
+function _linhaVaziaPeriodo(ndias){
+  return Array.from({length:ndias}, ()=>({st:"LIVRE", lock:false, feriadoNome:""}));
+}
+function _aplicarProgramacaoImportada(nome, date, status){
+  const per = _periodoDaData(date);
+  if(periodoAntesDoMinimo(per.ano, per.mes)) return {ok:false, key:per.key};
+  const {d0, ndias} = periodoDatas(per.ano, per.mes);
+  const idx = Math.round((_dataSemHora(date)-_dataSemHora(d0))/86400000);
+  if(idx<0 || idx>=ndias) return {ok:false, key:per.key};
+  if(!STORE.periodos) STORE.periodos = {};
+  if(!STORE.periodos[per.key]) STORE.periodos[per.key] = {porNome:{}};
+  const porNome = STORE.periodos[per.key].porNome;
+  let cels = porNome[nome];
+  if(!Array.isArray(cels) || cels.length!==ndias) cels = _linhaVaziaPeriodo(ndias);
+  const atual = cels[idx] || {st:"LIVRE", lock:false, feriadoNome:""};
+  cels[idx] = {st:status, lock:true, feriadoNome:atual.feriadoNome||''};
+  porNome[nome] = cels;
+  if(periodoAno!=null && per.key===periodoKeyAtual()){
+    const ei = FUNCIONARIOS.findIndex(f=>f.nome.trim().toUpperCase()===nome.trim().toUpperCase());
+    if(ei>=0){
+      if(!grid[ei] || grid[ei].length!==NDIAS) grid[ei] = _linhaVaziaPeriodo(NDIAS);
+      grid[ei][idx] = {st:status, lock:true, feriadoNome:grid[ei][idx] && grid[ei][idx].feriadoNome || ''};
+    }
+  }
+  return {ok:true, key:per.key};
+}
+function _statusImportado(v){
+  const texto = _textoImport(v).replace(/\([^)]*\)/g,'').trim();
+  if(!texto) return null;
+  const n = _normImportKey(texto);
+  if(!n || n==='na' || n==='nan' || n==='null') return null;
+  if(['x','s','sim','sobreaviso','sobreav','sob','plantao','prontidao'].includes(n)) return 'SOBREAVISO';
+  if(['livre','l'].includes(n)) return 'LIVRE';
+  const porStatus = OPCOES.find(o=>_normImportKey(o)===n);
+  if(porStatus) return porStatus;
+  const porLabel = Object.entries(ST).find(([,cfg])=>_normImportKey(cfg.lbl)===n);
+  return porLabel ? porLabel[0] : null;
+}
+function _indiceCampoImport(header, nomes){
+  const alvos = nomes.map(_normImportKey);
+  return header.findIndex(h=>alvos.includes(_normImportKey(h)));
+}
+function _localizarCabecalhoImport(aoa){
+  let melhor = {idx:-1, score:0};
+  aoa.forEach((row,idx)=>{
+    const vals = (row||[]).map(_normImportKey);
+    if(!vals.some(v=>['colaborador','nome','funcionario','funcionarios'].includes(v))) return;
+    const score = vals.reduce((acc,v)=> acc + (['funcao','tipo','equipe','uf','localidade','ga','go'].includes(v)?1:0), 1);
+    if(score>melhor.score) melhor = {idx, score};
+  });
+  return melhor.idx;
+}
+function _colunasDataImport(aoa, headerIdx, header){
+  const maxCols = Math.max(...aoa.map(r=>(r||[]).length), header.length);
+  const cols = [];
+  for(let c=0; c<maxCols; c++){
+    const data = _parseDataImport(header[c]) || _parseDataImport(aoa[headerIdx-1] && aoa[headerIdx-1][c]) || _parseDataImport(aoa[headerIdx-2] && aoa[headerIdx-2][c]);
+    if(data) cols.push({idx:c, data});
+  }
+  return cols;
+}
 function importarBaseXlsx(ev){
   const file = ev.target.files[0];
   if(!file) return;
   const reader = new FileReader();
   reader.onload = (e)=>{
     try{
-      const wb = XLSX.read(e.target.result, {type:'array'});
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-      const normKey = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
-      let incluidos=0, atualizados=0;
-      rows.forEach(r=>{
-        const chave = k => { const alvo=normKey(k); const found = Object.keys(r).find(x=>normKey(x)===alvo); return found ? String(r[found]).trim() : ''; };
-        const nome = chave('colaborador') || chave('nome');
+      const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
+      const headerIdx = _localizarCabecalhoImport(aoa);
+      if(headerIdx<0) throw new Error('Não encontrei uma linha de cabeçalho com a coluna Colaborador/Nome.');
+      const header = (aoa[headerIdx]||[]).map(_textoImport);
+      const idxNome = _indiceCampoImport(header, ['colaborador','nome','funcionario','funcionarios']);
+      const dateCols = _colunasDataImport(aoa, headerIdx, header);
+      const campo = (row, nomes)=>{
+        const idx = _indiceCampoImport(header, nomes);
+        return idx>=0 ? _textoImport(row[idx]) : '';
+      };
+      let incluidos=0, atualizados=0, programados=0, ignorados=0, linhasValidas=0, primeiroPeriodoProgramado='';
+      aoa.slice(headerIdx+1).forEach(row=>{
+        const nome = _textoImport(row[idxNome]);
         if(!nome) return;
-        const tipoRaw = (chave('funcao') || chave('tipo')).toLowerCase();
-        const tipo = tipoRaw.startsWith('ofic') ? 'Oficial' : 'Tecnico';
-        const equipe = chave('equipe');
-        const uf = chave('uf');
-        const localidade = chave('localidade');
-        const ga = chave('ga');
-        const go = chave('go');
+        linhasValidas++;
         const existente = FUNCIONARIOS.find(f=>f.nome.trim().toUpperCase()===nome.toUpperCase());
+        const tipoRaw = (campo(row, ['funcao','função','tipo']) || '').toLowerCase();
+        const tipo = tipoRaw ? (tipoRaw.startsWith('ofic') ? 'Oficial' : 'Tecnico') : (existente ? existente.tipo : 'Tecnico');
+        const equipe = campo(row, ['equipe']);
+        const uf = campo(row, ['uf']);
+        const localidade = campo(row, ['localidade','cidade']);
+        const ga = campo(row, ['ga','g.a','g a']);
+        const go = campo(row, ['go','g.o','g o']);
         if(existente){
           existente.tipo = tipo;
           if(equipe) existente.equipe = equipe;
@@ -1835,10 +1983,31 @@ function importarBaseXlsx(ev){
           grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
           incluidos++;
         }
+        dateCols.forEach(col=>{
+          const status = _statusImportado(row[col.idx]);
+          if(!status) return;
+          const r = _aplicarProgramacaoImportada(nome, col.data, status);
+          if(r.ok){
+            programados++;
+            if(!primeiroPeriodoProgramado) primeiroPeriodoProgramado = r.key;
+          } else {
+            ignorados++;
+          }
+        });
       });
+      if(!linhasValidas) throw new Error('Nenhum colaborador válido foi encontrado abaixo do cabeçalho.');
       ordenarColaboradoresAZ();
-      resolverSobreaviso(); renderAll(); renderListaColab(); atualizarDatalists(); lsSave();
-      alert(`Importação concluída: ${incluidos} incluído(s), ${atualizados} atualizado(s).`);
+      popularSelectPeriodo();
+      if(primeiroPeriodoProgramado && primeiroPeriodoProgramado!==periodoKeyAtual()){
+        const p = parsePeriodoKey(primeiroPeriodoProgramado);
+        carregarPeriodo(p.ano, p.mes);
+      } else {
+        resolverSobreaviso(); renderAll(); renderListaColab(); atualizarDatalists(); lsSave();
+      }
+      let msg = `Importação concluída: ${incluidos} incluído(s), ${atualizados} atualizado(s).`;
+      if(dateCols.length) msg += ` Programação: ${programados} célula(s) de data importada(s).`;
+      if(ignorados) msg += ` ${ignorados} célula(s) ignorada(s) por data fora do período mínimo.`;
+      alert(msg);
     }catch(err){
       alert('Erro ao importar a planilha: '+err.message);
     }
@@ -1940,8 +2109,8 @@ function removerFeriadoMunicipal(cidade, idx){
 /* ================= EXPORT XLSX ================= */
 function exportarXlsx(){
   const aoa = [];
-  aoa.push(["","","","","","","", ...DIAS.map(d=>d)]);
-  aoa.push(["","","","","","","", ...DIAS.map(d=>DOWPT[d.getDay()])]);
+  aoa.push(["","","","","","","","", ...DIAS.map(d=>d)]);
+  aoa.push(["","","","","","","","", ...DIAS.map(d=>DOWPT[d.getDay()])]);
   aoa.push(["COLABORADOR","FUNÇÃO","EQUIPE","UF","LOCALIDADE","G.A","G.O","HORAS SOBREAVISO (h)", ...DIAS.map(()=> "")]);
   FUNCIONARIOS.forEach((f,ei)=>{
     if(!f.ativo) return; // exportação sempre só com colaboradores ativos

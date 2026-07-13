@@ -724,12 +724,13 @@ function mesclarEstadoRemotoDsr(remoto){
   if(!remoto || typeof remoto!=='object') return false;
   let mudou = false;
   if(Array.isArray(remoto.funcionarios)){
-    const nomesLocais = new Set(FUNCIONARIOS.map(f=>f.nome));
+    const nomesLocais = new Set(FUNCIONARIOS.map(f=>String(f.nome||'').trim().toUpperCase()));
     remoto.funcionarios.forEach(rf=>{
-      if(!rf || !rf.nome || nomesLocais.has(rf.nome)) return;
+      const nomeKey = String(rf && rf.nome || '').trim().toUpperCase();
+      if(!rf || !rf.nome || nomesLocais.has(nomeKey)) return;
       FUNCIONARIOS.push({nome:rf.nome, localidade:rf.localidade||'', uf:rf.uf||'', gestor:rf.gestor||'', ativo:rf.ativo!==false, ajusteBH:Number(rf.ajusteBH)||0});
       grid.push(DIAS.map(()=>({st:"TRABALHO", lock:false, he:0, plantao:0})));
-      nomesLocais.add(rf.nome);
+      nomesLocais.add(nomeKey);
       mudou = true;
     });
   }
@@ -758,9 +759,29 @@ function mesclarEstadoRemotoDsr(remoto){
   return mudou;
 }
 let _ghPushTimer = null;
+let _syncRemotoInicialConcluido = false;
+let _envioRemotoPendenteAposInicial = false;
 function agendarEnvioRemoto(){
   clearTimeout(_ghPushTimer);
+  if(!_syncRemotoInicialConcluido){
+    _envioRemotoPendenteAposInicial = true;
+    return;
+  }
   _ghPushTimer = setTimeout(sincronizarEnviarRemoto, 1500);
+}
+function atualizarStoreDaMemoria(){
+  salvarGridPeriodoAtual();
+  STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, localidade:f.localidade, uf:f.uf, gestor:f.gestor, ativo:f.ativo, ajusteBH:f.ajusteBH}));
+  STORE.cfg = cfg();
+  STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
+  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+}
+function liberarEnvioRemotoInicial(){
+  _syncRemotoInicialConcluido = true;
+  if(_envioRemotoPendenteAposInicial){
+    _envioRemotoPendenteAposInicial = false;
+    agendarEnvioRemoto();
+  }
 }
 async function sincronizarEnviarRemoto(){
   const status = document.getElementById('ghSyncStatus');
@@ -768,7 +789,11 @@ async function sincronizarEnviarRemoto(){
   try{
     if(status){ status.textContent='Sincronizando…'; status.style.color='var(--muted)'; }
     const remoto = await ghFetchState(GH_SYNC_API);
-    if(remoto) mesclarEstadoRemotoDsr(remoto);
+    if(remoto){
+      const mudou = mesclarEstadoRemotoDsr(remoto);
+      if(mudou){ resolverTudo(); renderAll(); renderListaColab(); }
+    }
+    atualizarStoreDaMemoria();
     const r = await ghPushState(GH_SYNC_API, STORE);
     if(status){
       status.textContent = r.ok ? ('Sincronizado às '+new Date().toLocaleTimeString('pt-BR').slice(0,5)) : ('Erro: '+r.reason);
@@ -786,6 +811,7 @@ async function sincronizarReceberRemotoInicial(){
       if(mudou){ resolverTudo(); renderAll(); renderListaColab(); lsSave(); }
     }
   }catch(e){ console.warn('Falha ao buscar estado remoto:', e); }
+  finally{ liberarEnvioRemotoInicial(); }
 }
 function abrirModalSync(){
   const el = document.getElementById('ghSyncTokenInput');
@@ -824,11 +850,7 @@ function salvarGridPeriodoAtual(){
 }
 function lsSave(){
   try{
-    salvarGridPeriodoAtual();
-    STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, localidade:f.localidade, uf:f.uf, gestor:f.gestor, ativo:f.ativo, ajusteBH:f.ajusteBH}));
-    STORE.cfg = cfg();
-    STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
-    if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+    atualizarStoreDaMemoria();
     localStorage.setItem(LS_KEY, JSON.stringify(STORE));
     agendarEnvioRemoto();
   }catch(e){ console.warn('Falha ao salvar estado local:', e); }
