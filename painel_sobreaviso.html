@@ -230,6 +230,7 @@
 <div class="toolbar">
   <button class="btn-primary" onclick="gerarEscala()" title="Gera SOBREAVISO/DSR automaticamente pra quem não estiver travado — única ação que roda o rodízio automático">⚙ Gerar escala automática</button>
   <button class="btn-navy" onclick="resolverSobreaviso(); renderAll(); lsSave();" title="Reaplica referência de DSR do DSR Volante, feriados, férias e sincronização — não gera SOBREAVISO/DSR novo, só ajusta o que a grade já tem">↻ Recalcular (mantém ajustes)</button>
+  <button class="btn-ghost" onclick="abrirModalAtribuirSemana()" title="Marca uma semana inteira (segunda a domingo) como Sobreaviso pro(s) colaborador(es) selecionado(s) — selecione o checkbox na grade antes">📅 Atribuir semana</button>
   <div class="grp">
     <label>Período</label>
     <select id="cfgPeriodo" onchange="mudarPeriodo()"></select>
@@ -311,7 +312,7 @@
   <button class="btn-ghost" id="regrasBtn" onclick="toggleRegras()">📖 Regras <span id="regrasSeta">▾</span></button>
   <div class="note" id="notaRegras" style="display:none">
     <b>Sobreaviso (art. 244, §2º da CLT):</b> o colaborador permanece em regime de prontidão, fora do local de trabalho, aguardando ser chamado a qualquer momento; cada hora de sobreaviso é remunerada à razão de 1/3 do valor da hora normal (o painel calcula as <b>horas</b> de sobreaviso, não o valor monetário — isso depende do salário-hora de cada colaborador).<br>
-    <b>Colaboradores novos (cadastro manual ou importação de base) sempre entram com a grade em branco (LIVRE)</b> — nada é gerado automaticamente; o único jeito de preencher SOBREAVISO/DSR é clicar em cada dia manualmente ou clicar no botão <b>⚙ Gerar escala automática</b>, que roda o rodízio abaixo (regras 2 e 3) uma única vez, respeitando os dias já travados (🔒). <b>Regras aplicadas quando o rodízio automático é gerado (ou reaplicadas sobre ajustes manuais, conforme o caso):</b> (1) Nenhum colaborador ativo fica mais de <b>6 dias seguidos em sobreaviso</b> — o mesmo limite de dias consecutivos do Painel DSR Volante; (2) O <b>DSR é volante e antecipado</b>: na semana em que o colaborador está escalado pro plantão, o próprio dia de descanso dele vira a <b>segunda-feira</b> daquela semana (já começa descansado, antes de entrar de prontidão) — o restante da semana (terça a domingo, no máximo 6 dias) fica de sobreaviso; essa regra só vale pra quem NÃO está cadastrado também no Painel DSR Volante — pra colaboradores em comum, o dia de descanso é decidido por lá (ver regra 9); (3) O rodízio é <b>semanal</b>: a cada semana, um grupo de <b>N colaboradores</b> (configurável em "Simultâneos/dia") assume o sobreaviso — os grupos são fatias fixas e sem sobreposição da lista de ativos ordenada pela <b>âncora pessoal</b> de cada um (a data da primeira vez que apareceu de sobreaviso na grade, manual ou gerada — quem entrou primeiro no sistema roda primeiro), garantindo revezamento justo e estável ao longo do tempo; se a quantidade de ativos não for múltipla de N, o último grupo do ciclo fica menor, e a auditoria de cobertura avisa quando isso deixa algum dia abaixo do N configurado; (4) As <b>horas de sobreaviso</b> são calculadas a partir das janelas configuradas em "🕒 Horários de sobreaviso" — dias úteis (segunda a sexta), sábado e domingo/feriados têm janelas próprias; feriados nacionais e municipais usam a janela de domingo/feriado mesmo quando caem num dia de semana; (5) Ajustes manuais (clique numa célula) ficam travados (🔒) e o motor preserva esses dias ao recalcular, sem sobrescrever; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — continuam visíveis (e reativáveis) só dentro de Gerenciar colaboradores; (7) A auditoria avisa quando a <b>cobertura mínima diária</b> configurada (N simultâneos) não é atingida num dia (segunda-feira não conta, é o dia de DSR de quem está de plantão naquela semana) — geralmente por causa de ajustes manuais ou ausências (férias, atestado etc.) do colaborador escalado, exigindo substituição manual; (8) A <b>importação de base</b> (👥 Gerenciar colaboradores → Importar base) aceita uma planilha XLSX com colunas Colaborador, Função (Técnico/Oficial), Equipe, UF, Localidade, G.A e G.O — Localidade e UF não são fixas, vêm exatamente como estiverem na planilha; nomes já cadastrados são atualizados, nomes novos são incluídos como ativos; (9) Quando um colaborador desta escala tem o <b>mesmo nome</b> cadastrado no <a href="painel_dsr_volante.html" style="color:var(--purple)">Painel DSR Volante</a>, a sincronização é de <b>mão dupla, cada direção com sua referência</b>: os dias marcados aqui como <b>Sobreaviso</b> são aplicados automaticamente lá (travado 🔒), porque é este motor quem decide quem está de prontidão; já o dia de <b>DSR</b> (descanso) desse colaborador passa a ser decidido <b>pelo Painel DSR Volante</b> — que é quem tem a auditoria de domingo garantido, feriados e banco de horas — e vem de lá pra cá, substituindo a regra 2 ("DSR volante e antecipado") só para quem está em comum nos dois painéis; cada direção só adiciona/ajusta o que lhe compete e nunca sobrescreve um dia já travado manualmente do outro lado — se um ajuste manual mudar depois, o lado correspondente precisa ser revisado lá também; (10) O botão <b>🏖 Férias</b> na lista de colaboradores (dentro de Gerenciar colaboradores) permite cadastrar períodos de férias (data início/fim) — os dias dentro do período são marcados automaticamente como Férias na grade, tirando o colaborador do sobreaviso naqueles dias; se isso deixar a cobertura de alguma semana abaixo do configurado, a auditoria avisa pra o gestor escalar manualmente outro colaborador naqueles dias; (11) Marcando o checkbox de um ou mais colaboradores (ou "selecionar todos" no cabeçalho da grade, que respeita os filtros ativos no momento), o próximo ajuste feito num dia da grade aplica em todos os marcados de uma vez — dá pra editar 1, vários ou todos os colaboradores juntos; (12) O botão <b>🗑 Limpar tudo</b> apaga todos os colaboradores, toda a escala salva (todos os períodos), os períodos de férias e as configurações deste Painel Sobreaviso — não afeta o Painel DSR Volante nem outros painéis, e não pode ser desfeito; (13) Colaboradores com Função <b>Oficial</b> podem ter um <b>vínculo manual</b> com um Técnico específico (campo "Técnico vinculado" ao cadastrar/editar, dentro de Gerenciar colaboradores) — é só uma referência organizacional escolhida pelo gestor (não é automática por Equipe) e aparece como 🔗 na lista de colaboradores e na grade; se o Técnico vinculado for removido ou o nome mudar, o vínculo é atualizado ou limpo automaticamente; (14) Cada colaborador pode ter um <b>horário de sobreaviso próprio</b> (botão 🕒 Horário na lista de colaboradores), que substitui a configuração global só pros dias dele quando ativado — sem isso marcado, o colaborador usa sempre a janela global configurada em "🕒 Horários de sobreaviso"; (15) O botão <b>☁ Sincronização</b> compartilha esta escala entre qualquer navegador/dispositivo, gravando o estado num arquivo do repositório GitHub — sem token configurado, o dispositivo ainda recebe as atualizações de outros (leitura); com o token (configurável uma única vez por dispositivo, e reaproveitado pelo Painel DSR Volante e pelo Painel Jarvis), ele também envia as próprias mudanças; a mesma sincronização também é quem leva a mão dupla da regra 9 (Sobreaviso pra lá, DSR de lá pra cá) entre os arquivos remotos dos dois painéis, pra coincidir mesmo quando abertos em aparelhos diferentes; (16) Os filtros da barra de ferramentas (<b>Colaborador, Função, Equipe, UF, Localidade, G.A e G.O</b>) só afetam a <b>visualização</b> — escondem linhas da grade e do "selecionar todos", mas não tiram ninguém do rodízio automático nem da auditoria; os filtros por Equipe/UF/Localidade/G.A/G.O são combináveis entre si (E lógico) e listam só valores realmente cadastrados nos colaboradores; o de Colaborador é busca livre por parte do nome; o botão <b>✕ Limpar filtros</b> reseta todos de uma vez.
+    <b>Colaboradores novos (cadastro manual ou importação de base) sempre entram com a grade em branco (LIVRE)</b> — nada é gerado automaticamente; o único jeito de preencher SOBREAVISO/DSR é clicar em cada dia manualmente ou clicar no botão <b>⚙ Gerar escala automática</b>, que roda o rodízio abaixo (regras 2 e 3) uma única vez, respeitando os dias já travados (🔒). <b>Regras aplicadas quando o rodízio automático é gerado (ou reaplicadas sobre ajustes manuais, conforme o caso):</b> (1) Nenhum colaborador ativo fica mais de <b>6 dias seguidos em sobreaviso</b> — o mesmo limite de dias consecutivos do Painel DSR Volante; (2) O <b>DSR é volante e antecipado</b>: na semana em que o colaborador está escalado pro plantão, o próprio dia de descanso dele vira a <b>segunda-feira</b> daquela semana (já começa descansado, antes de entrar de prontidão) — o restante da semana (terça a domingo, no máximo 6 dias) fica de sobreaviso; essa regra só vale pra quem NÃO está cadastrado também no Painel DSR Volante — pra colaboradores em comum, o dia de descanso é decidido por lá (ver regra 9); (3) O rodízio é <b>semanal</b>: a cada semana, um grupo de <b>N colaboradores</b> (configurável em "Simultâneos/dia") assume o sobreaviso — os grupos são fatias fixas e sem sobreposição da lista de ativos ordenada pela <b>âncora pessoal</b> de cada um (a data da primeira vez que apareceu de sobreaviso na grade, manual ou gerada — quem entrou primeiro no sistema roda primeiro), garantindo revezamento justo e estável ao longo do tempo; se a quantidade de ativos não for múltipla de N, o último grupo do ciclo fica menor, e a auditoria de cobertura avisa quando isso deixa algum dia abaixo do N configurado; (4) As <b>horas de sobreaviso</b> são calculadas a partir das janelas configuradas em "🕒 Horários de sobreaviso" — dias úteis (segunda a sexta), sábado e domingo/feriados têm janelas próprias; feriados nacionais e municipais usam a janela de domingo/feriado mesmo quando caem num dia de semana; (5) Ajustes manuais (clique numa célula) ficam travados (🔒) e o motor preserva esses dias ao recalcular, sem sobrescrever; (6) Colaboradores desabilitados em <b>Gerenciar colaboradores</b> saem do motor automático, da auditoria e da grade principal — continuam visíveis (e reativáveis) só dentro de Gerenciar colaboradores; (7) A auditoria avisa quando a <b>cobertura mínima diária</b> configurada (N simultâneos) não é atingida em qualquer dia do período (todo dia conta, já que numa escala manual o dia de descanso de cada um pode ser diferente) — geralmente por causa de ajustes manuais ou ausências (férias, atestado etc.) do colaborador escalado, exigindo substituição manual; (8) A <b>importação de base</b> (👥 Gerenciar colaboradores → Importar base) aceita uma planilha XLSX com colunas Colaborador, Função (Técnico/Oficial), Equipe, UF, Localidade, G.A e G.O — Localidade e UF não são fixas, vêm exatamente como estiverem na planilha; nomes já cadastrados são atualizados, nomes novos são incluídos como ativos; (9) Quando um colaborador desta escala tem o <b>mesmo nome</b> cadastrado no <a href="painel_dsr_volante.html" style="color:var(--purple)">Painel DSR Volante</a>, a sincronização é de <b>mão dupla, cada direção com sua referência</b>: os dias marcados aqui como <b>Sobreaviso</b> são aplicados automaticamente lá (travado 🔒), porque é este motor quem decide quem está de prontidão; já o dia de <b>DSR</b> (descanso) desse colaborador passa a ser decidido <b>pelo Painel DSR Volante</b> — que é quem tem a auditoria de domingo garantido, feriados e banco de horas — e vem de lá pra cá, substituindo a regra 2 ("DSR volante e antecipado") só para quem está em comum nos dois painéis; cada direção só adiciona/ajusta o que lhe compete e nunca sobrescreve um dia já travado manualmente do outro lado — se um ajuste manual mudar depois, o lado correspondente precisa ser revisado lá também; (10) O botão <b>🏖 Férias</b> na lista de colaboradores (dentro de Gerenciar colaboradores) permite cadastrar períodos de férias (data início/fim) — os dias dentro do período são marcados automaticamente como Férias na grade, tirando o colaborador do sobreaviso naqueles dias; se isso deixar a cobertura de alguma semana abaixo do configurado, a auditoria avisa pra o gestor escalar manualmente outro colaborador naqueles dias; (11) Marcando o checkbox de um ou mais colaboradores (ou "selecionar todos" no cabeçalho da grade, que respeita os filtros ativos no momento), o próximo ajuste feito num dia da grade aplica em todos os marcados de uma vez — dá pra editar 1, vários ou todos os colaboradores juntos; (12) O botão <b>🗑 Limpar tudo</b> apaga todos os colaboradores, toda a escala salva (todos os períodos), os períodos de férias e as configurações deste Painel Sobreaviso — não afeta o Painel DSR Volante nem outros painéis, e não pode ser desfeito; (13) Colaboradores com Função <b>Oficial</b> podem ter um <b>vínculo manual</b> com um Técnico específico (campo "Técnico vinculado" ao cadastrar/editar, dentro de Gerenciar colaboradores) — é só uma referência organizacional escolhida pelo gestor (não é automática por Equipe) e aparece como 🔗 na lista de colaboradores e na grade; se o Técnico vinculado for removido ou o nome mudar, o vínculo é atualizado ou limpo automaticamente; (14) Cada colaborador pode ter um <b>horário de sobreaviso próprio</b> (botão 🕒 Horário na lista de colaboradores), que substitui a configuração global só pros dias dele quando ativado — sem isso marcado, o colaborador usa sempre a janela global configurada em "🕒 Horários de sobreaviso"; (15) O botão <b>☁ Sincronização</b> compartilha esta escala entre qualquer navegador/dispositivo, gravando o estado num arquivo do repositório GitHub — sem token configurado, o dispositivo ainda recebe as atualizações de outros (leitura); com o token (configurável uma única vez por dispositivo, e reaproveitado pelo Painel DSR Volante e pelo Painel Jarvis), ele também envia as próprias mudanças; a mesma sincronização também é quem leva a mão dupla da regra 9 (Sobreaviso pra lá, DSR de lá pra cá) entre os arquivos remotos dos dois painéis, pra coincidir mesmo quando abertos em aparelhos diferentes; (16) Os filtros da barra de ferramentas (<b>Colaborador, Função, Equipe, UF, Localidade, G.A e G.O</b>) só afetam a <b>visualização</b> — escondem linhas da grade e do "selecionar todos", mas não tiram ninguém do rodízio automático nem da auditoria; os filtros por Equipe/UF/Localidade/G.A/G.O são combináveis entre si (E lógico) e listam só valores realmente cadastrados nos colaboradores; o de Colaborador é busca livre por parte do nome; o botão <b>✕ Limpar filtros</b> reseta todos de uma vez; (17) O botão <b>📅 Atribuir semana</b> marca uma semana inteira (<b>segunda a domingo</b>, 7 dias) como Sobreaviso de uma vez pro(s) colaborador(es) selecionado(s) (mesmo checkbox usado nos ajustes por célula) — é o jeito rápido de montar a escala manualmente respeitando o padrão de blocos semanais, intercalando de colaborador pra colaborador a cada semana (feche o modal, selecione o próximo e escolha a segunda-feira seguinte); sobrescreve o que já estiver nesses 7 dias e trava (🔒) cada célula, igual a um ajuste manual célula a célula.
   </div>
 </div>
 
@@ -409,6 +410,19 @@
       </div>
       <div id="ghSyncStatus" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
       <button class="btn-ghost" onclick="sincronizarAgoraManual()">🔄 Sincronizar agora</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="modalAtribuirSemana">
+  <div class="modal-box" style="width:min(420px,100%)">
+    <div class="mh"><span>📅 Atribuir semana de sobreaviso</span><button onclick="fecharModalAtribuirSemana()">✕</button></div>
+    <div class="mb">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Marca uma semana inteira (<b>segunda a domingo</b>, 7 dias) como <b>Sobreaviso</b> pro(s) colaborador(es) selecionado(s) — sobrescreve o que já estiver nesses dias. Pra intercalar, feche este modal, selecione o próximo colaborador e escolha a segunda-feira seguinte.</p>
+      <div id="atribuirSemanaAlvo" style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:10px"></div>
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">Segunda-feira de início</label>
+      <input type="date" id="atribuirSemanaData" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:7px 8px;font-size:12.5px;margin-bottom:14px">
+      <button class="btn-primary" style="width:100%" onclick="confirmarAtribuirSemana()">Aplicar Sobreaviso na semana</button>
     </div>
   </div>
 </div>
@@ -1220,6 +1234,56 @@ function limparAjustes(){
   grid.forEach(r=>r.forEach(c=>{c.lock=false;}));
   resolverSobreaviso(); renderAll(); lsSave();
 }
+
+/* ================= ATRIBUIÇÃO MANUAL DE SEMANA (segunda a domingo) ================= */
+/* Regra do cadastro manual: sobreaviso roda em blocos de uma semana inteira (segunda a
+   domingo), intercalando de colaborador pra colaborador a cada semana — em vez de forçar
+   os 7 dias um por um no popover, esse atalho marca a semana toda de uma vez pro(s)
+   colaborador(es) selecionado(s) (mesmo checkbox usado nos ajustes por célula). */
+function abrirModalAtribuirSemana(){
+  if(colabsSelecionados.size===0){ alert('Selecione ao menos um colaborador (checkbox na coluna da esquerda da grade) antes de atribuir a semana.'); return; }
+  const nomes = [...colabsSelecionados].map(ei=>FUNCIONARIOS[ei] && FUNCIONARIOS[ei].nome).filter(Boolean).join(', ');
+  document.getElementById('atribuirSemanaAlvo').textContent = `Colaborador(es) selecionado(s): ${nomes}`;
+  document.getElementById('atribuirSemanaData').value = '';
+  document.getElementById('modalAtribuirSemana').classList.add('show');
+}
+function fecharModalAtribuirSemana(){ document.getElementById('modalAtribuirSemana').classList.remove('show'); }
+/* Acha o índice em DIAS que corresponde a um Date qualquer (comparando ano/mês/dia, sem
+   conversão de fuso) — retorna -1 se a data cai fora do período atualmente carregado. */
+function _indiceDoDia(dataAlvo){
+  for(let i=0;i<DIAS.length;i++){
+    const d = DIAS[i];
+    if(d.getFullYear()===dataAlvo.getFullYear() && d.getMonth()===dataAlvo.getMonth() && d.getDate()===dataAlvo.getDate()) return i;
+  }
+  return -1;
+}
+function confirmarAtribuirSemana(){
+  const dataStr = document.getElementById('atribuirSemanaData').value;
+  if(!dataStr){ alert('Escolha a segunda-feira de início.'); return; }
+  const inicio = new Date(dataStr+'T00:00:00');
+  if(isNaN(inicio.getTime())){ alert('Data inválida.'); return; }
+  if(inicio.getDay() !== 1){ alert('A data escolhida precisa ser uma segunda-feira.'); return; }
+  if(colabsSelecionados.size===0){ alert('Nenhum colaborador selecionado.'); return; }
+  let diasAplicados = 0;
+  for(let k=0; k<7; k++){
+    const dia = new Date(inicio);
+    dia.setDate(dia.getDate()+k);
+    const idx = _indiceDoDia(dia);
+    if(idx===-1) continue; // fora do período atualmente carregado — ignora esse dia específico
+    colabsSelecionados.forEach(ei=>{
+      if(!grid[ei]) return;
+      grid[ei][idx].st = 'SOBREAVISO';
+      grid[ei][idx].lock = true;
+    });
+    diasAplicados++;
+  }
+  if(diasAplicados===0){ alert('Essa semana está totalmente fora do período atual (' + fmtFull(D0) + ' a ' + fmtFull(periodoDatas(periodoAno,periodoMes).d1) + ').'); return; }
+  resolverSobreaviso();
+  renderAll();
+  renderListaColab();
+  lsSave();
+  fecharModalAtribuirSemana();
+}
 /* Reset completo: apaga colaboradores, toda a escala salva (todos os períodos), férias e
    configurações deste painel — não mexe no Painel DSR Volante nem em outros painéis. */
 function limparTudo(){
@@ -1277,7 +1341,10 @@ function auditar(){
 
   let minCob = Infinity, minDia = null;
   for(let d=0; d<NDIAS; d++){
-    if(DIAS[d].getDay()===1) continue; // segunda é o dia de DSR antecipado de quem está de plantão naquela semana — não conta cobertura
+    // A exceção de segunda-feira foi removida: com o rodízio automático não rodando mais
+    // sozinho (só quando "Gerar escala automática" é clicado) e a escala podendo ser 100%
+    // manual, o dia de descanso de cada colaborador pode ser qualquer um — não faz mais
+    // sentido tratar toda segunda como universalmente esperada de cobertura baixa.
     let cobertos = 0;
     ativosIdx.forEach(ei=>{ if(grid[ei][d].st==='SOBREAVISO') cobertos++; });
     if(cobertos < minCob){ minCob = cobertos; minDia = d; }
