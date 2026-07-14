@@ -6540,8 +6540,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <span id="atrix-sync-ts">--/--/---- --:--:--</span>
               <span class="atrix-sync-sep">·</span>
               <i class="ti ti-clock" style="font-size:10px;opacity:.7"></i>
-              <span id="atrix-sync-countdown" title="Próxima sincronização automática">--:--</span>
-              <button class="atrix-start-btn admin-only" id="atrix-start-btn" onclick="triggerAtrixUpdateNow(this)" title="Inicia o agente agora, sem esperar o ciclo automático. O contador reinicia para a próxima atualização automática."><i class="ti ti-player-play"></i> Iniciar</button>
+              <span id="atrix-sync-countdown" title="Atualização manual pelo botão Iniciar">manual</span>
+              <button class="atrix-start-btn admin-only" id="atrix-start-btn" onclick="triggerAtrixUpdateNow(this)" title="Inicia uma atualização do Agente Atrix agora. O agente permanece online e o status publicado funciona em qualquer dispositivo."><i class="ti ti-player-play"></i> Iniciar</button>
             </span>
           </div>
           <div id="sub-ab"></div>
@@ -8251,7 +8251,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);setTimeout(initAtrixAutoUpdate,4000);
+  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -8270,7 +8270,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);setTimeout(initAtrixAutoUpdate,4000);
+      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
       return;
     }
   }
@@ -8930,51 +8930,28 @@ function _startAtrixCountdown(isoStr){
   if(_atrixCdTimer){clearInterval(_atrixCdTimer);_atrixCdTimer=null;}
   const el=document.getElementById('atrix-sync-countdown');
   if(!el)return;
-  const INTERVAL_MS=30*60*1000;
-  const nextSync=new Date(new Date(isoStr).getTime()+INTERVAL_MS);
-  const pad=n=>String(n).padStart(2,'0');
   function tick(){
-    el.classList.remove('cd-soon','cd-now');
-    /* enquanto um ciclo disparado pelo botão "Iniciar" está de fato rodando no
-       agente remoto, mostra isso de forma persistente em vez do número regressivo
-       — senão o usuário só vê o timer reiniciar e acha que nada mais aconteceu. */
+    el.classList.remove('cd-soon','cd-now','atrix-pausado');
     if(_atrixRunningNow){
       el.textContent='agente rodando…';
       el.classList.add('cd-now');
+      el.title='Atualização iniciada pelo botão Iniciar em andamento';
       return;
     }
-    /* aba em segundo plano: o agendador automático está pausado (scheduleAtrixAutoCycle),
-       então o número regressivo ficaria enganoso — mostra o estado real em vez disso. */
-    if(!_atrixPainelAtivo()){
-      el.textContent='pausado (aba inativa)';
-      el.classList.add('atrix-pausado');
-      return;
-    }
-    const rem=nextSync-Date.now();
-    if(rem<=0){
-      el.textContent='atualizando...';
-      el.classList.add('cd-now');
-      clearInterval(_atrixCdTimer);_atrixCdTimer=null;
-      setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},500);
-      return;
-    }
-    const totalSec=Math.ceil(rem/1000);
-    const min=Math.floor(totalSec/60);
-    const sec=totalSec%60;
-    el.textContent=`${pad(min)}:${pad(sec)}`;
-    if(rem<5*60*1000)el.classList.add('cd-soon');
+    el.textContent='manual';
+    el.title='Sem agendamento automático: novas leituras só pelo botão Iniciar';
+    clearInterval(_atrixCdTimer);_atrixCdTimer=null;
   }
   tick();
-  _atrixCdTimer=setInterval(tick,1000);
+  if(_atrixRunningNow)_atrixCdTimer=setInterval(tick,1000);
 }
 
 let _atrixPickupTimer=null;
 
-/* ── Trava diária + limpeza de execuções presas ──────────────────────────────
-   Regra: ciclos automáticos só rodam a partir do primeiro clique do dia em
-   "Iniciar". Se um ciclo não conseguir concluir (ex: runner offline, fica
-   preso em fila), a trava é limpa e os ciclos automáticos param até o
-   próximo clique manual — evita empilhar execuções presas o dia todo. */
+/* ── Gate público + limpeza de execuções presas ──────────────────────────────
+   Regra: atualização do Atrix só é disparada pelo botão "Iniciar". O gate remoto
+   registra o último clique para qualquer dispositivo consultar; não existe mais
+   schedule automático no painel nem no workflow. */
 const ATRIX_GATE_KEY='jarvis:atrix:manualTriggerDate';
 const ATRIX_GATE_FILE='data/atrix-gate.json';
 const ATRIX_WORKFLOW_FILE='atrix-sync.yml';
@@ -9041,8 +9018,7 @@ async function _cancelarExecucoesPresasAtrix(token){
 }
 
 /* Dispara o workflow_dispatch do Atrix Agent no GitHub Actions e liga o polling que
-   detecta quando o ciclo remoto termina. Usado tanto pelo botão manual "Iniciar"
-   quanto pelo agendador automático (scheduleAtrixAutoCycle). */
+   detecta quando o ciclo remoto termina. Usado somente pelo botão "Iniciar". */
 async function _dispatchAtrixWorkflow(){
   const token=String(getGhToken()||'').trim();
   if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
@@ -9085,9 +9061,9 @@ async function _dispatchAtrixWorkflow(){
   const triggeredAt=new Date().toISOString();
   _startAtrixCountdown(triggeredAt);
   /* polling periódico (em vez de checagem única) para refletir o resultado deste
-     ciclo assim que o agente (rodando em outra máquina) terminar, sem esperar os
-     30 min inteiros do próximo ciclo automático. O ciclo completo (checkout + npm ci
-     + playwright + varrer os chamados um a um no Atrix) mede na prática ~15 min. */
+     ciclo assim que o agente (rodando em outra máquina) terminar. O ciclo completo
+     (checkout + npm ci + playwright + varrer os chamados um a um no Atrix) mede
+     na prática ~15 min. */
   clearInterval(_atrixPickupTimer);
   let atrixPickupTries=0;
   _atrixPickupTimer=setInterval(async()=>{
@@ -9098,14 +9074,10 @@ async function _dispatchAtrixWorkflow(){
     if(sucesso||atrixPickupTries>=18){
       clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
       _atrixRunningNow=false;
+      _startAtrixCountdown(lastUpdate||triggeredAt);
       if(typeof renderTAb==='function')renderTAb();
       if(!sucesso){
-        /* Não concluiu dentro do tempo esperado (provável runner indisponível) —
-           limpa a trava diária e para o agendador automático até o próximo clique
-           manual em "Iniciar". */
-        _atrixLimparGate();
-        if(_atrixAutoTimer){clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;}
-        console.warn('[Atrix Agent] Ciclo não concluiu dentro do tempo esperado — atualizações automáticas pausadas até o próximo clique em "Iniciar".');
+        console.warn('[Atrix Agent] Ciclo não concluiu dentro do tempo esperado.');
       }
     }
   },60000);
@@ -9127,14 +9099,13 @@ async function triggerAtrixUpdateNow(btn){
   if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();
   try{
     const result=await _dispatchAtrixWorkflow();
-    /* Clique manual aceito: ativa a trava local do dia. O agendador de 30 min só
-       religa quando o dispatch imediato foi aceito pelo GitHub Actions. */
+    /* Clique manual aceito: registra a trava local do dia apenas para status/UX.
+       A atualização real já foi disparada pelo workflow_dispatch acima. */
     _atrixAtivarGateHoje();
     if(result&&result.gateOnly){
       done('atrix-start-warn','<i class="ti ti-clock"></i> Habilitado');
       _ghToast('Agente habilitado pelo gate. Para iniciar imediatamente, ajuste o token com Actions: Read and write.','var(--orange)',9000);
     }else{
-      if(!_atrixAutoTimer)scheduleAtrixAutoCycle();
       done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
       _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
     }
@@ -9144,56 +9115,11 @@ async function triggerAtrixUpdateNow(btn){
   }
 }
 
-/* ── Agendador automático: só começa a rodar depois do primeiro clique do dia
-   em "Iniciar" (trava ATRIX_GATE_KEY), e só continua repetindo a cada 30 min
-   enquanto ESTE painel estiver aberto e ativo (aba visível) no navegador — se o
-   usuário troca de aba, minimiza ou fecha, os ciclos automáticos param aqui
-   (o agendador só existe em memória desta página); assim que a aba volta a
-   ficar visível, retoma sozinho de onde parou, sem precisar clicar em
-   "Iniciar" de novo (a trava do dia já está ativa). ── */
-let _atrixAutoTimer=null;
-function _atrixPainelAtivo(){
-  return typeof document==='undefined' || document.visibilityState==='visible';
-}
-async function scheduleAtrixAutoCycle(){
-  if(_atrixAutoTimer){clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;}
-  if(!_atrixGateAtivoHoje())return;
-  if(!_atrixPainelAtivo()){_renderAtrixPausado(true);return;} // retoma sozinho no 'visibilitychange'
-  _renderAtrixPausado(false);
-  const AUTO_INTERVAL_MS=30*60*1000;
-  try{if(typeof loadAtrixUpdates==='function')await loadAtrixUpdates();}catch(_){}
-  const lastIso=localStorage.getItem('jarvis:atrix:lastUpdate')||'';
-  const ageMs=lastIso?Date.now()-new Date(lastIso).getTime():Infinity;
-  if(ageMs>=AUTO_INTERVAL_MS){
-    try{await _dispatchAtrixWorkflow();}catch(e){console.warn('[Atrix Agent] Falha ao iniciar ciclo automático:',e);}
-    _atrixAutoTimer=setTimeout(scheduleAtrixAutoCycle,AUTO_INTERVAL_MS);
-  }else{
-    _atrixAutoTimer=setTimeout(scheduleAtrixAutoCycle,AUTO_INTERVAL_MS-ageMs);
-  }
-}
-function _renderAtrixPausado(pausado){
-  const el=document.getElementById('atrix-sync-countdown');
-  if(!el)return;
-  el.classList.toggle('atrix-pausado',!!pausado);
-  if(pausado){el.title='Atualização automática pausada — volte a esta aba para retomar.';}
-  else{el.removeAttribute('title');}
-}
+/* Atualização manual: o painel só dispara leitura do Atrix quando o admin clica em
+   "Iniciar". O agente/runner continua instalado e online na máquina configurada;
+   qualquer dispositivo apenas lê os arquivos públicos publicados no GitHub. */
 function initAtrixAutoUpdate(){
-  if(!getGhToken())return;
-  scheduleAtrixAutoCycle();
-}
-/* Retoma o agendador assim que o painel volta a ficar visível (usuário volta pra
-   aba) — sem isso, o setTimeout já teria disparado escondido em segundo plano
-   (sujeito a throttling do navegador) mesmo com o usuário longe do painel. */
-if(typeof document!=='undefined'){
-  document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='visible'&&_atrixGateAtivoHoje()&&getGhToken()){
-      scheduleAtrixAutoCycle();
-    }else if(document.visibilityState!=='visible'&&_atrixAutoTimer){
-      clearTimeout(_atrixAutoTimer);_atrixAutoTimer=null;
-      _renderAtrixPausado(true);
-    }
-  });
+  _startAtrixCountdown(localStorage.getItem('jarvis:atrix:lastUpdate')||new Date().toISOString());
 }
 
 function _renderAtrixTs(isoStr){
@@ -14576,6 +14502,7 @@ updateCentralStatus();
 function _atrixPublicUrl(path){
   return `https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/${path}`;
 }
+const ATRIX_RUNNER_STATUS_FILE='data/atrix-runner-status.json';
 async function _fetchAtrixPublicJson(path){
   const res=await fetch(_atrixPublicUrl(path)+'?t='+Date.now(),{cache:'no-store'});
   if(!res.ok)throw new Error('HTTP '+res.status);
@@ -14588,7 +14515,7 @@ function _fmtAtrixPublicTs(iso){
   const p=n=>String(n).padStart(2,'0');
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
-function _atrixPublicSummary(updates,gate){
+function _atrixPublicSummary(updates,gate,runnerStatus){
   let latestAt='',total=0;
   if(updates&&typeof updates==='object'){
     Object.values(updates).forEach(up=>{
@@ -14596,6 +14523,10 @@ function _atrixPublicSummary(updates,gate){
     });
   }
   const ageMin=latestAt?(Date.now()-new Date(latestAt).getTime())/60000:Infinity;
+  const runnerAt=runnerStatus&&runnerStatus.updatedAt||runnerStatus&&runnerStatus.lastRunCompletedAt||'';
+  const runnerAgeMin=runnerAt?(Date.now()-new Date(runnerAt).getTime())/60000:Infinity;
+  const runnerFresh=runnerStatus&&runnerAt&&runnerAgeMin<360;
+  const runnerRunning=runnerStatus&&runnerStatus.state==='running';
   return {
     total,
     latestAt,
@@ -14605,27 +14536,44 @@ function _atrixPublicSummary(updates,gate){
     stale:ageMin>180,
     gateDate:gate&&gate.lastManualTriggerDate||'',
     gateAt:gate&&gate.lastManualTriggerAt||'',
-    gateToday:gate&&gate.lastManualTriggerDate===_atrixTodayStr()
+    gateToday:gate&&gate.lastManualTriggerDate===_atrixTodayStr(),
+    runnerStatus:runnerStatus||null,
+    runnerState:runnerStatus&&runnerStatus.state||'',
+    runnerName:runnerStatus&&runnerStatus.runner||'Agente Atrix',
+    runnerAt,
+    runnerText:_fmtAtrixPublicTs(runnerAt),
+    runnerFresh,
+    runnerRunning,
+    agentOnline:!!(runnerRunning||runnerFresh||ageMin<45)
   };
 }
 async function fetchAtrixPublicStatus(){
-  const [updates,gate]=await Promise.all([
+  const [updates,gate,runnerStatus]=await Promise.all([
     _fetchAtrixPublicJson('data/atrix_updates.json').catch(e=>({__error:e.message})),
-    _fetchAtrixPublicJson(ATRIX_GATE_FILE).catch(e=>({__error:e.message}))
+    _fetchAtrixPublicJson(ATRIX_GATE_FILE).catch(e=>({__error:e.message})),
+    _fetchAtrixPublicJson(ATRIX_RUNNER_STATUS_FILE).catch(e=>({__error:e.message}))
   ]);
-  return _atrixPublicSummary(updates&&updates.__error?null:updates,gate&&gate.__error?null:gate);
+  return _atrixPublicSummary(
+    updates&&updates.__error?null:updates,
+    gate&&gate.__error?null:gate,
+    runnerStatus&&runnerStatus.__error?null:runnerStatus
+  );
 }
 function _runnerPublicStatusBlock(status){
   if(!status)return'';
-  const color=status.fresh?'#22c55e':(status.stale?'#f59e0b':'var(--blue)');
-  const label=status.latestAt?(status.fresh?'Atualizado recentemente':(status.stale?'Sem atualização recente':'Atualizado')):'Sem atualização publicada';
+  const color=status.agentOnline?'#22c55e':(status.stale?'#f59e0b':'var(--blue)');
+  const label=status.agentOnline?(status.runnerRunning?'Agente rodando':'Agente online'):(status.latestAt?(status.stale?'Sem atualização recente':'Atualizado'):'Sem atualização publicada');
   const gate=status.gateDate?(status.gateToday?'acionado hoje':'último acionamento '+status.gateDate):'sem acionamento registrado';
+  const runner=status.runnerStatus
+    ? (status.runnerRunning?'rodando agora':((status.runnerFresh||status.fresh)?'online':'sem heartbeat recente'))+' · '+status.runnerText
+    : (status.fresh?'online por atualização recente':'status público ainda não publicado');
   return '<div style="margin:12px 0;background:var(--surface2);border:.5px solid var(--bd);border-radius:9px;padding:12px 14px;text-align:left">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">'
     +'<strong style="font-size:12.5px;color:var(--tx)">Atualizações públicas</strong>'
     +'<span style="font-size:10.5px;font-weight:700;color:'+color+'">'+label+'</span>'
     +'</div>'
     +'<div style="display:grid;gap:5px;font-size:11.5px;color:var(--tx2);line-height:1.45">'
+    +'<div><i class="ti ti-robot"></i> Status do agente: <strong>'+eh(runner)+'</strong></div>'
     +'<div><i class="ti ti-clock"></i> Última leitura do Atrix: <strong>'+eh(status.latestText)+'</strong></div>'
     +'<div><i class="ti ti-database"></i> Chamados com atualização publicada: <strong>'+status.total+'</strong></div>'
     +'<div><i class="ti ti-player-play"></i> Gate do agente: <strong>'+eh(gate)+'</strong></div>'
@@ -14667,11 +14615,13 @@ function openRunnerModal(){
   Promise.all([fetchAtrixPublicStatus(),_fetchAtrixRunnerStatus(tok)]).then(function(results){
     var publicStatus=results[0],runner=results[1];
     if(runner.kind==='ok'&&runner.online.length>0){
-      body.innerHTML=_runnerOnlineHTML(runner.online.map(function(r){return r.name;}).join(', '),publicStatus);
+      body.innerHTML=_runnerOnlineHTML(runner.online.map(function(r){return r.name;}).join(', '),publicStatus,false);
     }else if(runner.kind==='ok'&&runner.offline.length>0){
       body.innerHTML=_runnerOfflineHTML(runner.offline[0].name,localCmd,publicStatus);
     }else if(runner.kind==='ok'){
       body.innerHTML=_runnerInstallHTML(localCmd,'',false,publicStatus);
+    }else if(publicStatus&&publicStatus.agentOnline){
+      body.innerHTML=_runnerOnlineHTML(publicStatus.runnerName||'Agente Atrix',publicStatus,true);
     }else{
       body.innerHTML=_runnerPublicOnlyHTML(publicStatus,localCmd,runner);
     }
@@ -14680,15 +14630,18 @@ function openRunnerModal(){
   });
 }
 
-function _runnerOnlineHTML(name,publicStatus){
+function _runnerOnlineHTML(name,publicStatus,publicOnly){
+  var sub=publicOnly
+    ? 'Status público ativo em qualquer dispositivo'
+    : 'Runner <strong style="color:var(--tx2)">'+eh(name)+'</strong> está ativo';
   return '<div style="text-align:center;padding:12px 0 8px">'
     +'<div style="font-size:40px;margin-bottom:10px">✅</div>'
     +'<div style="font-size:15px;font-weight:700;color:var(--tx)">Agente Online</div>'
-    +'<div style="color:var(--tx3);font-size:12.5px;margin-top:6px">Runner <strong style="color:var(--tx2)">'+eh(name)+'</strong> está ativo</div>'
+    +'<div style="color:var(--tx3);font-size:12.5px;margin-top:6px">'+sub+'</div>'
     +_runnerPublicStatusBlock(publicStatus)
     +'<div style="margin:16px 0;background:var(--surface2);border-radius:9px;padding:14px 16px;font-size:12px;color:var(--tx2);text-align:left;border:.5px solid var(--bd)">'
     +'<div style="display:flex;flex-direction:column;gap:7px">'
-    +'<div><i class="ti ti-check" style="color:#22c55e"></i> Após clicar em "Iniciar" 1x no dia, o painel dispara o job a cada 30 min — enquanto esta aba estiver aberta e ativa no navegador</div>'
+    +'<div><i class="ti ti-check" style="color:#22c55e"></i> A atualização do Atrix só é disparada quando um admin clica em "Iniciar"</div>'
     +'<div><i class="ti ti-check" style="color:#22c55e"></i> O agente acessa o Atrix e grava no GitHub</div>'
     +'<div><i class="ti ti-check" style="color:#22c55e"></i> Este painel atualiza em qualquer dispositivo — sem instalação</div>'
     +'</div></div>'
@@ -14740,7 +14693,7 @@ function _runnerInstallHTML(localCmd,apiErr,skipTitle,publicStatus){
   out+='<div style="background:var(--surface2);border-radius:9px;padding:12px 14px;font-size:11.5px;color:var(--tx3);border:.5px solid var(--bd)">'
     +'<div style="font-weight:700;color:var(--tx2);margin-bottom:8px"><i class="ti ti-info-circle"></i> Como funciona após instalação</div>'
     +'<div style="display:flex;flex-direction:column;gap:6px">'
-    +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">1</span>Clique em "Iniciar" no painel 1x no dia — a partir daí, o próprio painel dispara o job a cada 30 min enquanto a aba estiver aberta e ativa</div>'
+    +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">1</span>Clique em "Iniciar" no painel quando quiser atualizar o Atrix — não há disparo automático fora desse botão</div>'
     +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">2</span>Runner desta máquina executa o agente</div>'
     +'<div><span style="background:var(--blue);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">3</span>Agente lê substatus do Atrix e atualiza o GitHub</div>'
     +'<div><span style="background:#22c55e;color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;margin-right:6px">✓</span>Painel em qualquer dispositivo reflete as mudanças</div>'
