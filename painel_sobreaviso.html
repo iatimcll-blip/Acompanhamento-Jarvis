@@ -320,7 +320,7 @@
     <br><br><b>Ajuste atual dos horários:</b> a semana de sobreaviso inicia na segunda-feira à noite e termina no domingo às 23:59. Na primeira marcação de Sobreaviso, no rodízio automático e em "Atribuir semana", o painel escolhe o DSR pelo dia que mais reduz a carga de horas, preservando a segunda à noite e o domingo quando houver alternativa; se o colaborador também existir no Painel DSR Volante, o DSR de lá continua sendo a referência.
     <br><b>Otimização atual:</b> o botão "Gerar escala automática" escolhe semanalmente os colaboradores com menor carga projetada/acumulada, evita repetir a semana anterior quando houver alternativa, considera férias, DSR fixo e ancoragens, e tenta manter exatamente o número configurado em "Simultâneos/dia" para não gerar hora extra por sobreposição; se isso não for possível com a base atual, a auditoria avisa.
     <br><b>DSR fixo por G.O.:</b> colaboradores do G.O. Ivandro Pessoa da Nobrega Alencar permanecem com DSR fixo aos domingos; essa regra tem prioridade sobre rodízio, ancoragem e ajustes manuais de escala, preservando apenas ausências reais.
-    <br><b>Lançamento individual:</b> ao clicar em uma data e marcar Sobreaviso, o painel otimiza automaticamente a solicitação para a mesma Localidade/UF, escolhendo a melhor cobertura da área até domingo sem sobreposição evitável; se a base não permitir cobrir todos os dias, ele avisa quais datas ficaram descobertas.
+    <br><b>Lançamento individual:</b> ao clicar em uma data e marcar Sobreaviso, o painel otimiza automaticamente a solicitação para a mesma Localidade, usando a UF apenas como informação, escolhendo a melhor cobertura da área até domingo sem sobreposição evitável; se a base não permitir cobrir todos os dias, ele avisa quais datas ficaram descobertas.
   </div>
 </div>
 
@@ -1536,20 +1536,27 @@ function contextoAncoragemAutomatica(){
 function pesoCoberturaAutomatica(ei, ctx){
   return 1 + ((ctx.porOficial && ctx.porOficial.get(ei)) || []).length;
 }
+function localidadeBaseSobreaviso(loc){
+  const normalizada = localidadeNormalizada(loc);
+  return String(normalizada||'')
+    .replace(/\s*[-/]\s*[A-Z]{2}\s*$/i,'')
+    .replace(/\s*\([A-Z]{2}\)\s*$/i,'')
+    .replace(/\s+/g,' ')
+    .trim();
+}
 function areaKeySobreaviso(f){
   if(!f) return '';
-  const uf = nomeKey(f.uf || '');
-  const loc = nomeKey(localidadeNormalizada(f.localidade || ''));
-  if(!uf && !loc) return '';
-  return uf+'|'+loc;
+  const loc = nomeKey(localidadeBaseSobreaviso(f.localidade || ''));
+  return loc ? 'LOC|'+loc : '';
 }
 function areaLabelSobreaviso(key){
-  const ref = FUNCIONARIOS.find(f=>f && areaKeySobreaviso(f)===key);
-  if(ref){
-    const partes = [ref.localidade||'Sem localidade', ref.uf||'Sem UF'].filter(Boolean);
-    return partes.join('/');
+  const refs = FUNCIONARIOS.filter(f=>f && areaKeySobreaviso(f)===key);
+  if(refs.length){
+    const loc = localidadeBaseSobreaviso(refs[0].localidade) || refs[0].localidade || 'Sem localidade';
+    const ufs = [...new Set(refs.map(f=>String(f.uf||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+    return loc + (ufs.length ? '/' + ufs.join(',') : '');
   }
-  return key || 'sem localidade/UF';
+  return key || 'sem localidade';
 }
 function areaKeysSolicitacaoManual(eis){
   const keys = new Set();
@@ -1789,7 +1796,7 @@ function aplicarSobreavisoManualOtimizado(eis, di){
   resolverSobreaviso();
   const problemas = auditarCoberturaSolicitacaoManual(keys, idxs);
   if(problemas.length){
-    alert('Solicitação manual otimizada por Localidade/UF aplicada, mas ainda há área descoberta ou abaixo do simultâneo configurado:\\n\\n' + problemas.slice(0,8).join('\\n') + (problemas.length>8?'\\n...':''));
+    alert('Solicitação manual otimizada por Localidade aplicada, mas ainda há área descoberta ou abaixo do simultâneo configurado:\\n\\n' + problemas.slice(0,8).join('\\n') + (problemas.length>8?'\\n...':''));
   }
   return mudou;
 }
