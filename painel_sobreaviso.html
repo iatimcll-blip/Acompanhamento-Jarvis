@@ -320,7 +320,7 @@
     <br><br><b>Ajuste atual dos horários:</b> a semana de sobreaviso inicia na segunda-feira à noite e termina no domingo às 23:59. Na primeira marcação de Sobreaviso, no rodízio automático e em "Atribuir semana", o painel escolhe o DSR pelo dia que mais reduz a carga de horas, preservando a segunda à noite e o domingo quando houver alternativa; se o colaborador também existir no Painel DSR Volante, o DSR de lá continua sendo a referência.
     <br><b>Otimização atual:</b> o botão "Gerar escala automática" escolhe semanalmente os colaboradores com menor carga projetada/acumulada, evita repetir a semana anterior quando houver alternativa, considera férias, DSR fixo e ancoragens, e tenta manter exatamente o número configurado em "Simultâneos/dia" para não gerar hora extra por sobreposição; se isso não for possível com a base atual, a auditoria avisa.
     <br><b>DSR fixo por G.O.:</b> colaboradores do G.O. Ivandro Pessoa da Nobrega Alencar permanecem com DSR fixo aos domingos; essa regra tem prioridade sobre rodízio, ancoragem e ajustes manuais de escala, preservando apenas ausências reais.
-    <br><b>Lançamento individual:</b> ao clicar em uma data e marcar Sobreaviso, o preenchimento automático começa nessa data e segue apenas pelos dias posteriores do mesmo ciclo semanal, até domingo.
+    <br><b>Lançamento individual:</b> ao clicar em uma data e marcar Sobreaviso, o painel otimiza automaticamente a solicitação para a mesma Localidade/UF, escolhendo a melhor cobertura da área até domingo sem sobreposição evitável; se a base não permitir cobrir todos os dias, ele avisa quais datas ficaram descobertas.
   </div>
 </div>
 
@@ -1536,6 +1536,131 @@ function contextoAncoragemAutomatica(){
 function pesoCoberturaAutomatica(ei, ctx){
   return 1 + ((ctx.porOficial && ctx.porOficial.get(ei)) || []).length;
 }
+function areaKeySobreaviso(f){
+  if(!f) return '';
+  const uf = nomeKey(f.uf || '');
+  const loc = nomeKey(localidadeNormalizada(f.localidade || ''));
+  if(!uf && !loc) return '';
+  return uf+'|'+loc;
+}
+function areaLabelSobreaviso(key){
+  const ref = FUNCIONARIOS.find(f=>f && areaKeySobreaviso(f)===key);
+  if(ref){
+    const partes = [ref.localidade||'Sem localidade', ref.uf||'Sem UF'].filter(Boolean);
+    return partes.join('/');
+  }
+  return key || 'sem localidade/UF';
+}
+function areaKeysSolicitacaoManual(eis){
+  const keys = new Set();
+  (eis||[]).forEach(ei=>{
+    const key = areaKeySobreaviso(FUNCIONARIOS[ei]);
+    if(key) keys.add(key);
+  });
+  return [...keys];
+}
+function colaboradorNaArea(ei, key){
+  return areaKeySobreaviso(FUNCIONARIOS[ei])===key;
+}
+function candidatoAtendeArea(ei, key, ctx){
+  if(ctx.tecnicosAncorados.has(ei)) return false;
+  if(colaboradorNaArea(ei, key)) return true;
+  return ((ctx.porOficial.get(ei)||[]).some(eiTec=>colaboradorNaArea(eiTec, key)));
+}
+function pesoCoberturaArea(ei, key, ctx){
+  let peso = colaboradorNaArea(ei, key) ? 1 : 0;
+  (ctx.porOficial.get(ei)||[]).forEach(eiTec=>{ if(colaboradorNaArea(eiTec, key)) peso++; });
+  return peso;
+}
+function selecionarGrupoSemanaOtimizadoArea(candidatos, idxs, alvoCobertura, cargaHoras, qtdSemanas, semanaAnterior, ordem, ctx, key){
+  const itens = candidatos.map(ei=>({
+    ei,
+    peso: pesoCoberturaArea(ei, key, ctx),
+    horasSemana: horasSobreavisoPlanejadasSemana(ei, idxs),
+    indisponivel: indisponivelParaSobreavisoSemana(ei, idxs),
+    anterior: semanaAnterior.has(ei)
+  })).filter(i=>i.peso>0);
+  const escolhidos = [];
+  const escolhidosSet = new Set();
+  let cobertura = 0;
+  const ordenar = (a,b)=>{
+    const overA = Math.max(0, cobertura+a.peso-alvoCobertura);
+    const overB = Math.max(0, cobertura+b.peso-alvoCobertura);
+    if(overA!==overB) return overA-overB;
+    if(a.indisponivel!==b.indisponivel) return a.indisponivel ? 1 : -1;
+    if(a.anterior!==b.anterior) return a.anterior ? 1 : -1;
+    const projA = (cargaHoras.get(a.ei)||0) + a.horasSemana;
+    const projB = (cargaHoras.get(b.ei)||0) + b.horasSemana;
+    if(projA!==projB) return projA-projB;
+    const semA = qtdSemanas.get(a.ei)||0, semB = qtdSemanas.get(b.ei)||0;
+    if(semA!==semB) return semA-semB;
+    if(a.horasSemana!==b.horasSemana) return a.horasSemana-b.horasSemana;
+    return (ordem.get(a.ei)||0) - (ordem.get(b.ei)||0);
+  };
+  while(cobertura < alvoCobertura && escolhidos.length < itens.length){
+    const restantes = itens.filter(i=>!escolhidosSet.has(i.ei));
+    if(!restantes.length) break;
+    const viaveis = restantes.filter(i=>cobertura+i.peso<=alvoCobertura);
+    const base = (viaveis.length ? viaveis : restantes).sort(ordenar);
+    const escolhido = base[0];
+    escolhidos.push(escolhido);
+    escolhidosSet.add(escolhido.ei);
+    cobertura += escolhido.peso;
+  }
+  return new Set(escolhidos.map(i=>i.ei));
+}
+function consecutivosAntesDia(ei, idx){
+  let n = 0;
+  for(let d=idx-1; d>=0; d--){
+    if(grid[ei] && grid[ei][d] && grid[ei][d].st==='SOBREAVISO') n++;
+    else break;
+  }
+  return n;
+}
+function podeReceberSobreavisoDia(ei, idx){
+  const f = FUNCIONARIOS[ei];
+  if(!f || !f.ativo || !grid[ei]) return false;
+  if(estaDeFerias(f, DIAS[idx])) return false;
+  if(colaboradorTemDsrFixoDomingo(ei) && DIAS[idx].getDay()===0) return false;
+  const cel = grid[ei][idx];
+  if(cel && cel.lock && cel.st!=='SOBREAVISO') return false;
+  return consecutivosAntesDia(ei, idx) < 6;
+}
+function selecionarDiaOtimizadoArea(candidatos, idx, alvoCobertura, cargaHoras, qtdDias, diaAnterior, ordem, ctx, key){
+  const itens = candidatos.map(ei=>({
+    ei,
+    peso: pesoCoberturaArea(ei, key, ctx),
+    pode: podeReceberSobreavisoDia(ei, idx),
+    anterior: diaAnterior.has(ei),
+    horasDia: horasSobreavisoDia({st:'SOBREAVISO', lock:false, feriadoNome:''}, DIAS[idx], ei)
+  })).filter(i=>i.peso>0 && i.pode);
+  const escolhidos = [];
+  const escolhidosSet = new Set();
+  let cobertura = 0;
+  const ordenar = (a,b)=>{
+    const overA = Math.max(0, cobertura+a.peso-alvoCobertura);
+    const overB = Math.max(0, cobertura+b.peso-alvoCobertura);
+    if(overA!==overB) return overA-overB;
+    if(a.anterior!==b.anterior) return a.anterior ? 1 : -1;
+    const projA = (cargaHoras.get(a.ei)||0) + a.horasDia;
+    const projB = (cargaHoras.get(b.ei)||0) + b.horasDia;
+    if(projA!==projB) return projA-projB;
+    const diasA = qtdDias.get(a.ei)||0, diasB = qtdDias.get(b.ei)||0;
+    if(diasA!==diasB) return diasA-diasB;
+    return (ordem.get(a.ei)||0) - (ordem.get(b.ei)||0);
+  };
+  while(cobertura < alvoCobertura && escolhidos.length < itens.length){
+    const restantes = itens.filter(i=>!escolhidosSet.has(i.ei));
+    if(!restantes.length) break;
+    const viaveis = restantes.filter(i=>cobertura+i.peso<=alvoCobertura);
+    const base = (viaveis.length ? viaveis : restantes).sort(ordenar);
+    const escolhido = base[0];
+    escolhidos.push(escolhido);
+    escolhidosSet.add(escolhido.ei);
+    cobertura += escolhido.peso;
+  }
+  return new Set(escolhidos.map(i=>i.ei));
+}
 function selecionarGrupoSemanaOtimizado(candidatos, idxs, alvoCobertura, cargaHoras, qtdSemanas, semanaAnterior, ordem, ctx){
   const itens = candidatos.map(ei=>({
     ei,
@@ -1604,6 +1729,69 @@ function aplicarRodizioAutomatico(){
     });
     semanaAnterior = assigned;
   });
+}
+function aplicarSobreavisoManualOtimizadoArea(key, idxs, ctx){
+  const ativos = ativosOrdenadosPorAncora();
+  const candidatos = ativos.filter(ei=>candidatoAtendeArea(ei, key, ctx));
+  if(!candidatos.length) return false;
+  const ordem = new Map(ativos.map((ei,i)=>[ei,i]));
+  const cargaHoras = new Map(ativos.map(ei=>[ei, calcularHorasSobreaviso(ei)]));
+  const qtdDias = new Map(ativos.map(ei=>[ei, 0]));
+  const areaMembros = ativos.filter(ei=>colaboradorNaArea(ei, key));
+  const afetados = new Set([...candidatos, ...areaMembros]);
+  let mudou = false;
+  let diaAnterior = new Set();
+  idxs.forEach(idx=>{
+    const assigned = selecionarDiaOtimizadoArea(candidatos, idx, cfgN(), cargaHoras, qtdDias, diaAnterior, ordem, ctx, key);
+    afetados.forEach(ei=>{
+      const cel = grid[ei] && grid[ei][idx];
+      if(!cel || cel.lock) return;
+      const novo = assigned.has(ei) ? 'SOBREAVISO' : 'LIVRE';
+      const lockNovo = assigned.has(ei);
+      if(cel.st!==novo || cel.lock!==lockNovo){
+        cel.st = novo;
+        cel.lock = lockNovo;
+        mudou = true;
+      }
+    });
+    assigned.forEach(ei=>{
+      const horas = horasSobreavisoDia({st:'SOBREAVISO', lock:false, feriadoNome:''}, DIAS[idx], ei);
+      cargaHoras.set(ei, (cargaHoras.get(ei)||0) + horas);
+      qtdDias.set(ei, (qtdDias.get(ei)||0) + 1);
+    });
+    diaAnterior = assigned;
+  });
+  return mudou;
+}
+function auditarCoberturaSolicitacaoManual(keys, idxs){
+  const problemas = [];
+  keys.forEach(key=>{
+    const membros = FUNCIONARIOS.map((_,ei)=>ei).filter(ei=>FUNCIONARIOS[ei].ativo && colaboradorNaArea(ei, key));
+    if(!membros.length) return;
+    const alvo = Math.min(cfgN(), membros.length);
+    idxs.forEach(idx=>{
+      const cobertos = membros.filter(ei=>grid[ei] && grid[ei][idx] && grid[ei][idx].st==='SOBREAVISO').length;
+      if(cobertos < alvo){
+        problemas.push(`${areaLabelSobreaviso(key)} em ${fmt(DIAS[idx])}: ${cobertos}/${alvo}`);
+      }
+    });
+  });
+  return problemas;
+}
+function aplicarSobreavisoManualOtimizado(eis, di){
+  const keys = areaKeysSolicitacaoManual(eis);
+  if(!keys.length) return false;
+  const idxs = indicesSemanaSobreavisoAPartir(di);
+  if(!idxs.length) return false;
+  const ctx = contextoAncoragemAutomatica();
+  let mudou = false;
+  keys.forEach(key=>{ mudou = aplicarSobreavisoManualOtimizadoArea(key, idxs, ctx) || mudou; });
+  resolverSobreaviso();
+  const problemas = auditarCoberturaSolicitacaoManual(keys, idxs);
+  if(problemas.length){
+    alert('Solicitação manual otimizada por Localidade/UF aplicada, mas ainda há área descoberta ou abaixo do simultâneo configurado:\\n\\n' + problemas.slice(0,8).join('\\n') + (problemas.length>8?'\\n...':''));
+  }
+  return mudou;
 }
 /* Ancoragem manual Oficial -> Técnico: o gestor escolhe no cadastro de cada Oficial qual
    Técnico ele acompanha. A partir daí, o Técnico herda a escala do Oficial referência no
@@ -2089,9 +2277,13 @@ function forcarStatus(ei, d, st){
   return mudou;
 }
 function setStatus(st){
-  const alvos = alvosReaisAjusteManual(popEis);
-  alvos.forEach(ei=> forcarStatus(ei, popD, st));
-  resolverSobreaviso();
+  if(st==='SOBREAVISO' && areaKeysSolicitacaoManual(popEis).length){
+    aplicarSobreavisoManualOtimizado(popEis, popD);
+  } else {
+    const alvos = alvosReaisAjusteManual(popEis);
+    alvos.forEach(ei=> forcarStatus(ei, popD, st));
+    resolverSobreaviso();
+  }
   renderAll();
   fecharPop();
   lsSave();
