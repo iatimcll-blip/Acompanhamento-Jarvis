@@ -499,9 +499,20 @@ function limparFiltroColaboradorCampo(){
   ce.defaultValue = '';
   ce.setAttribute('value', '');
 }
-function limparFiltros(){
+function _limparSelectFiltro(id){
+  const sel = document.getElementById(id);
+  if(!sel) return;
+  sel.value = '';
+  sel.defaultValue = '';
+  sel.selectedIndex = 0;
+}
+function limparEstadoFiltros(){
   filtroEquipe=''; filtroTipo=''; filtroUf=''; filtroLocalidade=''; filtroGa=''; filtroGo='';
   limparFiltroColaboradorCampo();
+  ['filtroTipo','filtroEquipe','filtroUf','filtroLocalidade','filtroGa','filtroGo'].forEach(_limparSelectFiltro);
+}
+function limparFiltros(){
+  limparEstadoFiltros();
   renderAll();
 }
 
@@ -1558,7 +1569,7 @@ function limparTudo(){
   CFG_JANELAS = clonarJanelasPadrao();
   colabsSelecionados.clear();
   feriasAbertoEi = -1;
-  filtroEquipe=''; filtroTipo=''; filtroColaborador=''; filtroUf=''; filtroLocalidade=''; filtroGa=''; filtroGo='';
+  limparEstadoFiltros();
   document.getElementById('cfgN').value = 1;
   // Cancela qualquer sincronização remota pendente (debounced) — ela ainda tentaria mesclar
   // com o que existia no GitHub ANTES do reset, trazendo de volta colaboradores/escala que
@@ -1665,14 +1676,20 @@ function aplicarSugestaoViolacao(acao, ei, d){
 
 /* ================= RENDER ================= */
 /* Repopula as opções de cada filtro dinâmico com os valores realmente cadastrados nos
-   colaboradores (evita listar opções inexistentes ou esquecer alguma nova) — mesmo padrão
-   pros cinco filtros baseados em select (Equipe, UF, Localidade, G.A, G.O); Colaborador é
-   busca livre por texto e Função tem um conjunto fixo (Técnico/Oficial), então não precisam
-   de repopulação. Preserva a seleção atual quando ainda é uma opção válida. */
+   colaboradores. O valor selecionado vem sempre das variáveis internas, não do valor visual
+   que o navegador possa ter restaurado automaticamente. */
+function _valorFiltroAtual(id){
+  if(id==='filtroEquipe') return filtroEquipe;
+  if(id==='filtroUf') return filtroUf;
+  if(id==='filtroLocalidade') return filtroLocalidade;
+  if(id==='filtroGa') return filtroGa;
+  if(id==='filtroGo') return filtroGo;
+  return '';
+}
 function _popularSelectFiltro(id, campo, rotuloTodos, varGlobalSetter){
   const sel = document.getElementById(id);
   if(!sel) return;
-  const atual = sel.value;
+  const atual = _valorFiltroAtual(id);
   const valores = [...new Set(FUNCIONARIOS.map(f=>f[campo]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   sel.innerHTML = `<option value="">${rotuloTodos}</option>` + valores.map(v=>`<option value="${v}">${v}</option>`).join('');
   if(valores.includes(atual)) sel.value = atual; else { sel.value=''; varGlobalSetter(''); }
@@ -2451,14 +2468,14 @@ function iniciar(){
   if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
   popularSelectPeriodo();
   aplicarCfgSalvo();
-  limparFiltroColaboradorCampo();
+  limparEstadoFiltros();
   let ini = (saved && saved.periodoAtual) ? parsePeriodoKey(saved.periodoAtual) : periodoAtualPadrao();
   if(!ini.ano || !ini.mes || periodoAntesDoMinimo(ini.ano, ini.mes)) ini = {ano:PERIODO_MIN_ANO, mes:PERIODO_MIN_MES};
   carregarPeriodo(ini.ano, ini.mes);
-  setTimeout(()=>{ limparFiltroColaboradorCampo(); renderAll(); }, 0);
+  setTimeout(()=>{ limparEstadoFiltros(); renderAll(); }, 0);
   sincronizarReceberRemotoInicial();
 }
-window.addEventListener('pageshow', ()=>{ limparFiltroColaboradorCampo(); if(periodoAno!=null) renderAll(); });
+window.addEventListener('pageshow', ()=>{ limparEstadoFiltros(); if(periodoAno!=null) renderAll(); });
 iniciar();
 </script>
 </body>
