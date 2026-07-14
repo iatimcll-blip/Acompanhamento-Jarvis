@@ -14526,6 +14526,7 @@ function _atrixPublicSummary(updates,gate,runnerStatus){
   const runnerAt=runnerStatus&&runnerStatus.updatedAt||runnerStatus&&runnerStatus.lastRunCompletedAt||'';
   const runnerAgeMin=runnerAt?(Date.now()-new Date(runnerAt).getTime())/60000:Infinity;
   const runnerFresh=runnerStatus&&runnerAt&&runnerAgeMin<360;
+  const runnerExplicitOnline=runnerStatus&&runnerStatus.online===true;
   const runnerRunning=runnerStatus&&runnerStatus.state==='running';
   return {
     total,
@@ -14544,7 +14545,8 @@ function _atrixPublicSummary(updates,gate,runnerStatus){
     runnerText:_fmtAtrixPublicTs(runnerAt),
     runnerFresh,
     runnerRunning,
-    agentOnline:!!(runnerRunning||runnerFresh||ageMin<45)
+    runnerExplicitOnline,
+    agentOnline:!!(runnerExplicitOnline||runnerRunning||runnerFresh||ageMin<45)
   };
 }
 async function fetchAtrixPublicStatus(){
@@ -14562,10 +14564,10 @@ async function fetchAtrixPublicStatus(){
 function _runnerPublicStatusBlock(status){
   if(!status)return'';
   const color=status.agentOnline?'#22c55e':(status.stale?'#f59e0b':'var(--blue)');
-  const label=status.agentOnline?(status.runnerRunning?'Agente rodando':'Agente online'):(status.latestAt?(status.stale?'Sem atualização recente':'Atualizado'):'Sem atualização publicada');
+  const label=status.agentOnline?(status.runnerRunning?'Agente rodando':'Fluxo online'):(status.latestAt?(status.stale?'Sem atualização recente':'Atualizado'):'Sem atualização publicada');
   const gate=status.gateDate?(status.gateToday?'acionado hoje':'último acionamento '+status.gateDate):'sem acionamento registrado';
   const runner=status.runnerStatus
-    ? (status.runnerRunning?'rodando agora':((status.runnerFresh||status.fresh)?'online':'sem heartbeat recente'))+' · '+status.runnerText
+    ? (status.runnerRunning?'rodando agora':(status.runnerExplicitOnline?'online':((status.runnerFresh||status.fresh)?'online':'sem heartbeat recente')))+' · '+status.runnerText
     : (status.fresh?'online por atualização recente':'status público ainda não publicado');
   return '<div style="margin:12px 0;background:var(--surface2);border:.5px solid var(--bd);border-radius:9px;padding:12px 14px;text-align:left">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">'
@@ -14573,7 +14575,7 @@ function _runnerPublicStatusBlock(status){
     +'<span style="font-size:10.5px;font-weight:700;color:'+color+'">'+label+'</span>'
     +'</div>'
     +'<div style="display:grid;gap:5px;font-size:11.5px;color:var(--tx2);line-height:1.45">'
-    +'<div><i class="ti ti-robot"></i> Status do agente: <strong>'+eh(runner)+'</strong></div>'
+    +'<div><i class="ti ti-robot"></i> Status do fluxo: <strong>'+eh(runner)+'</strong></div>'
     +'<div><i class="ti ti-clock"></i> Última leitura do Atrix: <strong>'+eh(status.latestText)+'</strong></div>'
     +'<div><i class="ti ti-database"></i> Chamados com atualização publicada: <strong>'+status.total+'</strong></div>'
     +'<div><i class="ti ti-player-play"></i> Gate do agente: <strong>'+eh(gate)+'</strong></div>'
