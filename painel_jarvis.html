@@ -2409,6 +2409,32 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .atrix-start-btn.atrix-start-err,.atrix-start-btn.atrix-start-err:hover{background:rgba(255,59,48,.14) !important;border-color:var(--red) !important;color:var(--red) !important}
 #atrix-sync-countdown.cd-now{color:var(--blue);animation:cdPulse .7s ease-in-out infinite}
 #atrix-sync-countdown.atrix-pausado{color:var(--tx3);animation:none}
+.atrix-public-dock{position:fixed;right:16px;bottom:16px;z-index:180;width:min(360px,calc(100vw - 24px));display:none;color:var(--tx)}
+.atrix-public-dock.ready{display:block}
+.atrix-mini-card{width:100%;border:.5px solid var(--bd);border-radius:10px;background:var(--glass2);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);overflow:hidden}
+.atrix-mini-head{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:0;background:transparent;color:inherit;font-family:inherit;text-align:left;cursor:pointer}
+.atrix-mini-dot{width:10px;height:10px;border-radius:50%;background:var(--tx3);box-shadow:0 0 0 4px rgba(142,142,147,.12);flex-shrink:0}
+.atrix-public-dock.online .atrix-mini-dot{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.14)}
+.atrix-public-dock.warn .atrix-mini-dot{background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.14)}
+.atrix-public-dock.offline .atrix-mini-dot{background:var(--red);box-shadow:0 0 0 4px rgba(255,59,48,.13)}
+.atrix-mini-main{min-width:0;flex:1;display:grid;gap:1px}
+.atrix-mini-main strong{font-size:11.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.atrix-mini-main small{font-size:10.5px;line-height:1.2;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.atrix-mini-count{font-size:10.5px;font-weight:800;color:var(--blue);background:var(--blue-bg);border:.5px solid rgba(0,122,255,.18);border-radius:999px;padding:3px 7px;white-space:nowrap}
+.atrix-public-dock.online .atrix-mini-count{color:var(--green-dk);background:var(--green-bg);border-color:rgba(34,197,94,.22)}
+.atrix-public-dock.warn .atrix-mini-count{color:#b45309;background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.2)}
+.atrix-mini-chevron{color:var(--tx3);font-size:14px;transition:transform .18s}
+.atrix-public-dock.open .atrix-mini-chevron{transform:rotate(180deg)}
+.atrix-mini-detail{display:none;padding:0 10px 9px 29px;border-top:.5px solid var(--bd);background:rgba(255,255,255,.32)}
+[data-theme=dark] .atrix-mini-detail{background:rgba(0,0,0,.12)}
+.atrix-public-dock.open .atrix-mini-detail,.atrix-public-dock:hover .atrix-mini-detail{display:grid;gap:5px}
+.atrix-mini-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10.8px;color:var(--tx3);line-height:1.25}
+.atrix-mini-row span{display:inline-flex;align-items:center;gap:5px;min-width:0}
+.atrix-mini-row i{font-size:11px;flex-shrink:0;color:var(--tx3)}
+.atrix-mini-row b{font-size:10.8px;color:var(--tx2);font-weight:700;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.atrix-mini-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;color:var(--tx3);font-size:10.2px}
+.atrix-mini-foot button{border:0;background:transparent;color:var(--blue);font:inherit;font-weight:700;cursor:pointer;padding:0}
+@media(max-width:760px){.atrix-public-dock{right:10px;bottom:10px;width:calc(100vw - 20px)}.atrix-public-dock:hover .atrix-mini-detail{display:none}.atrix-public-dock.open .atrix-mini-detail{display:grid}.atrix-mini-row b{max-width:140px}}
 @keyframes cdPulse{0%,100%{opacity:1}50%{opacity:.4}}
 /* ── Atrix Agent: timestamp por chamado no card ── */
 .atrix-card-ts{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--border,rgba(0,0,0,.09));border-radius:5px;padding:1px 5px;margin-left:6px;white-space:nowrap;vertical-align:middle;line-height:1.4;flex-shrink:0}
@@ -7554,6 +7580,28 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 </div>
 </div>
 
+<!-- ── STATUS COMPACTO DO AGENTE ATRIX ── -->
+<div class="atrix-public-dock" id="atrix-public-dock" aria-live="polite">
+  <div class="atrix-mini-card">
+    <button type="button" class="atrix-mini-head" onclick="toggleAtrixPublicDock()" title="Mostrar atualizações públicas do Agente Atrix">
+      <span class="atrix-mini-dot" aria-hidden="true"></span>
+      <span class="atrix-mini-main">
+        <strong id="atrix-mini-title">Agente Atrix</strong>
+        <small id="atrix-mini-sub">Verificando atualizações públicas...</small>
+      </span>
+      <span class="atrix-mini-count" id="atrix-mini-count">--</span>
+      <i class="ti ti-chevron-up atrix-mini-chevron"></i>
+    </button>
+    <div class="atrix-mini-detail" id="atrix-mini-detail">
+      <div class="atrix-mini-row"><span><i class="ti ti-robot"></i>Status</span><b id="atrix-mini-runner">--</b></div>
+      <div class="atrix-mini-row"><span><i class="ti ti-clock"></i>Última leitura</span><b id="atrix-mini-latest">--</b></div>
+      <div class="atrix-mini-row"><span><i class="ti ti-database"></i>Chamados publicados</span><b id="atrix-mini-total">--</b></div>
+      <div class="atrix-mini-row"><span><i class="ti ti-player-play"></i>Gate</span><b id="atrix-mini-gate">--</b></div>
+      <div class="atrix-mini-foot"><span>Leitura pública sem token</span><button type="button" onclick="openRunnerModal()">Ver completo</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL: INSTALAR RUNNER ── -->
 <div class="modal-overlay" id="modal-runner" style="display:none" onclick="if(event.target===this)this.style.display='none'">
   <div class="modal-box" style="max-width:560px">
@@ -9109,6 +9157,7 @@ async function triggerAtrixUpdateNow(btn){
       done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
       _ghToast('Atualização do agente Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
     }
+    refreshAtrixPublicDock();
   }catch(e){
     done('atrix-start-err','<i class="ti ti-x"></i> Erro');
     _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
@@ -9197,6 +9246,7 @@ async function loadAtrixUpdates(){
     });
     if((count>0||latestAt)&&!abInteractionLock)renderAllAb();
     if(count>0){console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);saveState();}
+    if(typeof refreshAtrixPublicDock==='function')refreshAtrixPublicDock();
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
 }
 
@@ -14582,6 +14632,65 @@ function _runnerPublicStatusBlock(status){
     +'<div style="color:var(--tx3)">Esta verificação não usa token e funciona em qualquer dispositivo.</div>'
     +'</div></div>';
 }
+function _atrixPublicParts(status){
+  const label=status.agentOnline?(status.runnerRunning?'Agente rodando':'Fluxo online'):(status.latestAt?(status.stale?'Sem atualização recente':'Atualizado'):'Sem atualização publicada');
+  const gate=status.gateDate?(status.gateToday?'acionado hoje':'último '+status.gateDate):'sem acionamento';
+  const runner=status.runnerStatus
+    ? (status.runnerRunning?'rodando agora':(status.runnerExplicitOnline?'online':((status.runnerFresh||status.fresh)?'online':'sem heartbeat')))+' · '+status.runnerText
+    : (status.fresh?'online por atualização recente':'status não publicado');
+  const cls=status.agentOnline?'online':(status.stale?'warn':'offline');
+  return {label,gate,runner,cls};
+}
+let _atrixPublicDockOpen=false;
+let _atrixPublicDockTimer=null;
+function toggleAtrixPublicDock(force){
+  _atrixPublicDockOpen=typeof force==='boolean'?force:!_atrixPublicDockOpen;
+  const dock=document.getElementById('atrix-public-dock');
+  if(dock)dock.classList.toggle('open',_atrixPublicDockOpen);
+}
+function renderAtrixPublicDock(status){
+  const dock=document.getElementById('atrix-public-dock');
+  if(!dock||!status)return;
+  const p=_atrixPublicParts(status);
+  dock.classList.add('ready');
+  dock.classList.remove('online','warn','offline');
+  dock.classList.add(p.cls);
+  dock.classList.toggle('open',_atrixPublicDockOpen);
+  const title=document.getElementById('atrix-mini-title');
+  const sub=document.getElementById('atrix-mini-sub');
+  const count=document.getElementById('atrix-mini-count');
+  const runner=document.getElementById('atrix-mini-runner');
+  const latest=document.getElementById('atrix-mini-latest');
+  const total=document.getElementById('atrix-mini-total');
+  const gate=document.getElementById('atrix-mini-gate');
+  if(title)title.textContent='Agente Atrix';
+  if(sub)sub.textContent=p.label+' · '+(status.latestAt?status.latestText:'aguardando leitura');
+  if(count)count.textContent=String(status.total||0);
+  if(runner)runner.textContent=p.runner;
+  if(latest)latest.textContent=status.latestText||'--/--/---- --:--:--';
+  if(total)total.textContent=String(status.total||0);
+  if(gate)gate.textContent=p.gate;
+}
+async function refreshAtrixPublicDock(){
+  try{
+    const status=await fetchAtrixPublicStatus();
+    renderAtrixPublicDock(status);
+    return status;
+  }catch(e){
+    const dock=document.getElementById('atrix-public-dock');
+    if(dock){
+      dock.classList.add('ready','warn');
+      const sub=document.getElementById('atrix-mini-sub');
+      if(sub)sub.textContent='Não foi possível ler o status público agora';
+    }
+    return null;
+  }
+}
+function initAtrixPublicDock(){
+  refreshAtrixPublicDock();
+  clearInterval(_atrixPublicDockTimer);
+  _atrixPublicDockTimer=setInterval(refreshAtrixPublicDock,60000);
+}
 async function _fetchAtrixRunnerStatus(token){
   if(!token)return{kind:'no-token'};
   const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runners`,{
@@ -14616,6 +14725,7 @@ function openRunnerModal(){
 
   Promise.all([fetchAtrixPublicStatus(),_fetchAtrixRunnerStatus(tok)]).then(function(results){
     var publicStatus=results[0],runner=results[1];
+    renderAtrixPublicDock(publicStatus);
     if(runner.kind==='ok'&&runner.online.length>0){
       body.innerHTML=_runnerOnlineHTML(runner.online.map(function(r){return r.name;}).join(', '),publicStatus,false);
     }else if(runner.kind==='ok'&&runner.offline.length>0){
@@ -14703,6 +14813,7 @@ function _runnerInstallHTML(localCmd,apiErr,skipTitle,publicStatus){
     +'<button onclick="openRunnerModal()" style="margin-top:12px;width:100%;padding:8px;background:var(--surface2);color:var(--tx2);border:.5px solid var(--bd);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer"><i class="ti ti-refresh"></i> Verificar Status</button>';
   return out;
 }
+initAtrixPublicDock();
 </script>
 <!-- deploy retry: audio upload validation -->
 </body>
