@@ -420,7 +420,7 @@
     <div class="mb">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Nacionais — aplicados automaticamente todo ano</div>
       <div id="feriadosNacLista" style="margin-bottom:18px"></div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Municipais — configure manualmente por cidade (confira a data oficial antes de usar em folha de pagamento)</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Municipais — cidades dos Técnicos cadastrados (confira a data oficial antes de usar em folha de pagamento)</div>
       <div id="feriadosMuniLista"></div>
     </div>
   </div>
@@ -615,21 +615,53 @@ function feriadosMunicipaisPadrao(){
     'São José de Ribamar': [ {mes:3, dia:19, nome:'São José (padroeiro)'} ]
   };
 }
-const CIDADES_MOP = ['São Luis','Paço do Lumiar','São José de Ribamar'];
 function localidadeNormalizada(loc){
-  const s = String(loc||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+  const raw = String(loc||'').replace(/\s+/g,' ').trim();
+  const s = raw.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+  if(!s) return '';
   if(s.includes('PACO')) return 'Paço do Lumiar';
   if(s.includes('RIBAMAR')) return 'São José de Ribamar';
-  return 'São Luis';
+  if(s.includes('SAO LUIS') || s.includes('SAO LUIZ')) return 'São Luis';
+  return raw;
+}
+function cidadesConfiguradasTecnicos(){
+  const mapa = new Map();
+  const tecnicos = FUNCIONARIOS.filter(f=>f && f.tipo!=='Oficial' && f.localidade);
+  const base = tecnicos.length ? tecnicos : FUNCIONARIOS.filter(f=>f && f.localidade);
+  base.forEach(f=>{
+    const cidade = localidadeNormalizada(f.localidade);
+    if(cidade) mapa.set(nomeKey(cidade), cidade);
+  });
+  return [...mapa.values()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function garantirFeriadosCidadesConfiguradas(){
+  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  const padrao = feriadosMunicipaisPadrao();
+  cidadesConfiguradasTecnicos().forEach(cidade=>{
+    if(!STORE.feriadosMunicipais[cidade]){
+      STORE.feriadosMunicipais[cidade] = padrao[cidade] ? padrao[cidade].map(f=>({...f})) : [];
+    }
+  });
+}
+function cidadesFeriadosMunicipais(){
+  garantirFeriadosCidadesConfiguradas();
+  return cidadesConfiguradasTecnicos();
 }
 function slugCidade(c){
   return String(c).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
+}
+function htmlTxt(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function jsArgCidade(c){
+  return String(c==null?'':c).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 function feriadoDoDia(date, localidade){
   const mes = date.getMonth()+1, dia = date.getDate(), ano = date.getFullYear();
   const nac = feriadosNacionais(ano).find(f=>f.mes===mes && f.dia===dia);
   if(nac) return {tipo:'nacional', nome:nac.nome};
   const cidade = localidadeNormalizada(localidade);
+  if(!cidade) return null;
   const muni = (STORE.feriadosMunicipais && STORE.feriadosMunicipais[cidade]) || [];
   const m = muni.find(f=>f.mes===mes && f.dia===dia);
   if(m) return {tipo:'municipal', nome:m.nome, cidade};
@@ -2451,32 +2483,40 @@ function renderFeriadosModal(){
     <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${f.nome}</span></div>
   </div>`).join('');
 
-  if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  garantirFeriadosCidadesConfiguradas();
   const muniEl = document.getElementById('feriadosMuniLista');
   if(!muniEl) return;
-  muniEl.innerHTML = CIDADES_MOP.map(cidade=>{
+  const cidades = cidadesFeriadosMunicipais();
+  if(!cidades.length){
+    muniEl.innerHTML = '<div style="color:var(--muted);font-size:11.5px;padding:8px 0">Cadastre a Localidade nos Técnicos para liberar os feriados municipais por cidade.</div>';
+    return;
+  }
+  muniEl.innerHTML = cidades.map(cidade=>{
     const slug = slugCidade(cidade);
+    const cidadeArg = jsArgCidade(cidade);
+    const cidadeTxt = htmlTxt(cidade);
     const lista = (STORE.feriadosMunicipais[cidade] || []).slice().sort((a,b)=>a.mes-b.mes||a.dia-b.dia);
     const linhas = lista.length ? lista.map((f)=>{
       const idxReal = STORE.feriadosMunicipais[cidade].indexOf(f);
       return `<div class="colab-row" style="padding:5px 0">
-        <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${f.nome}</span></div>
-        <button class="btn-danger" onclick="removerFeriadoMunicipal('${cidade}',${idxReal})">✕</button>
+        <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${htmlTxt(f.nome)}</span></div>
+        <button class="btn-danger" onclick="removerFeriadoMunicipal('${cidadeArg}',${idxReal})">✕</button>
       </div>`;
     }).join('') : '<div style="color:var(--muted);font-size:11.5px;padding:4px 0">Nenhum feriado cadastrado ainda.</div>';
     return `<div style="margin-bottom:16px">
-      <div class="fer-cidade-tit">${cidade}</div>
+      <div class="fer-cidade-tit">${cidadeTxt}</div>
       ${linhas}
       <div class="fer-add-row">
         <input type="number" min="1" max="31" placeholder="Dia" id="fmDia-${slug}" style="width:60px">
         <input type="number" min="1" max="12" placeholder="Mês" id="fmMes-${slug}" style="width:60px">
         <input type="text" placeholder="Nome do feriado" id="fmNome-${slug}" style="flex:1">
-        <button class="btn-primary" onclick="incluirFeriadoMunicipal('${cidade}')">➕</button>
+        <button class="btn-primary" onclick="incluirFeriadoMunicipal('${cidadeArg}')">➕</button>
       </div>
     </div>`;
   }).join('');
 }
 function incluirFeriadoMunicipal(cidade){
+  cidade = localidadeNormalizada(cidade);
   const slug = slugCidade(cidade);
   const dia = parseInt(document.getElementById('fmDia-'+slug).value);
   const mes = parseInt(document.getElementById('fmMes-'+slug).value);
@@ -2489,6 +2529,7 @@ function incluirFeriadoMunicipal(cidade){
   lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
 }
 function removerFeriadoMunicipal(cidade, idx){
+  cidade = localidadeNormalizada(cidade);
   if(!confirm('Remover este feriado municipal?')) return;
   STORE.feriadosMunicipais[cidade].splice(idx,1);
   lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
