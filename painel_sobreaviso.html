@@ -127,6 +127,10 @@
   .colab-add button{white-space:nowrap;}
   .colab-add label{font-size:10px; color:var(--muted); display:block; margin-bottom:3px;}
   .colab-add input,.colab-add select{border:1px solid var(--line); border-radius:6px; padding:7px 8px; font-size:12.5px; width:100%;}
+  .colab-list-filter{display:flex; align-items:center; justify-content:space-between; gap:10px; background:#F8FAFE; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:8px; flex-wrap:wrap;}
+  .colab-list-filter label{font-size:11px; color:var(--muted); font-weight:700; display:flex; align-items:center; gap:7px;}
+  .colab-list-filter select{border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12.5px; color:var(--ink); background:#fff;}
+  .colab-list-filter span{font-size:11px; color:var(--muted); font-weight:600;}
   .colab-row{display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--line); flex-wrap:wrap;}
   .cr-name{min-width:190px;}
   .cr-name span{display:block; font-size:11px; color:var(--muted); font-weight:400;}
@@ -357,6 +361,16 @@
       <datalist id="equipesList"></datalist>
       <datalist id="ufsList"></datalist>
       <datalist id="localidadesList"></datalist>
+      <div class="colab-list-filter">
+        <label>Filtrar lista
+          <select id="colabListaTipoFiltro" onchange="filtroListaColabTipo=this.value; feriasAbertoEi=-1; janelasAbertoEi=-1; renderListaColab()">
+            <option value="">Todos</option>
+            <option value="Tecnico">Técnicos</option>
+            <option value="Oficial">Oficiais</option>
+          </select>
+        </label>
+        <span id="colabListaFiltroInfo"></span>
+      </div>
       <div id="colabLista"></div>
     </div>
   </div>
@@ -1918,6 +1932,7 @@ function atualizarVisibilidadeTecnicoVinculado(){
 /* Painel expansível por colaborador — evita ter que marcar dia a dia na grade quando o período
    de férias já é conhecido de antemão. Só um colaborador por vez fica expandido. */
 let feriasAbertoEi = -1;
+let filtroListaColabTipo = '';
 function toggleFeriasPainel(ei){
   feriasAbertoEi = (feriasAbertoEi===ei) ? -1 : ei;
   renderListaColab();
@@ -2009,8 +2024,19 @@ function salvarJanelasIndividuais(ei){
 function renderListaColab(){
   const el = document.getElementById('colabLista');
   if(!el) return;
+  const selFiltro = document.getElementById('colabListaTipoFiltro');
+  if(selFiltro && selFiltro.value!==filtroListaColabTipo) selFiltro.value = filtroListaColabTipo;
+  const infoFiltro = document.getElementById('colabListaFiltroInfo');
+  const totalTecnicos = FUNCIONARIOS.filter(f=>f.tipo!=='Oficial').length;
+  const totalOficiais = FUNCIONARIOS.filter(f=>f.tipo==='Oficial').length;
+  const indices = FUNCIONARIOS.map((_,ei)=>ei).filter(ei=>!filtroListaColabTipo || FUNCIONARIOS[ei].tipo===filtroListaColabTipo);
+  if(infoFiltro){
+    infoFiltro.textContent = `${indices.length}/${FUNCIONARIOS.length} exibido${indices.length!==1?'s':''} · ${totalTecnicos} ${totalTecnicos===1?'técnico':'técnicos'} · ${totalOficiais} ${totalOficiais===1?'oficial':'oficiais'}`;
+  }
   if(!FUNCIONARIOS.length){ el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px 0">Nenhum colaborador cadastrado.</div>'; return; }
-  el.innerHTML = FUNCIONARIOS.map((f,ei)=>{
+  if(!indices.length){ el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px 0">Nenhum colaborador encontrado para este filtro.</div>'; return; }
+  el.innerHTML = indices.map(ei=>{
+    const f = FUNCIONARIOS[ei];
     const horas = calcularHorasSobreaviso(ei);
     const gaGo = [f.ga?('G.A: '+f.ga):'', f.go?('G.O: '+f.go):''].filter(Boolean).join(' · ');
     const nFerias = (f.ferias||[]).length;
