@@ -245,7 +245,7 @@
   </div>
   <div class="grp">
     <label>Colaborador</label>
-    <input type="search" id="filtroColaborador" name="sobreaviso_filtro_colaborador_livre" value="" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" oninput="filtroColaborador=this.value; renderAll();" style="min-width:140px">
+    <input type="search" id="filtroColaborador" name="sobreaviso_busca_livre_nao_usuario" value="" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly'); sanearFiltroColaborador();" oninput="atualizarFiltroColaborador(this)" onchange="sanearFiltroColaborador(); renderAll();" style="min-width:140px">
   </div>
   <div class="grp">
     <label>Função</label>
@@ -491,6 +491,10 @@ let filtroUf = '';
 let filtroLocalidade = '';
 let filtroGa = '';
 let filtroGo = '';
+function valorIndesejadoFiltroColaborador(v){
+  const n = nomeKey(v);
+  return n==='ADMIN' || n==='ADMINISTRADOR';
+}
 function limparFiltroColaboradorCampo(){
   filtroColaborador = '';
   const ce = document.getElementById('filtroColaborador');
@@ -498,6 +502,24 @@ function limparFiltroColaboradorCampo(){
   ce.value = '';
   ce.defaultValue = '';
   ce.setAttribute('value', '');
+}
+function atualizarFiltroColaborador(input){
+  const valor = String(input && input.value || '');
+  if(valorIndesejadoFiltroColaborador(valor)){
+    limparFiltroColaboradorCampo();
+  } else {
+    filtroColaborador = valor;
+  }
+  renderAll();
+}
+function sanearFiltroColaborador(){
+  const ce = document.getElementById('filtroColaborador');
+  if(!ce) return;
+  if(valorIndesejadoFiltroColaborador(ce.value) || valorIndesejadoFiltroColaborador(filtroColaborador)){
+    limparFiltroColaboradorCampo();
+    return;
+  }
+  if(ce.value !== filtroColaborador) ce.value = filtroColaborador || '';
 }
 function _limparSelectFiltro(id){
   const sel = document.getElementById(id);
@@ -510,6 +532,12 @@ function limparEstadoFiltros(){
   filtroEquipe=''; filtroTipo=''; filtroUf=''; filtroLocalidade=''; filtroGa=''; filtroGo='';
   limparFiltroColaboradorCampo();
   ['filtroTipo','filtroEquipe','filtroUf','filtroLocalidade','filtroGa','filtroGo'].forEach(_limparSelectFiltro);
+}
+function agendarLimpezaFiltrosAposAtualizacao(){
+  [0, 250, 1000, 2500].forEach(ms=>setTimeout(()=>{
+    limparEstadoFiltros();
+    if(periodoAno!=null) renderAll();
+  }, ms));
 }
 function limparFiltros(){
   limparEstadoFiltros();
@@ -966,8 +994,13 @@ function salvarTokenSync(){
 async function sincronizarAgoraManual(){
   const status = document.getElementById('ghSyncStatus');
   if(status){ status.textContent='Sincronizando…'; status.style.color='var(--muted)'; }
+  limparEstadoFiltros();
+  if(periodoAno!=null) renderAll();
   await sincronizarEnviarRemoto();
   await sincronizarComDsrVolanteRemoto();
+  limparEstadoFiltros();
+  if(periodoAno!=null) renderAll();
+  agendarLimpezaFiltrosAposAtualizacao();
   if(status && ghToken()){
     const atual = status.textContent;
     if(!/Erro/.test(atual)) status.textContent = 'Sincronizado às '+new Date().toLocaleTimeString('pt-BR').slice(0,5);
@@ -1702,6 +1735,7 @@ function popularFiltroEquipe(){
   _popularSelectFiltro('filtroGo', 'go', 'Todos', v=>filtroGo=v);
 }
 function renderAll(){
+  sanearFiltroColaborador();
   const aud = auditar();
   const tbl = document.getElementById('grid');
   // "selecionar todos" cobre só quem está visível com os filtros atuais — mais intuitivo do
@@ -2472,7 +2506,7 @@ function iniciar(){
   let ini = (saved && saved.periodoAtual) ? parsePeriodoKey(saved.periodoAtual) : periodoAtualPadrao();
   if(!ini.ano || !ini.mes || periodoAntesDoMinimo(ini.ano, ini.mes)) ini = {ano:PERIODO_MIN_ANO, mes:PERIODO_MIN_MES};
   carregarPeriodo(ini.ano, ini.mes);
-  setTimeout(()=>{ limparEstadoFiltros(); renderAll(); }, 0);
+  agendarLimpezaFiltrosAposAtualizacao();
   sincronizarReceberRemotoInicial();
 }
 window.addEventListener('pageshow', ()=>{ limparEstadoFiltros(); if(periodoAno!=null) renderAll(); });
