@@ -1201,7 +1201,7 @@ function aplicarPrimeiraMarcacaoSobreaviso(ei, di){
     const cel = grid[ei] && grid[ei][idx];
     if(!cel || (cel.lock && idx!==di)) return;
     const novo = statusSobreavisoAjustadoSemana(ei, idx, di, idxs);
-    const deveTravar = idx===di;
+    const deveTravar = true;
     if(cel.st!==novo || cel.lock!==deveTravar){
       cel.st = novo;
       cel.lock = deveTravar;
@@ -1520,6 +1520,22 @@ function descricaoAncoragemColab(ei){
   const oficiais = oficiaisAncoradosAoTecnico(ei, false).map(a=>a.oficial);
   if(oficiais.length) return '🔗 Oficial: '+oficiais.join(', ');
   return '';
+}
+function alvosReaisAjusteManual(eis){
+  const vistos = new Set();
+  const alvos = [];
+  (eis||[]).forEach(ei=>{
+    const f = FUNCIONARIOS[ei];
+    if(!f) return;
+    const refs = f.tipo==='Oficial' ? [{eiOf:ei}] : oficiaisAncoradosAoTecnico(ei, true);
+    const indices = refs.length ? refs.map(a=>a.eiOf) : [ei];
+    indices.forEach(idx=>{
+      if(vistos.has(idx)) return;
+      vistos.add(idx);
+      alvos.push(idx);
+    });
+  });
+  return alvos;
 }
 function aplicarAncoragemOficialTecnico(){
   const usados = new Set();
@@ -1922,9 +1938,9 @@ function ajustarAlturaGrade(){
 window.addEventListener('resize', ajustarAlturaGrade);
 
 /* ================= POPOVER DE AJUSTE ================= */
-/* popEis = colaboradores afetados pelo próximo ajuste. Se houver colaboradores marcados
-   (checkbox), o ajuste aplica em TODOS eles pro dia clicado; senão, aplica só no colaborador da
-   célula clicada. */
+/* popEis = colaboradores escolhidos na grade. Antes de gravar, alvosReaisAjusteManual()
+   redireciona Técnicos ancorados para o(s) Oficial(is) de referência; o recálculo copia a escala
+   de volta para o Técnico e impede que o clique pareça ter sido desfeito pela ancoragem. */
 let popEis = [], popD = -1;
 function abrirPop(ev, ei, di){
   popEis = colabsSelecionados.size ? [...colabsSelecionados] : [ei];
@@ -1952,24 +1968,27 @@ function abrirPop(ev, ei, di){
   pop.style.left = x+'px'; pop.style.top = y+'px';
 }
 function forcarStatus(ei, d, st){
-  const cel = grid[ei][d];
+  const cel = grid[ei] && grid[ei][d];
+  if(!cel) return false;
   if(st==='SOBREAVISO' && cel.st!=='SOBREAVISO' && aplicarPrimeiraMarcacaoSobreaviso(ei, d)){
-    resolverSobreaviso();
-    return;
+    return true;
   }
+  const mudou = cel.st!==st || !cel.lock;
   cel.st = st; cel.lock = true;
-  resolverSobreaviso();
+  return mudou;
 }
 function setStatus(st){
-  popEis.forEach(ei=> forcarStatus(ei, popD, st));
+  const alvos = alvosReaisAjusteManual(popEis);
+  alvos.forEach(ei=> forcarStatus(ei, popD, st));
+  resolverSobreaviso();
   renderAll();
   fecharPop();
   lsSave();
 }
 function desbloquearCelula(){
-  popEis.forEach(ei=>{
+  alvosReaisAjusteManual(popEis).forEach(ei=>{
     const cel = grid[ei][popD];
-    cel.lock = false;
+    if(cel) cel.lock = false;
   });
   resolverSobreaviso();
   renderAll(); fecharPop();
