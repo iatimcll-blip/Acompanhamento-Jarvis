@@ -6578,6 +6578,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Chamados em aberto</span>
           <div class="tsec-meta">
             <span id="cnt-ab" style="color:var(--tx3)"></span>
+            <span class="atrix-sync-badge" id="atrix-cd-ab" style="display:none" title="Sugestão de nova leitura do Atrix — não atualiza sozinho, use o botão Iniciar">
+              <i class="ti ti-robot"></i>
+              <span id="atrix-cd-ab-txt">--:--</span>
+            </span>
             <span class="card-action" onclick="manualRefreshAb()" title="Recalcula o SLA e atualiza a lista de chamados"><i class="ti ti-refresh" style="font-size:11px;vertical-align:-1px"></i> Atualizar</span>
             <span class="card-action" id="ab-toggle-hide-inactive" onclick="toggleAbHideInactive()" title="Ocultar chamados Cancelados, Fechados ou Pendente Validação."><i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados</span>
             <span class="card-action admin-only" onclick="openModalAb()" style="color:var(--blue)"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar chamado</span>
@@ -8994,6 +8998,40 @@ function _startAtrixCountdown(isoStr){
   if(_atrixRunningNow)_atrixCdTimer=setInterval(tick,1000);
 }
 
+/* Lembrete visual ao lado da lista de "Chamados em aberto": conta 30 min a partir
+   da última leitura do Atrix até uma "próxima sugerida" — não dispara nada sozinho
+   (não existe mais schedule automático), é só um indicativo pra saber quando vale
+   clicar em Iniciar de novo. */
+let _atrixReminderTimer=null;
+function _startAtrixReminderCountdown(isoStr){
+  if(_atrixReminderTimer){clearInterval(_atrixReminderTimer);_atrixReminderTimer=null;}
+  const el=document.getElementById('atrix-cd-ab');
+  const txt=document.getElementById('atrix-cd-ab-txt');
+  if(!el||!txt||!isoStr)return;
+  const base=new Date(isoStr).getTime();
+  if(isNaN(base))return;
+  const REMINDER_MS=30*60*1000;
+  const pad=n=>String(n).padStart(2,'0');
+  function tick(){
+    el.style.display='';
+    el.classList.remove('fresh','stale');
+    const rem=base+REMINDER_MS-Date.now();
+    if(rem<=0){
+      txt.textContent='sugestão: atualizar';
+      el.classList.add('stale');
+      el.title='Já se passaram 30 min desde a última leitura do Atrix — considere clicar em Iniciar';
+      return;
+    }
+    const totalSec=Math.ceil(rem/1000);
+    const min=Math.floor(totalSec/60),sec=totalSec%60;
+    txt.textContent=`próxima em ${pad(min)}:${pad(sec)}`;
+    el.classList.add('fresh');
+    el.title=`Sugestão de nova leitura do Atrix em ${pad(min)}:${pad(sec)} — não atualiza sozinho, use o botão Iniciar`;
+  }
+  tick();
+  _atrixReminderTimer=setInterval(tick,1000);
+}
+
 let _atrixPickupTimer=null;
 
 /* ── Gate público + limpeza de execuções presas ──────────────────────────────
@@ -9186,6 +9224,7 @@ function _renderAtrixTs(isoStr){
     if(ageMin<35)badge.classList.add('fresh');       // verde: atualizado há menos de 35 min
     else if(ageMin>120)badge.classList.add('stale'); // laranja: mais de 2h sem atualizar
     _startAtrixCountdown(isoStr);
+    _startAtrixReminderCountdown(isoStr);
   }catch(_){}
 }
 
