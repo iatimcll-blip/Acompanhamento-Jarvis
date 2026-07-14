@@ -7,7 +7,7 @@
  *   2. Abre Atrix em contexto persistente headless (.atrix_session/)
  *   3. Faz login automático (ou reutiliza sessão ativa)
  *   4. Lê substatus de cada chamado e salva atrix_updates.json no GitHub
- *   5. Repete a cada 30 min automaticamente
+ *   5. Publica o status do agente para qualquer dispositivo acompanhar
  */
 
 const { chromium } = require('playwright');
@@ -33,6 +33,7 @@ const SINGLE_CYCLE  = ['1','true','yes'].includes((process.env.SINGLE_CYCLE || '
 const GH_TICKETS_FILE = 'data/atrix_tickets.json';
 const GH_UPDATES_FILE = 'data/atrix_updates.json';
 const GH_GATE_FILE    = 'data/atrix-gate.json';
+const GH_RUNNER_STATUS_FILE = 'data/atrix-runner-status.json';
 const SESSION_DIR     = path.join(__dirname, '.atrix_session');
 
 // ── Logger ────────────────────────────────────────────────────────────────────
@@ -72,9 +73,10 @@ function ghRequest(method, urlPath, bodyObj) {
         path: urlPath,
         method,
         headers: {
-          Authorization:  `token ${GH_TOKEN}`,
-          Accept:         'application/vnd.github.v3+json',
-          'User-Agent':   'jarvis-atrix-agent',
+          ...(GH_TOKEN ? { Authorization: `Bearer ${GH_TOKEN}` } : {}),
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'jarvis-atrix-agent',
           ...(body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {})
         }
       },
@@ -109,10 +111,9 @@ async function ghPutFile(filePath, contentStr, sha, message) {
   await ghRequest('PUT', `/repos/${GH_REPO}/contents/${filePath}`, body);
 }
 
-// ── Trava diária (gate) ──────────────────────────────────────────────────────
-// Ciclos automáticos (schedule) só devem rodar depois que alguém já clicou
-// "Iniciar" (workflow_dispatch) pelo menos uma vez no dia -- evita ficar
-// tentando sincronizar o dia inteiro quando o runner está desligado.
+// ── Gate público ──────────────────────────────────────────────────────────────
+// Registra o último clique no botão "Iniciar" e serve como auditoria pública para
+// qualquer dispositivo. O workflow só roda por workflow_dispatch.
 function todayLocalStr() {
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
@@ -126,6 +127,37 @@ async function loadGate() {
 
 async function saveGate(gate, sha) {
   await ghPutFile(GH_GATE_FILE, JSON.stringify(gate, null, 2), sha, `chore: gate Atrix ${gate.lastManualTriggerDate || 'reset'}`);
+}
+
+async function publishRunnerStatus(patch) {
+  if (!GH_TOKEN) return;
+  try {
+    let current = {};
+    let sha = null;
+    try {
+      const file = await ghGetFile(GH_RUNNER_STATUS_FILE);
+      sha = file.sha;
+      current = file.content ? JSON.parse(file.content) : {};
+    } catch (e) {
+      warn('Nao foi possivel ler status publico anterior do agente:', e.message);
+    }
+    const status = {
+      ...current,
+      online: true,
+      source: 'atrix_agent',
+      runner: process.env.RUNNER_NAME || process.env.COMPUTERNAME || process.env.HOSTNAME || 'jarvis-runner',
+      updatedAt: new Date().toISOString(),
+      ...patch
+    };
+    await ghPutFile(
+      GH_RUNNER_STATUS_FILE,
+      JSON.stringify(status, null, 2),
+      sha,
+      `chore: status Agente Atrix ${status.state || 'online'}`
+    );
+  } catch (e) {
+    warn('Falha ao publicar status publico do agente:', e.message);
+  }
 }
 
 // ── Tickets e Updates ─────────────────────────────────────────────────────────
@@ -420,11 +452,36 @@ async function runCycle() {
   if (!GH_TOKEN) { error('GITHUB_TOKEN nao configurado no .env'); return; }
   if (!ATRIX_USER || !ATRIX_PASS) {
     error('Credenciais Atrix nao configuradas. Execute run.bat para configurar.');
+    await publishRunnerStatus({
+      state: 'error',
+      lastError: 'Credenciais Atrix nao configuradas',
+      lastRunStartedAt: cycleStart.toISOString(),
+      lastRunCompletedAt: new Date().toISOString(),
+      lastRunConclusion: 'failure'
+    });
     return;
   }
 
+  await publishRunnerStatus({
+    state: 'running',
+    lastError: '',
+    lastRunStartedAt: cycleStart.toISOString(),
+    lastRunConclusion: ''
+  });
+
   const tickets = await loadTickets();
-  if (!tickets.length) return;
+  if (!tickets.length) {
+    await publishRunnerStatus({
+      state: 'online',
+      lastError: 'Nenhum chamado exportado para leitura',
+      lastRunCompletedAt: new Date().toISOString(),
+      lastRunConclusion: 'no_tickets',
+      lastTicketsChecked: 0,
+      lastTicketsChanged: 0,
+      lastTicketsErrors: 0
+    });
+    return;
+  }
 
   const { updates, sha } = await loadUpdates();
   let changed = 0;
@@ -439,7 +496,15 @@ async function runCycle() {
   const page = await ctx.newPage();
 
   try {
-    if (!await ensureLoggedIn(page)) { await ctx.close(); return; }
+    if (!await ensureLoggedIn(page)) {
+      await publishRunnerStatus({
+        state: 'error',
+        lastError: 'Login Atrix falhou ou sessao expirou',
+        lastRunCompletedAt: new Date().toISOString(),
+        lastRunConclusion: 'failure'
+      });
+      return;
+    }
 
     for (let i = 0; i < tickets.length; i++) {
       const ticket = tickets[i];
@@ -481,6 +546,16 @@ async function runCycle() {
   if (errors) info(`Falhas     : ${errors} chamados sem leitura`);
   info(`Proximo    : ${fmtDateTime(nextCycle)} (em ${INTERVAL_MIN} min)`);
   info('══════════════════════════════════════');
+
+  await publishRunnerStatus({
+    state: 'online',
+    lastError: errors ? `${errors} chamado(s) sem leitura` : '',
+    lastRunCompletedAt: cycleEnd.toISOString(),
+    lastRunConclusion: errors ? 'partial' : 'success',
+    lastTicketsChecked: tickets.length,
+    lastTicketsChanged: changed,
+    lastTicketsErrors: errors
+  });
 }
 
 // ── Agendamento ───────────────────────────────────────────────────────────────
@@ -489,6 +564,12 @@ async function main() {
 
   if (!ATRIX_USER || !ATRIX_PASS) {
     error('Credenciais Atrix nao configuradas. Execute run.bat para configurar.');
+    await publishRunnerStatus({
+      state: 'error',
+      lastError: 'Credenciais Atrix nao configuradas',
+      lastRunCompletedAt: new Date().toISOString(),
+      lastRunConclusion: 'failure'
+    });
     process.exit(1);
   }
 
@@ -496,25 +577,24 @@ async function main() {
     const eventName = process.env.GITHUB_EVENT_NAME || '';
     const today = todayLocalStr();
 
-    if (eventName === 'workflow_dispatch') {
-      // Clique manual em "Iniciar": registra a ativação de hoje para liberar os
-      // ciclos automáticos (schedule) subsequentes no mesmo dia.
+    if (eventName && eventName !== 'workflow_dispatch') {
+      info(`Evento ${eventName} ignorado — o Agente Atrix atualiza apenas pelo botao Iniciar.`);
+      process.exit(0);
+    }
+
+    if (eventName === 'workflow_dispatch' || !eventName) {
+      // Clique manual em "Iniciar": registra a ativação de hoje para auditoria
+      // publica. O workflow nao possui schedule; este gate nao dispara ciclos sozinho.
       try {
         const { gate, sha } = await loadGate();
-        if (gate.lastManualTriggerDate !== today) {
-          await saveGate({ lastManualTriggerDate: today }, sha);
-          info(`Disparo manual registrado para ${today}.`);
-        }
+        await saveGate({
+          ...gate,
+          lastManualTriggerDate: today,
+          lastManualTriggerAt: new Date().toISOString(),
+          source: 'atrix_agent'
+        }, sha);
+        info(`Disparo manual registrado para ${today}.`);
       } catch (e) { warn('Falha ao registrar disparo manual (gate):', e.message); }
-    } else if (eventName === 'schedule') {
-      // Ciclo automático: só prossegue se já houve um clique manual hoje.
-      try {
-        const { gate } = await loadGate();
-        if (gate.lastManualTriggerDate !== today) {
-          info(`Sem disparo manual hoje (${today}) — ciclo automático ignorado. Clique "Iniciar" no painel para ativar.`);
-          process.exit(0);
-        }
-      } catch (e) { warn('Falha ao verificar gate diário, prosseguindo com o ciclo:', e.message); }
     }
 
     // CI (GitHub Actions): deixa o erro propagar — uma falha aqui deve marcar o
@@ -522,12 +602,12 @@ async function main() {
     try {
       await runCycle();
     } catch (e) {
-      // Falhou durante o dia: limpa a trava pra não ficar tentando de novo sozinho
-      // até o próximo clique manual em "Iniciar".
-      try {
-        const { gate, sha } = await loadGate();
-        if (gate.lastManualTriggerDate === today) await saveGate({ lastManualTriggerDate: null }, sha);
-      } catch (_) { /* não deixa a limpeza da trava mascarar o erro original */ }
+      await publishRunnerStatus({
+        state: 'error',
+        lastError: e.message,
+        lastRunCompletedAt: new Date().toISOString(),
+        lastRunConclusion: 'failure'
+      });
       throw e;
     }
     info('Ciclo unico concluido.');
@@ -540,11 +620,17 @@ async function main() {
   // Windows disparar um novo processo (até 90 min depois, ou mais se a máquina
   // estava suspensa), em vez de tentar de novo no próximo ciclo do próprio loop.
   try { await runCycle(); }
-  catch (e) { error('Ciclo falhou:', e.message); }
+  catch (e) {
+    error('Ciclo falhou:', e.message);
+    await publishRunnerStatus({ state: 'error', lastError: e.message, lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure' });
+  }
 
   setInterval(async () => {
     try { await runCycle(); }
-    catch (e) { error('Ciclo falhou:', e.message); }
+    catch (e) {
+      error('Ciclo falhou:', e.message);
+      await publishRunnerStatus({ state: 'error', lastError: e.message, lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure' });
+    }
   }, INTERVAL_MIN * 60 * 1000);
 }
 
