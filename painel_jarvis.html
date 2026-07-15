@@ -8304,7 +8304,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();iniciarPollingAtrixUpdates();
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -8323,7 +8323,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();iniciarPollingAtrixUpdates();
       return;
     }
   }
@@ -9306,6 +9306,21 @@ function _atrixTsBadge(ticketId){
     else{cls='atrix-card-ts stale';legend='Desatualizado';}
     return`<span class="${cls}" title="Substatus sincronizado pelo Agente Atrix em ${ts}"><i class="ti ti-robot"></i>${ts}<span class="atrix-ts-legend">${legend}</span></span>`;
   }catch(_){return'';}
+}
+
+/* A atualização automática do Agente Atrix roda no GitHub Actions a cada 30 min,
+   independente desta aba estar aberta — mas sem um polling próprio, os horários
+   por chamado (atrix-card-ts) e o mapa atrixUpdateMap só refletiam o que foi
+   lido no carregamento da página, ficando visualmente parados mesmo com o
+   agente publicando dados novos em segundo plano. Repete a cada 5 min (folga
+   suficiente pro ciclo de 30 min) enquanto a aba estiver visível. */
+let _atrixPollTimer=null;
+function iniciarPollingAtrixUpdates(){
+  setTimeout(loadAtrixUpdates,3000);
+  clearInterval(_atrixPollTimer);
+  _atrixPollTimer=setInterval(()=>{
+    if(document.visibilityState==='visible'&&typeof loadAtrixUpdates==='function')loadAtrixUpdates();
+  },5*60*1000);
 }
 
 async function loadAtrixUpdates(){
