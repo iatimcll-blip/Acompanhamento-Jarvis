@@ -577,14 +577,14 @@ async function main() {
     const eventName = process.env.GITHUB_EVENT_NAME || '';
     const today = todayLocalStr();
 
-    if (eventName && eventName !== 'workflow_dispatch') {
-      info(`Evento ${eventName} ignorado — o Agente Atrix atualiza apenas pelo botao Iniciar.`);
+    if (eventName && !['workflow_dispatch', 'schedule'].includes(eventName)) {
+      info(`Evento ${eventName} ignorado — o Agente Atrix atualiza apenas por agendamento de 30 min ou pelo botao Iniciar.`);
       process.exit(0);
     }
 
     if (eventName === 'workflow_dispatch' || !eventName) {
       // Clique manual em "Iniciar": registra a ativação de hoje para auditoria
-      // publica. O workflow nao possui schedule; este gate nao dispara ciclos sozinho.
+      // publica. O schedule de 30 min roda independentemente deste gate.
       try {
         const { gate, sha } = await loadGate();
         await saveGate({
@@ -595,6 +595,8 @@ async function main() {
         }, sha);
         info(`Disparo manual registrado para ${today}.`);
       } catch (e) { warn('Falha ao registrar disparo manual (gate):', e.message); }
+    } else if (eventName === 'schedule') {
+      info('Disparo automatico por schedule GitHub — ciclo de 30 min.');
     }
 
     // CI (GitHub Actions): deixa o erro propagar — uma falha aqui deve marcar o
@@ -617,7 +619,7 @@ async function main() {
   // Modo intervalo (processo de longa duração): uma falha pontual no primeiro
   // ciclo (ex.: timeout de rede logo ao iniciar) não pode derrubar o processo
   // inteiro — sem isso, o agente ficava parado até o Agendador de Tarefas do
-  // Windows disparar um novo processo (até 90 min depois, ou mais se a máquina
+  // Windows disparar um novo processo (até 30 min depois, ou mais se a máquina
   // estava suspensa), em vez de tentar de novo no próximo ciclo do próprio loop.
   try { await runCycle(); }
   catch (e) {
