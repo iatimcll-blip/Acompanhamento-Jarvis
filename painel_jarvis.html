@@ -7480,7 +7480,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div id="ofs-modal-body">
           <table id="ofs-modal-tbl">
             <thead><tr>
-              <th onclick="ofsModalSort('dtStr')">Abertura OS</th>
+              <th onclick="ofsModalSort('dtStr')">Data</th>
               <th onclick="ofsModalSort('tipo')">Tipo de Atividade</th>
               <th onclick="ofsModalSort('status')">Status</th>
             </tr></thead>
@@ -12604,46 +12604,70 @@ function ofsDateFromFilename(fname){
   return isNaN(d)?null:d;
 }
 function ofsParseDateValue(v,fallbackDate){
-  if(v instanceof Date&&!isNaN(v))return v;
+  if(v instanceof Date&&!isNaN(v))return new Date(v.getFullYear(),v.getMonth(),v.getDate());
   if(typeof v==='number'&&v>10000){const d=XLSX.SSF.parse_date_code(v);if(d)return new Date(d.y,d.m-1,d.d);}
   const p=String(v||'').trim();
   if(!p)return null;
+  const validDate=(y,m,d)=>{const dt=new Date(y,m-1,d);return dt.getFullYear()===y&&dt.getMonth()===m-1&&dt.getDate()===d?dt:null;};
+  const sameDay=(a,b)=>a&&b&&a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
   let m=p.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
-  if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  if(m)return validDate(+m[1],+m[2],+m[3]);
   m=p.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
   if(m){
     const y=m[3]?((m[3].length===2?2000:0)+parseInt(m[3],10)):(fallbackDate instanceof Date?fallbackDate.getFullYear():new Date().getFullYear());
-    return new Date(y,parseInt(m[2],10)-1,parseInt(m[1],10));
+    const a=parseInt(m[1],10),b=parseInt(m[2],10);
+    const dmy=validDate(y,b,a);
+    const mdy=validDate(y,a,b);
+    if(fallbackDate instanceof Date){
+      if(sameDay(dmy,fallbackDate))return dmy;
+      if(sameDay(mdy,fallbackDate))return mdy;
+    }
+    return dmy||mdy;
   }
   const d=new Date(p);
-  return isNaN(d)?null:d;
+  return isNaN(d)?null:new Date(d.getFullYear(),d.getMonth(),d.getDate());
+}
+function ofsPrimaryDateValue(row,vals){
+  return row['Data']||row['DATA']||row['data']||vals[0]||'';
+}
+function ofsFallbackDateValue(row,vals){
+  return row['Data de Abertura OS']||row['Data Abertura OS']||row['Data de abertura OS']||row['DATA DE ABERTURA OS']||row['data_de_abertura_os']||row['Data de Início']||vals[16]||'';
+}
+function ofsDateToStr(dt){
+  return dt?`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`:'';
+}
+function ofsTecFromFilename(fname){
+  const base=String(fname||'').split(/[\\/]/).pop();
+  const m=base.match(/^Atividades-(.+?)_\d{1,2}_\d{1,2}_\d{2,4}(?:\s*\(\d+\))?\.csv$/i);
+  if(!m)return'';
+  const name=m[1].replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+  return isOfsRegisteredTec(name)?canonicTec(name):'';
 }
 function ofsReadRows(raw,fname){
   const wb=XLSX.read(raw,{type:'array',cellDates:true});
   const ws=wb.Sheets['Dados Completos']||wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('dados completos'))]||wb.Sheets[wb.SheetNames[0]];
-  const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
-  /* Relatorios "Atividades-<recurso>_DD_MM_AA.csv" trazem a data correta no
-     proprio nome do arquivo. Algumas linhas vem com a coluna Data em MM/DD
-     (em vez de DD/MM, o padrao assumido abaixo), invertendo dia/mes — ex:
-     arquivo "..._07_05_26.csv" (7 de maio) gerava dtStr 2026-07-05 (5 de julho).
-     Quando dia e mes parseados batem exatamente com o mes e dia do nome do
-     arquivo (a transposicao classica), usamos a data do arquivo como correta. */
+  const rows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
+  /* Produtividade do dia: a data oficial vem da coluna Data da base (Coluna A
+     nos CSVs OFS). O nome do arquivo fica somente como fallback para ano/data
+     quando a coluna Data vier vazia ou incompleta. */
   const fileDt=ofsDateFromFilename(fname);
+  const fileTec=ofsTecFromFilename(fname);
   const out=[];
   for(const [rowIndex,r] of rows.entries()){
     const vals=Object.values(r);
-    const tecRaw=String(r['Recurso']||r['Técnico']||r['TECNICO']||r['tecnico']||r['RECURSO']||vals[2]||'').trim();
+    const tecRaw=String(r['Recurso']||r['Técnico']||r['TECNICO']||r['tecnico']||r['RECURSO']||fileTec||vals[2]||'').trim();
     const tipo=String(r['Tipo de Atividade.1']||r['Tipo de Atividade']||r['TIPO_ATIVIDADE']||r['tipo_atividade']||r['Atividade']||r['ATIVIDADE']||vals[25]||'').trim();
     const stRaw=String(r['Status da Atividade']||r['Status']||r['STATUS']||r['status']||r['Situação']||r['SITUACAO']||vals[7]||'').trim();
-    const dtRaw=r['Data de Abertura OS']||r['Data Abertura OS']||r['Data de abertura OS']||r['DATA DE ABERTURA OS']||r['data_de_abertura_os']||r['Data']||r['DATA']||r['data']||r['Data de Início']||vals[16]||vals[0]||'';
-    const ordemServico=String(r['Ordem de Serviço']||r['OS']||r['os']||vals[28]||'').trim();
-    const idOrdemServico=String(r['ID da Ordem de Serviço']||vals[44]||'').trim();
+    const dtPrimary=ofsPrimaryDateValue(r,vals);
+    const dtFallback=ofsFallbackDateValue(r,vals);
+    const ordemServico=String(r['Ordem de Serviço']||r['OS']||r['os']||vals[28]||vals[27]||'').trim();
+    const idOrdemServico=String(r['ID da Ordem de Serviço']||vals[44]||vals[43]||'').trim();
     if(!tecRaw||isOfsWeekday(tecRaw)||isOfsExcluded(tipo,stRaw))continue;
     const tecnico=canonicTec(tecRaw);
     if(!isOfsRegisteredTec(tecnico))continue;
-    let dt=ofsParseDateValue(dtRaw,fileDt);
-    if(dt&&fileDt&&dtRaw===(r['Data']||r['DATA']||r['data']||r['Data de Início']||vals[0]||'')&&dt.getFullYear()===fileDt.getFullYear()&&dt.getDate()===fileDt.getMonth()+1&&dt.getMonth()+1===fileDt.getDate())dt=fileDt;
-    const dtStr=dt?`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`:'';
+    const rowFileDt=ofsDateFromFilename(r['Arquivo_Origem']||r['Arquivo Origem']||r['sourceFile']||fname)||fileDt;
+    const dt=ofsParseDateValue(dtPrimary,rowFileDt)||ofsParseDateValue(dtFallback,rowFileDt)||rowFileDt;
+    const dtStr=ofsDateToStr(dt);
     out.push({tecnico,tipo,status:ofsStatusKey(stRaw),dtStr,uf:getOfsUF(tecnico),grupo:getOfsGrupo(tecnico),ordemServico,os:ordemServico,idOrdemServico,sourceFile:fname||'',sourceRow:rowIndex+2});
   }
   return out;
