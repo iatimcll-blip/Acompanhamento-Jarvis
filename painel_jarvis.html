@@ -8017,7 +8017,7 @@ function userAllowedPanels(){const p=userPerms();return(p&&Array.isArray(p.panel
 function canSeePanel(tab){return!!canEdit()||userAllowedPanels().includes(tab);}
 function slnAb(){const m=userAllowedMops();return m?dAb.filter(d=>m.includes(d.mop)):dAb;}
 function slnEnc(){const m=userAllowedMops();return m?dEnc.filter(d=>m.includes(d.mop)):dEnc;}
-function slnOfsRows(){const m=userAllowedMops();return m?ofsRows.filter(r=>m.includes(r.grupo)):ofsRows;}
+function slnOfsRows(){const base=ofsRows.filter(r=>isOfsRegisteredTec(r.tecnico));const m=userAllowedMops();return m?base.filter(r=>m.includes(r.grupo)):base;}
 function slnRdeCount(){
   const cl=userAllowedClusters();
   if(!cl)return rdeBD.length+rdeAD.length;
@@ -8183,7 +8183,7 @@ async function saveGhState(manual=false){
       dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
       dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
       dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
-      if(Array.isArray(remoteSt.ofsRows))ofsRows=_mergeArraysByKey(ofsRows,remoteSt.ofsRows,ofsWorkbookRowKey);
+      if(Array.isArray(remoteSt.ofsRows))ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
       /* Rede: BD/AD são arrays posicionais (não objetos com chave natural), então
          em vez de mesclar linha a linha (arriscado — os índices de mês/semana em
          rdeM só fazem sentido dentro do mesmo arquivo), preserva a base de Rede
@@ -8826,7 +8826,7 @@ function applyState(st,label){
     }
   }
   if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
-    ofsRows=ofsDedupeRows(st.ofsRows.map(r=>({...r,uf:r.uf||getOfsUF(r.tecnico),grupo:r.grupo||getOfsGrupo(r.tecnico)})));
+    ofsRows=ofsSanitizeRows(st.ofsRows);
     ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
     saveOfsState();
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
@@ -12236,7 +12236,7 @@ function podaAbAnnotations(){
   Object.keys(abAnnotations).forEach(id=>{if(!ativos.has(id))delete abAnnotations[id];});
   try{localStorage.setItem(AB_ANN_KEY,JSON.stringify(abAnnotations));}catch(e){console.warn('ann poda',e);}
 }
-function getOfsProfList(){return[...new Set(ofsRows.map(r=>r.tecnico).filter(Boolean))].sort();}
+function getOfsProfList(){return ofsRegisteredTecRecords().map(t=>t.nome).sort((a,b)=>a.localeCompare(b,'pt-BR'));}
 function getAbResponsavelList(){
   return [...AB_RESPONSAVEIS_FIXOS].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 }
@@ -12331,6 +12331,41 @@ function ofsNameMatch(tec,list){
   const n=normN(tec),p=n.split(' ');
   return list.some(t=>{const nt=normN(t),tp=nt.split(' ');return n===nt||(p[0]===tp[0]&&p[p.length-1]===tp[tp.length-1])||(p[0]===tp[0]&&p[1]&&p[1]===tp[1])||_ofsSimRatio(n,nt)>=OFS_FUZZY_CUTOFF;});
 }
+function ofsDisplayName(nome){
+  const d=String(nome||'').trim().split(/\s+/).filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());
+  ['Da','De','Do','Dos','Das','E','A'].forEach(w=>{const i=d.indexOf(w);if(i>0)d[i]=w.toLowerCase();});
+  return d.join(' ');
+}
+function ofsRegisteredTecRecords(){
+  const map=new Map();
+  const add=(nome,uf,grupo)=>{
+    const k=normN(nome);if(!k)return;
+    map.set(k,{nome:ofsDisplayName(nome),uf:uf||'ND',grupo:grupo||'NÃO IDENTIFICADO'});
+  };
+  (OFS_UF_NAMES.MA||[]).forEach(n=>add(n,'MA',ofsNameMatch(n,OFS_MOP_NAMES)?'GIGA+ MA':'SLN MA'));
+  (OFS_UF_NAMES.PA||[]).forEach(n=>add(n,'PA','SLN PA'));
+  (ofsTecCustom||[]).forEach(t=>add(t.nome,t.uf||'ND',t.grupo||'NÃO IDENTIFICADO'));
+  return[...map.values()];
+}
+function ofsRegisteredTecKeys(){return new Set(ofsRegisteredTecRecords().map(t=>normN(t.nome)));}
+function ofsCanonicalTecKey(tec){
+  const raw=normN(tec);
+  if(!raw)return'';
+  const resolved=_ofsResolveFuzzyKey(raw);
+  return OFS_NAME_ALIASES[resolved]||resolved;
+}
+function isOfsRegisteredTec(tec){
+  const key=ofsCanonicalTecKey(tec);
+  return !!key&&ofsRegisteredTecKeys().has(key);
+}
+function ofsNormalizeRow(r){
+  if(!r)return null;
+  const tecnico=canonicTec(String(r.tecnico||r.Recurso||r['Técnico']||'').trim());
+  if(!isOfsRegisteredTec(tecnico))return null;
+  const status=ofsStatusKey(r.status||r['Status da Atividade']||'');
+  return{...r,tecnico,status,uf:getOfsUF(tecnico),grupo:getOfsGrupo(tecnico)};
+}
+function ofsSanitizeRows(rows){return ofsDedupeRows((Array.isArray(rows)?rows:[]).map(ofsNormalizeRow).filter(Boolean));}
 function getOfsUF(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.uf||'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.MA))return'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'PA';return'ND';}
 function getOfsGrupo(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.grupo||'SLN MA';if(ofsNameMatch(tec,OFS_MOP_NAMES))return'GIGA+ MA';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'SLN PA';if(ofsNameMatch(tec,OFS_UF_NAMES.MA))return'SLN MA';return'NÃO IDENTIFICADO';}
 function openOfsTecModal(){if(!canEdit())return;ofsTecCancelEdit();ofsTecRenderList();const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='flex';}
@@ -12338,7 +12373,7 @@ function closeOfsTecModal(){const m=document.getElementById('modal-ofs-tec');if(
 function ofsTecRenderList(){
   const el=document.getElementById('ofs-tec-list');if(!el)return;
   const ct=document.getElementById('ofs-tec-count');if(ct)ct.textContent=ofsTecCustom.length?`(${ofsTecCustom.length})`:'';
-  if(!ofsTecCustom.length){el.innerHTML='<div style="color:var(--tx3);font-size:11px;text-align:center;padding:20px">Nenhum técnico cadastrado manualmente.<br><span style="font-size:10px">Técnicos são detectados automaticamente pela base OFS.</span></div>';return;}
+  if(!ofsTecCustom.length){el.innerHTML='<div style="color:var(--tx3);font-size:11px;text-align:center;padding:20px">Nenhum técnico cadastrado manualmente.<br><span style="font-size:10px">O painel contabiliza somente os técnicos do cadastro padrão OFS.</span></div>';return;}
   const sorted=[...ofsTecCustom].map((t,i)=>({...t,_i:i})).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
   el.innerHTML=sorted.map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:.5px solid var(--bd);transition:background .15s" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
     <div style="flex:1;min-width:0">
@@ -12410,7 +12445,7 @@ function ofsTecRemove(idx){
 }
 function ofsTecApply(){
   _ofsTecDisp.clear();
-  ofsRows=ofsRows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)}));
+  ofsRows=ofsSanitizeRows(ofsRows);
   saveOfsState();renderOfs();
 }
 function ofsTecExportAll(){
@@ -12590,6 +12625,7 @@ function ofsReadRows(raw,fname){
     const idOrdemServico=String(r['ID da Ordem de Serviço']||vals[44]||'').trim();
     if(!tecRaw||isOfsWeekday(tecRaw)||isOfsExcluded(tipo,stRaw))continue;
     const tecnico=canonicTec(tecRaw);
+    if(!isOfsRegisteredTec(tecnico))continue;
     let dt=null;
     if(dtRaw instanceof Date)dt=dtRaw;
     else if(typeof dtRaw==='number'&&dtRaw>10000){const d=XLSX.SSF.parse_date_code(dtRaw);if(d)dt=new Date(d.y,d.m-1,d.d);}
@@ -12601,8 +12637,8 @@ function ofsReadRows(raw,fname){
   return out;
 }
 function applyOfsRows(out,fname,opts={}){
-  if(!out.length)throw new Error('Nenhum registro produtivo encontrado. Verifique se a base possui Recurso, Data, Tipo de Atividade e Status da Atividade.');
-  const clean=ofsDedupeRows(out);
+  const clean=ofsSanitizeRows(out);
+  if(!clean.length)throw new Error('Nenhum registro produtivo de técnico cadastrado encontrado. Verifique o cadastro de técnicos OFS e se a base possui Recurso, Data, Tipo de Atividade e Status da Atividade.');
   ofsRows=clean;
   const dates=clean.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
   ofsFilter={uf:'all',grupo:'all',dtStart:dates[0]||'',dtEnd:dates[dates.length-1]||''};
@@ -12662,7 +12698,7 @@ function restoreOfsState(){
     const raw=localStorage.getItem(OFS_KEY);if(!raw){restoreOfsStateFromIndexedDb();return}
     const s=JSON.parse(raw);
     if(s.rows&&Array.isArray(s.rows)){
-      ofsRows=ofsDedupeRows(s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)})));
+      ofsRows=ofsSanitizeRows(s.rows);
       ofsMeta=s.meta||{fname:'',loaded:true};
     }
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
@@ -12673,7 +12709,7 @@ function restoreOfsState(){
 async function restoreOfsStateFromIndexedDb(){
   try{
     const s=await idbGet(OFS_KEY);if(!s||!Array.isArray(s.rows))return;
-    ofsRows=ofsDedupeRows(s.rows.map(r=>({...r,uf:getOfsUF(r.tecnico),grupo:getOfsGrupo(r.tecnico)})));
+    ofsRows=ofsSanitizeRows(s.rows);
     ofsMeta=s.meta||{fname:'',loaded:true};
     if(s.filter)ofsFilter={...ofsFilter,...s.filter};
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
