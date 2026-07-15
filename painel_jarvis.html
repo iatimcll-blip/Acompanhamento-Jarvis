@@ -6568,6 +6568,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <i class="ti ti-clock" style="font-size:10px;opacity:.7"></i>
               <span id="atrix-sync-countdown" title="Atualização manual pelo botão Iniciar">manual</span>
               <button class="atrix-start-btn admin-only" id="atrix-start-btn" onclick="triggerAtrixUpdateNow(this)" title="Inicia uma atualização do Agente Atrix agora. O agente permanece online e o status publicado funciona em qualquer dispositivo."><i class="ti ti-player-play"></i> Iniciar</button>
+              <button class="atrix-start-btn admin-only" id="atrix-reset-btn" onclick="resetarTentativasAtrix(this)" title="Cancela execuções presas em fila (queued) ou travadas em andamento do Agente Atrix — use quando houver várias tentativas acumuladas sem concluir."><i class="ti ti-refresh-alert"></i> Zerar tentativas</button>
             </span>
           </div>
           <div id="sub-ab"></div>
@@ -6578,6 +6579,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Chamados em aberto</span>
           <div class="tsec-meta">
             <span id="cnt-ab" style="color:var(--tx3)"></span>
+            <span class="atrix-sync-badge" id="atrix-cd-ab" style="display:none" title="Tempo desde a última leitura do Atrix até a próxima atualização automática (a cada 30 min)">
+              <i class="ti ti-robot"></i>
+              <span id="atrix-cd-ab-txt">--:--</span>
+            </span>
             <span class="card-action" onclick="manualRefreshAb()" title="Recalcula o SLA e atualiza a lista de chamados"><i class="ti ti-refresh" style="font-size:11px;vertical-align:-1px"></i> Atualizar</span>
             <span class="card-action" id="ab-toggle-hide-inactive" onclick="toggleAbHideInactive()" title="Ocultar chamados Cancelados, Fechados ou Pendente Validação."><i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados</span>
             <span class="card-action admin-only" onclick="openModalAb()" style="color:var(--blue)"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar chamado</span>
@@ -8986,12 +8991,47 @@ function _startAtrixCountdown(isoStr){
       el.title='Atualização iniciada pelo botão Iniciar em andamento';
       return;
     }
-    el.textContent='manual';
-    el.title='Sem agendamento automático: novas leituras só pelo botão Iniciar';
+    el.textContent='auto 30min';
+    el.title='Atualização automática a cada 30 minutos (GitHub Actions) — clique Iniciar para forçar agora';
     clearInterval(_atrixCdTimer);_atrixCdTimer=null;
   }
   tick();
   if(_atrixRunningNow)_atrixCdTimer=setInterval(tick,1000);
+}
+
+/* Contador ao lado da lista de "Chamados em aberto": tempo desde a última leitura
+   do Atrix até a próxima atualização automática (a cada 30 min, via GitHub Actions).
+   É uma estimativa — o disparo real do schedule do GitHub pode atrasar alguns
+   minutos — mas dá uma referência visual de quando esperar novos dados. */
+let _atrixReminderTimer=null;
+function _startAtrixReminderCountdown(isoStr){
+  if(_atrixReminderTimer){clearInterval(_atrixReminderTimer);_atrixReminderTimer=null;}
+  const el=document.getElementById('atrix-cd-ab');
+  const txt=document.getElementById('atrix-cd-ab-txt');
+  if(!el||!txt||!isoStr)return;
+  const base=new Date(isoStr).getTime();
+  if(isNaN(base))return;
+  const CICLO_MS=30*60*1000;
+  const pad=n=>String(n).padStart(2,'0');
+  function tick(){
+    el.style.display='';
+    el.classList.remove('fresh','stale');
+    if(_atrixRunningNow){
+      txt.textContent='atualizando…';
+      el.classList.add('fresh');
+      el.title='Atualização do Atrix em andamento agora';
+      return;
+    }
+    const decorridoDesdeBase=Date.now()-base;
+    const restante=CICLO_MS-(decorridoDesdeBase%CICLO_MS);
+    const totalSec=Math.ceil(restante/1000);
+    const min=Math.floor(totalSec/60),sec=totalSec%60;
+    txt.textContent=`próxima em ${pad(min)}:${pad(sec)}`;
+    el.classList.add(decorridoDesdeBase>CICLO_MS*2?'stale':'fresh');
+    el.title=`Última leitura do Atrix há ${Math.floor(decorridoDesdeBase/60000)} min — próxima atualização automática estimada em ${pad(min)}:${pad(sec)}`;
+  }
+  tick();
+  _atrixReminderTimer=setInterval(tick,1000);
 }
 
 let _atrixPickupTimer=null;
@@ -9063,6 +9103,62 @@ async function _cancelarExecucoesPresasAtrix(token){
     }
     if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) em fila cancelada(s).`);
   }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas:',e);}
+}
+
+/* Cancela TODAS as execuções presas do Agente Atrix (em fila ou travadas em
+   andamento) — usado pelo botão "Zerar tentativas", pra quando várias tentativas
+   de atualização se acumulam sem concluir (ex.: runner ficou offline por um
+   tempo). Diferente de _cancelarExecucoesPresasAtrix (que só limpa a fila antes
+   de um novo disparo), este também cancela execuções "in_progress" travadas. */
+async function _cancelarTodasTentativasAtrix(token){
+  let total=0;
+  for(const status of ['queued','in_progress']){
+    try{
+      const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/runs?status=${status}&per_page=30`,{headers:_atrixGhHeaders(token)});
+      if(!res.ok)continue;
+      const data=await res.json();
+      const runs=data.workflow_runs||[];
+      for(const run of runs){
+        await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:_atrixGhHeaders(token)}).catch(()=>{});
+        total++;
+      }
+    }catch(e){console.warn(`[Atrix Agent] Falha ao cancelar execuções ${status}:`,e);}
+  }
+  return total;
+}
+
+async function resetarTentativasAtrix(btn){
+  if(!canEdit())return;
+  const token=String(getGhToken()||'').trim();
+  if(!token){alert('Configure o Token GitHub nas configurações de sincronização antes de zerar tentativas.');return;}
+  const orig=btn.innerHTML;
+  const done=(cls,html)=>{
+    btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');
+    btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
+    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');btn.innerHTML=orig;},3000);
+  };
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Zerando…';
+  try{
+    const total=await _cancelarTodasTentativasAtrix(token);
+    /* Limpa qualquer estado local de "ciclo em andamento" que estivesse
+       amarrado a uma execução que acabamos de cancelar. */
+    clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
+    _atrixRunningNow=false;
+    const lastUpdate=localStorage.getItem('jarvis:atrix:lastUpdate')||new Date().toISOString();
+    _startAtrixCountdown(lastUpdate);
+    _startAtrixReminderCountdown(lastUpdate);
+    if(typeof renderTAb==='function')renderTAb();
+    if(total>0){
+      done('atrix-start-ok',`<i class="ti ti-check"></i> ${total} cancelada(s)`);
+      _ghToast(`${total} tentativa(s) presa(s) do Agente Atrix cancelada(s).`,'var(--green-dk)',6000);
+    }else{
+      done('atrix-start-ok','<i class="ti ti-check"></i> Nada preso');
+      _ghToast('Nenhuma tentativa presa encontrada.','var(--green-dk)',5000);
+    }
+  }catch(e){
+    done('atrix-start-err','<i class="ti ti-x"></i> Erro');
+    _ghToast('Erro ao zerar tentativas: '+e.message,'var(--red)',7000);
+  }
 }
 
 /* Dispara o workflow_dispatch do Atrix Agent no GitHub Actions e liga o polling que
@@ -9186,6 +9282,7 @@ function _renderAtrixTs(isoStr){
     if(ageMin<35)badge.classList.add('fresh');       // verde: atualizado há menos de 35 min
     else if(ageMin>120)badge.classList.add('stale'); // laranja: mais de 2h sem atualizar
     _startAtrixCountdown(isoStr);
+    _startAtrixReminderCountdown(isoStr);
   }catch(_){}
 }
 
