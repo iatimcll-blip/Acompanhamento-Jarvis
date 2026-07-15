@@ -25,16 +25,16 @@ Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Silent
 # Criar task
 $action   = New-ScheduledTaskAction -Execute $nodePath -Argument "`"$agentPath`"" -WorkingDirectory $workDir
 $tLogon   = New-ScheduledTaskTrigger -AtLogOn
-$tRepeat  = New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInterval (New-TimeSpan -Minutes 90) -RepetitionDuration (New-TimeSpan -Days 365)
+$tRepeat  = New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 365)
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew -StartWhenAvailable -DontStopIfGoingOnBatteries -RunOnlyIfNetworkAvailable
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $tLogon,$tRepeat -Settings $settings `
-    -Description "Jarvis: atualiza substatus do Atrix a cada 90 min" -RunLevel Highest -Force | Out-Null
+    -Description "Jarvis: atualiza substatus do Atrix a cada 30 min" -RunLevel Highest -Force | Out-Null
 
 Write-Host ""
 Write-Host "✓ Agendamento criado!" -ForegroundColor Green
 Write-Host "  Nome    : $taskName"
-Write-Host "  Executa : ao logar + a cada 90 minutos"
+Write-Host "  Executa : ao logar + a cada 30 minutos"
 Write-Host "  Acoes   : $nodePath"
 Write-Host ""
 
