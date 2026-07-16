@@ -7129,7 +7129,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="fuel-split" id="fuel-split">
       <div class="fuel-split-pane" id="fuel-split-left">
         <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Orçamento, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button><button class="card-action admin-only" onclick="clearFuelVeiculos()" title="Limpar toda a base de veículos e condutores" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Limpar base</button></div></div>
-        <div class="tw"><table><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Orçamento</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><select class="fv-fsel" id="fv-f-setor" onchange="setFuelVF('setor',this.value)"><option value="">Todos</option></select></th><th><select class="fv-fsel" id="fv-f-superior" onchange="setFuelVF('superior',this.value)"><option value="">Todos</option></select></th><th></th><th><select class="fv-fsel" id="fv-f-tipoCartao" onchange="setFuelVF('tipoCartao',this.value)"><option value="">Todos</option><option value="Próprio">Próprio</option><option value="Coringa">Coringa</option></select></th><th><select class="fv-fsel" id="fv-f-status" onchange="setFuelVF('status',this.value)"><option value="">Todos</option><option value="Ativo">Ativo</option><option value="Inativo">Inativo</option><option value="Oficina">Oficina</option><option value="Bloqueado">Bloqueado</option></select></th><th></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
+        <div class="tw"><table><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Orçamento</th><th title="Análise Orçamento x Consumido no ciclo atual">Farol</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><select class="fv-fsel" id="fv-f-setor" onchange="setFuelVF('setor',this.value)"><option value="">Todos</option></select></th><th><select class="fv-fsel" id="fv-f-superior" onchange="setFuelVF('superior',this.value)"><option value="">Todos</option></select></th><th></th><th></th><th><select class="fv-fsel" id="fv-f-tipoCartao" onchange="setFuelVF('tipoCartao',this.value)"><option value="">Todos</option><option value="Próprio">Próprio</option><option value="Coringa">Coringa</option></select></th><th><select class="fv-fsel" id="fv-f-status" onchange="setFuelVF('status',this.value)"><option value="">Todos</option><option value="Ativo">Ativo</option><option value="Inativo">Inativo</option><option value="Oficina">Oficina</option><option value="Bloqueado">Bloqueado</option></select></th><th></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
       </div>
       <div class="fuel-split-handle" id="fuel-split-handle" title="Arraste para redimensionar os painéis"></div>
       <div class="fuel-split-pane" id="fuel-split-right">
@@ -10913,6 +10913,26 @@ function fuelMonthProjection(){
   return Object.values(by).sort((a,b)=>b.proj-a.proj||b.atual-a.atual||b.anterior-a.anterior||a.label.localeCompare(b.label,'pt-BR'));
 }
 function fuelNextMonthSuggestion(){return fuelMonthProjection().reduce((s,e)=>s+Number(e.proj||0),0)}
+/* Análise Orçamento x Consumido — farol indicativo por veículo/condutor, sempre
+   recalculado a partir do consumo real do ciclo atual (fuelMonthProjection).
+   Verde: consumido dentro de 80% do orçamento. Amarelo: entre 80% e 100%.
+   Vermelho: consumido igual ou acima do orçamento. Cinza: sem orçamento definido. */
+function fuelConsumidoPorPlaca(){
+  const map={};
+  fuelMonthProjection().forEach(e=>{map[e.placa]=e.atual;});
+  return map;
+}
+function fuelFarolOrcamento(placa,orcamento,consumidoMap){
+  const consumido=Number((consumidoMap||fuelConsumidoPorPlaca())[placa]||0);
+  const orc=Number(orcamento||0);
+  if(!orc)return{cor:'#8e8e93',label:'Sem orçamento definido',ratio:null,consumido,orcamento:orc};
+  const ratio=consumido/orc;
+  let cor,label;
+  if(ratio>=1){cor='var(--red)';label='Consumido igual ou acima do orçamento';}
+  else if(ratio>=0.8){cor='var(--orange,#f97316)';label='Consumido próximo do orçamento (≥80%)';}
+  else{cor='var(--green,#22c55e)';label='Consumido dentro do orçamento';}
+  return{cor,label,ratio,consumido,orcamento:orc};
+}
 function renderFuelExtraProjection(){
   const el=document.getElementById('fuel-extra-projection');if(!el)return;
   const win=fuelProjectionWindow(),bal=fuelBalance();
@@ -11036,12 +11056,16 @@ function _renderFuelVTable(){
   if(fuelVFilter.status)rows=rows.filter(v=>v.status===fuelVFilter.status);
   const cntEl=document.getElementById('cnt-fuel-v');if(cntEl)cntEl.textContent=rows.length===dFuelVehicles.length?dFuelVehicles.length+' veículos':rows.length+' de '+dFuelVehicles.length+' veículos';
   const tbody=document.getElementById('tb-fuel-v');if(!tbody)return;
+  const consumidoMap=fuelConsumidoPorPlaca();
   tbody.innerHTML=rows.map(v=>{
     const isOf=v.status==='Oficina',isCo=v.tipoCartao==='Coringa',isAP=v.status==='Ativo'&&(v.tipoCartao||'Próprio')==='Próprio';
     const rowClr=isOf?'background:rgba(239,68,68,0.18);border-left:3px solid var(--red)':isCo?'background:rgba(249,115,22,0.18);border-left:3px solid var(--orange)':isAP?'background:rgba(52,199,89,0.12);border-left:3px solid var(--green)':'';
     const needObs=v.status==='Inativo'||v.status==='Oficina';
     const obsCell=needObs?(canEdit()?`<input type="text" class="substatus-select" value="${eh(v.obsStatus||'')}" placeholder="Nº chamado" style="min-width:90px" onchange="updateFuelObsStatus('${eh(v.placa)}',this.value)" onblur="updateFuelObsStatus('${eh(v.placa)}',this.value)">`:`<span style="font-size:11px;color:var(--tx3)">${eh(v.obsStatus||'—')}</span>`):'<span style="color:var(--bd)">—</span>';
-    return`<tr style="${rowClr}"><td class="tid" style="font-weight:700;color:#1c1c1e">${eh(v.placa)}</td><td>${eh(v.modelo)}</td><td>${eh(v.ano)}</td><td>${eh(v.condutor)}</td><td>${eh(repairPtBR(v.setor))}</td><td>${eh(v.superior)}</td><td>${v.orcamento?brl(v.orcamento):'—'}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelCardType('${eh(v.placa)}',this.value)"><option value="Próprio"${(v.tipoCartao||'Próprio')==='Próprio'?' selected':''}>Próprio</option><option value="Coringa"${v.tipoCartao==='Coringa'?' selected':''}>Coringa</option></select>`:eh(v.tipoCartao||'Próprio')}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelStatus('${eh(v.placa)}',this.value)">${FUEL_STATUS.map(s=>`<option value="${s}"${s===v.status?' selected':''}>${s}</option>`).join('')}</select>`:eh(v.status)}</td><td>${obsCell}</td><td class="admin-only"><span class="card-action" onclick="editFuelVehicle('${eh(v.placa)}')">Editar</span></td></tr>`;
+    const farol=fuelFarolOrcamento(v.placa,v.orcamento,consumidoMap);
+    const farolTitle=farol.ratio===null?farol.label:`${farol.label} — Consumido ${brl(farol.consumido)} de ${brl(farol.orcamento)} (${Math.round(farol.ratio*100)}%)`;
+    const farolCell=`<span title="${eh(farolTitle)}" style="display:inline-flex;align-items:center;gap:5px"><i class="ti ti-circle-filled" style="color:${farol.cor};font-size:12px"></i>${farol.ratio===null?'':`<span style="font-size:10.5px;color:var(--tx3)">${Math.round(farol.ratio*100)}%</span>`}</span>`;
+    return`<tr style="${rowClr}"><td class="tid" style="font-weight:700;color:#1c1c1e">${eh(v.placa)}</td><td>${eh(v.modelo)}</td><td>${eh(v.ano)}</td><td>${eh(v.condutor)}</td><td>${eh(repairPtBR(v.setor))}</td><td>${eh(v.superior)}</td><td>${v.orcamento?brl(v.orcamento):'—'}</td><td>${farolCell}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelCardType('${eh(v.placa)}',this.value)"><option value="Próprio"${(v.tipoCartao||'Próprio')==='Próprio'?' selected':''}>Próprio</option><option value="Coringa"${v.tipoCartao==='Coringa'?' selected':''}>Coringa</option></select>`:eh(v.tipoCartao||'Próprio')}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelStatus('${eh(v.placa)}',this.value)">${FUEL_STATUS.map(s=>`<option value="${s}"${s===v.status?' selected':''}>${s}</option>`).join('')}</select>`:eh(v.status)}</td><td>${obsCell}</td><td class="admin-only"><span class="card-action" onclick="editFuelVehicle('${eh(v.placa)}')">Editar</span></td></tr>`;
   }).join('');
 }
 function fuelEnsureHtml2Canvas(){
@@ -11061,8 +11085,8 @@ function fuelVehicleTablePayload(){
     const ctl=cell.querySelector('select,input,textarea');
     return (ctl?ctl.value:cell.innerText||cell.textContent||'').replace(/\s+/g,' ').trim();
   };
-  const headers=[...table.tHead.rows[0].cells].slice(0,10).map(clean);
-  const rows=[...table.tBodies[0].rows].map(tr=>[...tr.cells].slice(0,10).map(clean));
+  const headers=[...table.tHead.rows[0].cells].slice(0,11).map(clean);
+  const rows=[...table.tBodies[0].rows].map(tr=>[...tr.cells].slice(0,11).map(clean));
   const text=[headers,...rows].map(r=>r.join('\t')).join('\n');
   const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const html='<table><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
