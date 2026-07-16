@@ -3407,6 +3407,24 @@ tbody tr:last-child td {
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
+#panel-combustivel .fuel-aporte-calc-card {
+  border-top: 3px solid var(--green);
+}
+#panel-combustivel .fuel-aporte-calc-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, .8fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+}
+#panel-combustivel .fuel-aporte-calc-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+#panel-combustivel .fuel-aporte-calc-summary .fuel-route-result-card b {
+  font-size: clamp(16px, 1.8vw, 23px);
+}
 #panel-combustivel .fuel-route-form {
   display: grid;
   grid-template-columns: minmax(160px, 1.2fr) minmax(160px, 1.2fr) minmax(190px, 1.35fr) minmax(118px, .7fr) auto auto auto;
@@ -3870,6 +3888,8 @@ tbody tr:last-child td {
   #panel-combustivel .fuel-manual-form { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-manual-form .fuel-manual-wide { grid-column: auto; }
   #panel-combustivel .fuel-route-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #panel-combustivel .fuel-aporte-calc-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #panel-combustivel .fuel-aporte-calc-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #panel-combustivel .fuel-route-result { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-consumo-layout { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-split { grid-template-columns: 1fr; }
@@ -3899,6 +3919,8 @@ tbody tr:last-child td {
   }
   #panel-combustivel .fuel-request-filters { grid-template-columns: 1fr; }
   #panel-combustivel .fuel-route-form { grid-template-columns: 1fr; }
+  #panel-combustivel .fuel-aporte-calc-form,
+  #panel-combustivel .fuel-aporte-calc-summary { grid-template-columns: 1fr; }
   #panel-combustivel #mrow-fuel .fuel-manual-inline {
     grid-column: auto !important;
     grid-template-columns: 1fr;
@@ -5193,6 +5215,13 @@ canvas {
   padding: 10px 12px !important;
   margin: 0 !important;
 }
+#panel-combustivel #mrow-fuel #fuel-aporte-period-calc {
+  grid-column: 1 / -1 !important;
+  order: 0 !important;
+  min-height: 0 !important;
+  padding: 10px 12px !important;
+  margin: 0 !important;
+}
 #panel-combustivel #mrow-fuel .fuel-route-head {
   display: flex !important;
   align-items: flex-start !important;
@@ -5215,9 +5244,15 @@ canvas {
   grid-template-columns: minmax(128px, 1fr) minmax(128px, 1fr) minmax(174px, 1.12fr) minmax(104px, .68fr) auto auto auto !important;
   gap: 6px !important;
 }
+#panel-combustivel #mrow-fuel .fuel-aporte-calc-form {
+  grid-template-columns: minmax(140px, 1fr) minmax(120px, .72fr) auto auto auto !important;
+  gap: 6px !important;
+}
 #panel-combustivel #mrow-fuel .fuel-route-form .finput,
 #panel-combustivel #mrow-fuel .fuel-route-form .card-action,
-#panel-combustivel #mrow-fuel .fuel-route-toggle {
+#panel-combustivel #mrow-fuel .fuel-route-toggle,
+#panel-combustivel #mrow-fuel .fuel-aporte-calc-form .finput,
+#panel-combustivel #mrow-fuel .fuel-aporte-calc-form .card-action {
   height: 30px !important;
   min-height: 30px !important;
   padding-top: 5px !important;
@@ -5225,6 +5260,11 @@ canvas {
 }
 #panel-combustivel #mrow-fuel .fuel-route-result {
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+#panel-combustivel #mrow-fuel .fuel-aporte-calc-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
   gap: 6px !important;
   margin-top: 8px !important;
 }
@@ -5254,7 +5294,9 @@ canvas {
     min-height: 136px !important;
   }
   #panel-combustivel #mrow-fuel .fuel-route-form,
-  #panel-combustivel #mrow-fuel .fuel-route-result {
+  #panel-combustivel #mrow-fuel .fuel-route-result,
+  #panel-combustivel #mrow-fuel .fuel-aporte-calc-form,
+  #panel-combustivel #mrow-fuel .fuel-aporte-calc-summary {
     grid-template-columns: 1fr !important;
   }
 }
@@ -6568,7 +6610,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <i class="ti ti-clock" style="font-size:10px;opacity:.7"></i>
               <span id="atrix-sync-countdown" title="Atualização manual pelo botão Iniciar">manual</span>
               <button class="atrix-start-btn admin-only" id="atrix-start-btn" onclick="triggerAtrixUpdateNow(this)" title="Inicia uma atualização do Agente Atrix agora. O agente permanece online e o status publicado funciona em qualquer dispositivo."><i class="ti ti-player-play"></i> Iniciar</button>
-              <button class="atrix-start-btn admin-only" id="atrix-reset-btn" onclick="resetarTentativasAtrix(this)" title="Cancela execuções presas em fila (queued) ou travadas em andamento do Agente Atrix — use quando houver várias tentativas acumuladas sem concluir."><i class="ti ti-refresh-alert"></i> Zerar tentativas</button>
             </span>
           </div>
           <div id="sub-ab"></div>
@@ -6579,10 +6620,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Chamados em aberto</span>
           <div class="tsec-meta">
             <span id="cnt-ab" style="color:var(--tx3)"></span>
-            <span class="atrix-sync-badge" id="atrix-cd-ab" style="display:none" title="Tempo desde a última leitura do Atrix até a próxima atualização automática (a cada 30 min)">
-              <i class="ti ti-robot"></i>
-              <span id="atrix-cd-ab-txt">--:--</span>
-            </span>
             <span class="card-action" onclick="manualRefreshAb()" title="Recalcula o SLA e atualiza a lista de chamados"><i class="ti ti-refresh" style="font-size:11px;vertical-align:-1px"></i> Atualizar</span>
             <span class="card-action" id="ab-toggle-hide-inactive" onclick="toggleAbHideInactive()" title="Ocultar chamados Cancelados, Fechados ou Pendente Validação."><i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados</span>
             <span class="card-action admin-only" onclick="openModalAb()" style="color:var(--blue)"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar chamado</span>
@@ -8304,7 +8341,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();iniciarPollingAtrixUpdates();
+  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -8323,7 +8360,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();iniciarPollingAtrixUpdates();
+      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
       return;
     }
   }
@@ -8478,8 +8515,57 @@ function pp(v){return v.toFixed(1).replace('.',',')}
 function brl(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2})}
 const FUEL_ROUTE_RATE_KEY='atrix:fuel-route-rate:v1';
 const FUEL_ROUTE_VEHICLE_KEY='atrix:fuel-route-vehicle:v1';
+const FUEL_APORTE_UNIT_KEY='atrix:fuel-aporte-period-unit:v1';
+const FUEL_APORTE_RESERVE_KEY='atrix:fuel-aporte-period-reserve:v1';
 const FUEL_MODEL_KML={KWID:15.5,SAVEIRO:11.5,ARGO:14.2,GOL:12.5};
 let fuelRouteLast=null;
+function fuelActiveVehicles(){return dFuelVehicles.filter(v=>v.status==='Ativo')}
+function fuelAportePeriodCalcValues(unitRaw,reserveRaw){
+  const active=fuelActiveVehicles().length,win=fuelCycleWindow(),bal=fuelBalance();
+  const unit=Math.max(0,Number(unitRaw||0));
+  const reserve=Math.max(0,Number(reserveRaw||0));
+  const target=unit*active+reserve;
+  const recommended=Math.max(0,target-bal.available);
+  const perDay=win.totalDays?target/win.totalDays:0;
+  const perVehicleDay=win.totalDays&&active?unit/win.totalDays:0;
+  return{active,win,bal,unit,reserve,target,recommended,perDay,perVehicleDay};
+}
+function fuelAportePeriodCalcSummaryHtml(d){
+  const ok=d.recommended<=0;
+  return `<div class="fuel-route-result-card"><span>Carros ativos</span><b>${d.active}</b></div><div class="fuel-route-result-card"><span>Valor por carro</span><b>${brl(d.unit)}</b></div><div class="fuel-route-result-card"><span>Total do período</span><b>${brl(d.target)}</b></div><div class="fuel-route-result-card"><span>Saldo disponível</span><b>${brl(d.bal.available)}</b></div><div class="fuel-route-result-card" style="border-color:${ok?'rgba(34,197,94,.42)':'rgba(239,68,68,.42)'};background:${ok?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)'}"><span>${ok?'Aporte necessário':'Aporte recomendado'}</span><b style="color:${ok?'var(--green-dk)':'var(--red)'}">${brl(d.recommended)}</b></div>`;
+}
+function fuelAportePeriodCalcMarkup(){
+  const unit=eh(localStorage.getItem(FUEL_APORTE_UNIT_KEY)||'');
+  const reserve=eh(localStorage.getItem(FUEL_APORTE_RESERVE_KEY)||'');
+  const d=fuelAportePeriodCalcValues(unit,reserve);
+  return `<div class="fuel-route-card fuel-aporte-calc-card" id="fuel-aporte-period-calc"><div class="fuel-route-head"><div><span class="card-title">Calculadora de aporte do período</span><small>${eh(d.win.label)} · calcula pelo valor por carro ativo e abate o saldo disponível</small></div><button class="card-action" onclick="clearFuelAportePeriodCalc()">Limpar</button></div><div class="fuel-aporte-calc-form"><input class="finput" id="fuel-aporte-period-unit" type="number" step="0.01" min="0" value="${unit}" placeholder="Valor por carro no período"><input class="finput" id="fuel-aporte-period-reserve" type="number" step="0.01" min="0" value="${reserve}" placeholder="Reserva extra R$"><button class="card-action" onclick="calcFuelAportePeriod()">Calcular</button><button class="card-action" onclick="useFuelAportePeriodValue()">Usar no Aporte Manual</button><span class="fuel-route-toggle" title="Quantidade de veículos ativos"><i class="ti ti-car"></i> ${d.active} ativos</span></div><div class="fuel-aporte-calc-summary" id="fuel-aporte-period-result">${fuelAportePeriodCalcSummaryHtml(d)}</div><div class="fuel-route-note" id="fuel-aporte-period-note">Informe o valor desejado por carro ativo no período. A sugestão desconta o saldo disponível atual.</div></div>`;
+}
+function calcFuelAportePeriod(save=true){
+  const unitEl=document.getElementById('fuel-aporte-period-unit'),reserveEl=document.getElementById('fuel-aporte-period-reserve');
+  const unit=Number(unitEl&&unitEl.value||0),reserve=Number(reserveEl&&reserveEl.value||0);
+  if(save){
+    try{localStorage.setItem(FUEL_APORTE_UNIT_KEY,String(Math.max(0,unit||0)));localStorage.setItem(FUEL_APORTE_RESERVE_KEY,String(Math.max(0,reserve||0)));}catch(e){}
+  }
+  const d=fuelAportePeriodCalcValues(unit,reserve),res=document.getElementById('fuel-aporte-period-result'),note=document.getElementById('fuel-aporte-period-note');
+  if(res)res.innerHTML=fuelAportePeriodCalcSummaryHtml(d);
+  if(note)note.textContent=d.active?`Base: ${d.active} carro${d.active!==1?'s':''} ativo${d.active!==1?'s':''} × ${brl(d.unit)}${d.reserve?` + reserva ${brl(d.reserve)}`:''}. Média diária alvo: ${brl(d.perDay)} no ciclo.`:'Nenhum carro ativo cadastrado para calcular o aporte.';
+  return d;
+}
+function clearFuelAportePeriodCalc(){
+  ['fuel-aporte-period-unit','fuel-aporte-period-reserve'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  try{localStorage.removeItem(FUEL_APORTE_UNIT_KEY);localStorage.removeItem(FUEL_APORTE_RESERVE_KEY);}catch(e){}
+  calcFuelAportePeriod(false);
+}
+function useFuelAportePeriodValue(){
+  const d=calcFuelAportePeriod(true);
+  if(!d.active){alert('Nenhum carro ativo cadastrado para calcular o aporte.');return}
+  const value=d.recommended>0?d.recommended:d.target;
+  if(!value){alert('Informe o valor por carro no período para calcular o aporte.');return}
+  const dateEl=document.getElementById('fuel-aporte-date-quick'),valEl=document.getElementById('fuel-aporte-valor-quick'),descEl=document.getElementById('fuel-aporte-desc-quick');
+  if(dateEl&&!dateEl.value)dateEl.value=new Date().toISOString().slice(0,10);
+  if(valEl){valEl.value=value.toFixed(2);valEl.focus();}
+  if(descEl)descEl.value=`Aporte sugerido ${d.win.label}: ${d.active} carros ativos x ${brl(d.unit)}${d.reserve?` + reserva ${brl(d.reserve)}`:''} - saldo disponível ${brl(d.bal.available)}`;
+}
 function fuelRouteInit(){
   const rate=document.getElementById('fuel-route-rate');
   if(rate&&!rate.value)rate.value=localStorage.getItem(FUEL_ROUTE_RATE_KEY)||'';
@@ -8991,47 +9077,12 @@ function _startAtrixCountdown(isoStr){
       el.title='Atualização iniciada pelo botão Iniciar em andamento';
       return;
     }
-    el.textContent='auto 30min';
-    el.title='Atualização automática a cada 30 minutos (GitHub Actions) — clique Iniciar para forçar agora';
+    el.textContent='manual';
+    el.title='Sem agendamento automático: novas leituras só pelo botão Iniciar';
     clearInterval(_atrixCdTimer);_atrixCdTimer=null;
   }
   tick();
   if(_atrixRunningNow)_atrixCdTimer=setInterval(tick,1000);
-}
-
-/* Contador ao lado da lista de "Chamados em aberto": tempo desde a última leitura
-   do Atrix até a próxima atualização automática (a cada 30 min, via GitHub Actions).
-   É uma estimativa — o disparo real do schedule do GitHub pode atrasar alguns
-   minutos — mas dá uma referência visual de quando esperar novos dados. */
-let _atrixReminderTimer=null;
-function _startAtrixReminderCountdown(isoStr){
-  if(_atrixReminderTimer){clearInterval(_atrixReminderTimer);_atrixReminderTimer=null;}
-  const el=document.getElementById('atrix-cd-ab');
-  const txt=document.getElementById('atrix-cd-ab-txt');
-  if(!el||!txt||!isoStr)return;
-  const base=new Date(isoStr).getTime();
-  if(isNaN(base))return;
-  const CICLO_MS=30*60*1000;
-  const pad=n=>String(n).padStart(2,'0');
-  function tick(){
-    el.style.display='';
-    el.classList.remove('fresh','stale');
-    if(_atrixRunningNow){
-      txt.textContent='atualizando…';
-      el.classList.add('fresh');
-      el.title='Atualização do Atrix em andamento agora';
-      return;
-    }
-    const decorridoDesdeBase=Date.now()-base;
-    const restante=CICLO_MS-(decorridoDesdeBase%CICLO_MS);
-    const totalSec=Math.ceil(restante/1000);
-    const min=Math.floor(totalSec/60),sec=totalSec%60;
-    txt.textContent=`próxima em ${pad(min)}:${pad(sec)}`;
-    el.classList.add(decorridoDesdeBase>CICLO_MS*2?'stale':'fresh');
-    el.title=`Última leitura do Atrix há ${Math.floor(decorridoDesdeBase/60000)} min — próxima atualização automática estimada em ${pad(min)}:${pad(sec)}`;
-  }
-  tick();
-  _atrixReminderTimer=setInterval(tick,1000);
 }
 
 let _atrixPickupTimer=null;
@@ -9103,62 +9154,6 @@ async function _cancelarExecucoesPresasAtrix(token){
     }
     if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) em fila cancelada(s).`);
   }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas:',e);}
-}
-
-/* Cancela TODAS as execuções presas do Agente Atrix (em fila ou travadas em
-   andamento) — usado pelo botão "Zerar tentativas", pra quando várias tentativas
-   de atualização se acumulam sem concluir (ex.: runner ficou offline por um
-   tempo). Diferente de _cancelarExecucoesPresasAtrix (que só limpa a fila antes
-   de um novo disparo), este também cancela execuções "in_progress" travadas. */
-async function _cancelarTodasTentativasAtrix(token){
-  let total=0;
-  for(const status of ['queued','in_progress']){
-    try{
-      const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/runs?status=${status}&per_page=30`,{headers:_atrixGhHeaders(token)});
-      if(!res.ok)continue;
-      const data=await res.json();
-      const runs=data.workflow_runs||[];
-      for(const run of runs){
-        await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:_atrixGhHeaders(token)}).catch(()=>{});
-        total++;
-      }
-    }catch(e){console.warn(`[Atrix Agent] Falha ao cancelar execuções ${status}:`,e);}
-  }
-  return total;
-}
-
-async function resetarTentativasAtrix(btn){
-  if(!canEdit())return;
-  const token=String(getGhToken()||'').trim();
-  if(!token){alert('Configure o Token GitHub nas configurações de sincronização antes de zerar tentativas.');return;}
-  const orig=btn.innerHTML;
-  const done=(cls,html)=>{
-    btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');
-    btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
-    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');btn.innerHTML=orig;},3000);
-  };
-  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Zerando…';
-  try{
-    const total=await _cancelarTodasTentativasAtrix(token);
-    /* Limpa qualquer estado local de "ciclo em andamento" que estivesse
-       amarrado a uma execução que acabamos de cancelar. */
-    clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
-    _atrixRunningNow=false;
-    const lastUpdate=localStorage.getItem('jarvis:atrix:lastUpdate')||new Date().toISOString();
-    _startAtrixCountdown(lastUpdate);
-    _startAtrixReminderCountdown(lastUpdate);
-    if(typeof renderTAb==='function')renderTAb();
-    if(total>0){
-      done('atrix-start-ok',`<i class="ti ti-check"></i> ${total} cancelada(s)`);
-      _ghToast(`${total} tentativa(s) presa(s) do Agente Atrix cancelada(s).`,'var(--green-dk)',6000);
-    }else{
-      done('atrix-start-ok','<i class="ti ti-check"></i> Nada preso');
-      _ghToast('Nenhuma tentativa presa encontrada.','var(--green-dk)',5000);
-    }
-  }catch(e){
-    done('atrix-start-err','<i class="ti ti-x"></i> Erro');
-    _ghToast('Erro ao zerar tentativas: '+e.message,'var(--red)',7000);
-  }
 }
 
 /* Dispara o workflow_dispatch do Atrix Agent no GitHub Actions e liga o polling que
@@ -9282,7 +9277,6 @@ function _renderAtrixTs(isoStr){
     if(ageMin<35)badge.classList.add('fresh');       // verde: atualizado há menos de 35 min
     else if(ageMin>120)badge.classList.add('stale'); // laranja: mais de 2h sem atualizar
     _startAtrixCountdown(isoStr);
-    _startAtrixReminderCountdown(isoStr);
   }catch(_){}
 }
 
@@ -9306,21 +9300,6 @@ function _atrixTsBadge(ticketId){
     else{cls='atrix-card-ts stale';legend='Desatualizado';}
     return`<span class="${cls}" title="Substatus sincronizado pelo Agente Atrix em ${ts}"><i class="ti ti-robot"></i>${ts}<span class="atrix-ts-legend">${legend}</span></span>`;
   }catch(_){return'';}
-}
-
-/* A atualização automática do Agente Atrix roda no GitHub Actions a cada 30 min,
-   independente desta aba estar aberta — mas sem um polling próprio, os horários
-   por chamado (atrix-card-ts) e o mapa atrixUpdateMap só refletiam o que foi
-   lido no carregamento da página, ficando visualmente parados mesmo com o
-   agente publicando dados novos em segundo plano. Repete a cada 5 min (folga
-   suficiente pro ciclo de 30 min) enquanto a aba estiver visível. */
-let _atrixPollTimer=null;
-function iniciarPollingAtrixUpdates(){
-  setTimeout(loadAtrixUpdates,3000);
-  clearInterval(_atrixPollTimer);
-  _atrixPollTimer=setInterval(()=>{
-    if(document.visibilityState==='visible'&&typeof loadAtrixUpdates==='function')loadAtrixUpdates();
-  },5*60*1000);
 }
 
 async function loadAtrixUpdates(){
@@ -11095,7 +11074,7 @@ function renderFuel(){
   const fuelTotalCoringa=fuelComprasCoringa.reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0);
   const bal=fuelBalance(),levelBase=bal.saldoGeral||bal.available,level=levelBase?Math.max(0,Math.min(100,bal.available/levelBase*100)):0,color=level>60?'#7ee787':level>30?'#ffcc66':'#ff6b6b';
   const fuelCycle=fuelCycleWindow();
-  const totalValor=bal.spent,active=dFuelVehicles.filter(v=>v.status==='Ativo').length;
+  const totalValor=bal.spent,active=fuelActiveVehicles().length;
   ['fuel-fill','fuel-scale','fuel-pump'].forEach(id=>{
     const el=document.getElementById(id);
     if(el){el.style.setProperty('--fuel-level',level+'%');el.style.setProperty('--fuel-color',color);}
@@ -11107,7 +11086,7 @@ function renderFuel(){
   const manualControls=canEdit()?`<div class="mc c-green fuel-manual-card fuel-manual-inline admin-only"><div class="mc-label">Atualizar Saldo Disponível</div><div class="mc-val" id="fuel-card-balance-current" style="color:var(--green-dk)">${brl(bal.available)}</div><div class="mc-sub">ajuste manual do saldo combustível/cartão</div><div class="fuel-manual-form"><input class="finput" id="fuel-card-balance-quick" type="number" step="0.01" min="0" placeholder="Novo saldo R$"><span class="card-action" onclick="setFuelCardBalanceQuick()">Atualizar</span></div></div><div class="mc c-blue fuel-manual-card fuel-manual-inline fuel-aporte-card admin-only"><div class="mc-label">Aporte Manual</div><div class="mc-val" id="fuel-aporte-total-current">${brl(fuelBalanceTotal)}</div><div class="mc-sub">registro manual de aporte no ciclo</div><div class="fuel-manual-form"><input class="finput" id="fuel-aporte-date-quick" type="date"><input class="finput" id="fuel-aporte-valor-quick" type="number" step="0.01" min="0" placeholder="Valor R$"><input class="finput fuel-manual-wide" id="fuel-aporte-desc-quick" placeholder="Descrição"><span class="card-action" onclick="addFuelAporteQuick()">Registrar</span></div><div class="fuel-aporte-mini">${aporteHistory}</div></div>`:'';
   const manualCards=manualControls?`<div class="fuel-manual-pair">${manualControls}</div>`:'';
   document.getElementById('fuel-counter-row').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito STB3E91</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito STB3E91</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-blue"><div class="mc-label">Cartão Próprio</div><div class="mc-val">${brl(fuelTotalProprio)}</div><div class="mc-sub">${fuelComprasProprio.length} compra${fuelComprasProprio.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Cartão Coringa</div><div class="mc-val" style="color:var(--red)">${brl(fuelTotalCoringa)}</div><div class="mc-sub">${fuelComprasCoringa.length} compra${fuelComprasCoringa.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
-  document.getElementById('mrow-fuel').innerHTML=`${manualCards}${fuelRouteCardMarkup()}`;
+  document.getElementById('mrow-fuel').innerHTML=`${manualCards}${fuelAportePeriodCalcMarkup()}${fuelRouteCardMarkup()}`;
   fuelRouteInit();
   const top=fuelProjection()[0]||['-',{valor:0,litros:0,count:0}];
   const nextSuggestion=fuelNextMonthSuggestion();
