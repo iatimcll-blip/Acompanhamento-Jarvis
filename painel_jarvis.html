@@ -8986,96 +8986,116 @@ function applyState(st,label){
   if(!st||typeof st!=='object')return false;
   let changed=false;
   const clearLegacyFuelRequests=Number(st.version||0)<6;
-  if(Array.isArray(st.dAb)){
-    dAb=normalizeAbState(st.dAb);
-    refreshAbBadge();
-    if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
-    if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
-    fillFiltersAb();if(!abInteractionLock)renderAllAb();
-    document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
-    document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
-    changed=true;
-  }
-  if(Array.isArray(st.dEnc)){
-    dEnc=normalizeEncState(st.dEnc);
-    encChartBucket='';
-    document.getElementById('nb-enc').textContent=slnEnc().length;
-    if(Object.prototype.hasOwnProperty.call(st,'lastEncAt'))lastEncAt=st.lastEncAt||'';
-    if(Object.prototype.hasOwnProperty.call(st,'lastEncFile'))lastEncFile=st.lastEncFile||'';
-    /* 1. popula mês primeiro para que fillWeekSelector filtre corretamente */
-    fillFiltersEnc();fillMesSelector();fillClusterSelector();
-    if(st.selMes&&dEnc.some(d=>d.mes===st.selMes)){selMes=st.selMes;const ms=document.getElementById('mes-selector');if(ms)ms.value=selMes}else{selMes=''}
-    if(st.selCluster&&dEnc.some(d=>d.cluster===st.selCluster)){selCluster=st.selCluster;document.getElementById('cluster-selector').value=selCluster}else if(!st.selCluster){selCluster=''}
-    /* 2. preenche semanas já filtradas pelo mês restaurado */
-    fillWeekSelector();
-    const validWeeks=encWeeksForMes(selMes);
-    if(st.selWeek&&validWeeks.includes(st.selWeek)){selWeek=st.selWeek;document.getElementById('week-selector').value=selWeek}else{selWeek=''}
-    /* restaura filtros do painel Repetidos — fillRepFilters() usará estes globais */
-    selRepMes=st.selRepMes||'';selRepSemana=st.selRepSemana||'';
-    selRepCluster=st.selRepCluster||'';selRepCausa=st.selRepCausa||'';
-    selRepSeg=st.selRepSeg||'';selRepSrch=st.selRepSrch||'';
-    renderAllEnc();
-    renderPanelRepetidos();
-    document.getElementById('empty-enc').style.display=dEnc.length?'none':'block';
-    document.getElementById('dash-enc').style.display=dEnc.length?'block':'none';
-    changed=true;
-  }
-  if(Array.isArray(st.users)&&st.users.length){
-    saveUsers(st.users);
-    const allUsers=getUsers(); /* normaliza: garante admin com senha correta */
-    if(currentUser){
-      const fresh=allUsers.find(u=>u.username===currentUser.username);
-      if(fresh)currentUser=fresh;
-    }
-    if(document.getElementById('user-panel').style.display==='flex')renderUsers();
-  }
-  if(st.monitorAudio&&typeof st.monitorAudio==='object'){
-    if(monApplySharedAudio(st.monitorAudio))changed=true;
-  }
-  const hasFuelState=Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.dFuelWithdrawals)||Array.isArray(st.dFuelAportes)||st.fuelBaseAt!==undefined||st.fuelBaseFile!==undefined||st.fuelCardBalance!==undefined;
-  if(hasFuelState){
-    if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosCleared'))fuelVeiculosCleared=!!st.fuelVeiculosCleared;
-    dFuelVehicles=(fuelVeiculosCleared&&(!Array.isArray(st.dFuelVehicles)||!st.dFuelVehicles.length))?[]:normalizeFuelVehicles(st.dFuelVehicles);
-    dFuelRequests=clearLegacyFuelRequests?[]:normalizeFuelRequests(st.dFuelRequests);
-    dFuelWithdrawals=normalizeFuelWithdrawals(st.dFuelWithdrawals);
-    dFuelAportes=normalizeFuelAportes(st.dFuelAportes);
-    if(!dFuelAportes.length&&Number(st.fuelBalanceTotal||st.fuelBalance||0)>0)
-      dFuelAportes=[{id:'APT0',data:new Date().toISOString().slice(0,10),valor:Number(st.fuelBalanceTotal||st.fuelBalance||0),desc:'Aporte migrado'}];
-    fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
-    fuelCardBalance=st.fuelCardBalance===null||st.fuelCardBalance===undefined?null:Number(st.fuelCardBalance||0);
-    fuelCycleStartDay=Math.min(28,Math.max(1,Number(st.fuelCycleStartDay||16)));
-    fuelCycleEndDay=Math.min(28,Math.max(1,Number(st.fuelCycleEndDay||15)));
-    fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
-    fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
-    if(Object.prototype.hasOwnProperty.call(st,'fuelBaseAt'))fuelBaseAt=st.fuelBaseAt||'';
-    if(Object.prototype.hasOwnProperty.call(st,'fuelBaseFile'))fuelBaseFile=st.fuelBaseFile||'';
-    if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseAt'))fuelVeiculosBaseAt=st.fuelVeiculosBaseAt||'';
-    if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseFile'))fuelVeiculosBaseFile=st.fuelVeiculosBaseFile||'';
-    const fvTsEl=document.getElementById('fv-base-ts');if(fvTsEl)fvTsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
-    renderFuel();
-    changed=true;
-  }
-  if(st.rdeState&&typeof st.rdeState==='object'){
-    const appliedRede=rdeApplyStoredState(st.rdeState);
-    if(appliedRede){
-      idbSet(REDE_STORAGE,st.rdeState).catch(e=>console.warn('rede IndexedDB save',e));
-      try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st.rdeState));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
-      rdeRestoreUI();rdeSyncControls();renderRede();
+  /* Cada seção roda isolada em seu próprio try/catch: uma seção com problema (bug
+     introduzido em uma atualização futura, dado malformado etc.) não pode mais
+     interromper a restauração das seções seguintes — antes, um erro em QUALQUER
+     ponto (ex.: Rede) abortava applyState() inteiro e todas as seções que ainda
+     não tinham rodado (ex.: Combustível, sempre depois na ordem) ficavam vazias,
+     mesmo com o dado salvo intacto no state recebido. */
+  try{
+    if(Array.isArray(st.dAb)){
+      dAb=normalizeAbState(st.dAb);
+      refreshAbBadge();
+      if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
+      fillFiltersAb();if(!abInteractionLock)renderAllAb();
+      document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
+      document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
       changed=true;
     }
-  }
-  if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
-    ofsRows=ofsSanitizeRows(st.ofsRows);
-    ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
-    saveOfsState();
-    const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
-    const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
-    renderOfs();updateCentralStatus();
-    changed=true;
-  }
-  if(clearLegacyFuelRequests)saveState();
-  updateUploadTimes();
-  if(changed)applyPermissions();
+  }catch(e){console.warn('applyState: falha ao restaurar B2B Abertos:',e);}
+  try{
+    if(Array.isArray(st.dEnc)){
+      dEnc=normalizeEncState(st.dEnc);
+      encChartBucket='';
+      document.getElementById('nb-enc').textContent=slnEnc().length;
+      if(Object.prototype.hasOwnProperty.call(st,'lastEncAt'))lastEncAt=st.lastEncAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastEncFile'))lastEncFile=st.lastEncFile||'';
+      /* 1. popula mês primeiro para que fillWeekSelector filtre corretamente */
+      fillFiltersEnc();fillMesSelector();fillClusterSelector();
+      if(st.selMes&&dEnc.some(d=>d.mes===st.selMes)){selMes=st.selMes;const ms=document.getElementById('mes-selector');if(ms)ms.value=selMes}else{selMes=''}
+      if(st.selCluster&&dEnc.some(d=>d.cluster===st.selCluster)){selCluster=st.selCluster;document.getElementById('cluster-selector').value=selCluster}else if(!st.selCluster){selCluster=''}
+      /* 2. preenche semanas já filtradas pelo mês restaurado */
+      fillWeekSelector();
+      const validWeeks=encWeeksForMes(selMes);
+      if(st.selWeek&&validWeeks.includes(st.selWeek)){selWeek=st.selWeek;document.getElementById('week-selector').value=selWeek}else{selWeek=''}
+      /* restaura filtros do painel Repetidos — fillRepFilters() usará estes globais */
+      selRepMes=st.selRepMes||'';selRepSemana=st.selRepSemana||'';
+      selRepCluster=st.selRepCluster||'';selRepCausa=st.selRepCausa||'';
+      selRepSeg=st.selRepSeg||'';selRepSrch=st.selRepSrch||'';
+      renderAllEnc();
+      renderPanelRepetidos();
+      document.getElementById('empty-enc').style.display=dEnc.length?'none':'block';
+      document.getElementById('dash-enc').style.display=dEnc.length?'block':'none';
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar B2B Encerrados:',e);}
+  try{
+    if(Array.isArray(st.users)&&st.users.length){
+      saveUsers(st.users);
+      const allUsers=getUsers(); /* normaliza: garante admin com senha correta */
+      if(currentUser){
+        const fresh=allUsers.find(u=>u.username===currentUser.username);
+        if(fresh)currentUser=fresh;
+      }
+      if(document.getElementById('user-panel').style.display==='flex')renderUsers();
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar usuários:',e);}
+  try{
+    if(st.monitorAudio&&typeof st.monitorAudio==='object'){
+      if(monApplySharedAudio(st.monitorAudio))changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar áudio do Monitor:',e);}
+  try{
+    const hasFuelState=Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.dFuelWithdrawals)||Array.isArray(st.dFuelAportes)||st.fuelBaseAt!==undefined||st.fuelBaseFile!==undefined||st.fuelCardBalance!==undefined;
+    if(hasFuelState){
+      if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosCleared'))fuelVeiculosCleared=!!st.fuelVeiculosCleared;
+      dFuelVehicles=(fuelVeiculosCleared&&(!Array.isArray(st.dFuelVehicles)||!st.dFuelVehicles.length))?[]:normalizeFuelVehicles(st.dFuelVehicles);
+      dFuelRequests=clearLegacyFuelRequests?[]:normalizeFuelRequests(st.dFuelRequests);
+      dFuelWithdrawals=normalizeFuelWithdrawals(st.dFuelWithdrawals);
+      dFuelAportes=normalizeFuelAportes(st.dFuelAportes);
+      if(!dFuelAportes.length&&Number(st.fuelBalanceTotal||st.fuelBalance||0)>0)
+        dFuelAportes=[{id:'APT0',data:new Date().toISOString().slice(0,10),valor:Number(st.fuelBalanceTotal||st.fuelBalance||0),desc:'Aporte migrado'}];
+      fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
+      fuelCardBalance=st.fuelCardBalance===null||st.fuelCardBalance===undefined?null:Number(st.fuelCardBalance||0);
+      fuelCycleStartDay=Math.min(28,Math.max(1,Number(st.fuelCycleStartDay||16)));
+      fuelCycleEndDay=Math.min(28,Math.max(1,Number(st.fuelCycleEndDay||15)));
+      fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
+      fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
+      if(Object.prototype.hasOwnProperty.call(st,'fuelBaseAt'))fuelBaseAt=st.fuelBaseAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'fuelBaseFile'))fuelBaseFile=st.fuelBaseFile||'';
+      if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseAt'))fuelVeiculosBaseAt=st.fuelVeiculosBaseAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseFile'))fuelVeiculosBaseFile=st.fuelVeiculosBaseFile||'';
+      const fvTsEl=document.getElementById('fv-base-ts');if(fvTsEl)fvTsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
+      renderFuel();
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Combustível:',e);}
+  try{
+    if(st.rdeState&&typeof st.rdeState==='object'){
+      const appliedRede=rdeApplyStoredState(st.rdeState);
+      if(appliedRede){
+        idbSet(REDE_STORAGE,st.rdeState).catch(e=>console.warn('rede IndexedDB save',e));
+        try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st.rdeState));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
+        rdeRestoreUI();rdeSyncControls();renderRede();
+        changed=true;
+      }
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Rede:',e);}
+  try{
+    if(Array.isArray(st.ofsRows)&&(st.ofsRows.length||st.ofsMeta)){
+      ofsRows=ofsSanitizeRows(st.ofsRows);
+      ofsMeta=st.ofsMeta?{fname:'',loaded:!!ofsRows.length,...st.ofsMeta}:{fname:'',loaded:!!ofsRows.length};
+      saveOfsState();
+      const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
+      const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
+      renderOfs();updateCentralStatus();
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar OFS:',e);}
+  try{if(clearLegacyFuelRequests)saveState();}catch(e){console.warn('applyState: falha ao salvar após migração legada:',e);}
+  try{updateUploadTimes();}catch(e){console.warn('applyState: falha ao atualizar horários de upload:',e);}
+  try{if(changed)applyPermissions();}catch(e){console.warn('applyState: falha ao aplicar permissões:',e);}
   return changed;
 }
 function saveLocalState(st){
