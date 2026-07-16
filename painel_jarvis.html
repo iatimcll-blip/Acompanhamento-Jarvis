@@ -8559,6 +8559,30 @@ function brl(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',cur
 const FUEL_ROUTE_RATE_KEY='atrix:fuel-route-rate:v1';
 const FUEL_ROUTE_VEHICLE_KEY='atrix:fuel-route-vehicle:v1';
 const FUEL_APORTE_RESERVE_KEY='atrix:fuel-aporte-period-reserve:v1';
+/* Placas monitoradas pelos cards "Crédito"/"Débito emergencial" — configurável em vez
+   de fixa em STB3E91, para poder acompanhar outro(s) cartão(ões) emergencial(is) sem
+   precisar editar código. Mantém STB3E91 como padrão (comportamento já existente). */
+const FUEL_STB_PLATES_KEY='atrix:fuel-stb-placas:v1';
+function fuelStbPlacas(){
+  try{
+    const raw=localStorage.getItem(FUEL_STB_PLATES_KEY);
+    if(raw){
+      const arr=JSON.parse(raw);
+      if(Array.isArray(arr)&&arr.length)return arr.map(p=>String(p||'').toUpperCase().trim()).filter(Boolean);
+    }
+  }catch(_){}
+  return['STB3E91'];
+}
+function configurarPlacasEmergenciais(){
+  if(!canEdit())return;
+  const atual=fuelStbPlacas().join(', ');
+  const resp=prompt('Placa(s) do cartão emergencial monitorado nestes cards (separe por vírgula se for mais de uma):',atual);
+  if(resp===null)return;
+  const placas=resp.split(',').map(p=>p.trim().toUpperCase()).filter(Boolean);
+  if(!placas.length){alert('Informe ao menos uma placa.');return}
+  try{localStorage.setItem(FUEL_STB_PLATES_KEY,JSON.stringify(placas));}catch(_){}
+  renderFuel();saveState();
+}
 const FUEL_MODEL_KML={KWID:15.5,SAVEIRO:11.5,ARGO:14.2,GOL:12.5};
 let fuelRouteLast=null;
 function fuelActiveVehicles(){return dFuelVehicles.filter(v=>v.status==='Ativo')}
@@ -11281,10 +11305,13 @@ function renderFuel(){
   ensureFuelData();
   const validRequests=fuelPeriodRequests();
   const fuelCompras=fuelPurchaseRequests(),fuelCreditos=fuelCreditRequests(),fuelDebitos=fuelDebitRequests();
-  const stCreditos=fuelCreditos.filter(r=>String(r.placa||'').toUpperCase().trim()==='STB3E91');
+  const stbPlacas=fuelStbPlacas();
+  const stCreditos=fuelCreditos.filter(r=>stbPlacas.includes(String(r.placa||'').toUpperCase().trim()));
   const stCreditoTotal=stCreditos.reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0);
-  const stDebitos=fuelDebitos.filter(r=>String(r.placa||'').toUpperCase().trim()==='STB3E91');
+  const stDebitos=fuelDebitos.filter(r=>stbPlacas.includes(String(r.placa||'').toUpperCase().trim()));
   const stDebitoTotal=stDebitos.reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0);
+  const stbLabel=eh(stbPlacas.join('/'));
+  const stbConfigBtn=canEdit()?`<i class="ti ti-settings" style="cursor:pointer;font-size:12px;margin-left:4px;color:var(--tx3)" title="Configurar placa(s) monitorada(s)" onclick="event.stopPropagation();configurarPlacasEmergenciais()"></i>`:'';
   const fuelComprasProprio=fuelCompras.filter(r=>(fuelVehicleByPlate(r.placa).tipoCartao||'Próprio')!=='Coringa');
   const fuelComprasCoringa=fuelCompras.filter(r=>(fuelVehicleByPlate(r.placa).tipoCartao||'Próprio')==='Coringa');
   const fuelTotalProprio=fuelComprasProprio.reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0);
@@ -11303,7 +11330,7 @@ function renderFuel(){
   const aporteHistory=aportesCiclo.slice().sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(a=>`<div class="fuel-aporte-mini-row"><span>${fmtFuelDatetime(a.data)}</span><b>${brl(a.valor)}</b></div>`).join('')||'<div class="fuel-aporte-mini-row"><span>Nenhum aporte no ciclo atual</span><b>-</b></div>';
   const manualControls=canEdit()?`<div class="mc c-green fuel-manual-card fuel-manual-inline admin-only"><div class="mc-label">Atualizar Saldo Disponível</div><div class="mc-val" id="fuel-card-balance-current" style="color:var(--green-dk)">${brl(bal.available)}</div><div class="mc-sub">ajuste manual do saldo combustível/cartão</div><div class="fuel-manual-form"><input class="finput" id="fuel-card-balance-quick" type="number" step="0.01" min="0" placeholder="Novo saldo R$"><span class="card-action" onclick="setFuelCardBalanceQuick()">Atualizar</span></div></div><div class="mc c-blue fuel-manual-card fuel-manual-inline fuel-aporte-card admin-only"><div class="mc-label">Aporte Manual</div><div class="mc-val" id="fuel-aporte-total-current">${brl(fuelBalanceTotal)}</div><div class="mc-sub">registro manual de aporte no ciclo</div><div class="fuel-manual-form"><input class="finput" id="fuel-aporte-date-quick" type="date"><input class="finput" id="fuel-aporte-valor-quick" type="number" step="0.01" min="0" placeholder="Valor R$"><input class="finput fuel-manual-wide" id="fuel-aporte-desc-quick" placeholder="Descrição"><span class="card-action" onclick="addFuelAporteQuick()">Registrar</span></div><div class="fuel-aporte-mini">${aporteHistory}</div></div>`:'';
   const manualCards=manualControls?`<div class="fuel-manual-pair">${manualControls}</div>`:'';
-  document.getElementById('fuel-counter-row').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito STB3E91</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito STB3E91</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-blue"><div class="mc-label">Cartão Próprio</div><div class="mc-val">${brl(fuelTotalProprio)}</div><div class="mc-sub">${fuelComprasProprio.length} compra${fuelComprasProprio.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Cartão Coringa</div><div class="mc-val" style="color:var(--red)">${brl(fuelTotalCoringa)}</div><div class="mc-sub">${fuelComprasCoringa.length} compra${fuelComprasCoringa.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
+  document.getElementById('fuel-counter-row').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito ${stbLabel}${stbConfigBtn}</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito ${stbLabel}${stbConfigBtn}</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-blue"><div class="mc-label">Cartão Próprio</div><div class="mc-val">${brl(fuelTotalProprio)}</div><div class="mc-sub">${fuelComprasProprio.length} compra${fuelComprasProprio.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Cartão Coringa</div><div class="mc-val" style="color:var(--red)">${brl(fuelTotalCoringa)}</div><div class="mc-sub">${fuelComprasCoringa.length} compra${fuelComprasCoringa.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
   document.getElementById('mrow-fuel').innerHTML=`${manualCards}${fuelAportePeriodCalcMarkup()}${fuelRouteCardMarkup()}`;
   fuelRouteInit();
   const top=fuelProjection()[0]||['-',{valor:0,litros:0,count:0}];
