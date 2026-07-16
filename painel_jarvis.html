@@ -3412,18 +3412,38 @@ tbody tr:last-child td {
 }
 #panel-combustivel .fuel-aporte-calc-form {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(140px, .8fr) auto auto auto;
+  grid-template-columns: minmax(150px, .8fr) auto auto auto;
   gap: 10px;
   align-items: center;
 }
 #panel-combustivel .fuel-aporte-calc-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
 #panel-combustivel .fuel-aporte-calc-summary .fuel-route-result-card b {
   font-size: clamp(16px, 1.8vw, 23px);
+}
+#panel-combustivel .fuel-aporte-detail {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 118px;
+  overflow: auto;
+}
+#panel-combustivel .fuel-aporte-detail-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) repeat(3, minmax(96px, auto));
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid rgba(148,163,184,.18);
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 5px;
+}
+#panel-combustivel .fuel-aporte-detail-row b {
+  color: var(--ink);
 }
 #panel-combustivel .fuel-route-form {
   display: grid;
@@ -5245,7 +5265,7 @@ canvas {
   gap: 6px !important;
 }
 #panel-combustivel #mrow-fuel .fuel-aporte-calc-form {
-  grid-template-columns: minmax(140px, 1fr) minmax(120px, .72fr) auto auto auto !important;
+  grid-template-columns: minmax(130px, .72fr) auto auto auto !important;
   gap: 6px !important;
 }
 #panel-combustivel #mrow-fuel .fuel-route-form .finput,
@@ -5264,7 +5284,7 @@ canvas {
   margin-top: 8px !important;
 }
 #panel-combustivel #mrow-fuel .fuel-aporte-calc-summary {
-  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
   gap: 6px !important;
   margin-top: 8px !important;
 }
@@ -8515,56 +8535,77 @@ function pp(v){return v.toFixed(1).replace('.',',')}
 function brl(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2})}
 const FUEL_ROUTE_RATE_KEY='atrix:fuel-route-rate:v1';
 const FUEL_ROUTE_VEHICLE_KEY='atrix:fuel-route-vehicle:v1';
-const FUEL_APORTE_UNIT_KEY='atrix:fuel-aporte-period-unit:v1';
 const FUEL_APORTE_RESERVE_KEY='atrix:fuel-aporte-period-reserve:v1';
 const FUEL_MODEL_KML={KWID:15.5,SAVEIRO:11.5,ARGO:14.2,GOL:12.5};
 let fuelRouteLast=null;
 function fuelActiveVehicles(){return dFuelVehicles.filter(v=>v.status==='Ativo')}
-function fuelAportePeriodCalcValues(unitRaw,reserveRaw){
-  const active=fuelActiveVehicles().length,win=fuelCycleWindow(),bal=fuelBalance();
-  const unit=Math.max(0,Number(unitRaw||0));
+function fuelAportePeriodCalcValues(reserveRaw){
+  const activeVehicles=fuelActiveVehicles(),active=activeVehicles.length,win=fuelCycleWindow(),prevWin=fuelPreviousProjectionWindow(win),bal=fuelBalance();
   const reserve=Math.max(0,Number(reserveRaw||0));
-  const target=unit*active+reserve;
+  const projection=fuelMonthProjection();
+  const projByPlate=new Map(projection.map(p=>[String(p.placa||'').toUpperCase().trim(),p]));
+  let currentProjected=0,previousTotal=0,baseTotal=0,withoutHistory=0;
+  const rows=activeVehicles.map(v=>{
+    const placa=String(v.placa||'').toUpperCase().trim();
+    const p=projByPlate.get(placa)||{};
+    const atual=Number(p.atual||0),projected=Number(p.proj||0),previous=Number(p.anterior||0);
+    const base=Math.max(projected,previous,0);
+    if(!base)withoutHistory++;
+    currentProjected+=projected;
+    previousTotal+=previous;
+    baseTotal+=base;
+    return{placa,condutor:v.condutor||'',atual,projected,previous,base};
+  }).sort((a,b)=>b.base-a.base||b.projected-a.projected||b.previous-a.previous||a.placa.localeCompare(b.placa,'pt-BR'));
+  const target=baseTotal+reserve;
   const recommended=Math.max(0,target-bal.available);
-  const perDay=win.totalDays?target/win.totalDays:0;
-  const perVehicleDay=win.totalDays&&active?unit/win.totalDays:0;
-  return{active,win,bal,unit,reserve,target,recommended,perDay,perVehicleDay};
+  return{active,activeVehicles,win,prevWin,bal,reserve,rows,currentProjected,previousTotal,baseTotal,withoutHistory,target,recommended};
 }
 function fuelAportePeriodCalcSummaryHtml(d){
   const ok=d.recommended<=0;
-  return `<div class="fuel-route-result-card"><span>Carros ativos</span><b>${d.active}</b></div><div class="fuel-route-result-card"><span>Valor por carro</span><b>${brl(d.unit)}</b></div><div class="fuel-route-result-card"><span>Total do período</span><b>${brl(d.target)}</b></div><div class="fuel-route-result-card"><span>Saldo disponível</span><b>${brl(d.bal.available)}</b></div><div class="fuel-route-result-card" style="border-color:${ok?'rgba(34,197,94,.42)':'rgba(239,68,68,.42)'};background:${ok?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)'}"><span>${ok?'Aporte necessário':'Aporte recomendado'}</span><b style="color:${ok?'var(--green-dk)':'var(--red)'}">${brl(d.recommended)}</b></div>`;
+  return `<div class="fuel-route-result-card"><span>Carros ativos</span><b>${d.active}</b></div><div class="fuel-route-result-card"><span>Histórico anterior</span><b>${brl(d.previousTotal)}</b></div><div class="fuel-route-result-card"><span>Projeção atual</span><b>${brl(d.currentProjected)}</b></div><div class="fuel-route-result-card"><span>Base calculada</span><b>${brl(d.baseTotal)}</b></div><div class="fuel-route-result-card"><span>Saldo disponível</span><b>${brl(d.bal.available)}</b></div><div class="fuel-route-result-card" style="border-color:${ok?'rgba(34,197,94,.42)':'rgba(239,68,68,.42)'};background:${ok?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)'}"><span>${ok?'Saldo suficiente':'Aporte recomendado'}</span><b style="color:${ok?'var(--green-dk)':'var(--red)'}">${brl(d.recommended)}</b></div>`;
+}
+function fuelAportePeriodDetailHtml(d){
+  const rows=d.rows.filter(r=>r.base>0).slice(0,6);
+  if(!rows.length)return `<div class="fuel-route-note">Sem histórico de consumo para os veículos ativos neste ciclo ou no ciclo anterior.</div>`;
+  return `<div class="fuel-aporte-detail">${rows.map(r=>`<div class="fuel-aporte-detail-row"><span><b>${eh(r.placa||'-')}</b>${r.condutor?` · ${eh(r.condutor)}`:''}</span><span>Anterior: <b>${brl(r.previous)}</b></span><span>Proj.: <b>${brl(r.projected)}</b></span><span>Base: <b>${brl(r.base)}</b></span></div>`).join('')}</div>`;
 }
 function fuelAportePeriodCalcMarkup(){
-  const unit=eh(localStorage.getItem(FUEL_APORTE_UNIT_KEY)||'');
   const reserve=eh(localStorage.getItem(FUEL_APORTE_RESERVE_KEY)||'');
-  const d=fuelAportePeriodCalcValues(unit,reserve);
-  return `<div class="fuel-route-card fuel-aporte-calc-card" id="fuel-aporte-period-calc"><div class="fuel-route-head"><div><span class="card-title">Calculadora de aporte do período</span><small>${eh(d.win.label)} · calcula pelo valor por carro ativo e abate o saldo disponível</small></div><button class="card-action" onclick="clearFuelAportePeriodCalc()">Limpar</button></div><div class="fuel-aporte-calc-form"><input class="finput" id="fuel-aporte-period-unit" type="number" step="0.01" min="0" value="${unit}" placeholder="Valor por carro no período"><input class="finput" id="fuel-aporte-period-reserve" type="number" step="0.01" min="0" value="${reserve}" placeholder="Reserva extra R$"><button class="card-action" onclick="calcFuelAportePeriod()">Calcular</button><button class="card-action" onclick="useFuelAportePeriodValue()">Usar no Aporte Manual</button><span class="fuel-route-toggle" title="Quantidade de veículos ativos"><i class="ti ti-car"></i> ${d.active} ativos</span></div><div class="fuel-aporte-calc-summary" id="fuel-aporte-period-result">${fuelAportePeriodCalcSummaryHtml(d)}</div><div class="fuel-route-note" id="fuel-aporte-period-note">Informe o valor desejado por carro ativo no período. A sugestão desconta o saldo disponível atual.</div></div>`;
+  const d=fuelAportePeriodCalcValues(reserve);
+  return `<div class="fuel-route-card fuel-aporte-calc-card" id="fuel-aporte-period-calc"><div class="fuel-route-head"><div><span class="card-title">Calculadora de aporte do período</span><small>${eh(d.win.label)} · consumo por veículo ativo, histórico anterior e saldo disponível</small></div><button class="card-action" onclick="clearFuelAportePeriodCalc()">Limpar</button></div><div class="fuel-aporte-calc-form"><input class="finput" id="fuel-aporte-period-reserve" type="number" step="0.01" min="0" value="${reserve}" placeholder="Reserva extra R$"><button class="card-action" onclick="calcFuelAportePeriod()">Recalcular</button><button class="card-action" onclick="useFuelAportePeriodValue()">Usar no Aporte Manual</button><span class="fuel-route-toggle" title="Quantidade de veículos ativos"><i class="ti ti-car"></i> ${d.active} ativos</span></div><div class="fuel-aporte-calc-summary" id="fuel-aporte-period-result">${fuelAportePeriodCalcSummaryHtml(d)}</div><div id="fuel-aporte-period-detail">${fuelAportePeriodDetailHtml(d)}</div><div class="fuel-route-note" id="fuel-aporte-period-note">${fuelAportePeriodNote(d)}</div></div>`;
 }
 function calcFuelAportePeriod(save=true){
-  const unitEl=document.getElementById('fuel-aporte-period-unit'),reserveEl=document.getElementById('fuel-aporte-period-reserve');
-  const unit=Number(unitEl&&unitEl.value||0),reserve=Number(reserveEl&&reserveEl.value||0);
+  const reserveEl=document.getElementById('fuel-aporte-period-reserve');
+  const reserve=Number(reserveEl&&reserveEl.value||0);
   if(save){
-    try{localStorage.setItem(FUEL_APORTE_UNIT_KEY,String(Math.max(0,unit||0)));localStorage.setItem(FUEL_APORTE_RESERVE_KEY,String(Math.max(0,reserve||0)));}catch(e){}
+    try{localStorage.setItem(FUEL_APORTE_RESERVE_KEY,String(Math.max(0,reserve||0)));}catch(e){}
   }
-  const d=fuelAportePeriodCalcValues(unit,reserve),res=document.getElementById('fuel-aporte-period-result'),note=document.getElementById('fuel-aporte-period-note');
+  const d=fuelAportePeriodCalcValues(reserve),res=document.getElementById('fuel-aporte-period-result'),detail=document.getElementById('fuel-aporte-period-detail'),note=document.getElementById('fuel-aporte-period-note');
   if(res)res.innerHTML=fuelAportePeriodCalcSummaryHtml(d);
-  if(note)note.textContent=d.active?`Base: ${d.active} carro${d.active!==1?'s':''} ativo${d.active!==1?'s':''} × ${brl(d.unit)}${d.reserve?` + reserva ${brl(d.reserve)}`:''}. Média diária alvo: ${brl(d.perDay)} no ciclo.`:'Nenhum carro ativo cadastrado para calcular o aporte.';
+  if(detail)detail.innerHTML=fuelAportePeriodDetailHtml(d);
+  if(note)note.textContent=fuelAportePeriodNote(d);
   return d;
 }
+function fuelAportePeriodNote(d){
+  if(!d.active)return'Nenhum carro ativo cadastrado para calcular o aporte.';
+  const reserve=d.reserve?` Reserva extra: ${brl(d.reserve)}.`:'';
+  const without=d.withoutHistory?` ${d.withoutHistory} veículo${d.withoutHistory!==1?'s':''} ativo${d.withoutHistory!==1?'s':''} sem histórico/projeção ainda.`:'';
+  return `Base por veículo: maior valor entre projeção do ciclo atual e consumo do ciclo anterior.${reserve} Período anterior: ${eh(d.prevWin.label||'ciclo anterior')}.${without}`;
+}
 function clearFuelAportePeriodCalc(){
-  ['fuel-aporte-period-unit','fuel-aporte-period-reserve'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  try{localStorage.removeItem(FUEL_APORTE_UNIT_KEY);localStorage.removeItem(FUEL_APORTE_RESERVE_KEY);}catch(e){}
+  ['fuel-aporte-period-reserve'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  try{localStorage.removeItem(FUEL_APORTE_RESERVE_KEY);}catch(e){}
   calcFuelAportePeriod(false);
 }
 function useFuelAportePeriodValue(){
   const d=calcFuelAportePeriod(true);
   if(!d.active){alert('Nenhum carro ativo cadastrado para calcular o aporte.');return}
-  const value=d.recommended>0?d.recommended:d.target;
-  if(!value){alert('Informe o valor por carro no período para calcular o aporte.');return}
+  const value=d.recommended;
+  if(!value){alert('O saldo disponível cobre o valor estimado para o período. Nenhum aporte é necessário agora.');return}
   const dateEl=document.getElementById('fuel-aporte-date-quick'),valEl=document.getElementById('fuel-aporte-valor-quick'),descEl=document.getElementById('fuel-aporte-desc-quick');
   if(dateEl&&!dateEl.value)dateEl.value=new Date().toISOString().slice(0,10);
   if(valEl){valEl.value=value.toFixed(2);valEl.focus();}
-  if(descEl)descEl.value=`Aporte sugerido ${d.win.label}: ${d.active} carros ativos x ${brl(d.unit)}${d.reserve?` + reserva ${brl(d.reserve)}`:''} - saldo disponível ${brl(d.bal.available)}`;
+  if(descEl)descEl.value=`Aporte sugerido ${d.win.label}: base ${brl(d.baseTotal)}${d.reserve?` + reserva ${brl(d.reserve)}`:''} - saldo disponível ${brl(d.bal.available)}. Histórico anterior ${brl(d.previousTotal)} / projeção atual ${brl(d.currentProjected)}`;
 }
 function fuelRouteInit(){
   const rate=document.getElementById('fuel-route-rate');
