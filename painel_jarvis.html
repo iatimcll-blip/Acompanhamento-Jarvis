@@ -6605,6 +6605,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="ab-head-actions">
           <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
+          <button class="mop-ref-btn" onclick="abrirModalRegrasSla()" title="Como o relógio de SLA é calculado"><i class="ti ti-clock-hour-4"></i> Regras de SLA</button>
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')"><i class="ti ti-database"></i> Atualizar base</button>
           <button class="mop-ref-btn" onclick="exportAtrixTicketsManual()" title="Exporta chamados para o agente ler e atualizar substatuses automaticamente"><i class="ti ti-robot"></i> Exportar p/ Agente</button>
           <button class="mop-ref-btn" onclick="openRunnerModal()" title="Verificar agente automático de substatus"><i class="ti ti-device-desktop-analytics"></i> Agente Atrix</button>
@@ -7710,6 +7711,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-sla-regras" style="display:none" onclick="if(event.target===this)document.getElementById('modal-sla-regras').style.display='none'">
+  <div class="modal-box" style="max-width:620px">
+    <div class="modal-hd">
+      <span class="modal-title"><i class="ti ti-clock-hour-4"></i> Regras do relógio de SLA</span>
+      <button class="modal-close" onclick="document.getElementById('modal-sla-regras').style.display='none'"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" id="sla-regras-body" style="font-size:12.5px;color:var(--tx2);line-height:1.55"></div>
+  </div>
+</div>
+
 <!-- ── MODAL: CONFIGURAR VISUALIZAÇÃO DO USUÁRIO ── -->
 <div class="modal-overlay" id="modal-user-perms" style="display:none" onclick="if(event.target===this)closeUserPermsModal()">
   <div class="modal-box" style="max-width:640px">
@@ -8775,8 +8786,40 @@ function businessHoursBetween(start,end){if(!start||!end||end<=start)return 0;le
 function slaActiveHoursBetween(start,end,d){if(!start||!end||end<=start)return 0;if(isSwapRepair(d))return Math.max(0,(end-start)/3600000);let total=0,cur=new Date(start.getFullYear(),start.getMonth(),start.getDate());const guard=new Date(end.getFullYear(),end.getMonth(),end.getDate());for(let i=0;cur<=guard&&i<3700;i++,cur=addDays(cur,1)){const a0=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),0,0,0,0),a1=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),18,0,0,0);const a=new Date(Math.max(start,a0)),b=new Date(Math.min(end,a1));if(b>a)total+=(b-a)/3600000}return Math.max(0,total)}
 function computeSlaHours(d,now=new Date()){if(d.dynamicSheetSla){const base=Number(d.sheetSlaH??d.originalSlaH??d.slaH??0);const anchor=parseOpeningDate(d.slaBaseAt)||now;const end=isPausedSubstatus(d.substatus)?(d.pauseStart||anchor):now;return Math.max(0,base+slaActiveHoursBetween(anchor,end,d))}if(!d.openedAt)return d.originalSlaH||d.slaLimitH||0;if(isOperatorClient(d))return Math.max(0,(now-d.openedAt)/3600000);const base=businessHoursBetween(d.openedAt,now);const paused=Number(d.pausedBusinessH||0)+(d.pauseStart?businessHoursBetween(d.pauseStart,now):0);return Math.max(0,base-paused)}
 function slaBaseLimit(r){const v=gv(r,['SLA Base','SLA Meta','Meta SLA','Prazo SLA','SLA Prazo','SLA Contratado','SLA Limite','SLA limite (h)','Prazo (h)','Prazo']);return v===''?0:ph(v)}
-function statusSla(slaH,mop,limitH){const m={'MA CAP':8,'MA INT':8,'PI CAP':8,'PI INT':8,'PA CAP':8,'PA INT':8,'AP / AM':4,'SLN MA':8,'SLN PA':8,'GIGA+ MA':8,'GIGA+ PI':8,'ADX':4};const lim=limitH||m[mop]||8;return slaH>lim?'FORA DO PRAZO':'NO PRAZO'}
+const SLA_LIMIT_POR_MOP={'MA CAP':8,'MA INT':8,'PI CAP':8,'PI INT':8,'PA CAP':8,'PA INT':8,'AP / AM':4,'SLN MA':8,'SLN PA':8,'GIGA+ MA':8,'GIGA+ PI':8,'ADX':4};
+function statusSla(slaH,mop,limitH){const lim=limitH||SLA_LIMIT_POR_MOP[mop]||8;return slaH>lim?'FORA DO PRAZO':'NO PRAZO'}
 function refreshAbTimes(){const now=new Date();dAb.forEach(d=>{d.slaH=computeSlaHours(d,now);d.faixa=cf(d.slaH);d.statusSla=statusSla(d.slaH,d.mop,d.slaLimitH)})}
+/* Conteúdo do modal "Regras de SLA" — montado a partir das mesmas constantes usadas no
+   cálculo real (SLA_LIMIT_POR_MOP, PAUSE_SUBSTATUS, OPERATOR_CLIENTS, SLA_ORDER), para
+   nunca ficar desatualizado se essas regras mudarem no futuro. */
+function slaRegrasModalHtml(){
+  const secao=(titulo,icone,corpo)=>`<div style="margin-bottom:14px"><div style="font-weight:700;color:var(--tx);margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ${icone}" style="color:var(--blue)"></i>${eh(titulo)}</div>${corpo}</div>`;
+  const limitesPorValor={};
+  Object.entries(SLA_LIMIT_POR_MOP).forEach(([mop,h])=>{(limitesPorValor[h]=limitesPorValor[h]||[]).push(mop);});
+  const limitesHtml=Object.entries(limitesPorValor).sort((a,b)=>a[0]-b[0]).map(([h,mops])=>`<b>${eh(h)}h</b>: ${mops.map(eh).join(', ')}`).join('<br>');
+  const pausaHtml=`<ul style="margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px">${PAUSE_SUBSTATUS.map(s=>`<li>${eh(s)}</li>`).join('')}</ul>`;
+  const operadorasHtml=OPERATOR_CLIENTS.map(eh).join(', ');
+  const faixasHtml=`<div style="display:flex;flex-direction:column;gap:5px;margin-top:6px">${SLA_ORDER.map(f=>`<span class="badge ${SLA_BADGE[f]||'b-blue'}" style="width:fit-content">${eh(f)}</span>`).join('')}</div>`;
+  return [
+    secao('Cálculo base — só conta horário comercial','ti-briefcase',
+      `Segunda a sexta: <b>08h às 18h</b>. Sábado: <b>08h às 12h</b>. Domingo e feriados nacionais não contam (feriados fixos + Carnaval, Sexta-feira Santa, Corpus Christi, calculados pela data da Páscoa).`),
+    secao('Exceções — usam relógio corrido (24h), não horário comercial','ti-clock-24',
+      `Clientes operadoras (nome contém: <b>${operadorasHtml}</b>) e chamados com departamento <b>"CMO - Reparo Swap"</b>.`),
+    secao('Pausa do relógio por substatus','ti-player-pause',
+      `O SLA congela enquanto o chamado estiver em:${pausaHtml}`),
+    secao('Prazo limite por MOP (quando estoura)','ti-alarm',
+      `${limitesHtml}<br><span style="color:var(--tx3)">Ou o limite específico da planilha (SLA Base/Meta), se informado.</span>`),
+    secao('Faixas visuais (badge colorido)','ti-flag',
+      faixasHtml),
+    secao('Chamados com SLA vindo de planilha','ti-file-spreadsheet',
+      `Usam o valor base importado + horas ativas decorridas desde a abertura, em vez de recalcular do zero.`),
+  ].join('');
+}
+function abrirModalRegrasSla(){
+  const el=document.getElementById('sla-regras-body');
+  if(el)el.innerHTML=slaRegrasModalHtml();
+  document.getElementById('modal-sla-regras').style.display='flex';
+}
 /* Trava contra o refresh de 1s recriar o DOM (e derrubar o dropdown nativo) bem no
    instante em que o usuário clica no select de substatus/anotações. Marcada já no
    pointerdown (antes do foco existir) para fechar a janela de corrida com o setInterval. */
