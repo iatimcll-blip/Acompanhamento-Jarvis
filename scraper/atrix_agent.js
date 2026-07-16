@@ -259,14 +259,10 @@ const SELECTORS = [
 // Valores que indicam campo vazio/não preenchido — ignorar
 const BLANK_VALUES = new Set(['selecione','seleccione','select','nenhum','none','','—','-','--']);
 
-// Quando o Status da página contém uma destas palavras, ela tem prioridade sobre
-// o Substatus encontrado — regra de negócio: ticket fechado/cancelado sempre prevalece.
-const CLOSED_CANCELLED_MAP = { fechado: 'Fechado', cancelado: 'Cancelado', encerrado: 'Encerrado', closed: 'Fechado', cancelled: 'Cancelado' };
-function closedCancelledFrom(statusText) {
-  if (!statusText) return null;
-  const m = statusText.match(/\b(fechado|cancelado|encerrado|closed|cancelled)\b/i);
-  return m ? CLOSED_CANCELLED_MAP[m[1].toLowerCase()] : null;
-}
+// Regra de negócio de classificação (nesta ordem de prioridade):
+//   1. Substatus encontrado na página -> usa o Substatus sempre, sem exceção.
+//   2. Sem Substatus, mas com Status  -> usa o Status.
+//   3. Sem Status e sem Substatus     -> classifica como "Fechado".
 
 async function selText(page, selector) {
   const el = await page.$(selector);
@@ -347,11 +343,9 @@ async function extractSubstatus(page, ticket) {
     } catch {
       // Sem nenhum select: usar o Status encontrado na página, se houver
       const st = await extractPageStatus();
-      const cc0 = closedCancelledFrom(st);
-      if (cc0) { info(`[${tid}] Status: ${cc0} (fechado/cancelado)`); return cc0; }
       if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return st; }
-      warn(`[${tid}] SPA nao renderizou selects em 12s.`);
-      return null;
+      info(`[${tid}] Sem Status e sem Substatus na pagina — classificando como Fechado.`);
+      return 'Fechado';
     }
 
     // ── Coleta o Substatus por todas as estratégias, sem retornar ainda ──────────
@@ -412,29 +406,22 @@ async function extractSubstatus(page, ticket) {
       if (sub) dbg(`[${tid}] via estrutura Substatus: ${sub}`);
     }
 
-    // ── Estratégia 5: o Status da página tem prioridade quando indica Fechado/Cancelado ──
-    const pageStatus = await extractPageStatus();
-    const cc = closedCancelledFrom(pageStatus);
-    if (cc) {
-      if (sub && sub.trim().toLowerCase() !== cc.trim().toLowerCase()) info(`[${tid}] Status indica ${cc} — sobrepondo substatus "${sub}"`);
-      else info(`[${tid}] Status: ${cc} (fechado/cancelado)`);
-      return cc;
-    }
-
+    // Regra 3: o Substatus, quando encontrado, sempre prevalece — nenhuma outra
+    // informação (Status incluído) o sobrescreve.
     if (sub) return sub;
 
-    // ── Fallback final: nenhum substatus encontrado — usar o Status da página ────
+    // Regra 2: sem Substatus, usar o Status da página.
+    const pageStatus = await extractPageStatus();
     if (pageStatus) { info(`[${tid}] Substatus nao encontrado — usando Status: ${pageStatus}`); return pageStatus; }
 
-    // Nenhuma estratégia encontrou valor válido
+    // Regra 1: nem Status nem Substatus encontrados — classificar como Fechado.
     if (DEBUG) {
       const shot = path.join(__dirname, `debug_${tid}.png`);
       await page.screenshot({ path: shot, fullPage: true });
-      dbg(`[${tid}] Screenshot salvo: ${shot} — defina ATRIX_SUBSTATUS_SELECTOR no .env`);
-    } else {
-      warn(`[${tid}] Substatus nao encontrado.`);
+      dbg(`[${tid}] Sem Status e sem Substatus — screenshot salvo: ${shot}`);
     }
-    return null;
+    info(`[${tid}] Sem Status e sem Substatus na pagina — classificando como Fechado.`);
+    return 'Fechado';
   } catch (e) {
     if (e.name === 'TimeoutError') warn(`[${tid}] Timeout ao carregar ticket.`);
     else error(`[${tid}] Erro: ${e.message}`);
