@@ -8373,7 +8373,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);iniciarAtualizacaoAutomaticaSla();
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -8392,7 +8392,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);
+      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);iniciarAtualizacaoAutomaticaSla();
       return;
     }
   }
@@ -8793,10 +8793,38 @@ document.addEventListener('focusout',e=>{
   const t=e.target.closest&&e.target.closest('.substatus-select,.ann-sel,.ann-obs');
   if(t)setTimeout(()=>{abInteractionLock=false;},300);
 });
-/* Atualização do relógio de SLA é manual (sem setInterval automático) — reconstruir a
-   tabela inteira periodicamente sozinho chegava a sobrecarregar a aba em sessões longas.
-   O usuário atualiza pelo botão "Atualizar" na barra de Chamados em aberto. */
 function manualRefreshAb(){refreshAbTimes();renderTAb();}
+/* Relógio de SLA dinâmico: recalcula e atualiza só o texto/classe do relógio e dos
+   badges de cada card já renderizado (via data-rowkey), sem recriar a tabela inteira
+   com innerHTML — uma tentativa anterior de auto-atualizar chamando renderTAb() a
+   cada tick sobrecarregava a aba em sessões longas e derrubava o dropdown nativo de
+   substatus/anotações no meio de uma interação. Esta versão só toca nos elementos do
+   relógio/badge, então não interfere em nada que o usuário esteja editando. */
+function atualizarSlaDinamico(){
+  refreshAbTimes();
+  document.querySelectorAll('#tb-ab .ab-card[data-rowkey]').forEach(card=>{
+    const rk=Number(card.dataset.rowkey);
+    const d=dAb.find(x=>x.rowKey===rk);
+    if(!d)return;
+    const bc=SLA_BADGE[d.faixa]||'b-blue';
+    const ss=d.statusSla==='FORA DO PRAZO'?'b-out':'b-in';
+    const sc=d.slaH>24?'color:var(--red);font-weight:600':d.slaH>8?'color:var(--orange);font-weight:600':'color:var(--green-dk);font-weight:600';
+    const clockEl=card.querySelector('.sla-clock');
+    if(clockEl){clockEl.textContent=fd(d.slaH);clockEl.setAttribute('style',sc);}
+    const statusBadge=card.querySelector('.abc-sla-head .badge');
+    if(statusBadge){statusBadge.className='badge '+ss;statusBadge.textContent=d.statusSla;}
+    const faixaBadge=card.querySelector('.abc-sla-badges .badge');
+    if(faixaBadge){faixaBadge.className='badge '+bc;faixaBadge.textContent=d.faixa;}
+  });
+}
+let _slaLiveTimer=null;
+function iniciarAtualizacaoAutomaticaSla(){
+  clearInterval(_slaLiveTimer);
+  _slaLiveTimer=setInterval(()=>{
+    if(document.visibilityState!=='visible'||abInteractionLock)return;
+    atualizarSlaDinamico();
+  },60000);
+}
 const ATRIX_TICKET_BASE='https://atrix.mobtelecom.com.br/controle/addonmodules.php?module=helpdesk#/app/ticket/';
 function cleanTicketId(v){const s=String(v??'').trim();return s.replace(/\.0+$/,'')}
 function atrixTicketLink(ticketId){const id=cleanTicketId(ticketId);return id?ATRIX_TICKET_BASE+encodeURIComponent(id):''}
@@ -10051,7 +10079,7 @@ function renderTAb(){
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
     const _updNow=typeof _atrixRunningNow!=='undefined'&&_atrixRunningNow;
     const updBadge=_updNow?'<span class="abc-updating-badge" title="Agente Atrix atualizando este chamado agora"><i class="ti ti-loader-2" style="animation:wppSpin 1s linear infinite"></i> Atualizando</span>':'';
-    return`<div class="ab-card ${rowCls}${_updNow?' ab-card-updating':''}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div>${updBadge}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}${_updNow?' ab-card-updating':''}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div>${updBadge}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
