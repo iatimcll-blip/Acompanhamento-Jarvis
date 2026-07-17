@@ -6652,6 +6652,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Chamados em aberto</span>
           <div class="tsec-meta">
             <span id="cnt-ab" style="color:var(--tx3)"></span>
+            <span class="atrix-sync-badge" id="atrix-cd-ab" style="display:none" title="Tempo desde a última leitura do Atrix até a próxima atualização automática (a cada 30 min)">
+              <i class="ti ti-robot"></i>
+              <span id="atrix-cd-ab-txt">--:--</span>
+            </span>
             <span class="card-action" onclick="manualRefreshAb()" title="Recalcula o SLA e atualiza a lista de chamados"><i class="ti ti-refresh" style="font-size:11px;vertical-align:-1px"></i> Atualizar</span>
             <span class="card-action" id="ab-toggle-hide-inactive" onclick="toggleAbHideInactive()" title="Ocultar chamados Cancelados, Fechados ou Pendente Validação."><i class="ti ti-eye" style="font-size:11px;vertical-align:-1px"></i> Ocultar cancelados/fechados</span>
             <span class="card-action admin-only" onclick="openModalAb()" style="color:var(--blue)"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar chamado</span>
@@ -8384,7 +8388,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);iniciarAtualizacaoAutomaticaSla();
+  hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();iniciarPollingAtrixUpdates();iniciarAtualizacaoAutomaticaSla();
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -8403,7 +8407,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();setTimeout(loadAtrixUpdates,3000);iniciarAtualizacaoAutomaticaSla();
+      hideLogin();restoreAtrixTimestamp();restoreState();restoreActiveTab();applyPermissions();iniciarPollingAtrixUpdates();iniciarAtualizacaoAutomaticaSla();
       return;
     }
   }
@@ -9253,6 +9257,58 @@ function _startAtrixCountdown(isoStr){
   if(_atrixRunningNow)_atrixCdTimer=setInterval(tick,1000);
 }
 
+/* Contador ao lado da lista de "Chamados em aberto": tempo desde a última leitura
+   do Atrix até a próxima atualização automática (a cada 30 min, via GitHub Actions).
+   É uma estimativa — o disparo real do schedule do GitHub pode atrasar alguns
+   minutos — mas dá uma referência visual de quando esperar novos dados. Cicla
+   sozinho a cada 30 min em vez de travar num valor fixo. */
+let _atrixReminderTimer=null;
+function _startAtrixReminderCountdown(isoStr){
+  if(_atrixReminderTimer){clearInterval(_atrixReminderTimer);_atrixReminderTimer=null;}
+  const el=document.getElementById('atrix-cd-ab');
+  const txt=document.getElementById('atrix-cd-ab-txt');
+  if(!el||!txt||!isoStr)return;
+  const base=new Date(isoStr).getTime();
+  if(isNaN(base))return;
+  const CICLO_MS=30*60*1000;
+  const pad=n=>String(n).padStart(2,'0');
+  function tick(){
+    el.style.display='';
+    el.classList.remove('fresh','stale');
+    if(_atrixRunningNow){
+      txt.textContent='atualizando…';
+      el.classList.add('fresh');
+      el.title='Atualização do Atrix em andamento agora';
+      return;
+    }
+    const decorridoDesdeBase=Date.now()-base;
+    const restante=CICLO_MS-(decorridoDesdeBase%CICLO_MS);
+    const totalSec=Math.ceil(restante/1000);
+    const min=Math.floor(totalSec/60),sec=totalSec%60;
+    txt.textContent=`próxima em ${pad(min)}:${pad(sec)}`;
+    el.classList.add(decorridoDesdeBase>CICLO_MS*2?'stale':'fresh');
+    el.title=`Última leitura do Atrix há ${Math.floor(decorridoDesdeBase/60000)} min — próxima atualização automática estimada em ${pad(min)}:${pad(sec)}`;
+  }
+  tick();
+  _atrixReminderTimer=setInterval(tick,1000);
+}
+
+/* A atualização automática do Agente Atrix roda no GitHub Actions a cada 30 min,
+   independente desta aba estar aberta — mas sem um polling próprio, o painel só
+   refletia o que foi lido no carregamento da página (setTimeout único de 3s),
+   ficando visualmente parado mesmo com o agente publicando dados novos em
+   segundo plano. Repete a cada 5 min (folga suficiente pro ciclo de 30 min)
+   enquanto a aba estiver visível, para o contador e os horários por chamado
+   ficarem sincronizados com o ciclo automático real. */
+let _atrixPollTimer=null;
+function iniciarPollingAtrixUpdates(){
+  setTimeout(loadAtrixUpdates,3000);
+  clearInterval(_atrixPollTimer);
+  _atrixPollTimer=setInterval(()=>{
+    if(document.visibilityState==='visible'&&typeof loadAtrixUpdates==='function')loadAtrixUpdates();
+  },5*60*1000);
+}
+
 let _atrixPickupTimer=null;
 
 /* ── Gate público + limpeza de execuções presas ──────────────────────────────
@@ -9499,6 +9555,7 @@ function _renderAtrixTs(isoStr){
     if(ageMin<35)badge.classList.add('fresh');       // verde: atualizado há menos de 35 min
     else if(ageMin>120)badge.classList.add('stale'); // laranja: mais de 2h sem atualizar
     _startAtrixCountdown(isoStr);
+    _startAtrixReminderCountdown(isoStr);
   }catch(_){}
 }
 
