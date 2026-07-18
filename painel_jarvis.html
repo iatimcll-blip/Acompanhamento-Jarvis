@@ -11574,17 +11574,19 @@ function buildRepMap(data){
   const map=new Map();
   data.forEach(x=>{
     // Separa os repetidos por Cliente ID (col J), com NumPlan (col F) como fallback.
-    // Cliente ID identifica a conta/cliente real (1 cliente = 1 Cliente ID sempre);
-    // NumPlan é apenas um índice de linha/circuito DENTRO da conta do cliente e não
-    // é globalmente único (ex.: "NUMPLAN=1" se repete em dezenas de clientes distintos),
-    // então usá-lo como chave primária mistura clientes diferentes no mesmo grupo.
-    // Usa sempre o mesmo identificador como chave (nunca mistura os dois) para não
-    // fragmentar o histórico do mesmo cliente quando o preenchimento é inconsistente
-    // entre chamados (ex.: um chamado com numplan+clienteId e outro só com numplan).
+    // Correlaciona NumPlan (col F) + Cliente ID (col J): juntas elas identificam a
+    // linha/circuito específico de um cliente. Cliente ID sozinho identifica a conta
+    // (1 cliente = 1 Cliente ID sempre), mas não é globalmente único (o mesmo valor
+    // de NumPlan se repete como índice de linha em dezenas de clientes distintos) —
+    // por isso a chave primária é a combinação NumPlan+Cliente ID quando ambos
+    // existem, garantindo que a repetição contabilizada seja da mesma linha do mesmo
+    // cliente. Quando falta um dos dois, usa o que estiver disponível como fallback
+    // (nunca mistura os dois isoladamente) para não fragmentar o histórico do mesmo
+    // cliente quando o preenchimento é inconsistente entre chamados.
     // O nome do cliente fica como título visual do grupo.
     const np=String(x.numplan||'').trim();
     const ci=String(x.clienteId||'').trim();
-    const key=ci?`CI:${ci}`:np?`NP:${np}`:nk(x.cliente)||null;
+    const key=(np&&ci)?`NPCI:${np}|${ci}`:ci?`CI:${ci}`:np?`NP:${np}`:nk(x.cliente)||null;
     if(!key)return;
     if(!map.has(key)){
       // Escolher melhor nome de exibição: prefere campo não-genérico
