@@ -11573,14 +11573,18 @@ function repScope(){
 function buildRepMap(data){
   const map=new Map();
   data.forEach(x=>{
-    // Separa os repetidos por NumPlan (col F), com Cliente ID (col J) como fallback.
+    // Separa os repetidos por Cliente ID (col J), com NumPlan (col F) como fallback.
+    // Cliente ID identifica a conta/cliente real (1 cliente = 1 Cliente ID sempre);
+    // NumPlan é apenas um índice de linha/circuito DENTRO da conta do cliente e não
+    // é globalmente único (ex.: "NUMPLAN=1" se repete em dezenas de clientes distintos),
+    // então usá-lo como chave primária mistura clientes diferentes no mesmo grupo.
     // Usa sempre o mesmo identificador como chave (nunca mistura os dois) para não
     // fragmentar o histórico do mesmo cliente quando o preenchimento é inconsistente
     // entre chamados (ex.: um chamado com numplan+clienteId e outro só com numplan).
     // O nome do cliente fica como título visual do grupo.
     const np=String(x.numplan||'').trim();
     const ci=String(x.clienteId||'').trim();
-    const key=np?`NP:${np}`:ci?`CI:${ci}`:nk(x.cliente)||null;
+    const key=ci?`CI:${ci}`:np?`NP:${np}`:nk(x.cliente)||null;
     if(!key)return;
     if(!map.has(key)){
       // Escolher melhor nome de exibição: prefere campo não-genérico
