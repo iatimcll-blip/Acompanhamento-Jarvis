@@ -365,6 +365,8 @@
           <select id="colabUf"><option>MA</option><option>PA</option><option>PI</option><option>AM</option><option>AP</option></select>
         </div>
         <div><label>Gestor</label><input id="colabGestor" placeholder="Gestor responsável"></div>
+        <div><label>Férias — Início</label><input type="date" id="colabFeriasInicio"></div>
+        <div><label>Férias — Fim</label><input type="date" id="colabFeriasFim"></div>
         <button class="btn-primary" id="btnIncluirColab" onclick="incluirColaborador()">➕ Incluir</button>
         <button class="btn-ghost" id="btnCancelarEdicao" onclick="cancelarEdicaoColab()" style="display:none">Cancelar edição</button>
       </div>
@@ -550,6 +552,25 @@ function feriadoDoDia(date, localidade){
   const m = muni.find(f=>f.mes===mes && f.dia===dia);
   if(m) return {tipo:'municipal', nome:m.nome, cidade};
   return null;
+}
+/* Aplica o período de férias configurado no cadastro do colaborador (feriasInicio/feriasFim)
+   sobre a grade já resolvida — mesmo princípio do feriado logo abaixo: reaplicado a cada
+   recálculo, sem travar a célula (cel.lock), pois a data cadastrada já é a fonte da verdade;
+   respeita ajustes manuais já travados (não sobrescreve). Roda ANTES de aplicarFeriados() para
+   que um feriado dentro do período de férias não gere folga compensatória indevida (o dia já
+   deixou de ser "trabalho" antes da checagem de feriado rodar). */
+function aplicarFerias(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!f || !f.feriasInicio || !f.feriasFim) return;
+  const ini = new Date(f.feriasInicio+'T00:00:00');
+  const fim = new Date(f.feriasFim+'T00:00:00');
+  if(isNaN(ini) || isNaN(fim) || fim < ini) return;
+  for(let d=0; d<NDIAS; d++){
+    const cel = grid[ei][d];
+    if(cel.lock) continue;
+    if(DIAS[d] < ini || DIAS[d] > fim) continue;
+    cel.st = 'FERIAS'; cel.he = 0; cel.plantao = 0; cel.feriadoNome = ''; cel.motivoFeriado = false;
+  }
 }
 /* Aplica feriados (nacional + municipal da cidade do colaborador) sobre a grade já resolvida:
    força o dia para Feriado e, se esse dia estava escalado para trabalho, gera uma Folga
@@ -1090,6 +1111,7 @@ function resolverColab(ei){
       consec = ST[cel.st].rest ? 0 : consec+1;
     }
   }
+  aplicarFerias(ei);
   aplicarFeriados(ei);
   garantirDomingoDSR(ei);
 }
@@ -1499,8 +1521,9 @@ function renderListaColab(){
   if(!FUNCIONARIOS.length){ el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px 0">Nenhum colaborador cadastrado.</div>'; return; }
   el.innerHTML = FUNCIONARIOS.map((f,ei)=>{
     const bh = calcularBancoHoras(f, ei);
+    const feriasTxt = (f.feriasInicio && f.feriasFim) ? ` · 🏖 Férias: ${fmtCurta(new Date(f.feriasInicio+'T00:00:00'))}–${fmtCurta(new Date(f.feriasFim+'T00:00:00'))}` : '';
     return `<div class="colab-row">
-      <div class="cr-name"><b>${f.nome}</b><span>${f.uf} · ${f.localidade}${f.gestor?(' · Gestor: '+f.gestor):''}</span></div>
+      <div class="cr-name"><b>${f.nome}</b><span>${f.uf} · ${f.localidade}${f.gestor?(' · Gestor: '+f.gestor):''}${feriasTxt}</span></div>
       <label class="nc-toggle"><input type="checkbox" ${f.ativo?'checked':''} onchange="toggleAtivo(${ei})"> ${f.ativo?'Ativo':'Inativo'}</label>
       <div class="cr-bh">
         <label style="font-size:10px;color:var(--muted)">Saldo inicial (h)&nbsp;</label>
@@ -1527,6 +1550,8 @@ function editarColaborador(ei){
   document.getElementById('colabLocalidade').value = f.localidade || 'São Luis';
   document.getElementById('colabUf').value = f.uf || 'MA';
   document.getElementById('colabGestor').value = f.gestor || '';
+  document.getElementById('colabFeriasInicio').value = f.feriasInicio || '';
+  document.getElementById('colabFeriasFim').value = f.feriasFim || '';
   document.getElementById('btnIncluirColab').textContent = '💾 Salvar edição';
   document.getElementById('btnCancelarEdicao').style.display = 'inline-block';
   document.getElementById('colabNome').focus();
@@ -1537,6 +1562,8 @@ function cancelarEdicaoColab(){
   document.getElementById('colabLocalidade').value = 'São Luis';
   document.getElementById('colabUf').value = 'MA';
   document.getElementById('colabGestor').value = (FUNCIONARIOS[0] && FUNCIONARIOS[0].gestor) || '';
+  document.getElementById('colabFeriasInicio').value = '';
+  document.getElementById('colabFeriasFim').value = '';
   document.getElementById('btnIncluirColab').textContent = '➕ Incluir';
   document.getElementById('btnCancelarEdicao').style.display = 'none';
 }
@@ -1579,12 +1606,15 @@ function incluirColaborador(){
   const localidade = document.getElementById('colabLocalidade').value;
   const uf = document.getElementById('colabUf').value;
   const gestor = document.getElementById('colabGestor').value.trim();
+  const feriasInicio = document.getElementById('colabFeriasInicio').value;
+  const feriasFim = document.getElementById('colabFeriasFim').value;
+  if(feriasInicio && feriasFim && feriasFim < feriasInicio){ alert('O fim das férias não pode ser antes do início.'); return; }
   if(idxEditando >= 0){
     const nomeAntigo = FUNCIONARIOS[idxEditando].nome;
     if(nomeAntigo !== nome) _migrarHistoricoBancoHoras(nomeAntigo, nome);
-    Object.assign(FUNCIONARIOS[idxEditando], {nome, localidade, uf, gestor});
+    Object.assign(FUNCIONARIOS[idxEditando], {nome, localidade, uf, gestor, feriasInicio, feriasFim});
   } else {
-    FUNCIONARIOS.push({nome, localidade, uf, gestor, ativo:true, ajusteBH:0});
+    FUNCIONARIOS.push({nome, localidade, uf, gestor, ativo:true, ajusteBH:0, feriasInicio, feriasFim});
     grid.push(DIAS.map(()=>({st:"TRABALHO", lock:false, he:0, plantao:0})));
   }
   ordenarColaboradoresAZ();
