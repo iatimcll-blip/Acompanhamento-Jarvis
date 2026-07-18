@@ -6490,17 +6490,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="enc-subbar" id="enc-subbar">
       <span class="enc-subbar-label"><i class="ti ti-circle-check" style="font-size:12px;vertical-align:-1px;color:var(--green-dk);margin-right:3px"></i>B2B Encerrados</span>
       <span class="week-label"><i class="ti ti-calendar-month" style="font-size:13px;vertical-align:-2px"></i> Mês</span>
-      <select class="week-select" id="mes-selector" onchange="onMesChange()">
-        <option value="">Todos os meses</option>
-      </select>
+      <div class="msel"><button type="button" class="msel-btn" id="msel-btn-mes-selector" onclick="mselToggleOpen('mes-selector')"><span class="msel-btn-lbl">Todos os meses</span></button></div>
       <span class="week-label" style="margin-left:6px"><i class="ti ti-calendar" style="font-size:13px;vertical-align:-2px"></i> Semana</span>
-      <select class="week-select" id="week-selector" onchange="onWeekChange()">
-        <option value="">Todas as semanas</option>
-      </select>
+      <div class="msel"><button type="button" class="msel-btn" id="msel-btn-week-selector" onclick="mselToggleOpen('week-selector')"><span class="msel-btn-lbl">Todas as semanas</span></button></div>
       <span class="week-label" style="margin-left:6px"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
-      <select class="week-select" id="cluster-selector" onchange="onClusterChange()">
-        <option value="">Todos os clusters</option>
-      </select>
+      <div class="msel"><button type="button" class="msel-btn" id="msel-btn-cluster-selector" onclick="mselToggleOpen('cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
     </div>
 
     <!-- ═══ APP BODY ═══ -->
@@ -8034,9 +8028,9 @@ function clearFuelRF(){fuelRFilter={q:'',tipo:'',tipoCartao:'',dataIni:'',dataFi
 let scAb='slaH',sdAb=-1,scEnc='tempoTotal',sdEnc=-1;
 let abHideInactive=localStorage.getItem('jarvis:ab:hideInactive')==='1';
 let chAb=null,chEnc=null,chSem=null,chFuel=null,chFuelProj=null,chFuelTop=null;
-let selWeek='';
-let selCluster='';
-let selMes='';
+let selWeek=[];
+let selCluster=[];
+let selMes=[];
 let encChartBucket='';
 let selRepMes='',selRepSemana='',selRepCluster='',selRepCausa='',selRepSeg='',selRepSrch='';
 let selAbMop=[],selAbFaixa=[],selAbSub=[],selAbUf=[];
@@ -9062,14 +9056,19 @@ function applyState(st,label){
       selEncUf=asArr(st.selEncUf).filter(u=>_encUfs.includes(u));
       selEncSemana=asArr(st.selEncSemana).filter(s=>_encSemanas.includes(s));
       selEncSeg=asArr(st.selEncSeg).filter(s=>_encSegs.includes(s));
-      /* 1. popula mês primeiro para que fillWeekSelector filtre corretamente */
+      /* restaura barra superior (mês/semana/cluster) antes de popular, mesmo
+         padrão dos filtros de tabela acima — arrays validados contra os dados
+         atuais; fillMesSelector/fillWeekSelector/fillClusterSelector também
+         auto-podam qualquer valor que não exista mais na base restaurada */
+      const _topMeses=[...new Set(dEnc.map(d=>d.mes).filter(Boolean))];
+      const _topClusters=CLUSTER_ORDER.filter(c=>dEnc.some(d=>d.cluster===c));
+      selMes=asArr(st.selMes).filter(m=>_topMeses.includes(m));
+      selCluster=asArr(st.selCluster).filter(c=>_topClusters.includes(c));
+      selWeek=asArr(st.selWeek).filter(s=>encWeeksForMesArr(selMes).includes(s));
+      /* 1. popula mês/cluster primeiro para que fillWeekSelector filtre corretamente */
       fillFiltersEnc();fillMesSelector();fillClusterSelector();
-      if(st.selMes&&dEnc.some(d=>d.mes===st.selMes)){selMes=st.selMes;const ms=document.getElementById('mes-selector');if(ms)ms.value=selMes}else{selMes=''}
-      if(st.selCluster&&dEnc.some(d=>d.cluster===st.selCluster)){selCluster=st.selCluster;document.getElementById('cluster-selector').value=selCluster}else if(!st.selCluster){selCluster=''}
-      /* 2. preenche semanas já filtradas pelo mês restaurado */
+      /* 2. preenche semanas já filtradas pelo(s) mês(es) restaurado(s) */
       fillWeekSelector();
-      const validWeeks=encWeeksForMes(selMes);
-      if(st.selWeek&&validWeeks.includes(st.selWeek)){selWeek=st.selWeek;document.getElementById('week-selector').value=selWeek}else{selWeek=''}
       /* restaura filtros do painel Repetidos — fillRepFilters() usará estes globais */
       selRepMes=st.selRepMes||'';selRepSemana=st.selRepSemana||'';
       selRepCluster=st.selRepCluster||'';selRepCausa=st.selRepCausa||'';
@@ -10013,46 +10012,27 @@ function encMesForWeek(sem){
   const m=[...new Set(dEnc.filter(d=>d.semana===sem).map(d=>d.mes).filter(Boolean))];
   return m.length===1?m[0]:'';
 }
-function fillWeekSelector(mes){
-  const semanas=encWeeksForMes(mes||selMes);
-  const sel=document.getElementById('week-selector');if(!sel)return;
-  sel.innerHTML='<option value="">Todas as semanas</option>'+semanas.map(s=>`<option value="${s}">${s}</option>`).join('');
-  selWeek='';
+function encWeeksForMesArr(mesArr){
+  if(!mesArr||!mesArr.length)return encWeeksForMes('');
+  const s=new Set();
+  mesArr.forEach(m=>encWeeksForMes(m).forEach(w=>s.add(w)));
+  return[...s].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+}
+function fillWeekSelector(){
+  const semanas=encWeeksForMesArr(selMes);
+  selWeek=selWeek.filter(s=>semanas.includes(s));
+  mselRender('week-selector',semanas,selWeek,{allLabel:'Todas as semanas',onChange:(v)=>{selWeek=v;renderAllEnc();saveState();}});
 }
 function fillClusterSelector(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
   const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
-  const sel=document.getElementById('cluster-selector');
-  sel.innerHTML='<option value="">Todos os clusters</option>'+clusters.map(c=>`<option value="${eh(c)}">${eh(c)}</option>`).join('');
-  selCluster='';
+  selCluster=selCluster.filter(c=>clusters.includes(c));
+  mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];fillFiltersEnc();renderAllEnc();saveState();}});
 }
 function fillMesSelector(){
   const meses=[...new Set(dEnc.map(d=>d.mes).filter(Boolean))].sort();
-  const sel=document.getElementById('mes-selector');if(!sel)return;
-  sel.innerHTML='<option value="">Todos os meses</option>'+meses.map(m=>`<option value="${m}">${eh(fmtMesLabel(m))}</option>`).join('');
-  selMes='';
-}
-function onMesChange(){
-  selMes=document.getElementById('mes-selector').value;
-  /* filtra semanas ao mês selecionado */
-  const weeks=encWeeksForMes(selMes);
-  const wSel=document.getElementById('week-selector');
-  if(wSel){
-    const prev=wSel.value;
-    wSel.innerHTML='<option value="">Todas as semanas</option>'+weeks.map(s=>`<option value="${s}">${s}</option>`).join('');
-    selWeek=weeks.includes(prev)?prev:'';
-    wSel.value=selWeek;
-  }
-  renderAllEnc();
-  saveState();
-}
-function onWeekChange(){
-  selWeek=document.getElementById('week-selector').value;
-  /* auto-seleciona o mês correspondente à semana */
-  const mes=encMesForWeek(selWeek);
-  if(mes){selMes=mes;const mSel=document.getElementById('mes-selector');if(mSel)mSel.value=selMes;}
-  renderAllEnc();
-  saveState();
+  selMes=selMes.filter(m=>meses.includes(m));
+  mselRender('mes-selector',meses,selMes,{allLabel:'Todos os meses',labelFn:fmtMesLabel,onChange:(v)=>{selMes=v;fillWeekSelector();renderAllEnc();saveState();}});
 }
 /* ─── Repetidos: filtros com persistência ─── */
 function onRepMesChange(){
@@ -10090,27 +10070,18 @@ function clearRepFilters(){
   renderPanelRepetidos();
   saveState();
 }
-function onClusterChange(){
-  selCluster=document.getElementById('cluster-selector').value;
-  selEncCluster=[];
-  fillFiltersEnc();
-  renderAllEnc();
-  saveState();
-}
 function selectClusterCard(cluster){
-  selCluster = selCluster === cluster ? '' : cluster;
-  const sel=document.getElementById('cluster-selector');
-  if(sel) sel.value=selCluster;
+  selCluster=selCluster.includes(cluster)?selCluster.filter(c=>c!==cluster):[...selCluster,cluster];
   selEncCluster=[];
-  fillFiltersEnc();
+  fillClusterSelector();fillFiltersEnc();
   renderAllEnc();
   saveState();
 }
 
 /* filtered enc by global selectors */
-function encBase(){const base=slnEnc();return selMes?base.filter(d=>d.mes===selMes):base}
-function encWeek(){const b=encBase();return selWeek?b.filter(d=>d.semana===selWeek):b}
-function encScope(){let f=encWeek();if(selCluster)f=f.filter(d=>d.cluster===selCluster);return f}
+function encBase(){const base=slnEnc();return selMes.length?base.filter(d=>selMes.includes(d.mes)):base}
+function encWeek(){const b=encBase();return selWeek.length?b.filter(d=>selWeek.includes(d.semana)):b}
+function encScope(){let f=encWeek();if(selCluster.length)f=f.filter(d=>selCluster.includes(d.cluster));return f}
 
 /* ─── RENDER ABERTOS ─── */
 function abScope(){const base=slnAb();return selAbMop.length?base.filter(d=>selAbMop.includes(d.mop)):base}
@@ -10572,9 +10543,9 @@ function renderAllEnc(){
 
 function rBanner(d){
   const el=document.getElementById('week-banner-enc');
-  if(selMes||selWeek||selCluster){
+  if(selMes.length||selWeek.length||selCluster.length){
     const total=d.length,d8=d.filter(x=>x.dentro8h).length,pct=Math.round(d8/Math.max(total,1)*100);
-    const parts=[selMes?fmtMesLabel(selMes):'',selWeek||'',selCluster||''].filter(Boolean);
+    const parts=[selMes.length?selMes.map(fmtMesLabel).join('+'):'',selWeek.join('+'),selCluster.join('+')].filter(Boolean);
     el.innerHTML=`<div class="week-banner"><i class="ti ti-filter"></i><span class="wb-label">${eh(parts.join(' · '))}</span><span class="wb-sub">— ${total} chamados encerrados · ${d8} dentro de 8h (${pct}%)</span></div>`;
   }else{
     el.innerHTML=`<div class="week-banner all"><i class="ti ti-calendar"></i><span class="wb-label">Todos os meses</span><span class="wb-sub">— ${dEnc.length} chamados no período completo</span></div>`;
@@ -10609,14 +10580,14 @@ function rClusterCards(d){
     if(!grp[k])grp[k]={total:0,dentro:0,outlier:0};
     grp[k].total++;if(x.dentro8h)grp[k].dentro++;if(x.outlier24h)grp[k].outlier++;
   });
-  const cardOrder=selCluster?[selCluster]:CLUSTER_ORDER;
+  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
   document.getElementById('cluster-cards').innerHTML=cardOrder.map(k=>{
     const g=grp[k]||{total:0,dentro:0,outlier:0};
     const pct=g.total?Math.round(g.dentro/g.total*100):0;
     const cls=pct>=85?'met':pct>=70?'warn':'unmet';
     const barC=pct>=85?'var(--green)':pct>=70?'var(--orange)':'var(--red)';
     const ci=CLUSTER_INFO[k]||{clr:'#8e8e93',desc:k};
-    return`<div class="cc ${cls}" onclick="selectClusterCard('${eh(k)}')" title="${selCluster?'Clique para limpar o filtro':'Clique para analisar somente este cluster'}" style="cursor:pointer">
+    return`<div class="cc ${cls}" onclick="selectClusterCard('${eh(k)}')" title="${selCluster.includes(k)?'Clique para remover este cluster do filtro':'Clique para adicionar este cluster ao filtro'}" style="cursor:pointer">
       <div class="cc-stripe" style="background:${ci.clr}"></div>
       <div class="cc-name">${eh(k)}</div>
       <div class="cc-desc">${eh(ci.desc)}</div>
@@ -10685,16 +10656,16 @@ function rChEnc(d){
 
 function rChSem(){
   /* show weekly evolution for the selected cluster, highlighting selected week */
-  const base=selCluster?dEnc.filter(d=>d.cluster===selCluster):dEnc;
+  const base=selCluster.length?dEnc.filter(d=>selCluster.includes(d.cluster)):dEnc;
   const semD=cnt(base,'semana');
   const labels=Object.keys(semD).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const vals=labels.map(k=>semD[k]);
-  const bgColors=labels.map(k=>selWeek?(k===selWeek?'#007aff':'rgba(0,122,255,.2)'):'#007aff');
+  const bgColors=labels.map(k=>selWeek.length?(selWeek.includes(k)?'#007aff':'rgba(0,122,255,.2)'):'#007aff');
   if(chSem){chSem.destroy();chSem=null}
   const ctx=document.getElementById('ch-sem');if(!ctx)return;
   const dk=document.body.dataset.theme==='dark';
   const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
-  chSem=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels,datasets:[{data:vals,backgroundColor:bgColors,borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>'Semana '+c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const week=labels[els[0].index];selWeek=(selWeek===week?'':week);const sel=document.getElementById('week-selector');if(sel)sel.value=selWeek;renderAllEnc();},scales:{x:{grid:{display:false},ticks:{font:{size:8},color:dk?'#636366':'#8e8e93',maxRotation:45,autoSkip:false}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:10}}}}});
+  chSem=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels,datasets:[{data:vals,backgroundColor:bgColors,borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>'Semana '+c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const week=labels[els[0].index];selWeek=selWeek.includes(week)?selWeek.filter(w=>w!==week):[...selWeek,week];fillWeekSelector();renderAllEnc();saveState();},scales:{x:{grid:{display:false},ticks:{font:{size:8},color:dk?'#636366':'#8e8e93',maxRotation:45,autoSkip:false}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:10}}}}});
 }
 
 function rSegEnc(d){
@@ -10748,7 +10719,7 @@ function renderExecReport(d){
   const fora8=s.fora8,pFora8=pp(s.pFora8);
   const outlier=s.outlier,pOut=pp(s.pOut);
   /* label do período */
-  const periodoLabel=selMes?(fmtMesLabel(selMes)+(selWeek?' — Semana '+selWeek:'')):(selWeek?'Semana '+selWeek:'Período completo');
+  const periodoLabel=selMes.length?(selMes.map(fmtMesLabel).join('+')+(selWeek.length?' — Semana '+selWeek.join('+'):'')):(selWeek.length?'Semana '+selWeek.join('+'):'Período completo');
   /* recorte por cluster */
   const clusterMap={};
   d.forEach(x=>{
@@ -11664,7 +11635,7 @@ function exportCSV(tipo){
   const csv=[hdr,...data].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='jarvis_'+tipo+'_'+(selWeek||'all')+'_'+(selCluster||'allclusters')+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  a.download='jarvis_'+tipo+'_'+(selWeek.length?selWeek.join('+'):'all')+'_'+(selCluster.length?selCluster.join('+'):'allclusters')+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
 /* ─── PAINEL B2B REPETIDOS ─── */
@@ -14052,7 +14023,7 @@ function rptBuildAbertos(){
 function rptBuildEncerrados(){
   if(!dEnc.length)return '';
   const d=encScope();
-  const ctx=[selMes?fmtMesLabel(selMes):'',selWeek?'Semana '+selWeek:'',selCluster||''].filter(Boolean).join(' · ')||'Todos os períodos';
+  const ctx=[selMes.length?selMes.map(fmtMesLabel).join('+'):'',selWeek.length?'Semana '+selWeek.join('+'):'',selCluster.join('+')].filter(Boolean).join(' · ')||'Todos os períodos';
   const exTxt=document.getElementById('exec-report-text');
   const execHtml=exTxt&&exTxt.textContent.trim()?`<div class="rcard" style="margin-bottom:12px"><div class="rcardtit">Relatório Executivo Automático</div><pre class="exec-pre">${exTxt.textContent}</pre></div>`:'';
   const tRows=d.slice(0,500).map(x=>`<tr>
