@@ -730,6 +730,29 @@ body {
 .srch-clear{border:.5px solid var(--bd2);border-left:none;border-radius:0 8px 8px 0;background:var(--surface);color:var(--tx3);cursor:pointer;font-size:13px;line-height:1;padding:0 8px;height:100%;align-self:stretch;display:flex;align-items:center;transition:color .12s,background .12s}
 .srch-clear:hover{color:var(--tx);background:var(--surface2)}
 [data-theme=dark] .fsel, [data-theme=dark] .finput { background: var(--surface2); }
+.msel{display:inline-block;max-width:100%;min-width:0}
+.msel-btn{
+  appearance:none;-webkit-appearance:none;background:var(--surface);border:.5px solid var(--bd2);
+  border-radius:8px;padding:5px 24px 5px 9px;font-size:11px;font-weight:500;color:var(--tx);
+  font-family:inherit;outline:none;cursor:pointer;box-shadow:var(--shadow-sm);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%238e8e93' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 7px center;
+  transition:border-color .13s;max-width:100%;min-width:0;text-overflow:ellipsis;
+  white-space:nowrap;overflow:hidden;text-align:left;display:inline-block;vertical-align:middle;
+}
+.msel-btn:focus{border-color:var(--blue)}
+.msel-btn.has-sel{border-color:var(--blue);color:var(--blue)}
+[data-theme=dark] .msel-btn{background:var(--surface2)}
+.msel-panel{
+  position:fixed;min-width:190px;max-width:300px;max-height:280px;overflow-y:auto;
+  background:var(--surface);border:.5px solid var(--bd);border-radius:10px;
+  box-shadow:0 4px 20px rgba(0,0,0,.15);padding:6px;z-index:9500;
+}
+.msel-panel-hd{display:flex;justify-content:flex-end;padding:2px 4px 6px;border-bottom:.5px solid var(--bd);margin-bottom:4px}
+.msel-mini{font-size:10px;font-weight:700;color:var(--blue);background:none;border:none;cursor:pointer;padding:2px 4px;font-family:inherit}
+.msel-opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:6px;font-size:11.5px;color:var(--tx);cursor:pointer}
+.msel-opt:hover{background:var(--surface2)}
+.msel-empty{padding:8px;font-size:11px;color:var(--tx3)}
 .quick-mop {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin: 0 0 12px; padding: 10px;
@@ -6663,10 +6686,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </div>
         </div>
         <div class="fbar">
-          <select class="fsel" id="f-mop" onchange="renderAllAb()"><option value="">Todos MOP/EPS</option></select>
-          <select class="fsel" id="f-faixa" onchange="renderTAb()"><option value="">Todas as faixas</option></select>
-          <select class="fsel" id="f-sub" onchange="renderTAb()"><option value="">Todos substatus</option></select>
-          <select class="fsel" id="f-uf" onchange="renderTAb()"><option value="">Todas UFs</option></select>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-f-mop" onclick="mselToggleOpen('f-mop')"><span class="msel-btn-lbl">Todos MOP/EPS</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-f-faixa" onclick="mselToggleOpen('f-faixa')"><span class="msel-btn-lbl">Todas as faixas</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-f-sub" onclick="mselToggleOpen('f-sub')"><span class="msel-btn-lbl">Todos substatus</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-f-uf" onclick="mselToggleOpen('f-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
           <div class="srch-wrap"><input class="finput" id="f-srch-ab" placeholder="Buscar cliente ou ticket…" oninput="renderTAb()"><button class="srch-clear" onclick="document.getElementById('f-srch-ab').value='';renderTAb()" title="Limpar busca">×</button></div>
         </div>
         <div class="ab-sort-bar">
@@ -8016,6 +8039,7 @@ let selCluster='';
 let selMes='';
 let encChartBucket='';
 let selRepMes='',selRepSemana='',selRepCluster='',selRepCausa='',selRepSeg='',selRepSrch='';
+let selAbMop=[],selAbFaixa=[],selAbSub=[],selAbUf=[];
 let activeTab='dashboard';
 let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='';
 let wppUnreadCount=0,wppInitialized=false;
@@ -8964,7 +8988,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -8987,6 +9011,7 @@ function normalizeFuelVehicles(list){const source=Array.isArray(list)&&list.leng
 function normalizeFuelRequests(list){const base=Array.isArray(list)?list:[],by=new Map();base.forEach((r,i)=>{const placa=String(r.placa||'').toUpperCase().trim(),v=fuelVehicleByPlate(placa);if(!placa||!v.placa)return;const id=r.id||('REQ'+Date.now()+i);by.set(id,{...r,id,placa,condutor:v.condutor||r.condutor||placa,obs:repairPtBR(r.obs||''),valor:Number(r.valor||0),data:r.data||new Date().toISOString().slice(0,10)})});return[...by.values()]}
 function normalizeFuelWithdrawals(list){return(Array.isArray(list)?list:[]).map((r,i)=>({...r,id:r.id||('WDR'+Date.now()+i),valor:Number(r.valor||0),data:r.data||new Date().toISOString().slice(0,10)})).filter(r=>r.valor>0)}
 function normalizeFuelAportes(list){return(Array.isArray(list)?list:[]).map((r,i)=>({...r,id:r.id||('APT'+Date.now()+i),valor:Number(r.valor||0),data:r.data||new Date().toISOString().slice(0,10),desc:r.desc||''})).filter(r=>r.valor>0)}
+function asArr(v){return Array.isArray(v)?v:(v?[v]:[]);}
 function applyState(st,label){
   if(!st||typeof st!=='object')return false;
   let changed=false;
@@ -9003,6 +9028,13 @@ function applyState(st,label){
       refreshAbBadge();
       if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
+      const _abMops=[...new Set(dAb.map(d=>d.mop).filter(Boolean))];
+      const _abUfs=[...new Set(dAb.map(d=>d.uf).filter(Boolean))];
+      const _abSubs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);
+      selAbMop=asArr(st.selAbMop).filter(m=>_abMops.includes(m));
+      selAbFaixa=asArr(st.selAbFaixa).filter(f=>SLA_ORDER.includes(f));
+      selAbSub=asArr(st.selAbSub).filter(s=>_abSubs.includes(s));
+      selAbUf=asArr(st.selAbUf).filter(u=>_abUfs.includes(u));
       fillFiltersAb();if(!abInteractionLock)renderAllAb();
       document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
       document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
@@ -10067,17 +10099,19 @@ function encWeek(){const b=encBase();return selWeek?b.filter(d=>d.semana===selWe
 function encScope(){let f=encWeek();if(selCluster)f=f.filter(d=>d.cluster===selCluster);return f}
 
 /* ─── RENDER ABERTOS ─── */
-function activeMopAb(){const el=document.getElementById('f-mop');return el?el.value:''}
-function abScope(){const mop=activeMopAb();const base=slnAb();return mop?base.filter(d=>d.mop===mop):base}
-function setMopQuick(mop){const el=document.getElementById('f-mop');if(el)el.value=mop||'';renderAllAb()}
+function abScope(){const base=slnAb();return selAbMop.length?base.filter(d=>selAbMop.includes(d.mop)):base}
+function setMopQuick(mop){
+  if(!mop)selAbMop=[];
+  else selAbMop=selAbMop.includes(mop)?selAbMop.filter(m=>m!==mop):[...selAbMop,mop];
+  fillFiltersAb();renderAllAb();saveState();
+}
 function renderMopQuick(){
   const el=document.getElementById('quick-mop-ab');if(!el)return;
-  const cur=activeMopAb();
   const base=slnAb();
   const allowedMops=userAllowedMops();
   const mopOpts=allowedMops?MOP_QUICK.filter(m=>allowedMops.includes(m)):MOP_QUICK;
   const btns=['',...mopOpts].map(m=>{
-    const label=m||'Todos',active=cur===m?' active':'';
+    const label=m||'Todos',active=(m?selAbMop.includes(m):!selAbMop.length)?' active':'';
     const count=m?abActiveCount(base.filter(d=>d.mop===m)):abActiveCount(base);
     return`<button type="button" class="quick-mop-btn${active}" onclick="setMopQuick('${eh(m)}')" title="${count} chamados">${eh(label)} <span style="opacity:.72">${count}</span></button>`;
   }).join('');
@@ -10143,17 +10177,95 @@ function rChAb(){
   const dk=document.body.dataset.theme==='dark';
   chAb=new Chart(ctx,{type:'bar',data:{labels:SLA_ORDER.map(f=>f.replace(/[🔴🟠🟡🟢🔵]\s*/,'')),datasets:[{data:SLA_ORDER.map(f=>c[f]),backgroundColor:SLA_ORDER.map(f=>SLA_CLR[f]),borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
 }
+/* ─── Multi-select genérico de filtros (msel) ───
+   Substitui <select> simples por um botão + popover de checkboxes, reaproveitado
+   em todos os painéis. Vive num portal fixo (#msel-portal) para escapar de
+   containers com overflow:hidden (ex.: .tsec). */
+const MSEL_REGISTRY={};
+function mselLabel(selectedArr,allLabel,labelFn){
+  if(!selectedArr||!selectedArr.length)return allLabel;
+  if(selectedArr.length===1)return labelFn?labelFn(selectedArr[0]):selectedArr[0];
+  return selectedArr.length+' selecionados';
+}
+function mselRender(id,options,selectedArr,opts){
+  const wasOpen=!!(MSEL_REGISTRY[id]&&MSEL_REGISTRY[id].open);
+  MSEL_REGISTRY[id]={options,selected:selectedArr,allLabel:opts.allLabel,labelFn:opts.labelFn,onChange:opts.onChange,open:wasOpen};
+  const btn=document.getElementById('msel-btn-'+id);
+  if(btn){
+    const lbl=btn.querySelector('.msel-btn-lbl');
+    if(lbl)lbl.textContent=mselLabel(selectedArr,opts.allLabel,opts.labelFn);
+    btn.classList.toggle('has-sel',selectedArr.length>0);
+  }
+  let panel=document.getElementById('msel-panel-'+id);
+  if(!panel){
+    panel=document.createElement('div');
+    panel.className='msel-panel';panel.id='msel-panel-'+id;panel.hidden=true;
+    const portal=document.getElementById('msel-portal');
+    if(portal)portal.appendChild(panel);
+  }
+  panel.innerHTML='<div class="msel-panel-hd"><button type="button" class="msel-mini" onclick="mselClear(\''+id+'\')">Limpar seleção</button></div>'+
+    (options.length?options.map(o=>{
+      const val=typeof o==='object'?o.value:o;
+      const lbl=typeof o==='object'?o.label:(opts.labelFn?opts.labelFn(o):o);
+      const checked=selectedArr.includes(val);
+      return '<label class="msel-opt"><input type="checkbox"'+(checked?' checked':'')+' onchange="mselToggleValue(\''+id+'\',\''+String(val).replace(/'/g,"\\'")+'\')">'+eh(lbl)+'</label>';
+    }).join(''):'<div class="msel-empty">Nenhuma opção</div>');
+  if(wasOpen)mselPosition(id);
+}
+function mselToggleValue(id,value){
+  const cfg=MSEL_REGISTRY[id];if(!cfg)return;
+  const next=cfg.selected.includes(value)?cfg.selected.filter(v=>v!==value):[...cfg.selected,value];
+  cfg.onChange(next);
+}
+function mselClear(id){const cfg=MSEL_REGISTRY[id];if(cfg)cfg.onChange([]);}
+function mselToggleOpen(id){
+  const willOpen=!(MSEL_REGISTRY[id]&&MSEL_REGISTRY[id].open);
+  mselCloseAll();
+  if(!willOpen||!MSEL_REGISTRY[id])return;
+  MSEL_REGISTRY[id].open=true;
+  const panel=document.getElementById('msel-panel-'+id);
+  if(!panel)return;
+  panel.hidden=false;
+  mselPosition(id);
+}
+function mselPosition(id){
+  const btn=document.getElementById('msel-btn-'+id),panel=document.getElementById('msel-panel-'+id);
+  if(!btn||!panel)return;
+  const r=btn.getBoundingClientRect();
+  let left=r.left,top=r.bottom+4;
+  panel.style.left=left+'px';panel.style.top=top+'px';panel.style.minWidth=r.width+'px';
+  requestAnimationFrame(()=>{
+    const pw=panel.offsetWidth,ph=panel.offsetHeight;
+    if(left+pw>window.innerWidth-8)panel.style.left=Math.max(8,window.innerWidth-8-pw)+'px';
+    if(top+ph>window.innerHeight-8)panel.style.top=Math.max(8,r.top-ph-4)+'px';
+  });
+}
+function mselCloseAll(){
+  Object.keys(MSEL_REGISTRY).forEach(id=>{
+    MSEL_REGISTRY[id].open=false;
+    const p=document.getElementById('msel-panel-'+id);if(p)p.hidden=true;
+  });
+}
+document.addEventListener('mousedown',e=>{
+  if(e.target.closest('.msel-panel')||e.target.closest('.msel-btn'))return;
+  mselCloseAll();
+},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')mselCloseAll();});
+window.addEventListener('resize',mselCloseAll);
+window.addEventListener('scroll',mselCloseAll,true);
 function fillFiltersAb(){
-  const curMop=document.getElementById('f-mop')?.value||'';
   const baseAb=slnAb();
   const mops=[...new Set(baseAb.map(d=>d.mop).filter(Boolean))].sort();
   const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...baseAb.map(d=>d.substatus)]);
   const ufs=[...new Set(baseAb.map(d=>d.uf).filter(Boolean))].sort();
-  document.getElementById('f-mop').innerHTML='<option value="">Todos MOP/EPS</option>'+mops.map(m=>`<option value="${eh(m)}">${eh(m)}</option>`).join('');
-  if(curMop&&mops.includes(curMop))document.getElementById('f-mop').value=curMop;
-  document.getElementById('f-sub').innerHTML='<option value="">Todos substatus</option>'+subs.map(s=>`<option value="${eh(s)}">${eh(s)}</option>`).join('');
-  document.getElementById('f-uf').innerHTML='<option value="">Todas UFs</option>'+ufs.map(u=>`<option value="${eh(u)}">${eh(u)}</option>`).join('');
-  document.getElementById('f-faixa').innerHTML='<option value="">Todas as faixas</option>'+SLA_ORDER.map(f=>`<option value="${eh(f)}">${eh(f)}</option>`).join('');
+  selAbMop=selAbMop.filter(m=>mops.includes(m));
+  selAbSub=selAbSub.filter(s=>subs.includes(s));
+  selAbUf=selAbUf.filter(u=>ufs.includes(u));
+  selAbFaixa=selAbFaixa.filter(f=>SLA_ORDER.includes(f));
+  mselRender('f-mop',mops,selAbMop,{allLabel:'Todos MOP/EPS',onChange:(v)=>{selAbMop=v;renderAllAb();saveState();}});
+  mselRender('f-sub',subs,selAbSub,{allLabel:'Todos substatus',onChange:(v)=>{selAbSub=v;renderTAb();saveState();}});
+  mselRender('f-uf',ufs,selAbUf,{allLabel:'Todas UFs',onChange:(v)=>{selAbUf=v;renderTAb();saveState();}});
+  mselRender('f-faixa',SLA_ORDER,selAbFaixa,{allLabel:'Todas as faixas',onChange:(v)=>{selAbFaixa=v;renderTAb();saveState();}});
   renderMopQuick();
 }
 function getSubstatusOptions(current){const cur=fmtSubstatus(current);const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);if(cur&&!subs.some(s=>nk(s)===nk(cur)))subs.unshift(cur);return subs.map(s=>`<option value="${eh(s)}"${nk(s)===nk(cur)?' selected':''}>${eh(s)}</option>`).join('')}
@@ -10179,12 +10291,10 @@ function updateSubstatus(rowKey,value){
   fillFiltersAb();renderAllAb();saveState()
 }
 function gFAb(){
-  const mop=document.getElementById('f-mop').value,faixa=document.getElementById('f-faixa').value;
-  const sub=document.getElementById('f-sub').value,uf=document.getElementById('f-uf').value;
   const srch=(document.getElementById('f-srch-ab').value||'').toLowerCase();
   let f=slnAb();
-  if(mop)f=f.filter(d=>d.mop===mop);if(faixa)f=f.filter(d=>d.faixa===faixa);
-  if(sub)f=f.filter(d=>fmtSubstatus(d.substatus)===sub);if(uf)f=f.filter(d=>d.uf===uf);
+  if(selAbMop.length)f=f.filter(d=>selAbMop.includes(d.mop));if(selAbFaixa.length)f=f.filter(d=>selAbFaixa.includes(d.faixa));
+  if(selAbSub.length)f=f.filter(d=>selAbSub.includes(fmtSubstatus(d.substatus)));if(selAbUf.length)f=f.filter(d=>selAbUf.includes(d.uf));
   if(srch)f=f.filter(d=>nk(d.cliente).includes(nk(srch))||nk(d.id).includes(nk(srch)));
   if(abHideInactive)f=f.filter(d=>!abIsInactiveForCount(d));
   return f.slice().sort((a,b)=>typeof a[scAb]==='number'?(a[scAb]-b[scAb])*sdAb:String(a[scAb]).localeCompare(String(b[scAb]))*sdAb);
@@ -15315,6 +15425,7 @@ function _runnerInstallHTML(localCmd,apiErr,skipTitle,publicStatus){
 initAtrixPublicDock();
 </script>
 <!-- deploy retry: audio upload validation -->
+<div id="msel-portal"></div>
 </body>
 </html>
 
