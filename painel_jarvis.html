@@ -7399,8 +7399,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span style="color:var(--tx3);font-size:11px">–</span>
           <input type="date" class="ofs-date-in" id="ofs-dt-end">
           <button class="ofs-apply-btn" onclick="ofsApplyDateFilter()">Aplicar</button>
-          <select class="ofs-date-in" id="ofs-sel-mes" onchange="ofsSetMes(this.value)" title="Filtrar por mês" style="cursor:pointer"><option value="">Mês...</option></select>
-          <select class="ofs-date-in" id="ofs-sel-sem" onchange="ofsSetSem(this.value)" title="Filtrar por semana" style="cursor:pointer"><option value="">Semana...</option></select>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ofs-sel-mes" onclick="mselToggleOpen('ofs-sel-mes')" title="Filtrar por mês"><span class="msel-btn-lbl">Mês...</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ofs-sel-sem" onclick="mselToggleOpen('ofs-sel-sem')" title="Filtrar por semana"><span class="msel-btn-lbl">Semana...</span></button></div>
         </div>
         <div class="ofs-filter-sep"></div>
         <div class="ofs-filter-group">
@@ -12708,7 +12708,7 @@ function ofsTecSave(){try{localStorage.setItem(OFS_TEC_KEY,JSON.stringify(ofsTec
 let ofsRows=[],ofsMeta={fname:'',loaded:false};
 let ofsChRank=null,ofsChStatus=null,ofsChTaxa=null,ofsChTipo=null,ofsChDia=null;
 let ofsSortCol='total',ofsSortAsc=false;
-let ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
+let ofsFilter={uf:[],grupo:[],dtStart:'',dtEnd:'',months:[],weeks:[]};
 let ofsAlertFilter='';
 function ofsWasManuallyCleared(){return !!(ofsMeta&&(ofsMeta.cleared||ofsMeta.clearedAt))}
 
@@ -12952,12 +12952,20 @@ function canonicTec(raw){
   if(!_ofsTecDisp.has(canonical)){const src=corrected?(OFS_NAME_ALIASES[key]||key).replace(/\b\w/g,c=>c.toUpperCase()):clean;const d=src.trim().split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());['Da','De','Do','Dos','Das','E','A'].forEach(w=>{const i=d.indexOf(w);if(i>0)d[i]=d[i].toLowerCase();});_ofsTecDisp.set(canonical,d.join(' '));}
   return _ofsTecDisp.get(canonical);
 }
+function ofsDateInSelectedPeriods(dtStr){
+  if(!dtStr)return true;
+  if(!ofsFilter.months.length&&!ofsFilter.weeks.length)return true;
+  if(ofsFilter.months.length&&ofsFilter.months.includes(dtStr.slice(0,7)))return true;
+  for(const w of ofsFilter.weeks){const[ws,we]=w.split('|');if(dtStr>=ws&&dtStr<=we)return true;}
+  return false;
+}
 function ofsFilteredRows(){
   let r=slnOfsRows();
   if(ofsFilter.dtStart)r=r.filter(x=>!x.dtStr||x.dtStr>=ofsFilter.dtStart);
   if(ofsFilter.dtEnd)r=r.filter(x=>!x.dtStr||x.dtStr<=ofsFilter.dtEnd);
-  if(ofsFilter.uf!=='all')r=r.filter(x=>x.uf===ofsFilter.uf);
-  if(ofsFilter.grupo!=='all')r=r.filter(x=>x.grupo===ofsFilter.grupo);
+  if(ofsFilter.uf.length)r=r.filter(x=>ofsFilter.uf.includes(x.uf));
+  if(ofsFilter.grupo.length)r=r.filter(x=>ofsFilter.grupo.includes(x.grupo));
+  r=r.filter(x=>ofsDateInSelectedPeriods(x.dtStr));
   return r;
 }
 function _ofsRowHash(obj){
@@ -13217,6 +13225,9 @@ function saveOfsState(){
   try{localStorage.setItem(OFS_KEY,JSON.stringify(st));}
   catch(e){console.warn('OFS save failed; cópia completa mantida no IndexedDB:',e);}
 }
+/* uf/grupo salvos antes desta versão usavam o sentinel escalar 'all' (sem filtro);
+   converte para array vazio em vez de tratar 'all' como um valor de filtro literal */
+function ofsLegacyAllToArr(v){if(Array.isArray(v))return v;if(!v||v==='all')return[];return[v];}
 function restoreOfsState(){
   try{
     const raw=localStorage.getItem(OFS_KEY);if(!raw){restoreOfsStateFromIndexedDb();return}
@@ -13225,7 +13236,7 @@ function restoreOfsState(){
       ofsRows=ofsSanitizeRows(s.rows);
       ofsMeta=s.meta||{fname:'',loaded:true};
     }
-    if(s.filter)ofsFilter={...ofsFilter,...s.filter};
+    if(s.filter)ofsFilter={...ofsFilter,...s.filter,uf:ofsLegacyAllToArr(s.filter.uf),grupo:ofsLegacyAllToArr(s.filter.grupo),months:asArr(s.filter.months),weeks:asArr(s.filter.weeks)};
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
   }catch(e){console.warn('OFS restore failed:',e);}
@@ -13235,7 +13246,7 @@ async function restoreOfsStateFromIndexedDb(){
     const s=await idbGet(OFS_KEY);if(!s||!Array.isArray(s.rows))return;
     ofsRows=ofsSanitizeRows(s.rows);
     ofsMeta=s.meta||{fname:'',loaded:true};
-    if(s.filter)ofsFilter={...ofsFilter,...s.filter};
+    if(s.filter)ofsFilter={...ofsFilter,...s.filter,uf:ofsLegacyAllToArr(s.filter.uf),grupo:ofsLegacyAllToArr(s.filter.grupo),months:asArr(s.filter.months),weeks:asArr(s.filter.weeks)};
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
     renderOfs();updateCentralStatus();
@@ -13262,7 +13273,7 @@ async function autoLoadOfsDefault(){
 async function clearOfs(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar base OFS? Os dados serão removidos.'))return;
-  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:''};ofsFilter={uf:'all',grupo:'all',dtStart:'',dtEnd:''};
+  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:''};ofsFilter={uf:[],grupo:[],dtStart:'',dtEnd:'',months:[],weeks:[]};
   saveOfsState();
   [ofsChRank,ofsChStatus,ofsChTaxa,ofsChTipo,ofsChDia].forEach(c=>{try{if(c)c.destroy();}catch(e){}});
   ofsChRank=ofsChStatus=ofsChTaxa=ofsChTipo=ofsChDia=null;
@@ -13294,35 +13305,16 @@ function ofsCalcTecnicos(rows){
   return Array.from(map.values()).map(t=>({...t,dias:t.dias.size,taxa:t.total?Math.round(t.concluido/t.total*100):0,media_dia:t.dias.size?+(t.total/t.dias.size).toFixed(1):0}));
 }
 function ofsDestroyChart(ref){try{if(ref)ref.destroy();}catch(e){}}
-function ofsSetMes(mes){
-  if(!mes){const dates=ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr).sort();ofsFilter.dtStart=dates[0]||'';ofsFilter.dtEnd=dates[dates.length-1]||'';}
-  else{const[y,m]=mes.split('-');const last=new Date(+y,+m,0);ofsFilter.dtStart=`${y}-${m}-01`;ofsFilter.dtEnd=`${y}-${m}-${String(last.getDate()).padStart(2,'0')}`;}
-  const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
-  if(dtS)dtS.value=ofsFilter.dtStart;if(dtE)dtE.value=ofsFilter.dtEnd;
-  const semSel=document.getElementById('ofs-sel-sem');if(semSel){semSel.dataset.selVal='';semSel.value='';}
-  renderOfs();
-}
-function ofsSetSem(val){
-  if(!val){const dates=ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr).sort();ofsFilter.dtStart=dates[0]||'';ofsFilter.dtEnd=dates[dates.length-1]||'';}
-  else{const[start,end]=val.split('|');ofsFilter.dtStart=start;ofsFilter.dtEnd=end;}
-  const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
-  if(dtS)dtS.value=ofsFilter.dtStart;if(dtE)dtE.value=ofsFilter.dtEnd;
-  const mesSel=document.getElementById('ofs-sel-mes');if(mesSel)mesSel.value='';
-  const semSel=document.getElementById('ofs-sel-sem');if(semSel)semSel.dataset.selVal=val||'';
-  renderOfs();
-}
 const OFS_GRUPO_BTN_ID={'GIGA+ MA':'GIGA_MA','SLN MA':'SLN_MA','SLN PA':'SLN_PA','BALDE MA':'BALDE_MA','NÃO IDENTIFICADO':'ND'};
 function ofsSetUF(uf){
-  ofsFilter.uf=uf;
-  ['all','MA','PA','ND'].forEach(v=>{const b=document.getElementById('ofs-uf-'+v);if(b)b.classList.toggle('active',v===uf);});
-  renderOfs();
+  if(!uf||uf==='all')ofsFilter.uf=[];
+  else ofsFilter.uf=ofsFilter.uf.includes(uf)?ofsFilter.uf.filter(v=>v!==uf):[...ofsFilter.uf,uf];
+  renderOfs();saveOfsState();
 }
 function ofsSetGrupo(g){
-  ofsFilter.grupo=g;
-  const b=document.getElementById('ofs-gp-all');if(b)b.classList.toggle('active',g==='all');
-  Object.values(OFS_GRUPO_BTN_ID).forEach(id=>{const btn=document.getElementById('ofs-gp-'+id);if(btn)btn.classList.remove('active');});
-  const id=OFS_GRUPO_BTN_ID[g];if(id){const btn=document.getElementById('ofs-gp-'+id);if(btn)btn.classList.add('active');}
-  renderOfs();
+  if(!g||g==='all')ofsFilter.grupo=[];
+  else ofsFilter.grupo=ofsFilter.grupo.includes(g)?ofsFilter.grupo.filter(v=>v!==g):[...ofsFilter.grupo,g];
+  renderOfs();saveOfsState();
 }
 function ofsApplyDateFilter(){
   const s=document.getElementById('ofs-dt-start')?.value;
@@ -13339,17 +13331,25 @@ function renderOfs(){
   const ft=document.getElementById('ft-ofs');if(ft)ft.textContent=new Date().toLocaleString('pt-BR');
   const dtS=document.getElementById('ofs-dt-start'),dtE=document.getElementById('ofs-dt-end');
   if(dtS)dtS.value=ofsFilter.dtStart;if(dtE)dtE.value=ofsFilter.dtEnd;
-  ['all','MA','PA','ND'].forEach(v=>{const b=document.getElementById('ofs-uf-'+v);if(b)b.classList.toggle('active',ofsFilter.uf===v);});
-  {const b=document.getElementById('ofs-gp-all');if(b)b.classList.toggle('active',ofsFilter.grupo==='all');}
-  Object.entries(OFS_GRUPO_BTN_ID).forEach(([g,id])=>{const btn=document.getElementById('ofs-gp-'+id);if(btn)btn.classList.toggle('active',ofsFilter.grupo===g);});
+  ['MA','PA','ND'].forEach(v=>{const b=document.getElementById('ofs-uf-'+v);if(b)b.classList.toggle('active',ofsFilter.uf.includes(v));});
+  {const b=document.getElementById('ofs-uf-all');if(b)b.classList.toggle('active',!ofsFilter.uf.length);}
+  {const b=document.getElementById('ofs-gp-all');if(b)b.classList.toggle('active',!ofsFilter.grupo.length);}
+  Object.entries(OFS_GRUPO_BTN_ID).forEach(([g,id])=>{const btn=document.getElementById('ofs-gp-'+id);if(btn)btn.classList.toggle('active',ofsFilter.grupo.includes(g));});
   // Show technician counts per group on filter buttons
   {const allTecs=new Map();ofsRows.forEach(r=>{if(!allTecs.has(r.tecnico))allTecs.set(r.tecnico,r.grupo);});
   const gCount={};OFS_GRUPOS.forEach(g=>gCount[g]=0);allTecs.forEach(g=>{gCount[g]=(gCount[g]||0)+1;});
   OFS_GRUPOS.forEach(g=>{const btn=document.getElementById('ofs-gp-'+OFS_GRUPO_BTN_ID[g]);if(btn)btn.textContent=`${g} (${gCount[g]||0})`;});}
   // Populate month select
-  {const mesSel=document.getElementById('ofs-sel-mes');if(mesSel){const months=[...new Set(ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr.slice(0,7)))].sort();const cur=mesSel.value;mesSel.innerHTML='<option value="">Mês...</option>'+months.map(m=>{const[y,mo]=m.split('-');const lbl=new Date(+y,+mo-1,15).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});return`<option value="${m}"${m===cur?' selected':''}>${lbl}</option>`;}).join('');}}
+  {const months=[...new Set(ofsRows.filter(r=>r.dtStr).map(r=>r.dtStr.slice(0,7)))].sort();
+   ofsFilter.months=ofsFilter.months.filter(m=>months.includes(m));
+   const mesLbl=(m)=>{const[y,mo]=m.split('-');return new Date(+y,+mo-1,15).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});};
+   mselRender('ofs-sel-mes',months,ofsFilter.months,{allLabel:'Mês...',labelFn:mesLbl,onChange:(v)=>{ofsFilter.months=v;renderOfs();saveOfsState();}});}
   // Populate week select
-  {const semSel=document.getElementById('ofs-sel-sem');if(semSel){const wMap=new Map();ofsRows.filter(r=>r.dtStr).forEach(r=>{const d=new Date(r.dtStr+'T12:00:00');const day=d.getDay()||7;const mon=new Date(d);mon.setDate(d.getDate()-day+1);const sun=new Date(mon);sun.setDate(mon.getDate()+6);const k=mon.toISOString().slice(0,10);if(!wMap.has(k))wMap.set(k,sun.toISOString().slice(0,10));});const weeks=[...wMap.entries()].sort((a,b)=>a[0].localeCompare(b[0]));const cur=semSel.dataset.selVal||'';semSel.innerHTML='<option value="">Semana...</option>'+weeks.map(([st,en])=>{const s=st.split('-'),e=en.split('-');const wn=(()=>{const d=new Date(st+'T12:00:00');const jan1=new Date(d.getFullYear(),0,1);return Math.ceil((Math.floor((d-jan1)/86400000)+1)/7);})();return`<option value="${st}|${en}"${(st+'|'+en)===cur?' selected':''}>S${wn} · ${s[2]}/${s[1]}–${e[2]}/${e[1]}</option>`;}).join('');}}
+  {const wMap=new Map();ofsRows.filter(r=>r.dtStr).forEach(r=>{const d=new Date(r.dtStr+'T12:00:00');const day=d.getDay()||7;const mon=new Date(d);mon.setDate(d.getDate()-day+1);const sun=new Date(mon);sun.setDate(mon.getDate()+6);const k=mon.toISOString().slice(0,10);if(!wMap.has(k))wMap.set(k,sun.toISOString().slice(0,10));});
+   const weeks=[...wMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([st,en])=>st+'|'+en);
+   ofsFilter.weeks=ofsFilter.weeks.filter(w=>weeks.includes(w));
+   const semLbl=(w)=>{const[st,en]=w.split('|');const s=st.split('-'),e=en.split('-');const wn=(()=>{const d=new Date(st+'T12:00:00');const jan1=new Date(d.getFullYear(),0,1);return Math.ceil((Math.floor((d-jan1)/86400000)+1)/7);})();return`S${wn} · ${s[2]}/${s[1]}–${e[2]}/${e[1]}`;};
+   mselRender('ofs-sel-sem',weeks,ofsFilter.weeks,{allLabel:'Semana...',labelFn:semLbl,onChange:(v)=>{ofsFilter.weeks=v;renderOfs();saveOfsState();}});}
   const rows=ofsFilteredRows();
   const filtDates=rows.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
   const per=filtDates.length?`${filtDates[0].split('-').reverse().join('/')} – ${filtDates[filtDates.length-1].split('-').reverse().join('/')}`:'-';
@@ -13371,8 +13371,8 @@ function renderOfs(){
   // UF summary
   const ufSumEl=document.getElementById('ofs-uf-summary');
   if(ufSumEl){
-    ufSumEl.style.display=ofsFilter.uf==='all'?'':'none';
-    if(ofsFilter.uf==='all'){
+    ufSumEl.style.display=ofsFilter.uf.length?'none':'';
+    if(!ofsFilter.uf.length){
       const ufD={};rows.forEach(r=>{if(!ufD[r.uf])ufD[r.uf]={total:0,concl:0,inic:0,pend:0,nconc:0,susp:0,canc:0,other:0,tecs:new Set()};const d=ufD[r.uf];d.total++;d.tecs.add(r.tecnico);if(r.status==='concluído')d.concl++;else if(r.status==='iniciado')d.inic++;else if(r.status==='pendente')d.pend++;else if(r.status==='não concluído')d.nconc++;else if(r.status==='suspenso')d.susp++;else if(r.status==='cancelado')d.canc++;else d.other++;});
       const ufBody=document.getElementById('ofs-uf-tbody');
       if(ufBody)ufBody.innerHTML=['MA','PA','ND'].filter(u=>ufD[u]).map(u=>{const d=ufD[u];const tx=d.total?Math.round(d.concl/d.total*100):0;const tc=tx>=80?'#22c55e':tx>=60?'#f59e0b':'#ef4444';
