@@ -9782,7 +9782,7 @@ async function clearRede(){
   idbSet(REDE_STORAGE,null).catch(()=>{});
   rdeBD=[];rdeAD=[];rdeBaseFile='';rdeBaseAt='';
   ['mes','ml','sem','sl','ca','mo'].forEach(k=>rdeM[k].length=0);
-  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeActiveView='bb';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';
+  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeActiveView='bb';rdeTab='ACESSO';rdeGran='all';rdePeriod=[];rdeCluster=[];
   Object.values(rdeCharts).forEach(ch=>{try{ch.destroy();}catch(e){}});rdeCharts={};
   [rdeLineCh2,rdeTimeCh2,rdeCauseCh2,rdeCityCh2].forEach(ch=>{if(ch)try{ch.destroy();}catch(e){}});rdeLineCh2=rdeTimeCh2=rdeCauseCh2=rdeCityCh2=null;
   rdeShowDash();await persistClearedBase('Rede');
@@ -14332,7 +14332,7 @@ const RDE_META_KEY='atrix:rede:meta:v1';
 const RDE_M89_DEF=85,RDE_MOUT_DEF=4.9,RDE_MTME_DEF=6.0;
 let RDE_M89=RDE_M89_DEF,RDE_MOUT=RDE_MOUT_DEF,RDE_MTME=RDE_MTME_DEF;
 let rdeModo='m',rdeSelMonth='',rdeSelWeek='',rdeActiveView='bb',rdeCharts={};
-let rdeTab='ACESSO',rdeGran='all',rdePeriod=null,rdeCluster='',rdeYear='',rdeCallsOnRender=false,rdeLineCh2=null,rdeTimeCh2=null,rdeCauseCh2=null,rdeCityCh2=null;
+let rdeTab='ACESSO',rdeGran='all',rdePeriod=[],rdeCluster=[],rdeYear=[],rdeCallsOnRender=false,rdeLineCh2=null,rdeTimeCh2=null,rdeCauseCh2=null,rdeCityCh2=null;
 const REDE_STORAGE='atrix:rede:bases:v2';
 const REDE_UI_KEY='atrix:rede:ui:v1';
 function rdeNk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase()}
@@ -14402,7 +14402,7 @@ function rdeApplyRows(rows,fileName){
   try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
   const fn=document.getElementById('rede-fname');if(fn)fn.textContent=fileName;
   const ts=document.getElementById('rede-ts-text');if(ts)ts.textContent='Anexado '+_now.toLocaleDateString('pt-BR')+' '+_now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeTab='ACESSO';rdeGran='all';rdePeriod=null;rdeCluster='';rdeYear='';rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
+  rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeTab='ACESSO';rdeGran='all';rdePeriod=[];rdeCluster=[];rdeYear=[];rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
 }
 function rdeHasDetail(rows,idx){return Array.isArray(rows)&&rows.some(r=>Array.isArray(r)&&r.length>idx&&r[idx]&&typeof r[idx]==='object')}
 function rdeRestoreM(saved){
@@ -14445,9 +14445,9 @@ function rdeRestoreUI(){
     const ui=JSON.parse(raw);
     if(ui.tab&&['ACESSO','BACKBONE','AMBOS'].includes(ui.tab))rdeTab=ui.tab;
     if(ui.gran&&['all','m','w'].includes(ui.gran))rdeGran=ui.gran;
-    if(ui.period)rdePeriod=ui.period;
-    if(ui.cluster!==undefined)rdeCluster=ui.cluster||'';
-    if(ui.year!==undefined)rdeYear=ui.year||'';
+    if(ui.period!==undefined)rdePeriod=asArr(ui.period);
+    if(ui.cluster!==undefined)rdeCluster=asArr(ui.cluster);
+    if(ui.year!==undefined)rdeYear=asArr(ui.year);
   }catch(e){console.warn('rede ui restore',e)}
 }
 function rdeMetaLoad(){
@@ -14522,19 +14522,19 @@ function rdeTabFlat(){
 function rdeRecYear(r){return String(r.m||r.w||'').slice(0,4);}
 function rdeGetAllFlat(){
   let out=rdeTabFlat();
-  if(rdeYear)out=out.filter(r=>rdeRecYear(r)===rdeYear);
+  if(rdeYear.length)out=out.filter(r=>rdeYear.includes(rdeRecYear(r)));
   return out;
 }
-function rdeGetPreClusterRecs(){const flat=rdeGetAllFlat();const gk=rdePKey();return(rdeGran!=='all'&&rdePeriod)?flat.filter(r=>r[gk]===rdePeriod):flat;}
-function rdeGetDisplayRecs(){let recs=rdeGetPreClusterRecs();if(rdeCluster)recs=recs.filter(r=>rdeClFilter(r.cl));return recs;}
+function rdeGetPreClusterRecs(){const flat=rdeGetAllFlat();const gk=rdePKey();return(rdeGran!=='all'&&rdePeriod.length)?flat.filter(r=>rdePeriod.includes(r[gk])):flat;}
+function rdeGetDisplayRecs(){let recs=rdeGetPreClusterRecs();if(rdeCluster.length)recs=recs.filter(r=>rdeClFilter(r.cl));return recs;}
 function rdeAgg2(recs){const n=recs.length;if(!n)return{n:0,prazo:0,outlier:0,tAvg:0,tMed:0};const p=recs.filter(r=>r.p===1).length,o=recs.filter(r=>r.o===1).length;const ts=recs.map(r=>r.t).filter(t=>t>0).sort((a,b)=>a-b);const tAvg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;const tMed=ts.length?(ts.length%2?ts[(ts.length-1)/2]:(ts[ts.length/2-1]+ts[ts.length/2])/2):0;return{n,prazo:p/n*100,outlier:o/n*100,tAvg,tMed};}
 function rdeChipHtml(a){if(!a.n)return'<span class="rede-chip">—</span>';if(a.prazo>=RDE_M89&&a.outlier<=RDE_MOUT&&a.tAvg<=RDE_MTME)return'<span class="rede-chip ok">na meta</span>';return(a.prazo<75||a.outlier>15)?'<span class="rede-chip bd">crítico</span>':'<span class="rede-chip wn">atenção</span>';}
-function rdeSetTab(tab){rdeTab=tab;rdePeriod=null;if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys[keys.length-1]||null;}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
-function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=null;}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys[keys.length-1]||null;}rdeSyncControls();renderRede();rdeSaveUI();}
-function rdePeriodClick(p){rdePeriod=p;rdeCallsOnRender=true;rdeSyncControls();renderRede();rdeSaveUI();}
-function rdeClFilter(cl){if(!rdeCluster)return true;if(rdeCluster==='EPS')return cl==='C'||cl==='N';return cl===rdeCluster;}
-function rdeSetCluster(cl){rdeCluster=cl;rdeSyncControls();renderRede();rdeSaveUI();}
-function rdeSetYear(y){rdeYear=y;if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys[keys.length-1]||null;}rdeSyncControls();renderRede();rdeSaveUI();}
+function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
+function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
+function rdePeriodClick(p){rdePeriod=rdePeriod.includes(p)?rdePeriod.filter(x=>x!==p):[...rdePeriod,p];rdeCallsOnRender=true;rdeSyncControls();renderRede();rdeSaveUI();}
+function rdeClFilter(cl){if(!rdeCluster.length)return true;return rdeCluster.some(c=>c===cl||(c==='EPS'&&(cl==='C'||cl==='N')));}
+function rdeSetCluster(cl){if(!cl)rdeCluster=[];else rdeCluster=rdeCluster.includes(cl)?rdeCluster.filter(c=>c!==cl):[...rdeCluster,cl];rdeSyncControls();renderRede();rdeSaveUI();}
+function rdeSetYear(y){if(!y)rdeYear=[];else rdeYear=rdeYear.includes(y)?rdeYear.filter(v=>v!==y):[...rdeYear,y];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeCopiarGrafico(el,btn){
   if(!el||!btn)return;
   const orig=btn.innerHTML;
@@ -14608,7 +14608,7 @@ function rdeSyncControls(){
   const preRecs=rdeGetPreClusterRecs();
   const clCnts={};preRecs.forEach(r=>{clCnts[r.cl]=(clCnts[r.cl]||0)+1;});
   document.querySelectorAll('#rde-cl-seg .rede-sgbtn').forEach(b=>{
-    const cl=b.dataset.cl;b.classList.toggle('on',cl===rdeCluster);
+    const cl=b.dataset.cl;b.classList.toggle('on',cl===''?!rdeCluster.length:rdeCluster.includes(cl));
     const cnt=b.querySelector('.rede-cnt');
     if(cnt)cnt.textContent=cl===''?preRecs.length:cl==='EPS'?(clCnts['C']||0)+(clCnts['N']||0):(clCnts[cl]||0);
   });
@@ -14616,13 +14616,13 @@ function rdeSyncControls(){
   const yearSeg=document.getElementById('rde-year-seg');
   if(yearSeg){
     const tabRecs=rdeTabFlat();
-    const passCl=r=>!rdeCluster||rdeClFilter(r.cl);
+    const passCl=r=>!rdeCluster.length||rdeClFilter(r.cl);
     const years=[...new Set(tabRecs.map(rdeRecYear))].filter(Boolean).sort();
     const totalCnt=tabRecs.filter(passCl).length;
-    yearSeg.innerHTML=`<button class="rede-sgbtn${rdeYear===''?' on':''}" onclick="rdeSetYear('')">Todos <span class="rede-cnt">${totalCnt}</span></button>`+
+    yearSeg.innerHTML=`<button class="rede-sgbtn${!rdeYear.length?' on':''}" onclick="rdeSetYear('')">Todos <span class="rede-cnt">${totalCnt}</span></button>`+
       years.map(y=>{
         const cnt=tabRecs.filter(r=>rdeRecYear(r)===y&&passCl(r)).length;
-        return`<button class="rede-sgbtn${y===rdeYear?' on':''}" onclick="rdeSetYear('${eh(y)}')">${eh(y)} <span class="rede-cnt">${cnt}</span></button>`;
+        return`<button class="rede-sgbtn${rdeYear.includes(y)?' on':''}" onclick="rdeSetYear('${eh(y)}')">${eh(y)} <span class="rede-cnt">${cnt}</span></button>`;
       }).join('');
   }
   // Period row
@@ -14634,9 +14634,9 @@ function rdeSyncControls(){
   const seg=document.getElementById('rde-period-seg');
   if(seg)seg.innerHTML=keys.map(x=>{
     const sub=flat.filter(r=>r[gk]===x);
-    const cnt=rdeCluster?sub.filter(r=>rdeClFilter(r.cl)).length:sub.length;
+    const cnt=rdeCluster.length?sub.filter(r=>rdeClFilter(r.cl)).length:sub.length;
     const lab=(gk==='w'?String(x).replace(/^\d{4}-/,''):rdeMname(x))+` <span class="rede-cnt">${cnt}</span>`;
-    return`<button class="rede-sgbtn rede-pbtn${x===rdePeriod?' on':''}" onclick="rdePeriodClick('${eh(x)}')">${lab}</button>`;
+    return`<button class="rede-sgbtn rede-pbtn${rdePeriod.includes(x)?' on':''}" onclick="rdePeriodClick('${eh(x)}')">${lab}</button>`;
   }).join('');
 }
 function rdeBuildPeriodSelects(){rdeSyncControls();}
@@ -14937,7 +14937,7 @@ function renderRede(){
      isso não respeitavam o Cluster selecionado, divergindo dos cards de KPI e do
      restante do painel, que já usam `recs` (com Cluster aplicado). */
   const allPreCluster=rdeGetAllFlat();
-  const all=rdeCluster?allPreCluster.filter(r=>rdeClFilter(r.cl)):allPreCluster;
+  const all=rdeCluster.length?allPreCluster.filter(r=>rdeClFilter(r.cl)):allPreCluster;
   const a=rdeAgg2(recs);
   const isAC=rdeTab==='ACESSO',tl=rdeTab==='AMBOS'?'TME/TMR':isAC?'TME':'TMR';
   const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
@@ -14970,20 +14970,20 @@ function renderRede(){
   const lcCv=document.getElementById('rde-line-ch');
   if(lcCv){
     rdeLineCh2=new Chart(lcCv,{type:'line',data:{labels,datasets:[
-      {label:'Prazo %',data:buckets.map(b=>+b.prazo.toFixed(1)),borderColor:'#34c759',backgroundColor:'rgba(52,199,89,.08)',tension:.35,fill:true,borderWidth:2,pointRadius:allKeys.map(x=>x===rdePeriod?6:3),pointBackgroundColor:'#34c759'},
-      {label:'Outlier %',data:buckets.map(b=>+b.outlier.toFixed(1)),borderColor:'#ff3b30',tension:.35,borderWidth:2,pointRadius:allKeys.map(x=>x===rdePeriod?6:3),pointBackgroundColor:'#ff3b30'},
+      {label:'Prazo %',data:buckets.map(b=>+b.prazo.toFixed(1)),borderColor:'#34c759',backgroundColor:'rgba(52,199,89,.08)',tension:.35,fill:true,borderWidth:2,pointRadius:allKeys.map(x=>rdePeriod.includes(x)?6:3),pointBackgroundColor:'#34c759'},
+      {label:'Outlier %',data:buckets.map(b=>+b.outlier.toFixed(1)),borderColor:'#ff3b30',tension:.35,borderWidth:2,pointRadius:allKeys.map(x=>rdePeriod.includes(x)?6:3),pointBackgroundColor:'#ff3b30'},
       {label:'Meta prazo',data:allKeys.map(()=>RDE_M89),type:'line',borderColor:'rgba(52,199,89,.35)',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false},
       {label:'Limite outlier',data:allKeys.map(()=>RDE_MOUT),type:'line',borderColor:'rgba(255,59,48,.35)',borderDash:[4,4],borderWidth:1.5,pointRadius:0,fill:false}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{title:{display:true,text:'Prazo & Outlier (%)',color:txC,font:{size:12,weight:'600'}},legend:{labels:{boxWidth:12,color:txC,filter:i=>!i.text.startsWith('Meta')&&!i.text.startsWith('Limite')}}},onClick:(e,el)=>{if(el.length){rdeGran=gk;rdePeriod=allKeys[el[0].index];rdeCallsOnRender=true;rdeSyncControls();renderRede();}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'%',color:txC},min:0,max:100},x:{grid:{display:false},ticks:{color:txC}}},spanGaps:true}});
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{title:{display:true,text:'Prazo & Outlier (%)',color:txC,font:{size:12,weight:'600'}},legend:{labels:{boxWidth:12,color:txC,filter:i=>!i.text.startsWith('Meta')&&!i.text.startsWith('Limite')}}},onClick:(e,el)=>{if(el.length){rdeGran=gk;const p=allKeys[el[0].index];rdePeriod=rdePeriod.includes(p)?rdePeriod.filter(x=>x!==p):[...rdePeriod,p];rdeCallsOnRender=true;rdeSyncControls();renderRede();}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'%',color:txC},min:0,max:100},x:{grid:{display:false},ticks:{color:txC}}},spanGaps:true}});
   }
   // Bar chart: TME/TMR per period
   if(rdeTimeCh2){try{rdeTimeCh2.destroy();}catch(e){}}
   const tcCv=document.getElementById('rde-time-ch');
   if(tcCv){
     rdeTimeCh2=new Chart(tcCv,{type:'bar',data:{labels,datasets:[
-      {label:tl,data:buckets.map(b=>+b.tAvg.toFixed(2)),borderRadius:6,backgroundColor:allKeys.map((x,i)=>x===rdePeriod?'rgba(0,122,255,.85)':(buckets[i].tAvg<=RDE_MTME?'rgba(52,199,89,.7)':'rgba(255,149,0,.75)'))},
+      {label:tl,data:buckets.map(b=>+b.tAvg.toFixed(2)),borderRadius:6,backgroundColor:allKeys.map((x,i)=>rdePeriod.includes(x)?'rgba(0,122,255,.85)':(buckets[i].tAvg<=RDE_MTME?'rgba(52,199,89,.7)':'rgba(255,149,0,.75)'))},
       {label:`Meta ${RDE_MTME}h`,data:allKeys.map(()=>RDE_MTME),type:'line',borderColor:'rgba(255,149,0,.5)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{title:{display:true,text:`${tl} por período (h) · meta ${RDE_MTME}h`,color:txC,font:{size:12,weight:'600'}},legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.type==='line'?null:`${c.dataset.label}: ${c.parsed.y}h`}}},onClick:(e,el)=>{if(el.length&&el[0].datasetIndex===0){rdeGran=gk;rdePeriod=allKeys[el[0].index];rdeCallsOnRender=true;rdeSyncControls();renderRede();}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'h',color:txC},min:0},x:{grid:{display:false},ticks:{color:txC}}},spanGaps:true}});
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{title:{display:true,text:`${tl} por período (h) · meta ${RDE_MTME}h`,color:txC,font:{size:12,weight:'600'}},legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.type==='line'?null:`${c.dataset.label}: ${c.parsed.y}h`}}},onClick:(e,el)=>{if(el.length&&el[0].datasetIndex===0){rdeGran=gk;const p=allKeys[el[0].index];rdePeriod=rdePeriod.includes(p)?rdePeriod.filter(x=>x!==p):[...rdePeriod,p];rdeCallsOnRender=true;rdeSyncControls();renderRede();}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'h',color:txC},min:0},x:{grid:{display:false},ticks:{color:txC}}},spanGaps:true}});
   }
   // Cluster table
   const clMap={};recs.forEach(r=>{if(!clMap[r.cl])clMap[r.cl]=[];clMap[r.cl].push(r);});
@@ -15018,10 +15018,10 @@ function renderRede(){
   // Executive Report
   const rptEl=document.getElementById('rde-report');
   if(rptEl&&a.n>0){
-    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod||''):rdeMname(rdePeriod||''));
+    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
     const clNames={'C':'MA CAP','I':'MA INT','P':'PI','N':'NORTE (PA/AM/AP)','EPS':'Ger EPS (MA CAP + NORTE)'};
     const tabTxt=rdeTab==='AMBOS'?'Backbone + Acesso':rdeTab==='ACESSO'?'Acesso':'Backbone';
-    const clTxt=rdeCluster?` · ${clNames[rdeCluster]||rdeCluster}`:'';
+    const clTxt=rdeCluster.length?` · ${rdeCluster.map(c=>clNames[c]||c).join('+')}`:'';
     const prazoStatus=a.prazo>=RDE_M89?'ok':'bd',outlierStatus=a.outlier<=RDE_MOUT?'ok':'bd',tmeStatus=a.tAvg<=RDE_MTME?'ok':'bd';
     // Best/worst cluster
     const clEntries=clKeys.map(cl=>({cl,a:rdeAgg2(clMap[cl])})).filter(x=>x.a.n>0);
@@ -15047,12 +15047,12 @@ function renderRede(){
   const _ce=document.getElementById('rde-calls');
   if(rdeCallsOnRender){
     rdeCallsOnRender=false;
-    const _lbl=rdePeriod?(gk==='w'?String(rdePeriod).replace(/^\d{4}-/,''):rdeMname(rdePeriod)):'Acumulado';
+    const _lbl=rdePeriod.length?(gk==='w'?rdePeriod.map(p=>String(p).replace(/^\d{4}-/,'')).join('+'):rdePeriod.map(rdeMname).join('+')):'Acumulado';
     rdeShowCalls('Chamados — '+_lbl,recs);
   }else if(_ce){_ce.style.display='none';}
   // ── 4-Analytics charts ──
   const allFlat=rdeGetAllFlat();
-  const recsForAnalytics=rdeCluster?allFlat.filter(r=>rdeClFilter(r.cl)):allFlat;
+  const recsForAnalytics=rdeCluster.length?allFlat.filter(r=>rdeClFilter(r.cl)):allFlat;
   rde4RenderAll(recsForAnalytics);
 }
 function rdeShowCalls(title,flatRecs){
