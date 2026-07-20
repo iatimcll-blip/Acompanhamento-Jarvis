@@ -7607,6 +7607,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="ab-head-actions">
           <button class="mop-ref-btn admin-only" onclick="openCentral('ativ')"><i class="ti ti-database"></i> Atualizar base</button>
+          <button class="atrix-start-btn admin-only" id="ativ-start-btn" onclick="triggerAtrixUpdateNowAtiv(this)" title="Inicia agora a atualização de substatus da Ativações B2B pelo Agente Atrix — roda separado do ciclo do B2B Abertos e pode levar horas para varrer todos os chamados."><i class="ti ti-player-play"></i> Iniciar atualização</button>
         </div>
       </div>
       <div class="section-hd">Visão geral <span class="sh-line"></span></div>
@@ -9494,6 +9495,7 @@ function iniciarPollingAtrixUpdates(){
 }
 
 let _atrixPickupTimer=null;
+let _atrixRunningNowAtiv=false,_atrixPickupTimerAtiv=null;
 
 /* ── Gate público + limpeza de execuções presas ──────────────────────────────
    Regra: atualização do Atrix só é disparada pelo botão "Iniciar". O gate remoto
@@ -9503,6 +9505,10 @@ const ATRIX_GATE_KEY='jarvis:atrix:manualTriggerDate';
 const ATRIX_GATE_FILE='data/atrix-gate.json';
 const ATRIX_WORKFLOW_FILE='atrix-sync.yml';
 const ATRIX_WORKFLOW_ID='305518368';
+/* Ativações B2B: workflow separado (ciclo diário às 12h + botão manual próprio).
+   Sem gate remoto — esse mecanismo existe só pro B2B Abertos saber que o botão
+   Iniciar foi clicado apesar da janela 05h-18h; Ativações não tem essa restrição. */
+const ATRIX_WORKFLOW_FILE_ATIV='atrix-sync-ativacoes.yml';
 function _atrixTodayStr(){const d=new Date();const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
 function _atrixGateAtivoHoje(){try{return localStorage.getItem(ATRIX_GATE_KEY)===_atrixTodayStr();}catch(_){return false;}}
 function _atrixAtivarGateHoje(){try{localStorage.setItem(ATRIX_GATE_KEY,_atrixTodayStr());}catch(_){}}
@@ -9825,6 +9831,76 @@ async function loadAtrixUpdatesAtiv(){
     });
     if(count>0){renderPanelAtivacoes();console.log(`[Atrix Agent] ${count} substatus(es) de Ativações B2B aplicado(s) do agente.`);saveState();}
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações de Ativações B2B:',e);}
+}
+
+async function _cancelarExecucoesPresasAtrixAtiv(token){
+  try{
+    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE_ATIV}/runs?status=queued&per_page=20`,{headers:_atrixGhHeaders(token)});
+    if(!res.ok)return;
+    const data=await res.json();
+    const runs=data.workflow_runs||[];
+    for(const run of runs){
+      await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:_atrixGhHeaders(token)}).catch(()=>{});
+    }
+    if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) de Ativações B2B cancelada(s).`);
+  }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas de Ativações B2B:',e);}
+}
+
+/* Dispara o workflow_dispatch do ciclo de Ativações B2B (arquivo/execução separados
+   do B2B Abertos — ver nota em ATRIX_WORKFLOW_FILE_ATIV). Usado só pelo botão
+   "Iniciar atualização" do painel de Ativações B2B. */
+async function _dispatchAtrixWorkflowAtiv(){
+  const token=String(getGhToken()||'').trim();
+  if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
+  await _cancelarExecucoesPresasAtrixAtiv(token);
+  const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${encodeURIComponent(ATRIX_WORKFLOW_FILE_ATIV)}/dispatches`,{
+    method:'POST',
+    headers:_atrixGhHeaders(token,{'Content-Type':'application/json'}),
+    body:JSON.stringify({ref:'main'})
+  });
+  if(!res.ok){
+    const err=await _atrixReadGhError(res);
+    throw new Error(_atrixFriendlyGhError(err));
+  }
+  _atrixRunningNowAtiv=true;
+  const triggeredAt=new Date().toISOString();
+  /* ~700 chamados varridos um a um (sequencial) podem levar bem mais que os ~15min
+     do ciclo do B2B Abertos (~30 tickets) — intervalo de checagem maior e mais
+     tentativas, alinhado ao timeout-minutes:180 do workflow. */
+  clearInterval(_atrixPickupTimerAtiv);
+  let tries=0;
+  _atrixPickupTimerAtiv=setInterval(async()=>{
+    tries++;
+    if(typeof loadAtrixUpdatesAtiv==='function')await loadAtrixUpdatesAtiv();
+    const latest=dAtiv.reduce((m,d)=>d.substatusAt>m?d.substatusAt:m,'');
+    const sucesso=latest>triggeredAt;
+    if(sucesso||tries>=60){
+      clearInterval(_atrixPickupTimerAtiv);_atrixPickupTimerAtiv=null;
+      _atrixRunningNowAtiv=false;
+      if(!sucesso)console.warn('[Atrix Agent] Ciclo de Ativações B2B não concluiu dentro do tempo esperado.');
+    }
+  },180000);
+}
+
+async function triggerAtrixUpdateNowAtiv(btn){
+  if(!canEdit())return;
+  const orig=btn.innerHTML;
+  const done=(cls,html)=>{
+    btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');
+    btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
+    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-warn','atrix-start-err');btn.innerHTML=orig;},3000);
+  };
+  if(_atrixRunningNowAtiv){_ghToast('Uma atualização da Ativações B2B já está em andamento.','var(--orange)',5000);return;}
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Iniciando…';
+  if(typeof loadAtrixUpdatesAtiv==='function')loadAtrixUpdatesAtiv();
+  try{
+    await _dispatchAtrixWorkflowAtiv();
+    done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
+    _ghToast('Atualização da Ativações B2B iniciada — rodando agora no agente remoto ✓ (pode levar horas para ~700 chamados).','var(--green-dk)',8000);
+  }catch(e){
+    done('atrix-start-err','<i class="ti ti-x"></i> Erro');
+    _ghToast('Erro ao iniciar agente (Ativações B2B): '+e.message,'var(--red)',7000);
+  }
 }
 
 async function exportAtrixTicketsManual(){
