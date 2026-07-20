@@ -9375,7 +9375,9 @@ function applyState(st,label){
   }catch(e){console.warn('applyState: falha ao restaurar Ativações B2B:',e);}
   try{
     if(Array.isArray(st.dPrevent)){
-      dPrevent=st.dPrevent;
+      /* normaliza a cidade pro padrão Primeira Maiúscula mesmo em registros salvos
+         antes dessa regra existir (ou digitados em CAIXA ALTA/minúsculo) */
+      dPrevent=st.dPrevent.map(d=>d.cidade?{...d,cidade:titleCasePT(repairPtBR(d.cidade))}:d);
       renderPreventAll();
       changed=true;
     }
@@ -10856,7 +10858,7 @@ let dPrevTecnicos=[];
 function procPop(matrix,fname){
   dPop=(matrix||[]).slice(1).map(row=>({
     nome:String(row[4]||'').trim(),
-    cidade:String(row[5]||'').trim(),
+    cidade:titleCasePT(repairPtBR(String(row[5]||'').trim())),
     uf:String(row[10]||'').trim().toUpperCase(),
     endereco:String(row[14]||'').trim(),
     collocation:String(row[29]||'').trim(),
@@ -11019,7 +11021,7 @@ function savePreventiva(){
   const collocation=popMatch?popMatch.collocation:(prevRecord?prevRecord.collocation||'':'');
   const base={
     pop, localidade:document.getElementById('prevent-loc').value,
-    cidade:document.getElementById('prevent-cidade').value.trim(),
+    cidade:titleCasePT(repairPtBR(document.getElementById('prevent-cidade').value.trim())),
     endereco:document.getElementById('prevent-end').value.trim(),
     responsavel:resp, periodicidade:document.getElementById('prevent-per').value,
     dataAgendada:dataAg, observacoes:document.getElementById('prevent-obs').value.trim(),
