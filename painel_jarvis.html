@@ -9393,6 +9393,27 @@ async function pushAtrixTicketsJson(){
     console.log(`[Atrix Agent] ${tickets.length} chamado(s) exportados para GitHub.`);
   }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados:',e);}
 }
+/* Ativações B2B roda num ciclo diariamente separado (1x/dia, a partir das 12:00) em vez
+   de entrar no mesmo ciclo de 30 min do B2B Abertos — o backlog (~640 chamados) somado
+   aos chamados de Abertos estouraria facilmente o timeout do job de 30 min, arriscando
+   nao salvar NENHUMA atualização daquele ciclo (o scraper só grava o resultado uma vez,
+   no fim do laço inteiro). Por isso usa arquivos e workflow próprios. */
+async function pushAtrixTicketsJsonAtiv(){
+  if(!getGhToken()||!dAtiv.length)return;
+  const tickets=dAtiv.map(d=>({id:d.id,cliente:d.cli||'',link:d.link||'',substatus:d.substatus||'',uf:d.uf||'',cidade:d.cid||''})).filter(t=>t.link);
+  if(!tickets.length)return;
+  const path='data/atrix_tickets_ativacoes.json';
+  const apiUrl=`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/contents/${path}`;
+  const hdrs=ghHeaders({'Content-Type':'application/json'});
+  try{
+    let sha='';
+    const info=await fetch(apiUrl,{headers:hdrs,cache:'no-store'});
+    if(info.ok){const j=await info.json();sha=j.sha||'';}
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(tickets,null,2))));
+    await fetch(apiUrl,{method:'PUT',headers:hdrs,body:JSON.stringify({message:`chore: exportar chamados Ativações B2B (${tickets.length})`,content,...(sha?{sha}:{})})});
+    console.log(`[Atrix Agent] ${tickets.length} chamado(s) de Ativações B2B exportados para GitHub.`);
+  }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados de Ativações B2B:',e);}
+}
 
 let _atrixCdTimer=null;
 let _atrixRunningNow=false;
@@ -9463,9 +9484,12 @@ function _startAtrixReminderCountdown(isoStr){
 let _atrixPollTimer=null;
 function iniciarPollingAtrixUpdates(){
   setTimeout(loadAtrixUpdates,3000);
+  setTimeout(loadAtrixUpdatesAtiv,3500);
   clearInterval(_atrixPollTimer);
   _atrixPollTimer=setInterval(()=>{
-    if(document.visibilityState==='visible'&&typeof loadAtrixUpdates==='function')loadAtrixUpdates();
+    if(document.visibilityState!=='visible')return;
+    if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();
+    if(typeof loadAtrixUpdatesAtiv==='function')loadAtrixUpdatesAtiv();
   },5*60*1000);
 }
 
@@ -9778,6 +9802,26 @@ async function loadAtrixUpdates(){
     if(count>0){console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);saveState();}
     if(typeof refreshAtrixPublicDock==='function')refreshAtrixPublicDock();
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
+}
+/* Ativações B2B: ciclo/arquivo próprios (atrix_updates_ativacoes.json), rodando 1x/dia —
+   ver nota em pushAtrixTicketsJsonAtiv() sobre por que não entra no mesmo ciclo de 30min
+   do B2B Abertos. Aplicação do substatus é uma troca direta (sem relógio de SLA/pausa
+   como no B2B Abertos, que não existe em Ativações). */
+async function loadAtrixUpdatesAtiv(){
+  const rawUrl=`https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/data/atrix_updates_ativacoes.json`;
+  try{
+    const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return;
+    const updates=await r.json();
+    let count=0;
+    dAtiv.forEach(ticket=>{
+      const up=updates[ticket.id]||null;
+      if(!up||!up.substatus)return;
+      const next=String(up.substatus||'').trim();
+      if(next&&next!==ticket.substatus){ticket.substatus=next;count++;}
+    });
+    if(count>0){renderPanelAtivacoes();console.log(`[Atrix Agent] ${count} substatus(es) de Ativações B2B aplicado(s) do agente.`);saveState();}
+  }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações de Ativações B2B:',e);}
 }
 
 async function exportAtrixTicketsManual(){
@@ -10178,6 +10222,7 @@ function procAtiv(raw,fname){
   document.getElementById('empty-ativ').style.display='none';
   document.getElementById('dash-ativ').style.display='block';
   saveState();autoSyncAfterBaseUpload('Ativações B2B');updateClearBtns();
+  setTimeout(pushAtrixTicketsJsonAtiv,2000);
 }
 
 const ATIV_AGING_ORDER=['Até 30d','Entre 30d e 60d','Maior que 60d'];
