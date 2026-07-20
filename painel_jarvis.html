@@ -6313,6 +6313,7 @@ canvas {
 <input type="file" id="file-ofs" accept=".xlsx,.xls,.csv" multiple style="display:none">
 <input type="file" id="file-rede" accept=".xlsx,.xls" style="display:none">
 <input type="file" id="file-ativ" accept=".xlsx,.xls" style="display:none">
+<input type="file" id="file-pop" accept=".xlsx,.xls" style="display:none">
 <div class="login-screen" id="login-screen" style="display:none">
   <form class="login-card" onsubmit="loginUser(event)">
     <div class="login-logo" style="display:flex;flex-direction:column;align-items:center;gap:2px;margin-bottom:4px"><img class="login-jarvis-img" src="JAVIS_transparente.png" alt="Jarvis"><span style="font-size:16px;font-weight:700;letter-spacing:-.5px;color:var(--tx)">Jarvis <span style="color:var(--tx3);font-weight:500;font-size:13px">MCLL</span></span></div>
@@ -7703,9 +7704,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div>
         <div class="ab-kicker">Calendário de manutenção preventiva</div>
         <h2>Agendamento de Preventivas</h2>
-        <p>Infraestrutura dos POPs · Regional MA/PA/PI.</p>
+        <p>Infraestrutura dos POPs · Base oficial de POPs e endereços.</p>
       </div>
       <div class="ab-head-actions">
+        <button class="mop-ref-btn admin-only" onclick="openCentral('pop')"><i class="ti ti-database"></i> Atualizar base de POPs</button>
         <button class="mop-ref-btn" onclick="exportPreventCSV()"><i class="ti ti-download"></i> Exportar CSV</button>
       </div>
     </div>
@@ -7726,16 +7728,32 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
         <div class="modal-form-grid">
           <div class="mfg-field">
-            <span class="mfg-label">POP *</span>
-            <input class="finput" id="prevent-pop" placeholder="Ex.: POP Goianésia / POP São Luís Centro">
+            <span class="mfg-label">POP (Nomenclatura) *</span>
+            <input class="finput" id="prevent-pop" list="prevent-pop-list" autocomplete="off" placeholder="Digite p/ buscar na base oficial (ex.: POP-MA-...)…" oninput="onPreventPopInput()">
+            <datalist id="prevent-pop-list"></datalist>
           </div>
           <div class="mfg-field">
             <span class="mfg-label">Localidade / UF *</span>
             <select class="fsel" id="prevent-loc">
-              <option value="MA">MA — Maranhão</option>
-              <option value="PA">PA — Pará</option>
-              <option value="PI">PI — Piauí</option>
+              <option value="AC">AC — Acre</option><option value="AL">AL — Alagoas</option>
+              <option value="AP">AP — Amapá</option><option value="AM">AM — Amazonas</option>
+              <option value="BA">BA — Bahia</option><option value="CE">CE — Ceará</option>
+              <option value="DF">DF — Distrito Federal</option><option value="ES">ES — Espírito Santo</option>
+              <option value="GO">GO — Goiás</option><option value="MA" selected>MA — Maranhão</option>
+              <option value="MT">MT — Mato Grosso</option><option value="MS">MS — Mato Grosso do Sul</option>
+              <option value="MG">MG — Minas Gerais</option><option value="PA">PA — Pará</option>
+              <option value="PB">PB — Paraíba</option><option value="PR">PR — Paraná</option>
+              <option value="PE">PE — Pernambuco</option><option value="PI">PI — Piauí</option>
+              <option value="RJ">RJ — Rio de Janeiro</option><option value="RN">RN — Rio Grande do Norte</option>
+              <option value="RS">RS — Rio Grande do Sul</option><option value="RO">RO — Rondônia</option>
+              <option value="RR">RR — Roraima</option><option value="SC">SC — Santa Catarina</option>
+              <option value="SP">SP — São Paulo</option><option value="SE">SE — Sergipe</option>
+              <option value="TO">TO — Tocantins</option>
             </select>
+          </div>
+          <div class="mfg-field">
+            <span class="mfg-label">Cidade</span>
+            <input class="finput" id="prevent-cidade" placeholder="Preenchido automaticamente ao selecionar o POP">
           </div>
           <div class="mfg-field">
             <span class="mfg-label">Endereço / referência</span>
@@ -7790,7 +7808,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </select>
         <select class="fsel" id="prevent-q-loc" onchange="renderPrevent()">
           <option value="">Todas as UFs</option>
-          <option value="MA">MA</option><option value="PA">PA</option><option value="PI">PI</option>
+          <option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option>
+          <option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option>
+          <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
+          <option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option>
+          <option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option>
+          <option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option>
+          <option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option>
+          <option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option>
+          <option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option>
         </select>
         <select class="fsel" id="prevent-q-sort" onchange="renderPrevent()">
           <option value="status">Ordenar por status</option>
@@ -8040,6 +8066,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <span class="cd-dot cd-off" id="cd-dot-ativ"></span>
         <label class="cd-upload-btn admin-only" style="background:var(--purple-bg);color:var(--purple);border-color:rgba(175,82,222,.25)" onclick="event.preventDefault();document.getElementById('file-ativ').click();document.getElementById('central-dados').style.display='none'"><i class="ti ti-upload" style="font-size:13px"></i> Carregar</label>
+      </div>
+      <div class="cd-row" id="cd-row-pop">
+        <div class="cd-ico" style="background:var(--teal-bg);color:var(--teal-dk)"><i class="ti ti-map-pin"></i></div>
+        <div class="cd-name">
+          <div class="cd-lbl">Base de POPs (aba Oficial)</div>
+          <div class="cd-ts" id="cd-ts-pop">Não carregado</div>
+        </div>
+        <span class="cd-dot cd-off" id="cd-dot-pop"></span>
+        <label class="cd-upload-btn admin-only" style="background:var(--teal-bg);color:var(--teal-dk);border-color:rgba(90,200,250,.25)" onclick="event.preventDefault();document.getElementById('file-pop').click();document.getElementById('central-dados').style.display='none'"><i class="ti ti-upload" style="font-size:13px"></i> Carregar</label>
       </div>
       <!-- Combustíveis (admin-only) -->
       <div class="cd-row admin-only" id="cd-row-fuel">
@@ -9232,7 +9267,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,dPrevent,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,dPrevent,dPop,lastPopAt,lastPopFile,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -9323,6 +9358,15 @@ function applyState(st,label){
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Agendamento de Preventivas:',e);}
+  try{
+    if(Array.isArray(st.dPop)){
+      dPop=st.dPop;
+      if(Object.prototype.hasOwnProperty.call(st,'lastPopAt'))lastPopAt=st.lastPopAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastPopFile'))lastPopFile=st.lastPopFile||'';
+      renderPreventPopDatalist();
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar catálogo de POPs:',e);}
   try{
     if(Array.isArray(st.dEnc)){
       dEnc=normalizeEncState(st.dEnc);
@@ -10147,6 +10191,15 @@ document.getElementById('file-ativ').addEventListener('change',function(e){
   rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.toUpperCase().includes('BASE'))||wb.SheetNames[0];procAtiv(XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''}),f.name)}catch(er){alert('Erro: '+er.message)}};
   rd.readAsArrayBuffer(f);this.value='';
 });
+document.getElementById('file-pop').addEventListener('change',function(e){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  /* lê por posição (header:1), não por nome de coluna: a aba Oficial tem centenas de
+     colunas com cabeçalho em branco (repetido) que colidiriam se lida por nome */
+  rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.trim().toUpperCase()==='OFICIAL')||wb.SheetNames.find(n=>n.toUpperCase().includes('OFICIAL'))||wb.SheetNames[0];procPop(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}),f.name)}catch(er){alert('Erro ao ler base de POPs: '+er.message)}};
+  rd.readAsArrayBuffer(f);this.value='';
+});
 document.getElementById('file-fuel').addEventListener('change',function(e){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
   const f=e.target.files[0];if(!f)return;
@@ -10232,6 +10285,7 @@ function updateCentralStatus(){
   const abTs=lastAbAt?fmtBaseInfo(lastAbFile,lastAbAt):'';
   const encTs=lastEncAt?fmtBaseInfo(lastEncFile,lastEncAt):'';
   const ativTs=lastAtivAt?fmtBaseInfo(lastAtivFile,lastAtivAt):'';
+  const popTs=lastPopAt?fmtBaseInfo(lastPopFile,lastPopAt):'';
   const ofsTs=ofsMeta&&ofsMeta.uploadedAt?fmtBaseInfo(ofsMeta.fname,ofsMeta.uploadedAt):'';
   // Rede timestamp from ts-text element if available
   const redeEl=document.getElementById('rede-ts-text');
@@ -10243,6 +10297,7 @@ function updateCentralStatus(){
   setSlot('ab',typeof dAb!=='undefined'&&dAb.length>0,abTs);
   setSlot('enc',typeof dEnc!=='undefined'&&dEnc.length>0,encTs);
   setSlot('ativ',typeof dAtiv!=='undefined'&&dAtiv.length>0,ativTs);
+  setSlot('pop',typeof dPop!=='undefined'&&dPop.length>0,popTs);
   setSlot('rede',(typeof rdeBD!=='undefined'&&rdeBD.length>0)||(typeof rdeAD!=='undefined'&&rdeAD.length>0),redeTs);
   setSlot('ofs',typeof ofsRows!=='undefined'&&ofsRows.length>0,ofsTs);
   setSlot('fuel',aleloCount>0,fuelTs);
@@ -10756,6 +10811,45 @@ const PREV_PERIODO_MESES={Mensal:1,Bimestral:2,Trimestral:3,Semestral:6,Anual:12
 const PREV_STATUS_BADGE={'Agendada':'b-blue','Em andamento':'b-orange','Concluída':'b-green','Atrasada':'b-red'};
 let dPrevent=[];
 let prevEditId=null,prevConcludeId=null;
+/* Catálogo de POPs (aba "Oficial" da Base_Oficial_de_POP's_e_Endereços) — fonte de
+   autocomplete para Nomenclatura/UF/Cidade/Endereço/Tipo de Collocation no formulário
+   de agendamento. Não é a lista de preventivas em si (isso é dPrevent). */
+let dPop=[];
+let lastPopAt='',lastPopFile='';
+
+/* Lê por posição (E,F,K,O,AD = índices 4,5,10,14,29), não por nome de cabeçalho:
+   a aba Oficial tem centenas de colunas com cabeçalho em branco (repetido), então
+   sheet_to_json por nome colidiria e perderia colunas — header:1 evita isso. */
+function procPop(matrix,fname){
+  dPop=(matrix||[]).slice(1).map(row=>({
+    nome:String(row[4]||'').trim(),
+    cidade:String(row[5]||'').trim(),
+    uf:String(row[10]||'').trim().toUpperCase(),
+    endereco:String(row[14]||'').trim(),
+    collocation:String(row[29]||'').trim(),
+  })).filter(p=>p.nome);
+  lastPopFile=fname||'';
+  lastPopAt=now2();
+  renderPreventPopDatalist();
+  saveState();
+  updateCentralStatus();
+}
+function renderPreventPopDatalist(){
+  const dl=document.getElementById('prevent-pop-list');
+  if(!dl)return;
+  dl.innerHTML=dPop.map(p=>`<option value="${eh(p.nome)}">`).join('');
+}
+/* ao digitar/selecionar um POP já catalogado, preenche UF/Cidade/Endereço automaticamente
+   (o usuário ainda pode ajustar os campos depois — não trava a edição) */
+function onPreventPopInput(){
+  const val=document.getElementById('prevent-pop').value.trim();
+  if(!val)return;
+  const match=dPop.find(p=>p.nome.toUpperCase()===val.toUpperCase());
+  if(!match)return;
+  if(match.uf)document.getElementById('prevent-loc').value=match.uf;
+  document.getElementById('prevent-cidade').value=match.cidade||'';
+  document.getElementById('prevent-end').value=match.endereco||'';
+}
 
 function prevToday(){ return new Date().toISOString().slice(0,10); }
 function prevAddPeriod(dateStr,per){
@@ -10790,7 +10884,7 @@ function resetPreventForm(){
   prevEditId=null;
   const title=document.getElementById('prevent-form-title');if(title)title.textContent='Nova preventiva de POP';
   const btn=document.getElementById('prevent-save-btn');if(btn)btn.innerHTML='<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Agendar preventiva';
-  ['prevent-pop','prevent-end','prevent-resp','prevent-obs'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['prevent-pop','prevent-cidade','prevent-end','prevent-resp','prevent-obs'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const loc=document.getElementById('prevent-loc');if(loc)loc.value='MA';
   const per=document.getElementById('prevent-per');if(per)per.value='Trimestral';
   const dt=document.getElementById('prevent-data');if(dt)dt.value=prevToday();
@@ -10804,11 +10898,19 @@ function savePreventiva(){
   if(!pop||!resp||!dataAg){alert('Preencha POP, responsável e data agendada.');return;}
   const sel=[...document.querySelectorAll('.prevent-sysbox:checked')].map(c=>PREV_SISTEMAS[+c.value]);
   if(sel.length===0){alert('Selecione ao menos um sistema para inspecionar.');return;}
+  /* tipo de collocation não é um campo do formulário — vem do catálogo de POPs (dPop)
+     pelo nome digitado; se o POP não estiver catalogado ou for edição, mantém o valor
+     que já existia no registro em vez de apagar */
+  const popMatch=dPop.find(p=>p.nome.toUpperCase()===pop.toUpperCase());
+  const prevRecord=prevEditId?dPrevent.find(x=>x.id===prevEditId):null;
+  const collocation=popMatch?popMatch.collocation:(prevRecord?prevRecord.collocation||'':'');
   const base={
     pop, localidade:document.getElementById('prevent-loc').value,
+    cidade:document.getElementById('prevent-cidade').value.trim(),
     endereco:document.getElementById('prevent-end').value.trim(),
     responsavel:resp, periodicidade:document.getElementById('prevent-per').value,
     dataAgendada:dataAg, observacoes:document.getElementById('prevent-obs').value.trim(),
+    collocation,
   };
   if(prevEditId){
     const p=dPrevent.find(x=>x.id===prevEditId);
@@ -10837,6 +10939,7 @@ function editPreventiva(id){
   document.getElementById('prevent-save-btn').innerHTML='<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Salvar alterações';
   document.getElementById('prevent-pop').value=p.pop;
   document.getElementById('prevent-loc').value=p.localidade;
+  document.getElementById('prevent-cidade').value=p.cidade||'';
   document.getElementById('prevent-end').value=p.endereco||'';
   document.getElementById('prevent-resp').value=p.responsavel;
   document.getElementById('prevent-per').value=p.periodicidade;
@@ -10951,7 +11054,7 @@ function renderPrevent(){
     const s=prevEffStatus(p);
     if(fs&&s!==fs)return false;
     if(fl&&p.localidade!==fl)return false;
-    if(q&&!(nk(p.pop).includes(q)||nk(p.responsavel).includes(q)))return false;
+    if(q&&!(nk(p.pop).includes(q)||nk(p.responsavel).includes(q)||nk(p.cidade).includes(q)))return false;
     return true;
   });
   const order={'Atrasada':0,'Em andamento':1,'Agendada':2,'Concluída':3};
@@ -10984,7 +11087,8 @@ function renderPrevent(){
           <span><i class="ti ti-tools" style="font-size:11px"></i> ${p.itens.length} sistema(s)</span>
           <span>${prevPrazoLabel(p)}</span>
         </div>
-        ${p.endereco?`<div class="pv-meta"><span><i class="ti ti-map-pin" style="font-size:11px"></i> ${eh(p.endereco)}</span></div>`:''}
+        ${p.cidade||p.endereco?`<div class="pv-meta"><span><i class="ti ti-map-pin" style="font-size:11px"></i> ${eh([p.cidade,p.endereco].filter(Boolean).join(' · '))}</span></div>`:''}
+        ${p.collocation?`<div class="pv-meta"><span class="badge b-teal">${eh(p.collocation)}</span></div>`:''}
         ${prevCondSummary(p)}
       </div>
       <div class="pv-actions">${acts}</div>
@@ -10997,13 +11101,13 @@ function renderPreventAll(){
 }
 function exportPreventCSV(){
   if(dPrevent.length===0){alert('Não há preventivas para exportar.');return;}
-  const head=['POP','UF','Endereco','Responsavel','Periodicidade','Data agendada','Status','Data conclusao','Sistemas criticos','Sistemas atencao','Observacoes'];
+  const head=['POP','UF','Cidade','Endereco','Tipo Collocation','Responsavel','Periodicidade','Data agendada','Status','Data conclusao','Sistemas criticos','Sistemas atencao','Observacoes'];
   const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
   const lines=[head.map(esc).join(';')];
   dPrevent.forEach(p=>{
     const crit=p.itens.filter(i=>i.condicao==='Crítico').map(i=>i.nome).join(' | ');
     const aten=p.itens.filter(i=>i.condicao==='Atenção').map(i=>i.nome).join(' | ');
-    lines.push([p.pop,p.localidade,p.endereco,p.responsavel,p.periodicidade,
+    lines.push([p.pop,p.localidade,p.cidade,p.endereco,p.collocation,p.responsavel,p.periodicidade,
       prevFmtData(p.dataAgendada),prevEffStatus(p),prevFmtData(p.dataConclusao),crit,aten,p.observacoes].map(esc).join(';'));
   });
   const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
