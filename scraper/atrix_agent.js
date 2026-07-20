@@ -30,8 +30,11 @@ const DELAY_MS      = parseFloat(process.env.DELAY_SECONDS  || '2') * 1000;
 const DEBUG         = ['1','true','yes'].includes((process.env.DEBUG || '').toLowerCase());
 const SINGLE_CYCLE  = ['1','true','yes'].includes((process.env.SINGLE_CYCLE || '').toLowerCase());
 
-const GH_TICKETS_FILE = 'data/atrix_tickets.json';
-const GH_UPDATES_FILE = 'data/atrix_updates.json';
+// Parametrizável via env para permitir um segundo ciclo independente (ex.: Ativações B2B,
+// que roda 1x/dia em vez de a cada 30min — ver .github/workflows/atrix-sync-ativacoes.yml)
+// usando o mesmo script, sem misturar os chamados dos dois painéis no mesmo arquivo/ciclo.
+const GH_TICKETS_FILE = process.env.GH_TICKETS_FILE || 'data/atrix_tickets.json';
+const GH_UPDATES_FILE = process.env.GH_UPDATES_FILE || 'data/atrix_updates.json';
 const GH_GATE_FILE    = 'data/atrix-gate.json';
 const GH_RUNNER_STATUS_FILE = 'data/atrix-runner-status.json';
 const SESSION_DIR     = path.join(__dirname, '.atrix_session');
@@ -565,13 +568,13 @@ async function main() {
     const today = todayLocalStr();
 
     if (eventName && !['workflow_dispatch', 'schedule'].includes(eventName)) {
-      info(`Evento ${eventName} ignorado — o Agente Atrix atualiza apenas por agendamento de 30 min ou pelo botao Iniciar.`);
+      info(`Evento ${eventName} ignorado — o Agente Atrix atualiza apenas por agendamento (a cada ${INTERVAL_MIN} min) ou pelo botao Iniciar.`);
       process.exit(0);
     }
 
     if (eventName === 'workflow_dispatch' || !eventName) {
       // Clique manual em "Iniciar": registra a ativação de hoje para auditoria
-      // publica. O schedule de 30 min roda independentemente deste gate.
+      // publica. O schedule roda independentemente deste gate.
       try {
         const { gate, sha } = await loadGate();
         await saveGate({
@@ -583,7 +586,7 @@ async function main() {
         info(`Disparo manual registrado para ${today}.`);
       } catch (e) { warn('Falha ao registrar disparo manual (gate):', e.message); }
     } else if (eventName === 'schedule') {
-      info('Disparo automatico por schedule GitHub — ciclo de 30 min.');
+      info(`Disparo automatico por schedule GitHub — ciclo a cada ${INTERVAL_MIN} min.`);
     }
 
     // CI (GitHub Actions): deixa o erro propagar — uma falha aqui deve marcar o

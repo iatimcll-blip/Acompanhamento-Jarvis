@@ -1,0 +1,100 @@
+name: Atrix Substatus Sync — Ativações B2B
+
+on:
+  workflow_dispatch: # permite forçar um ciclo manualmente pela aba Actions do GitHub
+  schedule:
+    # Ativações B2B roda 1x/dia (a partir de meio-dia local), separado do ciclo de
+    # 30min do B2B Abertos: o backlog (~640 chamados) somado aos chamados de Abertos
+    # estouraria facilmente o timeout de 30min daquele job, arriscando não salvar
+    # NENHUMA atualização do ciclo inteiro (o scraper só grava o resultado uma vez,
+    # no fim do laço sequencial). Horário: 15:00 UTC = 12:00 em São Luís/MA (UTC-3,
+    # sem horário de verão no Brasil desde 2019).
+    - cron: '0 15 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atrix-sync-ativacoes
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Mesmo runner self-hosted do ciclo de B2B Abertos — como é uma única máquina,
+    # este ciclo diário ocupa o runner por sua duração inteira (pode levar bem mais
+    # que 30min, dado o volume), pausando os ciclos de 30min do B2B Abertos durante
+    # essa janela. Aceitável por rodar só 1x/dia; se isso virar problema, a solução
+    # correta é um segundo runner dedicado.
+    runs-on: [self-hosted, jarvis]
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: powershell -ExecutionPolicy Bypass -Command "& '{0}'"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: scraper/package-lock.json
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('scraper/package-lock.json') }}
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: scraper
+        run: npx playwright install chromium
+
+      - name: Verificar secrets Atrix
+        env:
+          ATRIX_USER: ${{ secrets.ATRIX_USER }}
+          ATRIX_PASS: ${{ secrets.ATRIX_PASS }}
+        run: |
+          if (-not $env:ATRIX_USER -or -not $env:ATRIX_PASS) {
+            Write-Output "ERRO: ATRIX_USER ou ATRIX_PASS nao encontrados nos secrets do repositorio."
+            Write-Output ""
+            Write-Output "Acesse: github.com/${{ github.repository }}/settings/secrets/actions"
+            Write-Output "Crie os secrets com os nomes EXATOS:"
+            Write-Output "  - ATRIX_USER  (seu usuario do Atrix)"
+            Write-Output "  - ATRIX_PASS  (sua senha do Atrix)"
+            exit 1
+          }
+          Write-Output "OK: ATRIX_USER configurado ($($env:ATRIX_USER.Length) caracteres)"
+          Write-Output "OK: ATRIX_PASS configurado ($($env:ATRIX_PASS.Length) caracteres)"
+
+      - name: Run Atrix sync (Ativações B2B)
+        working-directory: scraper
+        env:
+          ATRIX_BASE_URL: https://atrix.mobtelecom.com.br/controle/
+          ATRIX_USER: ${{ secrets.ATRIX_USER }}
+          ATRIX_PASS: ${{ secrets.ATRIX_PASS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_BRANCH: main
+          GH_TICKETS_FILE: data/atrix_tickets_ativacoes.json
+          GH_UPDATES_FILE: data/atrix_updates_ativacoes.json
+          INTERVAL_MINUTES: 1440
+          DELAY_SECONDS: 1
+          SINGLE_CYCLE: 1
+          DEBUG: 0
+        run: node atrix_agent.js
+
+      - name: Upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atrix-log-ativacoes
+          path: scraper/atrix_agent.log
+          retention-days: 3
