@@ -6277,6 +6277,7 @@ canvas {
 <input type="file" id="file-fuel-veiculos" accept=".xlsx,.xls,.csv" style="display:none">
 <input type="file" id="file-ofs" accept=".xlsx,.xls,.csv" multiple style="display:none">
 <input type="file" id="file-rede" accept=".xlsx,.xls" style="display:none">
+<input type="file" id="file-ativ" accept=".xlsx,.xls" style="display:none">
 <div class="login-screen" id="login-screen" style="display:none">
   <form class="login-card" onsubmit="loginUser(event)">
     <div class="login-logo" style="display:flex;flex-direction:column;align-items:center;gap:2px;margin-bottom:4px"><img class="login-jarvis-img" src="JAVIS_transparente.png" alt="Jarvis"><span style="font-size:16px;font-weight:700;letter-spacing:-.5px;color:var(--tx)">Jarvis <span style="color:var(--tx3);font-weight:500;font-size:13px">MCLL</span></span></div>
@@ -6484,7 +6485,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-sobreaviso" onclick="window.location.href='painel_sobreaviso.html'">
         <i class="ti ti-headset"></i><span class="ntab-label"> Sobreaviso</span>
       </button>
-      <button class="ntab" id="ntab-ativacoes" onclick="window.location.href='painel_ativacoes_b2b.html'">
+      <button class="ntab" id="ntab-ativacoes" onclick="switchTab('ativacoes')">
         <i class="ti ti-plug-connected"></i><span class="ntab-label"> Ativações B2B</span>
       </button>
     </div>
@@ -6604,7 +6605,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-whatsapp" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><strong>WhatsApp</strong><span>Espelho interno do WhatsApp Web dentro do painel.</span></button>
       <button class="dash-module" id="dash-mod-dsr" onclick="window.location.href='painel_dsr_volante.html'"><i class="ti ti-calendar-time"></i><strong>DSR Volante</strong><span>Escala automática de folgas, auditoria CLT e controle de horas extras.</span></button>
       <button class="dash-module" id="dash-mod-sobreaviso" onclick="window.location.href='painel_sobreaviso.html'"><i class="ti ti-headset"></i><strong>Sobreaviso</strong><span>Escala de sobreaviso por rodízio, cálculo de horas e auditoria CLT (art. 244).</span></button>
-      <button class="dash-module" id="dash-mod-ativacoes" onclick="window.location.href='painel_ativacoes_b2b.html'"><i class="ti ti-plug-connected"></i><strong>Ativações B2B</strong><span>MRR contratado aguardando ativação técnica, aging, gargalos e carteira por analista.</span></button>
+      <button class="dash-module" id="dash-mod-ativacoes" onclick="switchTab('ativacoes')"><i class="ti ti-plug-connected"></i><strong>Ativações B2B</strong><span>MRR contratado aguardando ativação técnica, aging, gargalos e carteira por analista.</span></button>
       <button class="dash-module" onclick="openCentral()"><i class="ti ti-database"></i><strong>Central de Dados</strong><span>Controle de importação, status, validação e limpeza de bases.</span></button>
     </div>
   </div>
@@ -7587,6 +7588,72 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
   </div>
 
+  <!-- ── PAINEL ATIVAÇÕES B2B ── -->
+  <div class="panel" id="panel-ativacoes">
+    <div id="empty-ativ" class="empty">
+      <div class="empty-icon"><i class="ti ti-plug-connected"></i></div>
+      <h2>Ativações B2B</h2>
+      <p>Carregue a base para ver o backlog de ativação técnica.</p>
+      <button class="empty-btn admin-only" onclick="openCentral('ativ')"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
+    </div>
+    <div id="dash-ativ" style="display:none">
+      <div class="ab-dashboard-head">
+        <div>
+          <div class="ab-kicker">MRR contratado aguardando ativação técnica</div>
+          <h2>Ativações B2B</h2>
+          <p>Contratos fechados, não faturando · Regional MA/PI/PA/AP/AM.</p>
+        </div>
+        <div class="ab-head-actions">
+          <button class="mop-ref-btn admin-only" onclick="openCentral('ativ')"><i class="ti ti-database"></i> Atualizar base</button>
+        </div>
+      </div>
+      <div class="section-hd">Visão geral <span class="sh-line"></span></div>
+      <div class="mrow" id="ativ-kpi-row"></div>
+
+      <div class="section-hd">Termômetro de Aging (backlog filtrado) <span class="sh-line"></span></div>
+      <div class="card" style="margin-bottom:16px;min-height:0">
+        <div id="ativ-thermo-body"></div>
+      </div>
+
+      <div class="section-hd">Análises (backlog filtrado) <span class="sh-line"></span></div>
+      <div class="g2">
+        <div class="card"><div class="card-hd"><span class="card-title">Status Forecast por MRR</span></div><div class="cw"><canvas id="ativ-ch-forecast"></canvas></div></div>
+        <div class="card"><div class="card-hd"><span class="card-title">MRR em Backlog por UF</span></div><div class="cw"><canvas id="ativ-ch-uf"></canvas></div></div>
+      </div>
+      <div class="g2">
+        <div class="card"><div class="card-hd"><span class="card-title">Gargalos por Departamento Atual</span></div><div class="cw"><canvas id="ativ-ch-dep"></canvas></div></div>
+        <div class="card"><div class="card-hd"><span class="card-title">Top 10 Cidades — Tickets × MRR</span></div><div class="cw"><canvas id="ativ-ch-cidade"></canvas></div></div>
+      </div>
+      <div class="g2">
+        <div class="card"><div class="card-hd"><span class="card-title">Carteira por Analista</span></div><div class="cw"><canvas id="ativ-ch-analista"></canvas></div></div>
+        <div class="card"><div class="card-hd"><span class="card-title">MRR por Grupo de Produto</span></div><div class="cw"><canvas id="ativ-ch-grupo"></canvas></div></div>
+      </div>
+
+      <div class="tsec">
+        <div class="tsec-hd">
+          <span class="tsec-title">Lista de Tickets</span>
+          <div class="tsec-meta"><span id="ativ-tbl-cnt"></span><span class="card-action" onclick="limparFiltrosAtiv()">Limpar filtros</span></div>
+        </div>
+        <div class="fbar">
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-uf" onclick="mselToggleOpen('ativ-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-cidade" onclick="mselToggleOpen('ativ-cidade')"><span class="msel-btn-lbl">Todas cidades</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-status" onclick="mselToggleOpen('ativ-status')"><span class="msel-btn-lbl">Todos status macro</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-aging" onclick="mselToggleOpen('ativ-aging')"><span class="msel-btn-lbl">Todos aging</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-seg" onclick="mselToggleOpen('ativ-seg')"><span class="msel-btn-lbl">Todos segmentos</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-fc" onclick="mselToggleOpen('ativ-fc')"><span class="msel-btn-lbl">Todos forecasts</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-gp" onclick="mselToggleOpen('ativ-gp')"><span class="msel-btn-lbl">Todos grupos</span></button></div>
+          <input class="finput" id="ativ-srch" placeholder="Buscar cliente, ticket, protocolo, cidade, analista, título, produto…" oninput="onAtivSrchChange(this.value)">
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr id="ativ-thead-row"></tr></thead>
+            <tbody id="ativ-tbl-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── PAINEL B2B REPETIDOS ── -->
   <div class="panel" id="panel-repetidos">
     <div id="empty-rep" class="empty">
@@ -7816,6 +7883,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <span class="cd-dot cd-off" id="cd-dot-ofs"></span>
         <label class="cd-upload-btn admin-only" title="Selecione o Relatorio_OFS_MOP-EPS.xlsx e/ou um ou mais CSVs" style="background:rgba(249,115,22,.12);color:#f97316;border-color:rgba(249,115,22,.25)" onclick="event.preventDefault();document.getElementById('file-ofs').click();document.getElementById('central-dados').style.display='none'"><i class="ti ti-upload" style="font-size:13px"></i> Carregar base/CSVs</label>
       </div>
+      <!-- Ativações B2B -->
+      <div class="cd-row" id="cd-row-ativ">
+        <div class="cd-ico" style="background:var(--purple-bg);color:var(--purple)"><i class="ti ti-plug-connected"></i></div>
+        <div class="cd-name">
+          <div class="cd-lbl">Ativações B2B</div>
+          <div class="cd-ts" id="cd-ts-ativ">Não carregado</div>
+        </div>
+        <span class="cd-dot cd-off" id="cd-dot-ativ"></span>
+        <label class="cd-upload-btn admin-only" style="background:var(--purple-bg);color:var(--purple);border-color:rgba(175,82,222,.25)" onclick="event.preventDefault();document.getElementById('file-ativ').click();document.getElementById('central-dados').style.display='none'"><i class="ti ti-upload" style="font-size:13px"></i> Carregar</label>
+      </div>
       <!-- Combustíveis (admin-only) -->
       <div class="cd-row admin-only" id="cd-row-fuel">
         <div class="cd-ico" style="background:var(--yellow-bg);color:#805500"><i class="ti ti-gas-station"></i></div>
@@ -8010,7 +8087,7 @@ const CLUSTER_INFO={
 };
 const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/AP'];
 
-let dAb=[],dEnc=[];
+let dAb=[],dEnc=[],dAtiv=[];
 let atrixUpdateMap={};  // {ticketId → updatedAt ISO} — populado por loadAtrixUpdates()
 let aleloCardImage=null,aleloCardImageAt='';
 let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false;
@@ -8030,8 +8107,10 @@ let encChartBucket='';
 let selRepMes=[],selRepSemana=[],selRepCluster=[],selRepCausa=[],selRepSeg=[],selRepSrch='';
 let selAbMop=[],selAbFaixa=[],selAbSub=[],selAbUf=[];
 let selEncCluster=[],selEncAging=[],selEncCausa=[],selEncUf=[],selEncSemana=[],selEncSeg=[];
+let selAtivUf=[],selAtivCidade=[],selAtivStatus=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivGp=[],selAtivSrch='';
 let activeTab='dashboard';
 let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='';
+let lastAtivAt='',lastAtivFile='';
 let wppUnreadCount=0,wppInitialized=false;
 const STORAGE_KEY='atrix:painel:bases:v1';
 const STORAGE_META_KEY='atrix:painel:bases:meta:v1';
@@ -8104,7 +8183,7 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','encerrados','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso'];
+const ALL_PANEL_KEYS=['abertos','encerrados','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes'];
 const DEFAULT_VIEWER_PANELS=['abertos','encerrados','repetidos','rede','ofs'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
@@ -8140,6 +8219,7 @@ const PANEL_NAV_MAP={
   whatsapp:['ntab-wpp','dash-mod-whatsapp'],
   dsrVolante:['ntab-dsr','dash-mod-dsr'],
   sobreaviso:['ntab-sobreaviso','dash-mod-sobreaviso'],
+  ativacoes:['ntab-ativacoes','dash-mod-ativacoes'],
 };
 function applyPanelVisibility(){
   ALL_PANEL_KEYS.forEach(tab=>{
@@ -8459,7 +8539,7 @@ function deleteUser(username){
   saveState();
   renderUsers();
 }
-const PANEL_LABELS={abertos:'B2B Abertos',encerrados:'B2B Encerrados',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso'};
+const PANEL_LABELS={abertos:'B2B Abertos',encerrados:'B2B Encerrados',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -8978,7 +9058,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivStatus,selAtivAging,selAtivSeg,selAtivFc,selAtivGp,selAtivSrch,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -9031,6 +9111,31 @@ function applyState(st,label){
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar B2B Abertos:',e);}
+  try{
+    if(Array.isArray(st.dAtiv)){
+      dAtiv=st.dAtiv;
+      if(Object.prototype.hasOwnProperty.call(st,'lastAtivAt'))lastAtivAt=st.lastAtivAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastAtivFile'))lastAtivFile=st.lastAtivFile||'';
+      const _ativUfs=[...new Set(dAtiv.map(d=>d.uf).filter(Boolean))];
+      const _ativCids=[...new Set(dAtiv.map(d=>d.cid).filter(Boolean))];
+      const _ativSts=[...new Set(dAtiv.map(d=>d.depAgr).filter(Boolean))];
+      const _ativSegs=[...new Set(dAtiv.map(d=>d.seg).filter(Boolean))];
+      const _ativFcs=[...new Set(dAtiv.map(d=>ATIV_FC_LABEL(d.fc)))];
+      const _ativGps=[...new Set(dAtiv.map(d=>ATIV_GP_LABEL(d.gp)))];
+      selAtivUf=asArr(st.selAtivUf).filter(v=>_ativUfs.includes(v));
+      selAtivCidade=asArr(st.selAtivCidade).filter(v=>_ativCids.includes(v));
+      selAtivStatus=asArr(st.selAtivStatus).filter(v=>_ativSts.includes(v));
+      selAtivAging=asArr(st.selAtivAging).filter(v=>ATIV_AGING_ORDER.includes(v));
+      selAtivSeg=asArr(st.selAtivSeg).filter(v=>_ativSegs.includes(v));
+      selAtivFc=asArr(st.selAtivFc).filter(v=>_ativFcs.includes(v));
+      selAtivGp=asArr(st.selAtivGp).filter(v=>_ativGps.includes(v));
+      selAtivSrch=st.selAtivSrch||'';
+      renderPanelAtivacoes();
+      document.getElementById('empty-ativ').style.display=dAtiv.length?'none':'block';
+      document.getElementById('dash-ativ').style.display=dAtiv.length?'block':'none';
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Ativações B2B:',e);}
   try{
     if(Array.isArray(st.dEnc)){
       dEnc=normalizeEncState(st.dEnc);
@@ -9726,6 +9831,13 @@ document.getElementById('file-enc').addEventListener('change',function(e){
   rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.toUpperCase().includes('BASE'))||wb.SheetNames[0];procEnc(XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''}),f.name)}catch(er){alert('Erro: '+er.message)}};
   rd.readAsArrayBuffer(f);this.value='';
 });
+document.getElementById('file-ativ').addEventListener('change',function(e){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.toUpperCase().includes('BASE'))||wb.SheetNames[0];procAtiv(XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''}),f.name)}catch(er){alert('Erro: '+er.message)}};
+  rd.readAsArrayBuffer(f);this.value='';
+});
 document.getElementById('file-fuel').addEventListener('change',function(e){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
   const f=e.target.files[0];if(!f)return;
@@ -9810,6 +9922,7 @@ function updateCentralStatus(){
   const fmtBaseInfo=(file,at)=>[file,at].filter(Boolean).join(' · ');
   const abTs=lastAbAt?fmtBaseInfo(lastAbFile,lastAbAt):'';
   const encTs=lastEncAt?fmtBaseInfo(lastEncFile,lastEncAt):'';
+  const ativTs=lastAtivAt?fmtBaseInfo(lastAtivFile,lastAtivAt):'';
   const ofsTs=ofsMeta&&ofsMeta.uploadedAt?fmtBaseInfo(ofsMeta.fname,ofsMeta.uploadedAt):'';
   // Rede timestamp from ts-text element if available
   const redeEl=document.getElementById('rede-ts-text');
@@ -9820,6 +9933,7 @@ function updateCentralStatus(){
   const fuelTs=fuelBaseAt?fmtBaseInfo(fuelBaseFile,fuelBaseAt):'';
   setSlot('ab',typeof dAb!=='undefined'&&dAb.length>0,abTs);
   setSlot('enc',typeof dEnc!=='undefined'&&dEnc.length>0,encTs);
+  setSlot('ativ',typeof dAtiv!=='undefined'&&dAtiv.length>0,ativTs);
   setSlot('rede',(typeof rdeBD!=='undefined'&&rdeBD.length>0)||(typeof rdeAD!=='undefined'&&rdeAD.length>0),redeTs);
   setSlot('ofs',typeof ofsRows!=='undefined'&&ofsRows.length>0,ofsTs);
   setSlot('fuel',aleloCount>0,fuelTs);
@@ -9998,6 +10112,276 @@ function procEnc(raw,fname){
   const encSubbarEl=document.getElementById('enc-subbar');
   if(encSubbarEl)encSubbarEl.classList.toggle('visible',showControls&&dEnc.length>0);
   saveState();autoSyncAfterBaseUpload('B2B Encerrados');updateClearBtns();
+}
+
+/* ═══════════════ PAINEL ATIVAÇÕES B2B ═══════════════ */
+function procAtiv(raw,fname){
+  dAtiv=raw.filter(r=>gv(r,['ticket_id'])!==''||gv(r,['protocolo'])!=='').map(r=>({
+    id:String(gv(r,['ticket_id'])||'').trim(),
+    prot:String(gv(r,['protocolo'])||'').trim(),
+    cli:String(gv(r,['cliente'])||'').trim(),
+    cid:String(gv(r,['cidade'])||'').trim(),
+    uf:String(gv(r,['uf_servico'])||'').trim().toUpperCase(),
+    tit:String(gv(r,['titulo'])||'').trim(),
+    dep:String(gv(r,['dep_atual'])||'').trim(),
+    tipo:String(gv(r,['tipo_solicitacao_atual'])||'').trim(),
+    seg:String(gv(r,['segmento_cliente'])||'').trim(),
+    prod:String(gv(r,['produto'])||'').trim(),
+    depAgr:String(gv(r,['dep_agrupado'])||'').trim(),
+    ana:String(gv(r,['analista'])||'').trim(),
+    aging:String(gv(r,['aging'])||'').trim(),
+    fc:String(gv(r,['forecast'])||'').trim(),
+    gp:String(gv(r,['grupo_produto'])||'').trim(),
+    mrr:Number(gv(r,['valor']))||0,
+    ss:String(gv(r,['status_servico'])||'').trim(),
+  }));
+  lastAtivFile=fname||'';
+  lastAtivAt=now2();
+  const _ufs=[...new Set(dAtiv.map(d=>d.uf).filter(Boolean))];
+  const _cids=[...new Set(dAtiv.map(d=>d.cid).filter(Boolean))];
+  const _sts=[...new Set(dAtiv.map(d=>d.depAgr).filter(Boolean))];
+  const _segs=[...new Set(dAtiv.map(d=>d.seg).filter(Boolean))];
+  const _fcs=[...new Set(dAtiv.map(d=>ATIV_FC_LABEL(d.fc)))];
+  const _gps=[...new Set(dAtiv.map(d=>ATIV_GP_LABEL(d.gp)))];
+  selAtivUf=selAtivUf.filter(v=>_ufs.includes(v));
+  selAtivCidade=selAtivCidade.filter(v=>_cids.includes(v));
+  selAtivStatus=selAtivStatus.filter(v=>_sts.includes(v));
+  selAtivAging=selAtivAging.filter(v=>ATIV_AGING_ORDER.includes(v));
+  selAtivSeg=selAtivSeg.filter(v=>_segs.includes(v));
+  selAtivFc=selAtivFc.filter(v=>_fcs.includes(v));
+  selAtivGp=selAtivGp.filter(v=>_gps.includes(v));
+  renderPanelAtivacoes();
+  document.getElementById('empty-ativ').style.display='none';
+  document.getElementById('dash-ativ').style.display='block';
+  saveState();autoSyncAfterBaseUpload('Ativações B2B');updateClearBtns();
+}
+
+const ATIV_AGING_ORDER=['Até 30d','Entre 30d e 60d','Maior que 60d'];
+const ATIV_AGING_COLOR={'Até 30d':'#34c759','Entre 30d e 60d':'#ff9500','Maior que 60d':'#ff3b30'};
+function ATIV_FC_LABEL(v){ return v || 'Não informado'; }
+const ATIV_FC_COLOR={'Sim':'#34c759','Risco':'#ff9500','Não':'#ff3b30','Não informado':'#8e8e93'};
+function ATIV_GP_LABEL(v){ return v || 'Sem grupo'; }
+
+function ativBaseData(){ return dAtiv.filter(r=>r.ss==='Pending'); }
+function ativMatchesSearch(r,sr){
+  if(!sr) return true;
+  return nk(r.cli).includes(sr)||nk(r.id).includes(sr)||nk(r.prot).includes(sr)||nk(r.cid).includes(sr)||nk(r.ana).includes(sr)||nk(r.tit).includes(sr)||nk(r.prod).includes(sr);
+}
+/* Filtro cruzado em N-vias: cada dimensão, ao computar sua PRÓPRIA lista de opções, aplica
+   todos os OUTROS filtros ativos exceto ela mesma. */
+function ativApplyFilters(data,exclude){
+  const sr=nk(selAtivSrch);
+  return data.filter(r=>{
+    if(exclude!=='uf'&&selAtivUf.length&&!selAtivUf.includes(r.uf))return false;
+    if(exclude!=='cidade'&&selAtivCidade.length&&!selAtivCidade.includes(r.cid))return false;
+    if(exclude!=='status'&&selAtivStatus.length&&!selAtivStatus.includes(r.depAgr))return false;
+    if(exclude!=='aging'&&selAtivAging.length&&!selAtivAging.includes(r.aging))return false;
+    if(exclude!=='seg'&&selAtivSeg.length&&!selAtivSeg.includes(r.seg))return false;
+    if(exclude!=='fc'&&selAtivFc.length&&!selAtivFc.includes(ATIV_FC_LABEL(r.fc)))return false;
+    if(exclude!=='gp'&&selAtivGp.length&&!selAtivGp.includes(ATIV_GP_LABEL(r.gp)))return false;
+    if(exclude!=='srch'&&!ativMatchesSearch(r,sr))return false;
+    return true;
+  });
+}
+function ativScopeAll(){ return ativApplyFilters(ativBaseData(),null); }
+function ativScopeFor(dim){ return ativApplyFilters(ativBaseData(),dim); }
+function ativUniqSorted(arr){ return [...new Set(arr)].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')); }
+
+function refreshAtivFilters(){
+  const ufOpts=ativUniqSorted(ativScopeFor('uf').map(r=>r.uf));
+  const cidOpts=ativUniqSorted(ativScopeFor('cidade').map(r=>r.cid));
+  const stOpts=ativUniqSorted(ativScopeFor('status').map(r=>r.depAgr));
+  const agingOpts=ATIV_AGING_ORDER.filter(a=>ativScopeFor('aging').some(r=>r.aging===a));
+  const segOpts=ativUniqSorted(ativScopeFor('seg').map(r=>r.seg));
+  const fcOpts=ativUniqSorted(ativScopeFor('fc').map(r=>ATIV_FC_LABEL(r.fc)));
+  const gpOpts=ativUniqSorted(ativScopeFor('gp').map(r=>ATIV_GP_LABEL(r.gp)));
+
+  selAtivUf=selAtivUf.filter(v=>ufOpts.includes(v));
+  selAtivCidade=selAtivCidade.filter(v=>cidOpts.includes(v));
+  selAtivStatus=selAtivStatus.filter(v=>stOpts.includes(v));
+  selAtivAging=selAtivAging.filter(v=>agingOpts.includes(v));
+  selAtivSeg=selAtivSeg.filter(v=>segOpts.includes(v));
+  selAtivFc=selAtivFc.filter(v=>fcOpts.includes(v));
+  selAtivGp=selAtivGp.filter(v=>gpOpts.includes(v));
+
+  mselRender('ativ-uf',ufOpts,selAtivUf,{allLabel:'Todas UFs',onChange:(v)=>{selAtivUf=v;renderPanelAtivacoes();saveState();}});
+  mselRender('ativ-cidade',cidOpts,selAtivCidade,{allLabel:'Todas cidades',onChange:(v)=>{selAtivCidade=v;renderPanelAtivacoes();saveState();}});
+  mselRender('ativ-status',stOpts,selAtivStatus,{allLabel:'Todos status macro',onChange:(v)=>{selAtivStatus=v;renderPanelAtivacoes();saveState();}});
+  mselRender('ativ-aging',agingOpts,selAtivAging,{allLabel:'Todos aging',onChange:(v)=>{selAtivAging=v;renderPanelAtivacoes();saveState();}});
+  mselRender('ativ-seg',segOpts,selAtivSeg,{allLabel:'Todos segmentos',onChange:(v)=>{selAtivSeg=v;renderPanelAtivacoes();saveState();}});
+  mselRender('ativ-fc',fcOpts,selAtivFc,{allLabel:'Todos forecasts',onChange:(v)=>{selAtivFc=v;renderPanelAtivacoes();saveState();}});
+  mselRender('ativ-gp',gpOpts,selAtivGp,{allLabel:'Todos grupos',onChange:(v)=>{selAtivGp=v;renderPanelAtivacoes();saveState();}});
+}
+function onAtivSrchChange(v){ selAtivSrch=v; renderPanelAtivacoes(); saveState(); }
+function limparFiltrosAtiv(){
+  selAtivUf=[];selAtivCidade=[];selAtivStatus=[];selAtivAging=[];selAtivSeg=[];selAtivFc=[];selAtivGp=[];selAtivSrch='';
+  const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
+  renderPanelAtivacoes();saveState();
+}
+
+function ativBrlK(v){ v=Number(v||0); return v>=1000?('R$ '+(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil'):brl(v); }
+
+function renderAtivKPIs(){
+  const totalTickets=dAtiv.length;
+  const totalMRR=dAtiv.reduce((s,r)=>s+r.mrr,0);
+  const ativos=dAtiv.filter(r=>r.ss==='Active');
+  const ativosMRR=ativos.reduce((s,r)=>s+r.mrr,0);
+
+  const scope=ativScopeAll();
+  const scopeMRR=scope.reduce((s,r)=>s+r.mrr,0);
+  const pctBase=totalTickets?(scope.length/totalTickets*100):0;
+  const critico=scope.filter(r=>r.aging==='Maior que 60d');
+  const criticoMRR=critico.reduce((s,r)=>s+r.mrr,0);
+  const semAnalista=scope.filter(r=>!r.ana);
+
+  const kpis=[
+    {cls:'c-blue',label:'Tickets na Base',val:totalTickets,sub:brl(totalMRR)+' MRR total'},
+    {cls:'c-orange',label:'Backlog Ativação',val:scope.length,sub:`<span class="tag tag-orange">${pctBase.toFixed(1)}%</span> da base`},
+    {cls:'c-orange',label:'MRR em Backlog',val:ativBrlK(scopeMRR),sub:brl(scopeMRR)},
+    {cls:'c-red',label:'Crítico >60d',val:critico.length,sub:brl(criticoMRR)+' em risco'},
+    {cls:'c-green',label:'Ativados',val:ativos.length,sub:brl(ativosMRR)+' MRR ativo'},
+    {cls:'c-teal',label:'Sem Analista',val:semAnalista.length,sub:'do backlog filtrado'},
+  ];
+  document.getElementById('ativ-kpi-row').innerHTML=kpis.map(k=>
+    `<div class="mc ${k.cls}"><div class="mc-label">${k.label}</div><div class="mc-val"><b>${k.val}</b></div><div class="mc-sub">${k.sub}</div></div>`
+  ).join('');
+}
+function renderAtivThermo(){
+  const scope=ativScopeAll();
+  const total=scope.length||1;
+  document.getElementById('ativ-thermo-body').innerHTML=ATIV_AGING_ORDER.map(a=>{
+    const sub=scope.filter(r=>r.aging===a);
+    const mrr=sub.reduce((s,r)=>s+r.mrr,0);
+    const pct=Math.round(sub.length/total*100);
+    return `<div class="brow"><div class="blbl">${a}</div><div class="btrk"><div class="bfil" style="width:${pct}%;background:${ATIV_AGING_COLOR[a]}"></div></div><div class="bn">${sub.length} tickets · ${brl(mrr)}</div></div>`;
+  }).join('');
+}
+
+let chAtivForecast=null,chAtivUf=null,chAtivDep=null,chAtivCidade=null,chAtivAnalista=null,chAtivGrupo=null;
+function renderAtivCharts(){
+  const scope=ativScopeAll();
+  const dk=document.body.dataset.theme==='dark';
+  const tick=dk?'#636366':'#8e8e93',grid=dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)';
+  const tooltipBase={backgroundColor:dk?'#1c1c1e':'#ffffff',titleColor:dk?'#f2f2f7':'#1c1c1e',bodyColor:dk?'#ebebf0':'#3a3a3c',borderColor:dk?'rgba(255,255,255,.12)':'rgba(0,0,0,.1)',borderWidth:1,cornerRadius:8,padding:10};
+  const commonOpts={responsive:true,maintainAspectRatio:false};
+
+  {
+    const byFc={};scope.forEach(r=>{const k=ATIV_FC_LABEL(r.fc);byFc[k]=(byFc[k]||0)+r.mrr;});
+    const labels=Object.keys(byFc).sort((a,b)=>byFc[b]-byFc[a]);
+    const ctx=document.getElementById('ativ-ch-forecast');
+    if(chAtivForecast){chAtivForecast.destroy();chAtivForecast=null;}
+    if(ctx)chAtivForecast=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data:labels.map(l=>byFc[l]),backgroundColor:labels.map(l=>ATIV_FC_COLOR[l]||'#af52de'),borderWidth:2,borderColor:tooltipBase.backgroundColor}]},
+      options:{...commonOpts,cutout:'62%',plugins:{legend:{position:'bottom',labels:{color:tick,boxWidth:12,font:{size:10}}},tooltip:{...tooltipBase,callbacks:{label:c=>c.label+': '+brl(c.parsed)}}}}});
+  }
+  {
+    const byUf={};scope.forEach(r=>{byUf[r.uf]=(byUf[r.uf]||0)+r.mrr;});
+    const labels=Object.keys(byUf).sort((a,b)=>byUf[b]-byUf[a]);
+    const ctx=document.getElementById('ativ-ch-uf');
+    if(chAtivUf){chAtivUf.destroy();chAtivUf=null;}
+    if(ctx)chAtivUf=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:labels.map(l=>byUf[l]),backgroundColor:'rgba(0,122,255,.75)',borderRadius:8,borderSkipped:false}]},
+      options:{...commonOpts,plugins:{legend:{display:false},tooltip:{...tooltipBase,callbacks:{label:c=>brl(c.parsed.y)}}},scales:{x:{grid:{display:false},ticks:{color:tick}},y:{grid:{color:grid},ticks:{color:tick,callback:v=>ativBrlK(v)}}}}});
+  }
+  {
+    const byDep={};scope.forEach(r=>{byDep[r.dep]=(byDep[r.dep]||0)+1;});
+    const labels=Object.keys(byDep).sort((a,b)=>byDep[b]-byDep[a]);
+    const maxV=labels.length?byDep[labels[0]]:0;
+    const ctx=document.getElementById('ativ-ch-dep');
+    if(chAtivDep){chAtivDep.destroy();chAtivDep=null;}
+    if(ctx)chAtivDep=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:labels.map(l=>byDep[l]),backgroundColor:labels.map(l=>byDep[l]===maxV?'#ff3b30':'#34c759'),borderRadius:8,borderSkipped:false}]},
+      options:{...commonOpts,indexAxis:'y',plugins:{legend:{display:false},tooltip:{...tooltipBase,callbacks:{label:c=>c.parsed.x+' tickets'}}},scales:{x:{grid:{color:grid},ticks:{color:tick,stepSize:1}},y:{grid:{display:false},ticks:{color:tick,font:{size:10}}}}}});
+  }
+  {
+    const byCid={};scope.forEach(r=>{if(!byCid[r.cid])byCid[r.cid]={n:0,mrr:0};byCid[r.cid].n++;byCid[r.cid].mrr+=r.mrr;});
+    const top=Object.entries(byCid).sort((a,b)=>b[1].n-a[1].n).slice(0,10);
+    const labels=top.map(([k])=>k);
+    const ctx=document.getElementById('ativ-ch-cidade');
+    if(chAtivCidade){chAtivCidade.destroy();chAtivCidade=null;}
+    if(ctx)chAtivCidade=new Chart(ctx,{type:'bar',data:{labels,datasets:[
+        {label:'Tickets',data:top.map(([,v])=>v.n),backgroundColor:'rgba(0,122,255,.75)',borderRadius:6,yAxisID:'y'},
+        {label:'MRR',data:top.map(([,v])=>v.mrr),type:'line',borderColor:'#ff9500',backgroundColor:'rgba(255,149,0,.15)',tension:.35,yAxisID:'y1',pointRadius:3}
+      ]},options:{...commonOpts,plugins:{legend:{position:'bottom',labels:{color:tick,boxWidth:12,font:{size:10}}},tooltip:{...tooltipBase,callbacks:{label:c=>c.dataset.label==='MRR'?('MRR: '+brl(c.parsed.y)):(c.parsed.y+' tickets')}}},
+        scales:{x:{grid:{display:false},ticks:{color:tick,font:{size:9},maxRotation:35}},y:{position:'left',grid:{color:grid},ticks:{color:tick,stepSize:1}},y1:{position:'right',grid:{display:false},ticks:{color:tick,callback:v=>ativBrlK(v)}}}}});
+  }
+  {
+    const byAna={};scope.forEach(r=>{const k=r.ana||'Sem analista';byAna[k]=(byAna[k]||0)+1;});
+    const labels=Object.keys(byAna).sort((a,b)=>byAna[b]-byAna[a]).slice(0,15);
+    const ctx=document.getElementById('ativ-ch-analista');
+    if(chAtivAnalista){chAtivAnalista.destroy();chAtivAnalista=null;}
+    if(ctx)chAtivAnalista=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:labels.map(l=>byAna[l]),backgroundColor:labels.map(l=>l==='Sem analista'?'#ff9500':'rgba(90,200,250,.8)'),borderRadius:8,borderSkipped:false}]},
+      options:{...commonOpts,indexAxis:'y',plugins:{legend:{display:false},tooltip:{...tooltipBase,callbacks:{label:c=>c.parsed.x+' tickets'}}},scales:{x:{grid:{color:grid},ticks:{color:tick,stepSize:1}},y:{grid:{display:false},ticks:{color:tick,font:{size:9}}}}}});
+  }
+  {
+    const byGp={};scope.forEach(r=>{const k=ATIV_GP_LABEL(r.gp);byGp[k]=(byGp[k]||0)+r.mrr;});
+    const labels=Object.keys(byGp).sort((a,b)=>byGp[b]-byGp[a]);
+    const ctx=document.getElementById('ativ-ch-grupo');
+    if(chAtivGrupo){chAtivGrupo.destroy();chAtivGrupo=null;}
+    if(ctx)chAtivGrupo=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:labels.map(l=>byGp[l]),backgroundColor:'rgba(175,82,222,.75)',borderRadius:8,borderSkipped:false}]},
+      options:{...commonOpts,plugins:{legend:{display:false},tooltip:{...tooltipBase,callbacks:{label:c=>brl(c.parsed.y)}}},scales:{x:{grid:{display:false},ticks:{color:tick,font:{size:9},maxRotation:35}},y:{grid:{color:grid},ticks:{color:tick,callback:v=>ativBrlK(v)}}}}});
+  }
+}
+
+const ATIV_COLS=[
+  {k:'id',l:'Ticket ID'},{k:'prot',l:'Protocolo'},{k:'cli',l:'Cliente'},{k:'cid',l:'Cidade'},
+  {k:'uf',l:'UF'},{k:'tit',l:'Título'},{k:'dep',l:'Departamento Atual'},{k:'tipo',l:'Tipo Solicitação'},
+  {k:'seg',l:'Segmento'},{k:'prod',l:'Produto'},{k:'depAgr',l:'Status Macro'},{k:'ana',l:'Analista'},
+  {k:'aging',l:'Aging'},{k:'fc',l:'Forecast'},{k:'gp',l:'Grupo Produto'},{k:'mrr',l:'MRR'},
+];
+let sortAtivCol='mrr',sortAtivDir=-1;
+function sortAtivBy(col){
+  if(sortAtivCol===col)sortAtivDir=-sortAtivDir;else{sortAtivCol=col;sortAtivDir=col==='mrr'?-1:1;}
+  renderAtivTable();
+}
+function renderAtivTheadRow(){
+  document.getElementById('ativ-thead-row').innerHTML=ATIV_COLS.map(c=>
+    `<th class="${sortAtivCol===c.k?'sorted':''}" onclick="sortAtivBy('${c.k}')">${c.l}${sortAtivCol===c.k?(sortAtivDir>0?' ▲':' ▼'):''}</th>`
+  ).join('');
+}
+function ativAgingBadge(a){
+  const cls=a==='Até 30d'?'b-green':a==='Entre 30d e 60d'?'b-orange':'b-red';
+  return `<span class="badge ${cls}">${eh(a||'—')}</span>`;
+}
+function ativFcBadge(fc){
+  const lbl=ATIV_FC_LABEL(fc);
+  const cls=lbl==='Sim'?'b-green':lbl==='Risco'?'b-orange':lbl==='Não'?'b-red':'b-teal';
+  return `<span class="badge ${cls}">${eh(lbl)}</span>`;
+}
+function renderAtivTable(){
+  const scope=ativScopeAll();
+  const rows=scope.slice().sort((a,b)=>{
+    let av=a[sortAtivCol],bv=b[sortAtivCol];
+    if(sortAtivCol==='mrr'){ return (av-bv)*sortAtivDir; }
+    av=String(av||'');bv=String(bv||'');
+    return av.localeCompare(bv,'pt-BR')*sortAtivDir;
+  });
+  const totalMRR=rows.reduce((s,r)=>s+r.mrr,0);
+  document.getElementById('ativ-tbl-cnt').textContent=rows.length+' tickets · '+brl(totalMRR);
+  document.getElementById('ativ-tbl-body').innerHTML=rows.map(r=>`<tr>
+    <td class="tid">${eh(r.id)}</td>
+    <td class="tid">${eh(r.prot)}</td>
+    <td title="${eh(r.cli)}">${eh(r.cli)}</td>
+    <td>${eh(r.cid)}</td>
+    <td>${eh(r.uf)}</td>
+    <td title="${eh(r.tit)}">${eh(r.tit)}</td>
+    <td>${eh(r.dep)}</td>
+    <td>${eh(r.tipo)}</td>
+    <td>${eh(r.seg)}</td>
+    <td>${eh(r.prod)}</td>
+    <td>${eh(r.depAgr)}</td>
+    <td>${eh(r.ana||'Sem analista')}</td>
+    <td>${ativAgingBadge(r.aging)}</td>
+    <td>${ativFcBadge(r.fc)}</td>
+    <td>${eh(ATIV_GP_LABEL(r.gp))}</td>
+    <td style="text-align:right;font-weight:600">${brl(r.mrr)}</td>
+  </tr>`).join('')||`<tr><td colspan="${ATIV_COLS.length}" class="nores">Nenhum ticket encontrado com os filtros atuais</td></tr>`;
+}
+function renderPanelAtivacoes(){
+  if(!dAtiv.length)return;
+  renderAtivTheadRow();
+  refreshAtivFilters();
+  renderAtivKPIs();
+  renderAtivThermo();
+  renderAtivCharts();
+  renderAtivTable();
 }
 
 /* ─── WEEK / CLUSTER SELECTORS ─── */
@@ -13802,13 +14186,13 @@ function atrixGlobalSearch(value){
 }
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','encerrados','rede','combustivel','repetidos','monitor','whatsapp','ofs'].includes(tab))tab='dashboard';
+  if(!['dashboard','abertos','encerrados','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isEnc=tab==='encerrados',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs';
+  const isDash=tab==='dashboard',isAb=tab==='abertos',isEnc=tab==='encerrados',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isEnc?'enc':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':'rep');
+  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isEnc?'enc':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
@@ -13819,6 +14203,7 @@ function switchTab(tab,persist=true){
   document.getElementById('panel-monitor').classList.toggle('active',isMon);
   document.getElementById('panel-whatsapp').classList.toggle('active',isWpp);
   document.getElementById('panel-ofs').classList.toggle('active',isOfs);
+  document.getElementById('panel-ativacoes').classList.toggle('active',isAtiv);
   const showEncControls=isEnc&&dEnc.length>0;
   const encSubbar=document.getElementById('enc-subbar');
   if(encSubbar)encSubbar.classList.toggle('visible',showEncControls);
@@ -13833,6 +14218,7 @@ function switchTab(tab,persist=true){
   if(isRede){rdeSyncControls();renderRede();}
   if(isMon)loadMonitorPanel();
   if(isWpp){wppUnreadCount=0;updateWppBadge();loadWhatsAppPanel();}
+  if(isAtiv)renderPanelAtivacoes();
   if(isDash)renderExecutiveDashboard();
   updateShellTitle(tab);
   closeMobileNav();
