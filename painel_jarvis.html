@@ -7728,13 +7728,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
         <div class="modal-form-grid">
           <div class="mfg-field">
-            <span class="mfg-label">POP (Nomenclatura) *</span>
-            <input class="finput" id="prevent-pop" list="prevent-pop-list" autocomplete="off" placeholder="Digite p/ buscar na base oficial (ex.: POP-MA-...)…" oninput="onPreventPopInput()">
-            <datalist id="prevent-pop-list"></datalist>
-          </div>
-          <div class="mfg-field">
             <span class="mfg-label">Localidade / UF *</span>
-            <select class="fsel" id="prevent-loc">
+            <select class="fsel" id="prevent-loc" onchange="onPreventLocChange()">
               <option value="AC">AC — Acre</option><option value="AL">AL — Alagoas</option>
               <option value="AP">AP — Amapá</option><option value="AM">AM — Amazonas</option>
               <option value="BA">BA — Bahia</option><option value="CE">CE — Ceará</option>
@@ -7753,15 +7748,22 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </div>
           <div class="mfg-field">
             <span class="mfg-label">Cidade</span>
-            <input class="finput" id="prevent-cidade" placeholder="Preenchido automaticamente ao selecionar o POP">
+            <input class="finput" id="prevent-cidade" list="prevent-cidade-list" autocomplete="off" placeholder="Selecione a UF p/ ver as cidades da base" oninput="onPreventCidadeInput()">
+            <datalist id="prevent-cidade-list"></datalist>
+          </div>
+          <div class="mfg-field">
+            <span class="mfg-label">POP (Nomenclatura) *</span>
+            <input class="finput" id="prevent-pop" list="prevent-pop-list" autocomplete="off" placeholder="Digite p/ buscar (filtrado pela UF/Cidade acima)…" oninput="onPreventPopInput()">
+            <datalist id="prevent-pop-list"></datalist>
           </div>
           <div class="mfg-field">
             <span class="mfg-label">Endereço / referência</span>
             <input class="finput" id="prevent-end" placeholder="Rua, bairro, cidade">
           </div>
           <div class="mfg-field">
-            <span class="mfg-label">Responsável técnico *</span>
-            <input class="finput" id="prevent-resp" placeholder="Nome do técnico / equipe">
+            <span class="mfg-label">Responsável técnico * <span class="card-action" style="font-size:11px;font-weight:600;margin-left:4px" onclick="abrirModalPreventTecnico()"><i class="ti ti-user-plus" style="font-size:10px"></i> Cadastrar</span></span>
+            <input class="finput" id="prevent-resp" list="prevent-resp-list" placeholder="Nome do técnico / equipe">
+            <datalist id="prevent-resp-list"></datalist>
           </div>
           <div class="mfg-field">
             <span class="mfg-label">Periodicidade</span>
@@ -8240,6 +8242,26 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="modal-ft">
       <span class="card-action" style="color:var(--tx3)" onclick="closePreventModal()">Cancelar</span>
       <span class="card-action" style="color:var(--blue);font-weight:600" onclick="confirmPreventConclude()"><i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Registrar conclusão</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-prevent-tecnico" style="display:none" onclick="if(event.target===this)fecharModalPreventTecnico()">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-hd">
+      <span class="modal-title"><i class="ti ti-user-plus"></i> Cadastrar Técnico / Equipe</span>
+      <button class="modal-close" onclick="fecharModalPreventTecnico()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="mfg-field mfg-full">
+        <span class="mfg-label">Nome do técnico ou equipe</span>
+        <input class="finput" id="prevent-tec-novo" placeholder="Ex.: João Silva / Equipe Norte" onkeydown="if(event.key==='Enter'){event.preventDefault();addPreventTecnico();}">
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <span class="card-action" style="color:var(--blue);font-weight:600" onclick="addPreventTecnico()"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Adicionar</span>
+      </div>
+      <div class="sh-line" style="margin:16px 0 10px"></div>
+      <div id="prevent-tec-list"></div>
     </div>
   </div>
 </div>
@@ -9267,7 +9289,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,dPrevent,dPop,lastPopAt,lastPopFile,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -9363,10 +9385,18 @@ function applyState(st,label){
       dPop=st.dPop;
       if(Object.prototype.hasOwnProperty.call(st,'lastPopAt'))lastPopAt=st.lastPopAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastPopFile'))lastPopFile=st.lastPopFile||'';
+      renderPreventCidadeDatalist();
       renderPreventPopDatalist();
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar catálogo de POPs:',e);}
+  try{
+    if(Array.isArray(st.dPrevTecnicos)){
+      dPrevTecnicos=st.dPrevTecnicos;
+      renderPreventRespDatalist();
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar catálogo de técnicos/equipes:',e);}
   try{
     if(Array.isArray(st.dEnc)){
       dEnc=normalizeEncState(st.dEnc);
@@ -10816,6 +10846,9 @@ let prevEditId=null,prevConcludeId=null;
    de agendamento. Não é a lista de preventivas em si (isso é dPrevent). */
 let dPop=[];
 let lastPopAt='',lastPopFile='';
+/* Catálogo simples de técnicos/equipes cadastrados manualmente pelo admin, para
+   sugestão no campo Responsável técnico (não vem de planilha nenhuma). */
+let dPrevTecnicos=[];
 
 /* Lê por posição (E,F,K,O,AD = índices 4,5,10,14,29), não por nome de cabeçalho:
    a aba Oficial tem centenas de colunas com cabeçalho em branco (repetido), então
@@ -10830,25 +10863,104 @@ function procPop(matrix,fname){
   })).filter(p=>p.nome);
   lastPopFile=fname||'';
   lastPopAt=now2();
+  renderPreventCidadeDatalist();
   renderPreventPopDatalist();
   saveState();
   updateCentralStatus();
 }
+function prevPopCidadesForUf(uf){
+  return [...new Set(dPop.filter(p=>!uf||p.uf===uf).map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function prevPopNomesFiltered(uf,cidade){
+  return dPop.filter(p=>(!uf||p.uf===uf)&&(!cidade||p.cidade.toUpperCase()===cidade.toUpperCase())).map(p=>p.nome).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+/* Cascata UF → Cidade → POP: cada campo restringe as opções (datalist) do próximo,
+   mas continuam sendo <input list="…"> (não <select> travado) — se a base ainda não
+   foi carregada ou o POP/cidade for novo (fora do catálogo), o usuário digita livre. */
+function renderPreventCidadeDatalist(){
+  const dl=document.getElementById('prevent-cidade-list');
+  if(!dl)return;
+  const locEl=document.getElementById('prevent-loc');
+  const uf=locEl?locEl.value:'';
+  dl.innerHTML=prevPopCidadesForUf(uf).map(c=>`<option value="${eh(c)}">`).join('');
+}
 function renderPreventPopDatalist(){
   const dl=document.getElementById('prevent-pop-list');
   if(!dl)return;
-  dl.innerHTML=dPop.map(p=>`<option value="${eh(p.nome)}">`).join('');
+  const locEl=document.getElementById('prevent-loc'),cidEl=document.getElementById('prevent-cidade');
+  const uf=locEl?locEl.value:'', cidade=cidEl?cidEl.value.trim():'';
+  dl.innerHTML=prevPopNomesFiltered(uf,cidade).map(n=>`<option value="${eh(n)}">`).join('');
+}
+function onPreventLocChange(){
+  /* UF mudou: cidade/POP escolhidos antes pertenciam à UF anterior — reseta ambos
+     em vez de deixar uma combinação inconsistente (ex.: UF=SP com cidade do MA) */
+  document.getElementById('prevent-cidade').value='';
+  document.getElementById('prevent-pop').value='';
+  renderPreventCidadeDatalist();
+  renderPreventPopDatalist();
+}
+function onPreventCidadeInput(){
+  renderPreventPopDatalist();
 }
 /* ao digitar/selecionar um POP já catalogado, preenche UF/Cidade/Endereço automaticamente
-   (o usuário ainda pode ajustar os campos depois — não trava a edição) */
+   (o usuário ainda pode ajustar os campos depois — não trava a edição); também
+   re-sincroniza as cascatas para o gate ficar consistente independente da ordem
+   em que os campos foram preenchidos */
 function onPreventPopInput(){
   const val=document.getElementById('prevent-pop').value.trim();
   if(!val)return;
   const match=dPop.find(p=>p.nome.toUpperCase()===val.toUpperCase());
   if(!match)return;
   if(match.uf)document.getElementById('prevent-loc').value=match.uf;
+  renderPreventCidadeDatalist();
   document.getElementById('prevent-cidade').value=match.cidade||'';
+  renderPreventPopDatalist();
   document.getElementById('prevent-end').value=match.endereco||'';
+}
+
+/* ─── Cadastro de Técnico/Equipe (catálogo simples p/ sugestão no Responsável) ─── */
+function renderPreventRespDatalist(){
+  const dl=document.getElementById('prevent-resp-list');
+  if(!dl)return;
+  dl.innerHTML=dPrevTecnicos.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).map(t=>`<option value="${eh(t.nome)}">`).join('');
+}
+function renderPreventTecList(){
+  const el=document.getElementById('prevent-tec-list');
+  if(!el)return;
+  if(!dPrevTecnicos.length){el.innerHTML=`<p style="font-size:12.5px;color:var(--tx3)">Nenhum técnico/equipe cadastrado ainda.</p>`;return;}
+  el.innerHTML=dPrevTecnicos.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).map(t=>`
+    <div class="chk-row" style="grid-template-columns:1fr auto">
+      <span class="chk-name">${eh(t.nome)}</span>
+      <span class="card-action" style="color:var(--red)" onclick="delPreventTecnico('${t.id}')">Remover</span>
+    </div>`).join('');
+}
+function abrirModalPreventTecnico(){
+  if(!canEdit())return;
+  renderPreventTecList();
+  const el=document.getElementById('prevent-tec-novo');if(el)el.value='';
+  document.getElementById('modal-prevent-tecnico').style.display='flex';
+}
+function fecharModalPreventTecnico(){
+  document.getElementById('modal-prevent-tecnico').style.display='none';
+}
+function addPreventTecnico(){
+  if(!canEdit())return;
+  const input=document.getElementById('prevent-tec-novo');
+  const nome=input.value.trim();
+  if(!nome){alert('Digite o nome do técnico ou equipe.');return;}
+  if(dPrevTecnicos.some(t=>t.nome.toUpperCase()===nome.toUpperCase())){alert('Esse técnico/equipe já está cadastrado.');return;}
+  dPrevTecnicos.push({id:'TEC'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),nome});
+  input.value='';
+  saveState();
+  renderPreventTecList();renderPreventRespDatalist();
+}
+function delPreventTecnico(id){
+  if(!canEdit())return;
+  const t=dPrevTecnicos.find(x=>x.id===id);if(!t)return;
+  if(confirm(`Remover "${t.nome}" da lista de técnicos/equipes?`)){
+    dPrevTecnicos=dPrevTecnicos.filter(x=>x.id!==id);
+    saveState();renderPreventTecList();renderPreventRespDatalist();
+  }
 }
 
 function prevToday(){ return new Date().toISOString().slice(0,10); }
@@ -10889,6 +11001,7 @@ function resetPreventForm(){
   const per=document.getElementById('prevent-per');if(per)per.value='Trimestral';
   const dt=document.getElementById('prevent-data');if(dt)dt.value=prevToday();
   document.querySelectorAll('.prevent-sysbox').forEach(c=>c.checked=true);
+  renderPreventCidadeDatalist();renderPreventPopDatalist();renderPreventRespDatalist();
 }
 function savePreventiva(){
   if(!canEdit())return;
@@ -10937,10 +11050,13 @@ function editPreventiva(id){
   prevEditId=id;
   document.getElementById('prevent-form-title').textContent='Editar preventiva — '+p.pop;
   document.getElementById('prevent-save-btn').innerHTML='<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Salvar alterações';
-  document.getElementById('prevent-pop').value=p.pop;
   document.getElementById('prevent-loc').value=p.localidade;
+  renderPreventCidadeDatalist();
   document.getElementById('prevent-cidade').value=p.cidade||'';
+  renderPreventPopDatalist();
+  document.getElementById('prevent-pop').value=p.pop;
   document.getElementById('prevent-end').value=p.endereco||'';
+  renderPreventRespDatalist();
   document.getElementById('prevent-resp').value=p.responsavel;
   document.getElementById('prevent-per').value=p.periodicidade;
   document.getElementById('prevent-data').value=p.dataAgendada;
