@@ -9816,9 +9816,12 @@ async function loadAtrixUpdatesAtiv(){
     let count=0;
     dAtiv.forEach(ticket=>{
       const up=updates[ticket.id]||null;
-      if(!up||!up.substatus)return;
+      if(!up||!up.updatedAt)return;
       const next=String(up.substatus||'').trim();
-      if(next&&next!==ticket.substatus){ticket.substatus=next;count++;}
+      let touched=false;
+      if(next&&next!==ticket.substatus){ticket.substatus=next;touched=true;}
+      if(up.updatedAt!==ticket.substatusAt){ticket.substatusAt=up.updatedAt;touched=true;}
+      if(touched)count++;
     });
     if(count>0){renderPanelAtivacoes();console.log(`[Atrix Agent] ${count} substatus(es) de Ativações B2B aplicado(s) do agente.`);saveState();}
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações de Ativações B2B:',e);}
@@ -10194,6 +10197,7 @@ function procAtiv(raw,fname){
       tipoAbertura:String(v[21]||'').trim(),
       fc:String(v[27]||'').trim(),
       substatus:String(v[30]||'').trim(),
+      substatusAt:'',
       aging:String(v[33]||'').trim(),
       tecnologia:String(v[57]||'').trim(),
       mrr:Number(gv(r,['valor']))||0,
@@ -10405,7 +10409,7 @@ const ATIV_COLS=[
   {k:'id',l:'Ticket ID'},{k:'prot',l:'Protocolo'},{k:'cli',l:'Cliente'},{k:'cid',l:'Cidade'},
   {k:'uf',l:'UF'},{k:'dtAbertura',l:'Data Abertura'},{k:'dep',l:'Departamento Atual'},{k:'diasTramitacao',l:'Dias Tramitação'},
   {k:'seg',l:'Segmento'},{k:'prod',l:'Produto'},{k:'tipoAbertura',l:'Tipo Abertura'},{k:'fc',l:'Forecast'},
-  {k:'substatus',l:'Substatus'},{k:'aging',l:'Aging'},{k:'tecnologia',l:'Tecnologia'},{k:'mrr',l:'MRR'},
+  {k:'substatus',l:'Substatus'},{k:'substatusAt',l:'Últ. Atualização Substatus'},{k:'aging',l:'Aging'},{k:'tecnologia',l:'Tecnologia'},{k:'mrr',l:'MRR'},
 ];
 let sortAtivCol='mrr',sortAtivDir=-1;
 function sortAtivBy(col){
@@ -10425,6 +10429,22 @@ function ativFcBadge(fc){
   const lbl=ATIV_FC_LABEL(fc);
   const cls=lbl==='Sim'?'b-green':lbl==='Risco'?'b-orange':lbl==='Não'?'b-red':'b-teal';
   return `<span class="badge ${cls}">${eh(lbl)}</span>`;
+}
+/* nk() normaliza (remove acento, maiúsculas, só alfanumérico) para casar valores como
+   "Cliente Validação"/"cliente validacao" independente de acento/capitalização vindos da base */
+function ativSubstatusBadge(sub){
+  const s=String(sub||'').trim();
+  if(!s)return `<span class="badge b-yellow">Sem substatus</span>`;
+  const k=nk(s);
+  if(k==='CLIENTEVALIDACAO'||k==='PENDENTEVALIDACAO')return `<span class="badge b-green">${eh(s)}</span>`;
+  return eh(s);
+}
+function ativSubstatusAtFmt(iso){
+  if(!iso)return '—';
+  const d=new Date(iso);
+  if(isNaN(d.getTime()))return '—';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function renderAtivTable(){
   const scope=ativScopeAll();
@@ -10454,7 +10474,8 @@ function renderAtivTable(){
     <td>${eh(r.prod)}</td>
     <td>${eh(r.tipoAbertura)}</td>
     <td>${ativFcBadge(r.fc)}</td>
-    <td>${eh(r.substatus||'Sem substatus')}</td>
+    <td>${ativSubstatusBadge(r.substatus)}</td>
+    <td>${ativSubstatusAtFmt(r.substatusAt)}</td>
     <td>${ativAgingBadge(r.aging)}</td>
     <td>${eh(r.tecnologia||'Não informado')}</td>
     <td style="text-align:right;font-weight:600">${brl(r.mrr)}</td>
