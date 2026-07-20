@@ -705,6 +705,8 @@ body {
 .tsec-title { font-size: 13px; font-weight: 600; color: var(--tx); letter-spacing: -.01em; }
 .tsec-meta { font-size: 11px; color: var(--tx3); display: flex; align-items: center; gap: 10px; }
 .fbar { display: flex; gap: 8px; padding: 10px 16px; flex-wrap: wrap; align-items: center; border-bottom: .5px solid var(--bd); background: var(--surface2); }
+.fbar-nowrap { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fbar-nowrap .msel, .fbar-nowrap .finput { flex-shrink: 0; }
 .fsel {
   appearance: none; -webkit-appearance: none;
   background: var(--surface); border: .5px solid var(--bd2);
@@ -6454,6 +6456,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <i class="ti ti-clipboard-list"></i><span class="ntab-label"> B2B Abertos</span>
         <span class="ntab-badge nb-blue" id="nb-ab">0</span>
       </button>
+      <button class="ntab" id="ntab-ativacoes" onclick="switchTab('ativacoes')">
+        <i class="ti ti-plug-connected"></i><span class="ntab-label"> Ativações B2B</span>
+      </button>
       <button class="ntab" id="ntab-enc" onclick="switchTab('encerrados')">
         <i class="ti ti-circle-check"></i><span class="ntab-label"> B2B Encerrados</span>
         <span class="ntab-badge nb-green" id="nb-enc">0</span>
@@ -6484,9 +6489,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </button>
       <button class="ntab" id="ntab-sobreaviso" onclick="window.location.href='painel_sobreaviso.html'">
         <i class="ti ti-headset"></i><span class="ntab-label"> Sobreaviso</span>
-      </button>
-      <button class="ntab" id="ntab-ativacoes" onclick="switchTab('ativacoes')">
-        <i class="ti ti-plug-connected"></i><span class="ntab-label"> Ativações B2B</span>
       </button>
     </div>
 
@@ -6597,6 +6599,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="dash-modules">
       <button class="dash-module" id="dash-mod-abertos" onclick="switchTab('abertos')"><i class="ti ti-clipboard-list"></i><strong>B2B Abertos</strong><span>SLA, substatus, técnicos, MOP/EPS e tabela operacional.</span></button>
+      <button class="dash-module" id="dash-mod-ativacoes" onclick="switchTab('ativacoes')"><i class="ti ti-plug-connected"></i><strong>Ativações B2B</strong><span>MRR contratado aguardando ativação técnica, aging, gargalos e carteira por analista.</span></button>
       <button class="dash-module" id="dash-mod-encerrados" onclick="switchTab('encerrados')"><i class="ti ti-circle-check"></i><strong>B2B Encerrados</strong><span>Período, cluster, causa raiz, semana e indicadores históricos.</span></button>
       <button class="dash-module" id="dash-mod-rede" onclick="switchTab('rede')"><i class="ti ti-router"></i><strong>Rede</strong><span>Metas, prazo, outlier, TME, TMR e performance por cluster.</span></button>
       <button class="dash-module" id="dash-mod-ofs" onclick="switchTab('ofs')"><i class="ti ti-chart-bar"></i><strong>Produtividade OFS</strong><span>Técnicos, ordens, alertas e ranking de produtividade.</span></button>
@@ -6605,7 +6608,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-whatsapp" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><strong>WhatsApp</strong><span>Espelho interno do WhatsApp Web dentro do painel.</span></button>
       <button class="dash-module" id="dash-mod-dsr" onclick="window.location.href='painel_dsr_volante.html'"><i class="ti ti-calendar-time"></i><strong>DSR Volante</strong><span>Escala automática de folgas, auditoria CLT e controle de horas extras.</span></button>
       <button class="dash-module" id="dash-mod-sobreaviso" onclick="window.location.href='painel_sobreaviso.html'"><i class="ti ti-headset"></i><strong>Sobreaviso</strong><span>Escala de sobreaviso por rodízio, cálculo de horas e auditoria CLT (art. 244).</span></button>
-      <button class="dash-module" id="dash-mod-ativacoes" onclick="switchTab('ativacoes')"><i class="ti ti-plug-connected"></i><strong>Ativações B2B</strong><span>MRR contratado aguardando ativação técnica, aging, gargalos e carteira por analista.</span></button>
       <button class="dash-module" onclick="openCentral()"><i class="ti ti-database"></i><strong>Central de Dados</strong><span>Controle de importação, status, validação e limpeza de bases.</span></button>
     </div>
   </div>
@@ -7616,7 +7618,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="tsec-title">Lista de Tickets</span>
           <div class="tsec-meta"><span id="ativ-tbl-cnt"></span><span class="card-action" onclick="limparFiltrosAtiv()">Limpar filtros</span></div>
         </div>
-        <div class="fbar">
+        <div class="fbar fbar-nowrap">
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-uf" onclick="mselToggleOpen('ativ-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-cidade" onclick="mselToggleOpen('ativ-cidade')"><span class="msel-btn-lbl">Todas cidades</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-ativ-dep" onclick="mselToggleOpen('ativ-dep')"><span class="msel-btn-lbl">Todos departamentos</span></button></div>
@@ -10133,6 +10135,7 @@ function procAtiv(raw,fname){
     const v=Object.values(r);
     return {
       id:String(v[0]||'').trim(),
+      link:atrixTicketLink(v[0]),
       prot:String(v[2]||'').trim(),
       cli:String(v[3]||'').trim(),
       cid:String(v[5]||'').trim(),
@@ -10386,8 +10389,13 @@ function renderAtivTable(){
   });
   const totalMRR=rows.reduce((s,r)=>s+r.mrr,0);
   document.getElementById('ativ-tbl-cnt').textContent=rows.length+' tickets · '+brl(totalMRR);
-  document.getElementById('ativ-tbl-body').innerHTML=rows.map(r=>`<tr>
-    <td class="tid">${eh(r.id)}</td>
+  document.getElementById('ativ-tbl-body').innerHTML=rows.map(r=>{
+    /* mesma regra de link do B2B Abertos: se der pra montar uma URL válida do Atrix a
+       partir do ticket, o ID vira link clicável com o ícone de abrir em nova aba */
+    const cleanLink=safeUrl(r.link);
+    const idCell=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(r.id)}</a><i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i>`:eh(r.id);
+    return `<tr>
+    <td class="tid">${idCell}</td>
     <td class="tid">${eh(r.prot)}</td>
     <td title="${eh(r.cli)}">${eh(r.cli)}</td>
     <td>${eh(r.cid)}</td>
@@ -10403,7 +10411,8 @@ function renderAtivTable(){
     <td>${ativAgingBadge(r.aging)}</td>
     <td>${eh(r.tecnologia||'Não informado')}</td>
     <td style="text-align:right;font-weight:600">${brl(r.mrr)}</td>
-  </tr>`).join('')||`<tr><td colspan="${ATIV_COLS.length}" class="nores">Nenhum ticket encontrado com os filtros atuais</td></tr>`;
+  </tr>`;
+  }).join('')||`<tr><td colspan="${ATIV_COLS.length}" class="nores">Nenhum ticket encontrado com os filtros atuais</td></tr>`;
 }
 function renderPanelAtivacoes(){
   if(!dAtiv.length)return;
