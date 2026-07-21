@@ -131,6 +131,7 @@ body {
 .nb-purple { background: var(--purple-bg); color: var(--purple); }
 .nb-wpp { background: #e53935; color: #fff; font-weight: 700; }
 .nb-ofs { background: rgba(249,115,22,.12); color: #f97316; }
+.nb-red { background: #e53935; color: #fff; font-weight: 700; }
 /* ── OFS PANEL ── */
 .ofs-kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:18px; }
 .ofs-kpi { background:var(--surface); border:.5px solid var(--bd); border-radius:var(--rl); padding:14px 14px 12px; position:relative; overflow:hidden; }
@@ -371,6 +372,8 @@ body {
 .mon-action:hover { opacity: .88; border-color: rgba(14,165,233,.45); transform: translateY(-1px); }
 .mon-unread-pill { min-height: 32px; padding: 7px 11px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: .5px solid rgba(255,59,48,.24); background: rgba(255,59,48,.10); color: var(--red); font-size: 11px; font-weight: 800; white-space: nowrap; }
 .mon-unread-pill i { font-size: 14px; }
+.ativ-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; animation: ativLivePulse 1.2s ease-in-out infinite; }
+@keyframes ativLivePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.65); } }
 .mon-frame-wrap { min-height: 560px; position: relative; background: var(--surface2); border: .5px solid var(--bd); border-radius: var(--rl); box-shadow: var(--shadow-sm); overflow: hidden; }
 .mon-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--surface2); }
 .mon-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--surface2); color: var(--tx3); font-size: 12px; pointer-events: none; transition: opacity .18s, visibility .18s; z-index: 1; }
@@ -1284,6 +1287,18 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .chk-row select{padding:6px 8px;border:.5px solid var(--bd);border-radius:7px;background:var(--surface);color:var(--tx);font-size:12px}
 .chk-obs{grid-column:1/-1;margin-top:-3px}
 .chk-obs input{width:100%;padding:6px 8px;border:.5px solid var(--bd);border-radius:7px;font-size:12px;background:var(--surface);color:var(--tx)}
+.pv-info{cursor:pointer}
+.pv-info:hover .pv-pop{text-decoration:underline}
+.pv-photos-grid{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pv-photo-item{position:relative;width:74px;height:74px}
+.pv-photo-thumb{width:74px;height:74px;object-fit:cover;border-radius:8px;border:.5px solid var(--bd);cursor:pointer;display:block}
+.pv-photo-del{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.pv-detail-row{padding:9px 0;border-bottom:1px solid var(--bd)}
+.pv-detail-row:last-child{border-bottom:none}
+.pv-detail-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.pv-detail-obs{font-size:12px;color:var(--tx3);margin-top:4px}
+.pv-lightbox-img{max-width:90vw;max-height:85vh;border-radius:10px;display:block;margin:0 auto}
 @media(max-width:820px){
   .prevent-sysgrid{grid-template-columns:1fr 1fr}
   .pv-card{grid-template-columns:1fr}
@@ -6513,6 +6528,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </button>
       <button class="ntab" id="ntab-preventivas" onclick="switchTab('preventivas')">
         <i class="ti ti-calendar"></i><span class="ntab-label"> Preventivas POP</span>
+        <span class="ntab-badge nb-red" id="nb-prevent" style="display:none">0</span>
       </button>
       <button class="ntab" id="ntab-monitor" onclick="switchTab('monitor')">
         <i class="ti ti-radar"></i><span class="ntab-label"> Monitor</span>
@@ -7712,6 +7728,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
     </div>
 
+    <div id="prevent-remind-pill" class="mon-unread-pill" style="display:none;margin-bottom:14px;cursor:pointer" onclick="showPreventSubtab('ac');document.getElementById('prevent-q-status').value='';document.getElementById('prevent-q-sort').value='status';renderPrevent()">
+      <i class="ti ti-bell-ringing"></i><span id="prevent-remind-txt">0 preventiva(s) requer(em) atenção</span>
+    </div>
+
     <div class="section-hd">Visão geral <span class="sh-line"></span></div>
     <div class="mrow" id="prevent-kpi-row"></div>
 
@@ -8230,6 +8250,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="modal-body">
       <p style="font-size:12.5px;color:var(--tx3);margin:-4px 0 14px" id="prevent-modal-sub"></p>
       <div id="prevent-checklist"></div>
+      <div class="sh-line" style="margin:16px 0 10px"></div>
+      <span class="card-title" style="font-size:13px">Fotos anexadas (evidências)</span>
+      <div style="margin-top:8px">
+        <label class="card-action" style="cursor:pointer"><i class="ti ti-photo" style="font-size:11px;vertical-align:-1px"></i> Adicionar foto
+          <input type="file" accept="image/*" multiple style="display:none" id="prevent-foto-input" onchange="prevAddConcludePhoto(this)">
+        </label>
+      </div>
+      <div class="pv-photos-grid" id="prevent-foto-preview"></div>
       <div class="mfg-field" style="margin-top:16px">
         <span class="mfg-label">Data de conclusão</span>
         <input class="finput" type="date" id="prevent-data-conc">
@@ -8244,6 +8272,23 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <span class="card-action" style="color:var(--blue);font-weight:600" onclick="confirmPreventConclude()"><i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Registrar conclusão</span>
     </div>
   </div>
+</div>
+
+<div class="modal-overlay" id="modal-prevent-view" style="display:none" onclick="if(event.target===this)closePreventDetails()">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-hd">
+      <span class="modal-title"><i class="ti ti-calendar"></i> <span id="prevent-view-title">Detalhes da preventiva</span></span>
+      <button class="modal-close" onclick="closePreventDetails()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" id="prevent-view-body"></div>
+    <div class="modal-ft">
+      <span class="card-action" style="color:var(--tx3)" onclick="closePreventDetails()">Fechar</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-prevent-lightbox" style="display:none;background:rgba(0,0,0,.82)" onclick="closePreventLightbox()">
+  <img id="prevent-lightbox-img" class="pv-lightbox-img" src="" alt="Foto anexada" onclick="event.stopPropagation()">
 </div>
 
 <div class="modal-overlay" id="modal-prevent-tecnico" style="display:none" onclick="if(event.target===this)fecharModalPreventTecnico()">
@@ -9735,6 +9780,7 @@ function _startAtrixReminderCountdown(isoStr){
    ficarem sincronizados com o ciclo automático real. */
 let _atrixPollTimer=null;
 function iniciarPollingAtrixUpdates(){
+  if(dAtiv.length&&typeof renderAtivKPIs==='function')renderAtivKPIs();
   setTimeout(loadAtrixUpdates,3000);
   setTimeout(loadAtrixUpdatesAtiv,3500);
   clearInterval(_atrixPollTimer);
@@ -9747,6 +9793,7 @@ function iniciarPollingAtrixUpdates(){
 
 let _atrixPickupTimer=null;
 let _atrixRunningNowAtiv=false,_atrixPickupTimerAtiv=null;
+let ativRunLiveCount=0,_atrixLiveTimerAtiv=null;
 
 /* ── Gate público + limpeza de execuções presas ──────────────────────────────
    Regra: atualização do Atrix só é disparada pelo botão "Iniciar". O gate remoto
@@ -10064,6 +10111,38 @@ async function loadAtrixUpdates(){
    ver nota em pushAtrixTicketsJsonAtiv() sobre por que não entra no mesmo ciclo de 30min
    do B2B Abertos. Aplicação do substatus é uma troca direta (sem relógio de SLA/pausa
    como no B2B Abertos, que não existe em Ativações). */
+const ATIV_UPDATE_COUNTER_KEY='jarvis:ativ:updateCounter:v1';
+function ativLoadUpdateCounter(){
+  let raw={};
+  try{raw=JSON.parse(localStorage.getItem(ATIV_UPDATE_COUNTER_KEY)||'{}')||{};}catch(e){raw={};}
+  const today=_atrixTodayStr();
+  return raw.date===today?raw:{date:today,count:0,lastAt:''};
+}
+function ativBumpUpdateCounter(n){
+  const cur=ativLoadUpdateCounter();
+  cur.count+=n;cur.lastAt=new Date().toISOString();
+  try{localStorage.setItem(ATIV_UPDATE_COUNTER_KEY,JSON.stringify(cur));}catch(e){}
+  if(typeof renderAtivKPIs==='function'&&dAtiv.length)renderAtivKPIs();
+}
+/* Contador "ao vivo" — só existe enquanto _atrixRunningNowAtiv está true (rodada disparada
+   pelo botão Iniciar). Soma independente do contador diário, zerada a cada nova rodada, e
+   alimentada por um polling mais rápido (_atrixLiveTimerAtiv) só para dar sensação de tempo
+   real; o polling de 3min (_atrixPickupTimerAtiv) continua sendo o único responsável por
+   decidir quando a rodada terminou. */
+function _startAtivLiveTimer(){
+  clearInterval(_atrixLiveTimerAtiv);
+  ativRunLiveCount=0;
+  if(typeof renderAtivKPIs==='function'&&dAtiv.length)renderAtivKPIs();
+  _atrixLiveTimerAtiv=setInterval(()=>{
+    if(!_atrixRunningNowAtiv){
+      clearInterval(_atrixLiveTimerAtiv);_atrixLiveTimerAtiv=null;
+      if(typeof renderAtivKPIs==='function'&&dAtiv.length)renderAtivKPIs();
+      return;
+    }
+    if(document.visibilityState!=='visible')return;
+    if(typeof loadAtrixUpdatesAtiv==='function')loadAtrixUpdatesAtiv();
+  },15000);
+}
 async function loadAtrixUpdatesAtiv(){
   const rawUrl=`https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/data/atrix_updates_ativacoes.json`;
   try{
@@ -10080,7 +10159,13 @@ async function loadAtrixUpdatesAtiv(){
       if(up.updatedAt!==ticket.substatusAt){ticket.substatusAt=up.updatedAt;touched=true;}
       if(touched)count++;
     });
-    if(count>0){renderPanelAtivacoes();console.log(`[Atrix Agent] ${count} substatus(es) de Ativações B2B aplicado(s) do agente.`);saveState();}
+    if(count>0){
+      if(_atrixRunningNowAtiv)ativRunLiveCount+=count;
+      ativBumpUpdateCounter(count);
+      renderPanelAtivacoes();
+      console.log(`[Atrix Agent] ${count} substatus(es) de Ativações B2B aplicado(s) do agente.`);
+      saveState();
+    }
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações de Ativações B2B:',e);}
 }
 
@@ -10114,6 +10199,7 @@ async function _dispatchAtrixWorkflowAtiv(){
     throw new Error(_atrixFriendlyGhError(err));
   }
   _atrixRunningNowAtiv=true;
+  _startAtivLiveTimer();
   const triggeredAt=new Date().toISOString();
   /* ~700 chamados varridos um a um (sequencial) podem levar bem mais que os ~15min
      do ciclo do B2B Abertos (~30 tickets) — intervalo de checagem maior e mais
@@ -10128,6 +10214,7 @@ async function _dispatchAtrixWorkflowAtiv(){
     if(sucesso||tries>=60){
       clearInterval(_atrixPickupTimerAtiv);_atrixPickupTimerAtiv=null;
       _atrixRunningNowAtiv=false;
+      if(dAtiv.length&&typeof renderAtivKPIs==='function')renderAtivKPIs();
       if(!sucesso)console.warn('[Atrix Agent] Ciclo de Ativações B2B não concluiu dentro do tempo esperado.');
     }
   },180000);
@@ -10657,6 +10744,11 @@ function renderAtivKPIs(){
   const semSubstatus=scope.filter(r=>!r.substatus);
   const diasMedios=scope.length?(scope.reduce((s,r)=>s+r.diasTramitacao,0)/scope.length):0;
 
+  const updCounter=ativLoadUpdateCounter();
+  const updSub=_atrixRunningNowAtiv
+    ? `<span class="ativ-live-dot"></span> atualizando ao vivo — ${ativRunLiveCount} nesta rodada`
+    : (updCounter.count?'último às '+new Date(updCounter.lastAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+' hoje':'nenhuma atualização hoje');
+
   const kpis=[
     {cls:'c-blue',label:'Tickets na Base',val:totalTickets,sub:brl(totalMRR)+' MRR total'},
     {cls:'c-orange',label:'Tickets Filtrados',val:scope.length,sub:`<span class="tag tag-orange">${pctBase.toFixed(1)}%</span> da base`},
@@ -10664,6 +10756,7 @@ function renderAtivKPIs(){
     {cls:'c-red',label:'Crítico >60d',val:critico.length,sub:brl(criticoMRR)+' em risco'},
     {cls:'c-teal',label:'Sem Substatus',val:semSubstatus.length,sub:'do recorte filtrado'},
     {cls:'c-green',label:'Dias médios em tramitação',val:diasMedios.toFixed(1),sub:'do recorte filtrado'},
+    {cls:_atrixRunningNowAtiv?'c-green':'c-blue',label:'Chamados Atualizados (Atrix)',val:updCounter.count,sub:updSub},
   ];
   document.getElementById('ativ-kpi-row').innerHTML=kpis.map(k=>
     `<div class="mc ${k.cls}"><div class="mc-label">${k.label}</div><div class="mc-val"><b>${k.val}</b></div><div class="mc-sub">${k.sub}</div></div>`
@@ -10841,8 +10934,10 @@ const PREV_SISTEMAS=[
 const PREV_COND=["Não avaliado","Conforme","Atenção","Crítico"];
 const PREV_PERIODO_MESES={Mensal:1,Bimestral:2,Trimestral:3,Semestral:6,Anual:12};
 const PREV_STATUS_BADGE={'Agendada':'b-blue','Em andamento':'b-orange','Concluída':'b-green','Atrasada':'b-red'};
+const PREV_CONDBADGE={'Não avaliado':'b-teal','Conforme':'b-green','Atenção':'b-orange','Crítico':'b-red'};
+const PREVENT_REMIND_SEEN_KEY='jarvis:prevent:remind:v1';
 let dPrevent=[];
-let prevEditId=null,prevConcludeId=null;
+let prevEditId=null,prevConcludeId=null,prevConcludePhotos=[],prevViewPhotos=[],prevViewId=null;
 /* Catálogo de POPs (aba "Oficial" da Base_Oficial_de_POP's_e_Endereços) — fonte de
    autocomplete para Nomenclatura/UF/Cidade/Endereço/Tipo de Collocation no formulário
    de agendamento. Não é a lista de preventivas em si (isso é dPrevent). */
@@ -11041,7 +11136,7 @@ function savePreventiva(){
     dPrevent.push({
       id:'PREV'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
       ...base, status:'Agendada', dataConclusao:'',
-      itens:sel.map(nome=>({nome,condicao:'Não avaliado',obs:''}))
+      itens:sel.map(nome=>({nome,condicao:'Não avaliado',obs:''})), fotos:[]
     });
   }
   saveState();renderPreventAll();resetPreventForm();showPreventSubtab('ac');
@@ -11093,15 +11188,38 @@ function openPreventConclude(id){
       </select>
       <div class="chk-obs"><input type="text" data-oi="${i}" class="finput" placeholder="Observação (opcional)" value="${eh(it.obs||'')}"></div>
     </div>`).join('');
+  prevConcludePhotos=(p.fotos||[]).slice();
+  renderPrevConcludePhotos();
   document.getElementById('modal-prevent-conclude').style.display='flex';
 }
+function renderPrevConcludePhotos(){
+  const g=document.getElementById('prevent-foto-preview');if(!g)return;
+  g.innerHTML=prevConcludePhotos.map((src,i)=>`
+    <div class="pv-photo-item">
+      <img class="pv-photo-thumb" src="${src}" onclick="openPreventLightbox(${i},'concludePhotos')">
+      <span class="pv-photo-del" onclick="prevRemoveConcludePhoto(${i})" title="Remover"><i class="ti ti-x"></i></span>
+    </div>`).join('');
+}
+function prevAddConcludePhoto(input){
+  const files=input&&input.files?[...input.files]:[];if(!files.length)return;
+  files.forEach(file=>{
+    const rd=new FileReader();
+    rd.onload=ev=>{prevConcludePhotos.push(String(ev.target.result||''));renderPrevConcludePhotos();};
+    rd.readAsDataURL(file);
+  });
+  input.value='';
+}
+function prevRemoveConcludePhoto(i){
+  prevConcludePhotos.splice(i,1);renderPrevConcludePhotos();
+}
 function closePreventModal(){
-  document.getElementById('modal-prevent-conclude').style.display='none';prevConcludeId=null;
+  document.getElementById('modal-prevent-conclude').style.display='none';prevConcludeId=null;prevConcludePhotos=[];
 }
 function confirmPreventConclude(){
   const p=dPrevent.find(x=>x.id===prevConcludeId);if(!p)return;
   document.querySelectorAll('.prevent-condsel').forEach(s=>{p.itens[+s.dataset.i].condicao=s.value;});
   document.querySelectorAll('#prevent-checklist [data-oi]').forEach(inp=>{p.itens[+inp.dataset.oi].obs=inp.value.trim();});
+  p.fotos=prevConcludePhotos.slice();
   p.status='Concluída';
   p.dataConclusao=document.getElementById('prevent-data-conc').value||prevToday();
   if(document.getElementById('prevent-next').checked){
@@ -11192,7 +11310,7 @@ function renderPrevent(){
     acts+=`<span class="card-action admin-only" onclick="editPreventiva('${p.id}')">Editar</span>`;
     acts+=`<span class="card-action admin-only" style="color:var(--red)" onclick="delPreventiva('${p.id}')">Excluir</span>`;
     return `<div class="pv-card st-${stKey}">
-      <div>
+      <div class="pv-info" onclick="openPreventDetails('${p.id}')" title="Clique para ver observações, checklist e fotos">
         <div class="pv-top">
           <span class="pv-pop">${eh(p.pop)}</span>
           <span class="badge b-teal">${eh(p.localidade)}</span>
@@ -11203,6 +11321,8 @@ function renderPrevent(){
           <span><i class="ti ti-repeat" style="font-size:11px"></i> ${eh(p.periodicidade)}</span>
           <span><i class="ti ti-user" style="font-size:11px"></i> ${eh(p.responsavel)}</span>
           <span><i class="ti ti-tools" style="font-size:11px"></i> ${p.itens.length} sistema(s)</span>
+          ${p.observacoes?`<span><i class="ti ti-notes" style="font-size:11px"></i> Observações</span>`:''}
+          ${(p.fotos||[]).length?`<span><i class="ti ti-photo" style="font-size:11px"></i> ${p.fotos.length} foto(s)</span>`:''}
           <span>${prevPrazoLabel(p)}</span>
         </div>
         ${p.cidade||p.endereco?`<div class="pv-meta"><span><i class="ti ti-map-pin" style="font-size:11px"></i> ${eh([p.cidade,p.endereco].filter(Boolean).join(' · '))}</span></div>`:''}
@@ -11216,6 +11336,89 @@ function renderPrevent(){
 function renderPreventAll(){
   renderPreventKPIs();
   renderPrevent();
+  updatePreventReminder();
+}
+function openPreventDetails(id){
+  const p=dPrevent.find(x=>x.id===id);if(!p)return;
+  prevViewId=id;prevViewPhotos=p.fotos||[];
+  const s=prevEffStatus(p);
+  document.getElementById('prevent-view-title').textContent=`${p.pop} — ${s}`;
+  const checklistHtml=p.itens.map(it=>`
+    <div class="pv-detail-row">
+      <div class="pv-detail-hd">
+        <span class="chk-name">${eh(it.nome)}</span>
+        <span class="badge ${PREV_CONDBADGE[it.condicao]||'b-teal'}">${eh(it.condicao||'Não avaliado')}</span>
+      </div>
+      ${it.obs?`<div class="pv-detail-obs">${eh(it.obs)}</div>`:''}
+    </div>`).join('')||'<p style="font-size:12.5px;color:var(--tx3)">Nenhum sistema cadastrado.</p>';
+  const photosHtml=prevViewPhotos.length?`<div class="pv-photos-grid">${prevViewPhotos.map((src,i)=>`
+      <div class="pv-photo-item"><img class="pv-photo-thumb" src="${src}" onclick="openPreventLightbox(${i},'viewPhotos')"></div>`).join('')}</div>`
+    :'<p style="font-size:12.5px;color:var(--tx3)">Nenhuma foto anexada.</p>';
+  document.getElementById('prevent-view-body').innerHTML=`
+    <div class="pv-meta" style="margin-top:0">
+      <span><i class="ti ti-map-pin" style="font-size:11px"></i> ${eh([p.localidade,p.cidade,p.endereco].filter(Boolean).join(' · '))}</span>
+    </div>
+    <div class="pv-meta">
+      <span><i class="ti ti-calendar" style="font-size:11px"></i> <b>${prevFmtData(p.dataAgendada)}</b></span>
+      <span><i class="ti ti-repeat" style="font-size:11px"></i> ${eh(p.periodicidade)}</span>
+      <span><i class="ti ti-user" style="font-size:11px"></i> ${eh(p.responsavel)}</span>
+      <span>${prevPrazoLabel(p)}</span>
+    </div>
+    <div class="sh-line" style="margin:14px 0 10px"></div>
+    <span class="card-title" style="font-size:13px">Observações do agendamento</span>
+    <p style="font-size:12.5px;color:var(--tx3);margin-top:6px">${p.observacoes?eh(p.observacoes):'Nenhuma observação registrada.'}</p>
+    <div class="sh-line" style="margin:14px 0 10px"></div>
+    <span class="card-title" style="font-size:13px">Checklist ${s==='Concluída'?'preenchido':'(pendente de conclusão)'}</span>
+    <div style="margin-top:6px">${checklistHtml}</div>
+    <div class="sh-line" style="margin:14px 0 10px"></div>
+    <span class="card-title" style="font-size:13px">Fotos anexadas</span>
+    <div style="margin-top:8px">${photosHtml}</div>`;
+  document.getElementById('modal-prevent-view').style.display='flex';
+}
+function closePreventDetails(){
+  document.getElementById('modal-prevent-view').style.display='none';prevViewId=null;prevViewPhotos=[];
+}
+function openPreventLightbox(i,source){
+  const arr=source==='concludePhotos'?prevConcludePhotos:prevViewPhotos;
+  const src=arr[i];if(!src)return;
+  document.getElementById('prevent-lightbox-img').src=src;
+  document.getElementById('modal-prevent-lightbox').style.display='flex';
+}
+function closePreventLightbox(){
+  document.getElementById('modal-prevent-lightbox').style.display='none';
+}
+function prevRemindCandidates(){
+  return dPrevent.filter(p=>{
+    const s=prevEffStatus(p);
+    if(s==='Concluída')return false;
+    if(s==='Atrasada')return true;
+    return prevDaysDiff(p.dataAgendada)<=3;
+  });
+}
+function updatePreventReminder(){
+  const candidates=prevRemindCandidates();
+  const nb=document.getElementById('nb-prevent');
+  if(nb){nb.style.display=candidates.length?'':'none';nb.textContent=candidates.length;}
+  const pill=document.getElementById('prevent-remind-pill'),txt=document.getElementById('prevent-remind-txt');
+  if(pill&&txt){
+    if(candidates.length){
+      pill.style.display='';
+      const atrasadas=candidates.filter(p=>prevEffStatus(p)==='Atrasada').length;
+      txt.textContent=`${candidates.length} preventiva(s) requer(em) atenção${atrasadas?` — ${atrasadas} atrasada(s)`:''}`;
+    }else pill.style.display='none';
+  }
+  let seen={date:'',ids:[]};
+  try{seen=JSON.parse(localStorage.getItem(PREVENT_REMIND_SEEN_KEY)||'{}')||{};}catch(e){seen={};}
+  const today=prevToday();
+  const seenIds=new Set(seen.date===today?(seen.ids||[]):[]);
+  const fresh=candidates.filter(p=>!seenIds.has(p.id));
+  if(fresh.length){
+    const atrasadas=fresh.filter(p=>prevEffStatus(p)==='Atrasada').length;
+    _ghToast(`⏰ ${fresh.length} preventiva(s) de POP requer(em) atenção${atrasadas?` (${atrasadas} atrasada(s))`:''}.`,'var(--orange)',8000);
+    try{monPlayAudioSrc(MON_AUDIO_SRC,()=>{});}catch(e){}
+  }
+  candidates.forEach(p=>seenIds.add(p.id));
+  try{localStorage.setItem(PREVENT_REMIND_SEEN_KEY,JSON.stringify({date:today,ids:[...seenIds]}));}catch(e){}
 }
 function exportPreventCSV(){
   if(dPrevent.length===0){alert('Não há preventivas para exportar.');return;}
