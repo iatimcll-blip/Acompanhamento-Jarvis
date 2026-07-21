@@ -15956,10 +15956,13 @@ function rdeWeeksForMonth(monthKey){
 }
 function rdeMonthForWeek(wk){if(!wk)return'';const all=[...rdeBD,...rdeAD];const idxs=[...new Set(all.filter(r=>rdeM.sem[r[2]]===wk).map(r=>r[1]))];return idxs.length===1?rdeM.mes[idxs[0]]||'':'';}
 function rdeMname(m){const mo={'01':'jan','02':'fev','03':'mar','04':'abr','05':'mai','06':'jun','07':'jul','08':'ago','09':'set','10':'out','11':'nov','12':'dez'};const p=String(m||'').split('-');return(mo[p[1]]||p[1]||m)+'/'+String(p[0]||'').slice(2);}
-/* Formata a chave de semana ("2026-W23") mantendo o ano ("S23/26") — a base de Rede
-   costuma abranger mais de um ano, e sem o ano toda semana 1-52 aparece duplicada nos
-   botões/gráficos (W23 de 2025 e W23 de 2026 ficavam com o mesmo rótulo, indistinguíveis). */
-function rdeWname(k){const s=String(k||'');const m=s.match(/^(\d{4})-W(\d{1,2})$/);if(!m)return s;return`S${m[2].padStart(2,'0')}/${m[1].slice(2)}`;}
+/* Formata a chave de semana ("2026-W23") como só "S23" — o ano só é anexado ("S23/26")
+   quando o recorte atual (rdeWyears) mistura mais de um ano; sem isso toda semana 1-52
+   aparece duplicada nos botões/gráficos (W23 de 2025 e de 2026 com o mesmo rótulo) quando
+   "Todos" os anos estão selecionados. Com um ano só selecionado (ou base de um ano só),
+   o ano já está implícito e não precisa repetir em cada semana. */
+function rdeWname(k,showYear){const s=String(k||'');const m=s.match(/^(\d{4})-W(\d{1,2})$/);if(!m)return s;return showYear?`S${m[2].padStart(2,'0')}/${m[1].slice(2)}`:`S${m[2].padStart(2,'0')}`;}
+function rdeWyears(keys){return new Set((keys||[]).map(k=>{const m=String(k||'').match(/^(\d{4})-W\d{1,2}$/);return m?m[1]:null;}).filter(Boolean));}
 function rdePKey(){return rdeGran==='w'?'w':'m';}
 function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
 function rdeTabFlat(){
@@ -16083,11 +16086,12 @@ function rdeSyncControls(){
   pr.style.display='flex';
   const flat=rdeGetAllFlat();const gk=rdePKey();
   const keys=[...new Set(flat.map(r=>r[gk]))].filter(Boolean).sort();
+  const wMultiYear=gk==='w'&&rdeWyears(keys).size>1;
   const seg=document.getElementById('rde-period-seg');
   if(seg)seg.innerHTML=keys.map(x=>{
     const sub=flat.filter(r=>r[gk]===x);
     const cnt=rdeCluster.length?sub.filter(r=>rdeClFilter(r.cl)).length:sub.length;
-    const lab=(gk==='w'?rdeWname(x):rdeMname(x))+` <span class="rede-cnt">${cnt}</span>`;
+    const lab=(gk==='w'?rdeWname(x,wMultiYear):rdeMname(x))+` <span class="rede-cnt">${cnt}</span>`;
     return`<button class="rede-sgbtn rede-pbtn${rdePeriod.includes(x)?' on':''}" onclick="rdePeriodClick('${eh(x)}')">${lab}</button>`;
   }).join('');
 }
@@ -16415,8 +16419,9 @@ function renderRede(){
   // Evolution series
   const evoUnit=document.getElementById('rde-evo-unit');if(evoUnit)evoUnit.textContent=gk==='w'?'semanal':'mensal';
   const allKeys=[...new Set(all.map(r=>r[gk]))].filter(Boolean).sort();
+  const rdeWMultiYear=gk==='w'&&rdeWyears(allKeys).size>1;
   const buckets=allKeys.map(x=>rdeAgg2(all.filter(r=>r[gk]===x)));
-  const labels=allKeys.map(x=>gk==='w'?rdeWname(x):rdeMname(x));
+  const labels=allKeys.map(x=>gk==='w'?rdeWname(x,rdeWMultiYear):rdeMname(x));
   // Line chart: Prazo & Outlier %
   if(rdeLineCh2){try{rdeLineCh2.destroy();}catch(e){}}
   const lcCv=document.getElementById('rde-line-ch');
@@ -16470,7 +16475,7 @@ function renderRede(){
   // Executive Report
   const rptEl=document.getElementById('rde-report');
   if(rptEl&&a.n>0){
-    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.map(rdeWname).join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
+    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.map(p=>rdeWname(p,rdeWMultiYear)).join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
     const clNames={'C':'MA CAP','I':'MA INT','P':'PI','N':'NORTE (PA/AM/AP)','EPS':'Ger EPS (MA CAP + NORTE)'};
     const tabTxt=rdeTab==='AMBOS'?'Backbone + Acesso':rdeTab==='ACESSO'?'Acesso':'Backbone';
     const clTxt=rdeCluster.length?` · ${rdeCluster.map(c=>clNames[c]||c).join('+')}`:'';
@@ -16499,7 +16504,7 @@ function renderRede(){
   const _ce=document.getElementById('rde-calls');
   if(rdeCallsOnRender){
     rdeCallsOnRender=false;
-    const _lbl=rdePeriod.length?(gk==='w'?rdePeriod.map(rdeWname).join('+'):rdePeriod.map(rdeMname).join('+')):'Acumulado';
+    const _lbl=rdePeriod.length?(gk==='w'?rdePeriod.map(p=>rdeWname(p,rdeWMultiYear)).join('+'):rdePeriod.map(rdeMname).join('+')):'Acumulado';
     rdeShowCalls('Chamados — '+_lbl,recs);
   }else if(_ce){_ce.style.display='none';}
   // ── 4-Analytics charts ──
