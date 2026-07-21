@@ -15784,12 +15784,16 @@ function rdeGv(r,cols){const m=Object.fromEntries(Object.keys(r).map(k=>[rdeNk(k
 function rdeNum(v){if(v===null||v===undefined||v==='')return 0;if(typeof v==='number')return v;return parseFloat(String(v).replace(',','.').replace(/[^\d.-]/g,''))||0}
 function rdeBoolish(v){const s=rdeNk(v);return v===1||v===true||['SIM','S','TRUE','YES','Y','1','NO PRAZO','DENTRO PRAZO','DENTRO SLA'].includes(s)}
 function rdeParseDateBR(v){if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v||'').trim();if(!raw)return null;const iso=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(iso){const x=new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]),Number(iso[4]||0),Number(iso[5]||0),Number(iso[6]||0));return isNaN(x)?null:x}const d=new Date(raw);if(!isNaN(d))return d;const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const y=Number(m[3].length===2?'20'+m[3]:m[3]);const x=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(x)?null:x}
-function rdeIsoWeek(d){if(!d)return 0;const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const y0=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x-y0)/86400000)+1)/7)}
+/* Retorna {y,w}: ano e semana ISO — usa o ano da quinta-feira daquela semana (padrão
+   ISO 8601), não o ano da data original. Sem isso, datas do fim de dezembro/início de
+   janeiro caem na semana 1/52-53 do ano "errado" (ex.: 31/12 pode ser semana 1 do ano
+   seguinte, mas v.getFullYear() ainda aponta pro ano anterior). */
+function rdeIsoWeek(d){if(!d)return{y:0,w:0};const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const y0=new Date(Date.UTC(x.getUTCFullYear(),0,1));return{y:x.getUTCFullYear(),w:Math.ceil((((x-y0)/86400000)+1)/7)}}
 function rdeClusterCode(v){const s=rdeNk(v);if(s.includes('CAP'))return'C';if(s.includes('NORTE')||s==='N'||s.includes('AM')||s.includes('AP')||s.includes('PA'))return'N';if(s.includes('PI')||s.includes('PIAUI')||s==='P'||s.includes('C31'))return'P';if(s.includes('INT')||s.includes('INTERIOR')||s==='I'||s.includes('MA')||s.includes('MARANHAO')||s.includes('C32'))return'I';return'I'}
 function rdeClusterFromRow(r){const uf=rdeNk(rdeGv(r,['UF','ufservico']));const cidade=rdeNk(rdeGv(r,['CIDADE','CIDADE_SIMPLES','cidadeservico','localidade']));const cluster=rdeGv(r,['cluster_calc','NOME CLUSTER','NOVO CLUSTER','CLUSTER','cluster','regional','regiao','area']);if(uf==='PI')return'P';if(uf==='AM'||uf==='AP'||uf==='PA')return'N';if(uf==='MA')return(cidade.includes('SAOLUIS')||cidade.includes('PACODOLUMIAR')||cidade.includes('RIBAMAR'))?'C':'I';return rdeClusterCode(cluster||uf||cidade)}
 function rdeEnsureLabel(arr,key,label){let i=arr.indexOf(key);if(i<0){arr.push(key);label&&arr===rdeM.mes?rdeM.ml.push(label):label&&arr===rdeM.sem&&rdeM.sl.push(label);i=arr.length-1}return i}
 function rdeMonthIndex(v){if(v instanceof Date&&!isNaN(v)){const key=`${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}`;return rdeEnsureLabel(rdeM.mes,key,rdeMlabel(key));}const raw=String(v||'').trim();if(!raw)return 0;const ym=raw.match(/^(\d{4})[-\/](\d{1,2})$|^(\d{1,2})[-\/](\d{4})$/);if(ym){const y=ym[1]||ym[4],mo=ym[2]||ym[3];const key=`${y}-${String(Number(mo)).padStart(2,'0')}`;return rdeEnsureLabel(rdeM.mes,key,rdeMlabel(key));}const d=rdeParseDateBR(raw);if(d)return rdeMonthIndex(d);const i=rdeM.ml.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.mes,raw,raw)}
-function rdeWeekIndex(v){if(v instanceof Date&&!isNaN(v)){const w=rdeIsoWeek(v);return rdeEnsureLabel(rdeM.sem,`${v.getFullYear()}-W${String(w).padStart(2,'0')}`,`S${String(w).padStart(2,'0')}`)}const raw=String(v||'').trim();if(!raw)return 0;const d=rdeParseDateBR(raw);if(d)return rdeWeekIndex(d);const n=Number((raw.match(/\d+/)||[])[0]||0);if(n>0)return rdeEnsureLabel(rdeM.sem,`2026-W${String(n).padStart(2,'0')}`,`S${String(n).padStart(2,'0')}`);const i=rdeM.sl.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.sem,raw,raw)}
+function rdeWeekIndex(v){if(v instanceof Date&&!isNaN(v)){const{y,w}=rdeIsoWeek(v);return rdeEnsureLabel(rdeM.sem,`${y}-W${String(w).padStart(2,'0')}`,`S${String(w).padStart(2,'0')}`)}const raw=String(v||'').trim();if(!raw)return 0;const d=rdeParseDateBR(raw);if(d)return rdeWeekIndex(d);const n=Number((raw.match(/\d+/)||[])[0]||0);if(n>0){const y=new Date().getFullYear();return rdeEnsureLabel(rdeM.sem,`${y}-W${String(n).padStart(2,'0')}`,`S${String(n).padStart(2,'0')}`);}const i=rdeM.sl.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.sem,raw,raw)}
 function rdeLabelIndex(arr,v){const raw=String(v||'Não informado').trim()||'Não informado';let i=arr.findIndex(x=>rdeNk(x)===rdeNk(raw));if(i<0){arr.push(raw);i=arr.length-1}return i}
 function rdeFmtDate(v){const d=rdeParseDateBR(v);if(d){const ht=d.getHours()||d.getMinutes()||d.getSeconds();return ht?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}return String(v||'').trim()||'-'}
 function rdeCompactDetail(r,kind,cl,mi,wi,prazo,out,tempo,label,impacto){
@@ -15952,6 +15956,10 @@ function rdeWeeksForMonth(monthKey){
 }
 function rdeMonthForWeek(wk){if(!wk)return'';const all=[...rdeBD,...rdeAD];const idxs=[...new Set(all.filter(r=>rdeM.sem[r[2]]===wk).map(r=>r[1]))];return idxs.length===1?rdeM.mes[idxs[0]]||'':'';}
 function rdeMname(m){const mo={'01':'jan','02':'fev','03':'mar','04':'abr','05':'mai','06':'jun','07':'jul','08':'ago','09':'set','10':'out','11':'nov','12':'dez'};const p=String(m||'').split('-');return(mo[p[1]]||p[1]||m)+'/'+String(p[0]||'').slice(2);}
+/* Formata a chave de semana ("2026-W23") mantendo o ano ("S23/26") — a base de Rede
+   costuma abranger mais de um ano, e sem o ano toda semana 1-52 aparece duplicada nos
+   botões/gráficos (W23 de 2025 e W23 de 2026 ficavam com o mesmo rótulo, indistinguíveis). */
+function rdeWname(k){const s=String(k||'');const m=s.match(/^(\d{4})-W(\d{1,2})$/);if(!m)return s;return`S${m[2].padStart(2,'0')}/${m[1].slice(2)}`;}
 function rdePKey(){return rdeGran==='w'?'w':'m';}
 function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
 function rdeTabFlat(){
@@ -16079,7 +16087,7 @@ function rdeSyncControls(){
   if(seg)seg.innerHTML=keys.map(x=>{
     const sub=flat.filter(r=>r[gk]===x);
     const cnt=rdeCluster.length?sub.filter(r=>rdeClFilter(r.cl)).length:sub.length;
-    const lab=(gk==='w'?String(x).replace(/^\d{4}-/,''):rdeMname(x))+` <span class="rede-cnt">${cnt}</span>`;
+    const lab=(gk==='w'?rdeWname(x):rdeMname(x))+` <span class="rede-cnt">${cnt}</span>`;
     return`<button class="rede-sgbtn rede-pbtn${rdePeriod.includes(x)?' on':''}" onclick="rdePeriodClick('${eh(x)}')">${lab}</button>`;
   }).join('');
 }
@@ -16408,7 +16416,7 @@ function renderRede(){
   const evoUnit=document.getElementById('rde-evo-unit');if(evoUnit)evoUnit.textContent=gk==='w'?'semanal':'mensal';
   const allKeys=[...new Set(all.map(r=>r[gk]))].filter(Boolean).sort();
   const buckets=allKeys.map(x=>rdeAgg2(all.filter(r=>r[gk]===x)));
-  const labels=allKeys.map(x=>gk==='w'?String(x).replace(/^\d{4}-/,''):rdeMname(x));
+  const labels=allKeys.map(x=>gk==='w'?rdeWname(x):rdeMname(x));
   // Line chart: Prazo & Outlier %
   if(rdeLineCh2){try{rdeLineCh2.destroy();}catch(e){}}
   const lcCv=document.getElementById('rde-line-ch');
@@ -16462,7 +16470,7 @@ function renderRede(){
   // Executive Report
   const rptEl=document.getElementById('rde-report');
   if(rptEl&&a.n>0){
-    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
+    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.map(rdeWname).join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
     const clNames={'C':'MA CAP','I':'MA INT','P':'PI','N':'NORTE (PA/AM/AP)','EPS':'Ger EPS (MA CAP + NORTE)'};
     const tabTxt=rdeTab==='AMBOS'?'Backbone + Acesso':rdeTab==='ACESSO'?'Acesso':'Backbone';
     const clTxt=rdeCluster.length?` · ${rdeCluster.map(c=>clNames[c]||c).join('+')}`:'';
@@ -16491,7 +16499,7 @@ function renderRede(){
   const _ce=document.getElementById('rde-calls');
   if(rdeCallsOnRender){
     rdeCallsOnRender=false;
-    const _lbl=rdePeriod.length?(gk==='w'?rdePeriod.map(p=>String(p).replace(/^\d{4}-/,'')).join('+'):rdePeriod.map(rdeMname).join('+')):'Acumulado';
+    const _lbl=rdePeriod.length?(gk==='w'?rdePeriod.map(rdeWname).join('+'):rdePeriod.map(rdeMname).join('+')):'Acumulado';
     rdeShowCalls('Chamados — '+_lbl,recs);
   }else if(_ce){_ce.style.display='none';}
   // ── 4-Analytics charts ──
