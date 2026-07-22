@@ -10612,36 +10612,35 @@ function procEnc(raw,fname){
 
 /* ═══════════════ PAINEL ATIVAÇÕES B2B ═══════════════ */
 function procAtiv(raw,fname){
-  /* Layout por nome de cabeçalho, calibrado pela base modelo de
-     D:\Acompanhamento Jarvis\ATIVAÇÕES\Analítico Produção.xlsx (aba "Export"):
-     ticket_id, protocolo, cliente, cidade, uf_servico, data_abertura, dep_atual,
-     dias_ult_tramitacao, segmento_cliente, produto, tipo_abertura, forecast,
-     substatus, aging, tecnologia, dep_agrupado (coluna Z — "Status atual").
-     Antes a leitura era por posição fixa (A/C/D/F/G/I/N/Q/R/T/V/AB/AE/AH/BF), o que
-     ficou desalinhado nessa base (ex.: AB é "regional", não "forecast" — forecast é AC)
-     por causa da coluna extra "classificacao_fechamento" (W) que o mapeamento antigo não
-     previa. Nome de cabeçalho é imune a esse tipo de desalinhamento. */
-  dAtiv=raw.filter(r=>{const id=gv(r,['ticket_id','ticket','id']);const prot=gv(r,['protocolo']);return String(id||'').trim()!==''||String(prot||'').trim()!=='';}).map(r=>{
-    const id=gv(r,['ticket_id','ticket','id']);
+  /* Layout calibrado pela base modelo de
+     D:\Acompanhamento Jarvis\ATIVAÇÕES\Analítico Produção.xlsx (aba "Export").
+     10 campos confirmados pelo usuário por LETRA DE COLUNA exata (imune a rename de
+     cabeçalho): A=ticket_id, C=protocolo, D=cliente, F=cidade, G=uf_servico,
+     N=dep_atual, T=produto, Z=dep_agrupado ("Status atual"), AC=forecast,
+     BJ=tecnologia. Os demais campos (data abertura, dias tramitação, segmento, tipo
+     abertura, substatus, aging, MRR) continuam por nome de cabeçalho (gv()) — não
+     fizeram parte da confirmação por coluna e seguem como estavam. */
+  dAtiv=raw.filter(r=>{const v=Object.values(r);return String(v[0]||'').trim()!==''||String(v[2]||'').trim()!=='';}).map(r=>{
+    const v=Object.values(r);
     return {
-      id:String(id||'').trim(),
-      link:atrixTicketLink(id),
-      prot:String(gv(r,['protocolo'])||'').trim(),
-      cli:String(gv(r,['cliente'])||'').trim(),
-      cid:String(gv(r,['cidade'])||'').trim(),
-      uf:String(gv(r,['uf_servico','uf'])||'').trim().toUpperCase(),
+      id:String(v[0]||'').trim(),
+      link:atrixTicketLink(v[0]),
+      prot:String(v[2]||'').trim(),
+      cli:String(v[3]||'').trim(),
+      cid:String(v[5]||'').trim(),
+      uf:String(v[6]||'').trim().toUpperCase(),
       dtAbertura:gv(r,['data_abertura']),
-      dep:String(gv(r,['dep_atual','departamento_atual'])||'').trim(),
-      statusAtual:String(gv(r,['dep_agrupado'])||'').trim(),
+      dep:String(v[13]||'').trim(),
+      statusAtual:String(v[25]||'').trim(),
       diasTramitacao:Number(gv(r,['dias_ult_tramitacao']))||0,
       seg:String(gv(r,['segmento_cliente','segmento'])||'').trim(),
-      prod:String(gv(r,['produto'])||'').trim(),
+      prod:String(v[19]||'').trim(),
       tipoAbertura:String(gv(r,['tipo_abertura'])||'').trim(),
-      fc:String(gv(r,['forecast'])||'').trim(),
+      fc:String(v[28]||'').trim(),
       substatus:String(gv(r,['substatus'])||'').trim(),
       substatusAt:'',
       aging:String(gv(r,['aging'])||'').trim(),
-      tecnologia:String(gv(r,['tecnologia'])||'').trim(),
+      tecnologia:String(v[61]||'').trim(),
       mrr:Number(gv(r,['valor']))||0,
     };
   });
