@@ -7658,6 +7658,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="ab-head-actions">
           <button class="mop-ref-btn admin-only" onclick="openCentral('ativ')"><i class="ti ti-database"></i> Atualizar base</button>
+          <button class="mop-ref-btn" onclick="exportAtivCSV()"><i class="ti ti-download"></i> Exportar CSV</button>
           <button class="atrix-start-btn admin-only" id="ativ-start-btn" onclick="triggerAtrixUpdateNowAtiv(this)" title="Inicia agora a atualização de substatus da Ativações B2B pelo Agente Atrix — roda separado do ciclo do B2B Abertos e pode levar horas para varrer todos os chamados."><i class="ti ti-player-play"></i> Iniciar atualização</button>
         </div>
       </div>
@@ -10806,6 +10807,27 @@ function limparFiltrosAtiv(){
   selAtivCluster=[];selAtivYear=[];ativGran='all';ativPeriod=[];
   const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
   renderPanelAtivacoes();saveState();
+}
+/* Exporta o recorte atual (mesmos filtros da tabela/KPIs — Cluster, Ano, Período, UF,
+   Status atual etc.) em CSV, mesmo padrão de exportCSV()/exportRepCSV() (BOM UTF-8,
+   aspas em cada célula, nome do arquivo com escopo + data). */
+function exportAtivCSV(){
+  const rows=ativScopeAll();
+  const hdr=['Ticket ID','Protocolo','Cliente','Cidade','UF','Data Abertura','Data de Ativação','Departamento Atual','Status atual','Dias Tramitação','Segmento','Produto','Tipo Abertura','Forecast','Substatus','Últ. Atualização Substatus','Aging','Tecnologia','MRR'];
+  const data=rows.map(r=>[
+    r.id,r.prot,r.cli,r.cid,r.uf,ativFmtData(r.dtAbertura),ativFmtData(r.dtAtivacao),r.dep,r.statusAtual||'',
+    r.diasTramitacao,r.seg,r.prod,r.tipoAbertura,ATIV_FC_LABEL(r.fc),ATIV_SUBSTATUS_LABEL(r.substatus),
+    ativSubstatusAtFmt(r.substatusAt),r.aging,r.tecnologia||'Não informado',r.mrr.toFixed(2)
+  ]);
+  if(!data.length){alert('Nenhum ticket no recorte atual para exportar.');return;}
+  const csv=[hdr,...data].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  const scopeCl=selAtivCluster.length?selAtivCluster.join('+'):'todos';
+  const scopeYr=selAtivYear.length?selAtivYear.join('+'):'todosanos';
+  a.download='jarvis_ativacoes_'+scopeCl+'_'+scopeYr+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
 }
 /* Cluster / Ano / Granularidade / Período — mesmo padrão do Painel Rede (rdeSyncControls),
    reaproveitando rdeMname/rdeWname/rdeWyears já usados lá pra formatar os rótulos de
