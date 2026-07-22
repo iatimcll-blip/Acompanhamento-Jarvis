@@ -7665,6 +7665,35 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="atrix-start-btn admin-only" id="ativ-start-btn" onclick="triggerAtrixUpdateNowAtiv(this)" title="Inicia agora a atualização de substatus da Ativações B2B pelo Agente Atrix — roda separado do ciclo do B2B Abertos e pode levar horas para varrer todos os chamados."><i class="ti ti-player-play"></i> Iniciar atualização</button>
         </div>
       </div>
+      <!-- Cluster / Ano / Granularidade / Período — mesmo padrão do Painel Rede -->
+      <div class="rede-ctrlbar">
+        <div class="rede-ctrlrow">
+          <span class="rede-clbl">Cluster</span>
+          <div class="rede-seg" id="ativ-cl-seg">
+            <button class="rede-sgbtn on" data-cl="" onclick="ativSetCluster('')">Todos <span class="rede-cnt">0</span></button>
+            <button class="rede-sgbtn" data-cl="C" onclick="ativSetCluster('C')">MA CAP <span class="rede-cnt">0</span></button>
+            <button class="rede-sgbtn" data-cl="I" onclick="ativSetCluster('I')">MA INT <span class="rede-cnt">0</span></button>
+            <button class="rede-sgbtn" data-cl="P" onclick="ativSetCluster('P')">PI <span class="rede-cnt">0</span></button>
+            <button class="rede-sgbtn" data-cl="N" onclick="ativSetCluster('N')">NORTE <span class="rede-cnt">0</span></button>
+          </div>
+        </div>
+        <div class="rede-ctrlrow">
+          <span class="rede-clbl">Ano</span>
+          <div class="rede-seg" id="ativ-year-seg"></div>
+        </div>
+        <div class="rede-ctrlrow">
+          <span class="rede-clbl">Granularidade</span>
+          <div class="rede-seg" id="ativ-gran-seg">
+            <button class="rede-sgbtn on" data-g="all" onclick="ativSetGran('all')">Acumulado</button>
+            <button class="rede-sgbtn" data-g="m" onclick="ativSetGran('m')">Por mês</button>
+            <button class="rede-sgbtn" data-g="w" onclick="ativSetGran('w')">Por semana</button>
+          </div>
+        </div>
+        <div class="rede-ctrlrow" id="ativ-period-row" style="display:none">
+          <span class="rede-clbl">Período</span>
+          <div class="rede-seg rde-seg-periods" id="ativ-period-seg"></div>
+        </div>
+      </div>
       <div class="section-hd">Visão geral <span class="sh-line"></span></div>
       <div class="mrow" id="ativ-kpi-row"></div>
 
@@ -8385,6 +8414,7 @@ let selRepMes=[],selRepSemana=[],selRepCluster=[],selRepCausa=[],selRepSeg=[],se
 let selAbMop=[],selAbFaixa=[],selAbSub=[],selAbUf=[];
 let selEncCluster=[],selEncAging=[],selEncCausa=[],selEncUf=[],selEncSemana=[],selEncSeg=[];
 let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivSubstatus=[],selAtivProd=[],selAtivTec=[],selAtivSrch='';
+let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
 let activeTab='dashboard';
 let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='';
 let lastAtivAt='',lastAtivFile='';
@@ -9336,7 +9366,7 @@ function shouldApplyRemoteState(st){
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,fuelRFilter,fuelVFilter,activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);return{...d,rowKey:d.rowKey??i,mop,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
@@ -9392,8 +9422,17 @@ function applyState(st,label){
   try{
     if(Array.isArray(st.dAtiv)){
       /* recalcula o link do Atrix a partir do id — dados salvos antes desse campo existir
-         (ou de qualquer mudança futura na regra do link) sempre chegam com o link certo */
-      dAtiv=st.dAtiv.map(d=>({...d,link:atrixTicketLink(d.id)}));
+         (ou de qualquer mudança futura na regra do link) sempre chegam com o link certo.
+         Mesma lógica pra cluster/mês/semana/ano: registros salvos antes desses campos
+         existirem (ou de qualquer mudança futura na regra de cálculo) são recalculados
+         a partir de uf/cidade/data de abertura em vez de ficarem sem esses campos. */
+      dAtiv=st.dAtiv.map(d=>{
+        const dtParsed=rdeParseDateBR(d.dtAbertura);
+        const mes=d.mes||(dtParsed?`${dtParsed.getFullYear()}-${String(dtParsed.getMonth()+1).padStart(2,'0')}`:'');
+        const {y:wy,w:ww}=dtParsed?rdeIsoWeek(dtParsed):{y:0,w:0};
+        const semana=d.semana||(dtParsed&&ww?`${wy}-W${String(ww).padStart(2,'0')}`:'');
+        return{...d,link:atrixTicketLink(d.id),cluster:d.cluster||rdeClusterFromRow({UF:d.uf,CIDADE:d.cid}),mes,semana,ano:d.ano||(mes?mes.slice(0,4):'')};
+      });
       if(Object.prototype.hasOwnProperty.call(st,'lastAtivAt'))lastAtivAt=st.lastAtivAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastAtivFile'))lastAtivFile=st.lastAtivFile||'';
       const _ativUfs=[...new Set(dAtiv.map(d=>d.uf).filter(Boolean))];
@@ -9405,6 +9444,8 @@ function applyState(st,label){
       const _ativSubs=[...new Set(dAtiv.map(d=>ATIV_SUBSTATUS_LABEL(d.substatus)))];
       const _ativProds=[...new Set(dAtiv.map(d=>d.prod).filter(Boolean))];
       const _ativTecs=[...new Set(dAtiv.map(d=>d.tecnologia).filter(Boolean))];
+      const _ativClusters=[...new Set(dAtiv.map(d=>d.cluster).filter(Boolean))];
+      const _ativYears=[...new Set(dAtiv.map(d=>d.ano).filter(Boolean))];
       selAtivUf=asArr(st.selAtivUf).filter(v=>_ativUfs.includes(v));
       selAtivCidade=asArr(st.selAtivCidade).filter(v=>_ativCids.includes(v));
       selAtivDep=asArr(st.selAtivDep).filter(v=>_ativDeps.includes(v));
@@ -9415,6 +9456,10 @@ function applyState(st,label){
       selAtivSubstatus=asArr(st.selAtivSubstatus).filter(v=>_ativSubs.includes(v));
       selAtivProd=asArr(st.selAtivProd).filter(v=>_ativProds.includes(v));
       selAtivTec=asArr(st.selAtivTec).filter(v=>_ativTecs.includes(v));
+      selAtivCluster=asArr(st.selAtivCluster).filter(v=>_ativClusters.includes(v));
+      selAtivYear=asArr(st.selAtivYear).filter(v=>_ativYears.includes(v));
+      ativGran=['all','m','w'].includes(st.ativGran)?st.ativGran:'all';
+      ativPeriod=asArr(st.ativPeriod);
       selAtivSrch=st.selAtivSrch||'';
       renderPanelAtivacoes();
       document.getElementById('empty-ativ').style.display=dAtiv.length?'none':'block';
@@ -10396,6 +10441,7 @@ async function clearAtiv(){
   const dash=document.getElementById('dash-ativ');if(dash)dash.style.display='none';
   const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
   selAtivUf=[];selAtivCidade=[];selAtivDep=[];selAtivStatusAtual=[];selAtivAging=[];selAtivSeg=[];selAtivFc=[];selAtivSubstatus=[];selAtivProd=[];selAtivTec=[];selAtivSrch='';
+  selAtivCluster=[];selAtivYear=[];ativGran='all';ativPeriod=[];
   await persistClearedBase('Ativações B2B');
 }
 function updateUploadTimes(){
@@ -10625,6 +10671,13 @@ function procAtiv(raw,fname){
      fizeram parte da confirmação por coluna e seguem como estavam. */
   dAtiv=raw.filter(r=>{const v=Object.values(r);return String(v[0]||'').trim()!==''||String(v[2]||'').trim()!=='';}).map(r=>{
     const v=Object.values(r);
+    const dtRaw=gv(r,['data_abertura']);
+    const dtParsed=rdeParseDateBR(dtRaw);
+    /* Ano/Mês/Semana — mesma lógica do Painel Rede (rdeIsoWeek já corrige o ano ISO da
+       semana em datas de fim/início de ano), pra ter os mesmos filtros de período lá. */
+    const mes=dtParsed?`${dtParsed.getFullYear()}-${String(dtParsed.getMonth()+1).padStart(2,'0')}`:'';
+    const {y:wy,w:ww}=dtParsed?rdeIsoWeek(dtParsed):{y:0,w:0};
+    const semana=dtParsed&&ww?`${wy}-W${String(ww).padStart(2,'0')}`:'';
     return {
       id:String(v[0]||'').trim(),
       link:atrixTicketLink(v[0]),
@@ -10632,7 +10685,9 @@ function procAtiv(raw,fname){
       cli:String(v[3]||'').trim(),
       cid:String(v[5]||'').trim(),
       uf:String(v[6]||'').trim().toUpperCase(),
-      dtAbertura:gv(r,['data_abertura']),
+      cluster:rdeClusterFromRow({UF:v[6],CIDADE:v[5]}),
+      dtAbertura:dtRaw,
+      mes,semana,ano:mes?mes.slice(0,4):'',
       dep:String(v[13]||'').trim(),
       statusAtual:String(v[25]||'').trim(),
       diasTramitacao:Number(gv(r,['dias_ult_tramitacao']))||0,
@@ -10658,10 +10713,14 @@ function procAtiv(raw,fname){
   const _subs=[...new Set(dAtiv.map(d=>ATIV_SUBSTATUS_LABEL(d.substatus)))];
   const _prods=[...new Set(dAtiv.map(d=>d.prod).filter(Boolean))];
   const _tecs=[...new Set(dAtiv.map(d=>d.tecnologia).filter(Boolean))];
+  const _clusters=[...new Set(dAtiv.map(d=>d.cluster).filter(Boolean))];
+  const _years=[...new Set(dAtiv.map(d=>d.ano).filter(Boolean))];
   selAtivUf=selAtivUf.filter(v=>_ufs.includes(v));
   selAtivCidade=selAtivCidade.filter(v=>_cids.includes(v));
   selAtivDep=selAtivDep.filter(v=>_deps.includes(v));
   selAtivStatusAtual=selAtivStatusAtual.filter(v=>_statusAtuais.includes(v));
+  selAtivCluster=selAtivCluster.filter(v=>_clusters.includes(v));
+  selAtivYear=selAtivYear.filter(v=>_years.includes(v));
   selAtivAging=selAtivAging.filter(v=>ATIV_AGING_ORDER.includes(v));
   selAtivSeg=selAtivSeg.filter(v=>_segs.includes(v));
   selAtivFc=selAtivFc.filter(v=>_fcs.includes(v));
@@ -10690,6 +10749,7 @@ function ativMatchesSearch(r,sr){
    todos os OUTROS filtros ativos exceto ela mesma. */
 function ativApplyFilters(data,exclude){
   const sr=nk(selAtivSrch);
+  const periodKey=ativGran==='w'?'semana':'mes';
   return data.filter(r=>{
     if(exclude!=='uf'&&selAtivUf.length&&!selAtivUf.includes(r.uf))return false;
     if(exclude!=='cidade'&&selAtivCidade.length&&!selAtivCidade.includes(r.cid))return false;
@@ -10701,6 +10761,9 @@ function ativApplyFilters(data,exclude){
     if(exclude!=='substatus'&&selAtivSubstatus.length&&!selAtivSubstatus.includes(ATIV_SUBSTATUS_LABEL(r.substatus)))return false;
     if(exclude!=='prod'&&selAtivProd.length&&!selAtivProd.includes(r.prod))return false;
     if(exclude!=='tec'&&selAtivTec.length&&!selAtivTec.includes(r.tecnologia))return false;
+    if(exclude!=='cluster'&&selAtivCluster.length&&!selAtivCluster.includes(r.cluster))return false;
+    if(exclude!=='year'&&selAtivYear.length&&!selAtivYear.includes(r.ano))return false;
+    if(exclude!=='period'&&ativGran!=='all'&&ativPeriod.length&&!ativPeriod.includes(r[periodKey]))return false;
     if(exclude!=='srch'&&!ativMatchesSearch(r,sr))return false;
     return true;
   });
@@ -10746,8 +10809,69 @@ function refreshAtivFilters(){
 function onAtivSrchChange(v){ selAtivSrch=v; renderPanelAtivacoes(); saveState(); }
 function limparFiltrosAtiv(){
   selAtivUf=[];selAtivCidade=[];selAtivDep=[];selAtivStatusAtual=[];selAtivAging=[];selAtivSeg=[];selAtivFc=[];selAtivSubstatus=[];selAtivProd=[];selAtivTec=[];selAtivSrch='';
+  selAtivCluster=[];selAtivYear=[];ativGran='all';ativPeriod=[];
   const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
   renderPanelAtivacoes();saveState();
+}
+/* Cluster / Ano / Granularidade / Período — mesmo padrão do Painel Rede (rdeSyncControls),
+   reaproveitando rdeMname/rdeWname/rdeWyears já usados lá pra formatar os rótulos de
+   período de forma idêntica. */
+function ativSetCluster(cl){
+  selAtivCluster=!cl?[]:(selAtivCluster.includes(cl)?selAtivCluster.filter(c=>c!==cl):[...selAtivCluster,cl]);
+  renderPanelAtivacoes();saveState();
+}
+function ativSetYear(y){
+  selAtivYear=!y?[]:(selAtivYear.includes(y)?selAtivYear.filter(v=>v!==y):[...selAtivYear,y]);
+  renderPanelAtivacoes();saveState();
+}
+function ativSetGran(g){
+  ativGran=g;ativPeriod=[];
+  renderPanelAtivacoes();saveState();
+}
+function ativPeriodClick(p){
+  ativPeriod=ativPeriod.includes(p)?ativPeriod.filter(x=>x!==p):[...ativPeriod,p];
+  renderPanelAtivacoes();saveState();
+}
+function ativSyncControls(){
+  const clSeg=document.getElementById('ativ-cl-seg');
+  if(clSeg){
+    const preRecs=ativScopeFor('cluster');
+    const clCnts={};preRecs.forEach(r=>{clCnts[r.cluster]=(clCnts[r.cluster]||0)+1;});
+    clSeg.querySelectorAll('.rede-sgbtn').forEach(b=>{
+      const cl=b.dataset.cl;
+      b.classList.toggle('on',cl===''?!selAtivCluster.length:selAtivCluster.includes(cl));
+      const cnt=b.querySelector('.rede-cnt');
+      if(cnt)cnt.textContent=cl===''?preRecs.length:(clCnts[cl]||0);
+    });
+  }
+  const yearSeg=document.getElementById('ativ-year-seg');
+  if(yearSeg){
+    const yRecs=ativScopeFor('year');
+    const years=[...new Set(yRecs.map(r=>r.ano))].filter(Boolean).sort();
+    yearSeg.innerHTML=`<button class="rede-sgbtn${!selAtivYear.length?' on':''}" onclick="ativSetYear('')">Todos <span class="rede-cnt">${yRecs.length}</span></button>`+
+      years.map(y=>{
+        const cnt=yRecs.filter(r=>r.ano===y).length;
+        return`<button class="rede-sgbtn${selAtivYear.includes(y)?' on':''}" onclick="ativSetYear('${eh(y)}')">${eh(y)} <span class="rede-cnt">${cnt}</span></button>`;
+      }).join('');
+  }
+  document.querySelectorAll('#ativ-gran-seg .rede-sgbtn').forEach(b=>b.classList.toggle('on',b.dataset.g===ativGran));
+  const pr=document.getElementById('ativ-period-row');
+  if(pr){
+    if(ativGran==='all'){pr.style.display='none';}
+    else{
+      pr.style.display='flex';
+      const flat=ativScopeFor('period');
+      const gk=ativGran==='w'?'semana':'mes';
+      const keys=[...new Set(flat.map(r=>r[gk]))].filter(Boolean).sort();
+      const wMultiYear=ativGran==='w'&&rdeWyears(keys).size>1;
+      const seg=document.getElementById('ativ-period-seg');
+      if(seg)seg.innerHTML=keys.map(x=>{
+        const cnt=flat.filter(r=>r[gk]===x).length;
+        const lab=(ativGran==='w'?rdeWname(x,wMultiYear):rdeMname(x))+` <span class="rede-cnt">${cnt}</span>`;
+        return`<button class="rede-sgbtn rede-pbtn${ativPeriod.includes(x)?' on':''}" onclick="ativPeriodClick('${eh(x)}')">${lab}</button>`;
+      }).join('');
+    }
+  }
 }
 
 function ativBrlK(v){ v=Number(v||0); return v>=1000?('R$ '+(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil'):brl(v); }
@@ -10942,6 +11066,7 @@ function renderAtivTable(){
 function renderPanelAtivacoes(){
   if(!dAtiv.length)return;
   renderAtivTheadRow();
+  ativSyncControls();
   refreshAtivFilters();
   renderAtivKPIs();
   renderAtivThermo();
