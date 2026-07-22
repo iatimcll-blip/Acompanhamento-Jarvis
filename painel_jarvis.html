@@ -10599,32 +10599,36 @@ function procEnc(raw,fname){
 
 /* ═══════════════ PAINEL ATIVAÇÕES B2B ═══════════════ */
 function procAtiv(raw,fname){
-  /* Layout fixo confirmado pelo usuário na base real (posições, não nomes de cabeçalho —
-     mais robusto a variações de texto/acento no header): A=ticket, C=protocolo, D=cliente,
-     F=cidade, G=uf, I=data abertura, N=departamento atual, Q=dias última tramitação,
-     R=segmento, T=produto, V=tipo de abertura, AB=forecast, AE=substatus, AH=aging,
-     BF=tecnologia. MRR (valor) não estava na lista por já ter posição própria e inequívoca
-     (coluna E) — continua localizado por nome. */
-  dAtiv=raw.filter(r=>{const v=Object.values(r);return String(v[0]||'').trim()!==''||String(v[2]||'').trim()!=='';}).map(r=>{
-    const v=Object.values(r);
+  /* Layout por nome de cabeçalho, calibrado pela base modelo de
+     D:\Acompanhamento Jarvis\ATIVAÇÕES\Analítico Produção.xlsx (aba "Export"):
+     ticket_id, protocolo, cliente, cidade, uf_servico, data_abertura, dep_atual,
+     dias_ult_tramitacao, segmento_cliente, produto, tipo_abertura, forecast,
+     substatus, aging, tecnologia, dep_agrupado (coluna Z — "Status atual").
+     Antes a leitura era por posição fixa (A/C/D/F/G/I/N/Q/R/T/V/AB/AE/AH/BF), o que
+     ficou desalinhado nessa base (ex.: AB é "regional", não "forecast" — forecast é AC)
+     por causa da coluna extra "classificacao_fechamento" (W) que o mapeamento antigo não
+     previa. Nome de cabeçalho é imune a esse tipo de desalinhamento. */
+  dAtiv=raw.filter(r=>{const id=gv(r,['ticket_id','ticket','id']);const prot=gv(r,['protocolo']);return String(id||'').trim()!==''||String(prot||'').trim()!=='';}).map(r=>{
+    const id=gv(r,['ticket_id','ticket','id']);
     return {
-      id:String(v[0]||'').trim(),
-      link:atrixTicketLink(v[0]),
-      prot:String(v[2]||'').trim(),
-      cli:String(v[3]||'').trim(),
-      cid:String(v[5]||'').trim(),
-      uf:String(v[6]||'').trim().toUpperCase(),
-      dtAbertura:v[8],
-      dep:String(v[13]||'').trim(),
-      diasTramitacao:Number(v[16])||0,
-      seg:String(v[17]||'').trim(),
-      prod:String(v[19]||'').trim(),
-      tipoAbertura:String(v[21]||'').trim(),
-      fc:String(v[27]||'').trim(),
-      substatus:String(v[30]||'').trim(),
+      id:String(id||'').trim(),
+      link:atrixTicketLink(id),
+      prot:String(gv(r,['protocolo'])||'').trim(),
+      cli:String(gv(r,['cliente'])||'').trim(),
+      cid:String(gv(r,['cidade'])||'').trim(),
+      uf:String(gv(r,['uf_servico','uf'])||'').trim().toUpperCase(),
+      dtAbertura:gv(r,['data_abertura']),
+      dep:String(gv(r,['dep_atual','departamento_atual'])||'').trim(),
+      statusAtual:String(gv(r,['dep_agrupado'])||'').trim(),
+      diasTramitacao:Number(gv(r,['dias_ult_tramitacao']))||0,
+      seg:String(gv(r,['segmento_cliente','segmento'])||'').trim(),
+      prod:String(gv(r,['produto'])||'').trim(),
+      tipoAbertura:String(gv(r,['tipo_abertura'])||'').trim(),
+      fc:String(gv(r,['forecast'])||'').trim(),
+      substatus:String(gv(r,['substatus'])||'').trim(),
       substatusAt:'',
-      aging:String(v[33]||'').trim(),
-      tecnologia:String(v[57]||'').trim(),
+      aging:String(gv(r,['aging'])||'').trim(),
+      tecnologia:String(gv(r,['tecnologia'])||'').trim(),
       mrr:Number(gv(r,['valor']))||0,
     };
   });
@@ -10838,7 +10842,7 @@ function renderAtivCharts(){
 
 const ATIV_COLS=[
   {k:'id',l:'Ticket ID'},{k:'prot',l:'Protocolo'},{k:'cli',l:'Cliente'},{k:'cid',l:'Cidade'},
-  {k:'uf',l:'UF'},{k:'dtAbertura',l:'Data Abertura'},{k:'dep',l:'Departamento Atual'},{k:'diasTramitacao',l:'Dias Tramitação'},
+  {k:'uf',l:'UF'},{k:'dtAbertura',l:'Data Abertura'},{k:'dep',l:'Departamento Atual'},{k:'statusAtual',l:'Status atual'},{k:'diasTramitacao',l:'Dias Tramitação'},
   {k:'seg',l:'Segmento'},{k:'prod',l:'Produto'},{k:'tipoAbertura',l:'Tipo Abertura'},{k:'fc',l:'Forecast'},
   {k:'substatus',l:'Substatus'},{k:'substatusAt',l:'Últ. Atualização Substatus'},{k:'aging',l:'Aging'},{k:'tecnologia',l:'Tecnologia'},{k:'mrr',l:'MRR'},
 ];
@@ -10900,6 +10904,7 @@ function renderAtivTable(){
     <td>${eh(r.uf)}</td>
     <td>${ativFmtData(r.dtAbertura)}</td>
     <td>${eh(r.dep)}</td>
+    <td>${eh(r.statusAtual||'—')}</td>
     <td style="text-align:right">${r.diasTramitacao}</td>
     <td>${eh(r.seg)}</td>
     <td>${eh(r.prod)}</td>
