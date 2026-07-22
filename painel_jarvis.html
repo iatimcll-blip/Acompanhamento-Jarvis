@@ -6484,6 +6484,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="nav-btn admin-only" id="clear-enc-btn" onclick="clearEnc()" title="Limpar base B2B Encerrados" style="display:none;color:var(--red)"><i class="ti ti-trash"></i></div>
         <div class="nav-btn admin-only" id="clear-rede-btn" onclick="clearRede()" title="Recarregar painel Rede" style="display:none;color:var(--orange)"><i class="ti ti-refresh"></i></div>
         <div class="nav-btn admin-only" id="clear-ofs-btn" onclick="clearOfs()" title="Limpar base OFS" style="display:none;color:var(--red)"><i class="ti ti-trash"></i></div>
+        <div class="nav-btn admin-only" id="clear-ativ-btn" onclick="clearAtiv()" title="Limpar base Ativações B2B" style="display:none;color:var(--red)"><i class="ti ti-trash"></i></div>
         <!-- Central de Dados -->
         <button class="nav-btn" onclick="openCentral()" title="Central de Dados" style="color:var(--blue)"><i class="ti ti-database"></i></button>
         <div class="nav-btn admin-only" onclick="openReportModal()" title="Gerar Relatório" style="color:var(--blue)"><i class="ti ti-file-text"></i></div>
@@ -10384,6 +10385,16 @@ async function clearRede(){
   [rdeLineCh2,rdeTimeCh2,rdeCauseCh2,rdeCityCh2].forEach(ch=>{if(ch)try{ch.destroy();}catch(e){}});rdeLineCh2=rdeTimeCh2=rdeCauseCh2=rdeCityCh2=null;
   rdeShowDash();await persistClearedBase('Rede');
 }
+async function clearAtiv(){
+  if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
+  if(!confirm('Limpar toda a base de Ativações B2B? Essa ação não pode ser desfeita.'))return;
+  dAtiv=[];lastAtivAt='';lastAtivFile='';updateUploadTimes();
+  const empty=document.getElementById('empty-ativ');if(empty)empty.style.display='';
+  const dash=document.getElementById('dash-ativ');if(dash)dash.style.display='none';
+  const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
+  selAtivUf=[];selAtivCidade=[];selAtivDep=[];selAtivAging=[];selAtivSeg=[];selAtivFc=[];selAtivSubstatus=[];selAtivProd=[];selAtivTec=[];selAtivSrch='';
+  await persistClearedBase('Ativações B2B');
+}
 function updateUploadTimes(){
   const sa=document.getElementById('ts-ab');if(sa)sa.textContent=lastAbAt?'Anexado '+(lastAbFile?lastAbFile+' · ':'')+lastAbAt:'';
   const se=document.getElementById('ts-enc');if(se)se.textContent=lastEncAt?'Anexado '+(lastEncFile?lastEncFile+' · ':'')+lastEncAt:'';
@@ -10439,16 +10450,18 @@ document.addEventListener('keydown',function(e){
   }
 });
 function updateClearBtns(){
-  const isAb=activeTab==='abertos',isEnc=activeTab==='encerrados',isRep=activeTab==='repetidos',isRede=activeTab==='rede',isOfs=activeTab==='ofs';
+  const isAb=activeTab==='abertos',isEnc=activeTab==='encerrados',isRep=activeTab==='repetidos',isRede=activeTab==='rede',isOfs=activeTab==='ofs',isAtiv=activeTab==='ativacoes';
   const podeLimpar=canEdit();
   const bAb=document.getElementById('clear-ab-btn');
   const bEnc=document.getElementById('clear-enc-btn');
   const bRede=document.getElementById('clear-rede-btn');
   const bOfs=document.getElementById('clear-ofs-btn');
+  const bAtiv=document.getElementById('clear-ativ-btn');
   if(bAb)bAb.style.display=podeLimpar&&isAb&&dAb.length?'flex':'none';
   if(bEnc)bEnc.style.display=podeLimpar&&(isEnc||isRep)&&dEnc.length?'flex':'none';
   if(bRede)bRede.style.display=podeLimpar&&isRede&&(rdeBD.length||rdeAD.length)?'flex':'none';
   if(bOfs)bOfs.style.display=podeLimpar&&isOfs&&ofsRows.length?'flex':'none';
+  if(bAtiv)bAtiv.style.display=podeLimpar&&isAtiv&&dAtiv.length?'flex':'none';
   if(activeTab==='dashboard')renderExecutiveDashboard();
 }
 /* ─── MODAL ADICIONAR CHAMADO ─── */
