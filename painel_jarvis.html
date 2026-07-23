@@ -8590,10 +8590,14 @@ function userAllowedMops(){const p=userPerms();return(p&&Array.isArray(p.mops))?
 function userAllowedClusters(){const p=userPerms();return(p&&Array.isArray(p.clusters))?p.clusters:null;}
 function userAllowedPanels(){const p=userPerms();return(p&&Array.isArray(p.panels))?p.panels:DEFAULT_VIEWER_PANELS;}
 function canSeePanel(tab){return!!canEdit()||userAllowedPanels().includes(tab);}
-function slnAb(){const m=userAllowedMops();const base=dAb.filter(d=>nk(d.depAtual)!=='SWAP');return m?base.filter(d=>m.includes(d.mop)):base;}
-/* Painel SWAP: mesma base (dAb), mas só os chamados cujo Dep_Atual (col Q) seja "SWAP" —
-   view espelhada de slnAb(), mutuamente exclusiva (um chamado nunca aparece nos dois). */
-function slnSwap(){const m=userAllowedMops();const base=dAb.filter(d=>nk(d.depAtual)==='SWAP');return m?base.filter(d=>m.includes(d.mop)):base;}
+/* Painel SWAP: mesma base (dAb) de B2B Abertos, mas só os chamados cujo Dep_Atual
+   (col Q) CONTENHA "CMO - REPARO SWAP" — comparação via nk() (ignora acento/
+   maiúsculas/espaços), então "Cmo - Reparo Swap", "CMO-REPARO SWAP" etc. também casam. */
+const SWAP_DEP_MATCH=nk('CMO - REPARO SWAP');
+function isSwapDep(d){return nk(d.depAtual).includes(SWAP_DEP_MATCH);}
+function slnAb(){const m=userAllowedMops();const base=dAb.filter(d=>!isSwapDep(d));return m?base.filter(d=>m.includes(d.mop)):base;}
+/* View espelhada de slnAb(), mutuamente exclusiva (um chamado nunca aparece nos dois). */
+function slnSwap(){const m=userAllowedMops();const base=dAb.filter(d=>isSwapDep(d));return m?base.filter(d=>m.includes(d.mop)):base;}
 function slnEnc(){const m=userAllowedMops();return m?dEnc.filter(d=>m.includes(d.mop)):dEnc;}
 function slnOfsRows(){const base=ofsRows.filter(r=>isOfsRegisteredTec(r.tecnico));const m=userAllowedMops();return m?base.filter(r=>m.includes(r.grupo)):base;}
 function slnRdeCount(){
