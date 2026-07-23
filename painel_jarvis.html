@@ -6863,6 +6863,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="abs-btn" onclick="sSwap('slaH')">SLA</button>
         </div>
         <div id="tb-swap" class="ab-list"></div>
+        <!-- Resumo & WhatsApp -->
+        <div class="ab-resumo-sec">
+          <div class="ab-resumo-hd" onclick="toggleSwapResumo(this)">
+            <span><i class="ti ti-chart-bar" style="font-size:11px;vertical-align:-1px;margin-right:5px"></i>Resumo &amp; WhatsApp</span>
+            <span class="abr-arrow">▶</span>
+          </div>
+          <div id="swap-resumo-body" class="ab-resumo-body" style="display:none">
+            <div class="ab-section-hd">
+              <span class="ab-section-title">Tabela dinâmica — substatus × MOP/EPS × UF</span>
+              <button class="ab-copy-btn" id="swap-btn-pivot" onclick="swapCopiarPivot(this)" disabled>Copiar tabela</button>
+            </div>
+            <div id="swap-pivot-cap" class="ab-pivot-cap">
+              <div id="swap-pivot-copy" class="ab-pivot-copy"><div class="ab-pivot-scroll"><table class="ab-pivot" id="swap-pivot"></table></div></div>
+              <p style="font-size:13px;color:var(--tx2);margin:10px 0 2px">Bom dia, segue backlog SWAP.</p>
+            </div>
+            <div class="ab-section-hd"><span class="ab-section-title">Resumo em blocos por MOP/EPS</span></div>
+            <div id="swap-blocos"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -12179,6 +12198,7 @@ function renderTSwap(){
     return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span></span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-swap .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
+  renderSwapResumo();
 }
 function sSwap(c){scSwap===c?sdSwap*=-1:(scSwap=c,sdSwap=-1);renderTSwap()}
 
@@ -12281,7 +12301,7 @@ function abCopiarImagem(el,btn){
   btns.forEach(b=>b.style.visibility='hidden');
   const restore=[];
   const tempStyle=(node,prop,val)=>{if(!node)return;restore.push([node,prop,node.style[prop]]);node.style[prop]=val};
-  if(el.id==='ab-pivot-copy'){
+  if(el.id==='ab-pivot-copy'||el.id==='swap-pivot-copy'){
     const table=el.querySelector('.ab-pivot'),scroll=el.querySelector('.ab-pivot-scroll');
     const w=Math.max(el.offsetWidth,table?table.scrollWidth+32:0);
     tempStyle(el,'width',w+'px');tempStyle(el,'maxWidth','none');
@@ -12386,6 +12406,77 @@ function renderAbResumo(){
   abRenderPivot(ch);
   abRenderBlocos(ch);
   const pb=document.getElementById('ab-btn-pivot');if(pb)pb.disabled=ch.length===0;
+}
+
+/* ─── RESUMO SWAP & WHATSAPP ───
+   Espelho do Resumo & WhatsApp de B2B Abertos (tabela dinâmica substatus×MOP/EPS×UF +
+   blocos por MOP/EPS/cluster), reaproveitando os helpers genéricos que não têm estado
+   ou id de DOM fixo (abResumoWhatsappScope/abConstruirPivot/abSomaUf/abCarregarH2C/
+   abCopiarImagem/abCopiarBloco) — só os renderizadores com id fixo (#ab-pivot/#ab-blocos/
+   #ab-resumo-body) precisam de uma versão própria apontando pros ids do SWAP. */
+function swapRenderPivot(chamados){
+  const el=document.getElementById('swap-pivot');if(!el)return;
+  const{ufs,mapa}=abConstruirPivot(chamados);
+  const subs=Object.keys(mapa).sort(abOrdenarPor(AB_ORDEM_SUB));
+  const totalUf={};ufs.forEach(uf=>totalUf[uf]=0);let totalGeral=0;
+  let h='<colgroup><col class="col-label">'+ufs.map(()=>'<col class="col-uf">').join('')+'<col class="col-total"></colgroup><thead><tr><th class="l">Substatus / MOP/EPS</th>'
+    +ufs.map(uf=>`<th>${eh(uf)}</th>`).join('')+'<th>Total</th></tr></thead>';
+  let b='<tbody>';
+  subs.forEach(s=>{
+    const mops=mapa[s];
+    const gUf={};ufs.forEach(uf=>gUf[uf]=0);
+    Object.values(mops).forEach(o=>ufs.forEach(uf=>gUf[uf]+=(o[uf]||0)));
+    const gT=abSomaUf(gUf,ufs);if(gT<1)return;
+    b+=`<tr class="apg"><td class="l">${eh(s)}</td>`+ufs.map(uf=>`<td>${gUf[uf]||''}</td>`).join('')+`<td>${gT}</td></tr>`;
+    Object.keys(mops).sort(abOrdenarPor(AB_ORDEM_MOP)).forEach(m=>{
+      const o=mops[m];const mT=abSomaUf(o,ufs);if(mT<1)return;
+      b+=`<tr class="aps"><td class="l">↳ ${eh(m)}</td>`+ufs.map(uf=>`<td>${o[uf]||''}</td>`).join('')+`<td>${mT}</td></tr>`;
+    });
+    ufs.forEach(uf=>totalUf[uf]+=gUf[uf]);totalGeral+=gT;
+  });
+  b+=`<tr class="apr"><td class="l">Total geral</td>`+ufs.map(uf=>`<td>${totalUf[uf]||''}</td>`).join('')+`<td>${totalGeral}</td></tr></tbody>`;
+  el.innerHTML=h+b;
+}
+function swapCopiarPivot(btn){
+  const el=document.getElementById('swap-pivot');
+  if(el)abCopiarImagem(el,btn);
+}
+function swapRenderBlocos(chamados){
+  const el=document.getElementById('swap-blocos');if(!el)return;
+  const mopsData=[...new Set(chamados.map(c=>c.mop).filter(Boolean))];
+  const mopsExtra=mopsData.filter(m=>!AB_ORDEM_MOP.some(x=>nk(x)===nk(m)));
+  const mopsFull=[...AB_ORDEM_MOP,...mopsExtra];
+  el.innerHTML=mopsFull.map(mop=>{
+    const itens=chamados.filter(c=>nk(c.mop)===nk(mop));
+    const mostraResp=itens.some(c=>(abAnnotations[c.id]||{}).prof);
+    const mostraObs=itens.some(c=>(abAnnotations[c.id]||{}).obs);
+    const extraCols=(mostraResp?1:0)+(mostraObs?1:0);
+    const linhas=itens.length?itens.map(c=>{
+      const cl=safeUrl(c.link);
+      const idCell=cl?`<a href="${eh(cl)}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-weight:600">${eh(c.id)}</a>`:`<span style="font-weight:600;color:var(--blue)">${eh(c.id)}</span>`;
+      const ufCidade=c.cidade?`${c.uf}/${c.cidade}`:c.uf||'—';
+      const clienteCF=c.assunto?`<span style="font-weight:600;color:var(--tx)">${eh(c.cliente)}</span><span style="display:block;font-size:11px;color:var(--tx2);margin-top:1px">${eh(c.assunto)}</span>`:eh(c.cliente);
+      const resp=(abAnnotations[c.id]||{}).prof||'';
+      const obs=(abAnnotations[c.id]||{}).obs||'';
+      return`<tr><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
+    }).join(''):`<tr><td colspan="${7+extraCols}" style="text-align:center;color:var(--tx3);padding:14px;font-style:italic">Nenhum chamado em aberto neste MOP/EPS.</td></tr>`;
+    return`<div class="ab-bloco"><div class="ab-bloco-hd"><span class="ab-bloco-titulo">▸ ${eh(mop)} <span class="ab-bloco-qtd">· ${itens.length} chamado(s)</span></span><button class="ab-copy-btn" onclick="abCopiarBloco('${eh(mop)}',this)"${itens.length?'':' disabled'}>Copiar bloco</button></div><div class="ab-bloco-scroll"><table class="ab-bloco-tbl"><thead><tr><th>ID Ticket</th><th>Cliente / Cliente Final</th><th>UF/Cidade</th><th>Departamento</th><th style="text-align:right">SLA</th><th>Faixa</th><th>Substatus</th>${mostraResp?'<th>Responsável</th>':''}${mostraObs?'<th>Anotações</th>':''}</tr></thead><tbody>${linhas}</tbody></table></div></div>`;
+  }).join('');
+}
+function toggleSwapResumo(btn){
+  const body=document.getElementById('swap-resumo-body');if(!body)return;
+  const aberto=body.style.display!=='none';
+  body.style.display=aberto?'none':'';
+  btn.classList.toggle('open',!aberto);
+  if(!aberto)renderSwapResumo();
+}
+function renderSwapResumo(){
+  const body=document.getElementById('swap-resumo-body');
+  if(!body||body.style.display==='none')return;
+  const ch=abResumoWhatsappScope(gFSwap());
+  swapRenderPivot(ch);
+  swapRenderBlocos(ch);
+  const pb=document.getElementById('swap-btn-pivot');if(pb)pb.disabled=ch.length===0;
 }
 
 /* ─── RENDER ENCERRADOS ─── */
@@ -14638,7 +14729,7 @@ function abAnnObsInput(id){
   /* onblur (não oninput) para atualizar o Resumo por bloco MOP/EPS só quando o usuário
      termina de digitar — chamar renderAbResumo() a cada tecla reconstruiria a tabela do
      resumo (e derrubaria o foco) no meio da digitação. */
-  return `<textarea class="ann-obs" placeholder="Anotações…" rows="1" onclick="event.stopPropagation()" oninput="saveAbAnnotation('${eh(id)}','obs',this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'" onblur="renderAbResumo()">${escaped}</textarea>`;
+  return `<textarea class="ann-obs" placeholder="Anotações…" rows="1" onclick="event.stopPropagation()" oninput="saveAbAnnotation('${eh(id)}','obs',this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'" onblur="renderAbResumo();renderSwapResumo()">${escaped}</textarea>`;
 }
 function abAnnObsReadonly(id){const o=(abAnnotations[id]||{}).obs||'';return o?`<span class="ann-readonly" title="${eh(o)}">${eh(o.length>30?o.slice(0,29)+'…':o)}</span>`:`<span class="ann-empty">—</span>`;}
 const OFS_STATUS_COLORS={'concluído':'#22c55e','iniciado':'#3b82f6','pendente':'#f59e0b','não concluído':'#ef4444','suspenso':'#8b5cf6','cancelado':'#6b7280','sem status':'#94a3b8','em rota':'#06b6d4'};
