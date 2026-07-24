@@ -10256,7 +10256,19 @@ async function loadAtrixUpdates(){
     let count=0;
     dAb.forEach(ticket=>{
       const up=updates[ticket.id]||updates[ticket.ticketId]||null;
-      if(!up||!up.substatus)return;
+      if(!up)return;
+      /* Preenche UF/Cidade a partir da tela do chamado no Atrix quando a base local
+         veio em branco (ex.: chamados Swap com col V/W vazias) — nunca sobrescreve
+         um valor já existente. */
+      if((up.uf&&!ticket.uf)||(up.cidade&&!ticket.cidade)){
+        if(up.uf&&!ticket.uf)ticket.uf=String(up.uf).trim().toUpperCase();
+        if(up.cidade&&!ticket.cidade)ticket.cidade=repairPtBR(String(up.cidade).trim());
+        const newMop=normMopByCity(ticket.uf,ticket.cidade);
+        if(newMop)ticket.mop=newMop;
+        ticket.statusSla=statusSla(ticket.slaH,ticket.mop,ticket.slaLimitH);
+        count++;
+      }
+      if(!up.substatus)return;
       const next=fmtSubstatus(up.substatus);
       if(next!==ticket.substatus){
         /* Mesma lógica de pausa/retomada de SLA por substatus usada em updateSubstatus() —
@@ -10273,7 +10285,7 @@ async function loadAtrixUpdates(){
       }
     });
     if((count>0||latestAt)&&!abInteractionLock){renderAllAb();renderAllSwap();}
-    if(count>0){console.log(`[Atrix Agent] ${count} substatus(es) aplicado(s) do agente.`);saveState();}
+    if(count>0){console.log(`[Atrix Agent] ${count} atualização(ões) aplicada(s) do agente.`);saveState();}
     if(typeof refreshAtrixPublicDock==='function')refreshAtrixPublicDock();
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);}
 }
