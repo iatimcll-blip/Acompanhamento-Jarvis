@@ -432,6 +432,41 @@ async function extractSubstatus(page, ticket) {
   }
 }
 
+// ── Extração de Estado/Cidade (dados do POP na mesma página do chamado) ───────
+// Mesmo padrão de busca por rótulo usado no Status (célula com o texto exato,
+// valor na célula/elemento irmão) — aqui os valores são texto puro, não select.
+// Descarta bindings Angular não renderizados (ex.: "{{ vm.ticket.pop[0]... }}"),
+// que aparecem quando o campo não carrega a tempo.
+async function extractField(page, label) {
+  return page.evaluate(({ label, blanks }) => {
+    const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
+    const target = normLabel(label);
+    for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
+      if (normLabel(cell.textContent) !== target) continue;
+      const next = cell.nextElementSibling;
+      if (!next) continue;
+      const t = next.textContent.trim();
+      if (t && !blanks.includes(t.toLowerCase()) && !t.includes('{{')) return t;
+    }
+    return null;
+  }, { label, blanks: [...BLANK_VALUES] });
+}
+
+// Assume que a página do chamado (ticket.link) já está carregada — chamar logo
+// após extractSubstatus, sem navegar de novo.
+async function extractLocation(page, ticket) {
+  const tid = ticket.id || ticket.ticketId || '?';
+  try {
+    const uf = await extractField(page, 'Estado');
+    const cidade = await extractField(page, 'Cidade');
+    if (uf || cidade) dbg(`[${tid}] Localizacao: UF=${uf || '-'} Cidade=${cidade || '-'}`);
+    return { uf: uf ? uf.trim().toUpperCase() : '', cidade: cidade ? cidade.trim() : '' };
+  } catch (e) {
+    dbg(`[${tid}] Erro ao extrair localizacao: ${e.message}`);
+    return { uf: '', cidade: '' };
+  }
+}
+
 // ── Ciclo principal ───────────────────────────────────────────────────────────
 async function runCycle() {
   const cycleStart = new Date();
@@ -505,7 +540,8 @@ async function runCycle() {
       const sub = await extractSubstatus(page, ticket);
 
       if (sub) {
-        updates[tid] = { substatus: sub, cliente: ticket.cliente || '', updatedAt: new Date().toISOString() };
+        const loc = await extractLocation(page, ticket);
+        updates[tid] = { substatus: sub, cliente: ticket.cliente || '', uf: loc.uf, cidade: loc.cidade, updatedAt: new Date().toISOString() };
         if (sub !== old) {
           info(`  ✓ "${old}" → "${sub}"`);
           changed++;
