@@ -10693,11 +10693,16 @@ function procAb(raw,fname){
     const protocolo=String(abCol(r,1,['Protocolo','PROTOCOLO','ID Ticket','ID_TICKET'])||'').trim();
     const id=protocolo||ticketId;
     const cliente=clienteAbertoNome(r);
-    const uf=String(abCol(r,21,['UF','uf','ufservico','Uf Serviço','Uf Servico'])||'').trim().toUpperCase();
-    const cidade=repairPtBR(String(abCol(r,22,['Cidade','CIDADE','cidadeservico','Cidade Serviço','Cidade Servico'])||'').trim());
+    const depAtual=repairPtBR(String(abCol(r,16,['Dep_Atual','DEP_ATUAL','Departamento Atual','Dep Atual'])||'').trim());
+    /* Chamados SWAP (col Q contém CMO - REPARO SWAP) usam UF/Cidade direto das
+       colunas V/W por posição, sem cair para busca por nome de cabeçalho — aceita
+       vazio se a célula realmente estiver vazia, em vez de pegar de outra coluna
+       homônima. Chamados normais de Abertos continuam com a lógica por nome. */
+    const isSwapRow=isSwapDep({depAtual});
+    const uf=(isSwapRow?String(Object.values(r)[21]??''):String(abCol(r,21,['UF','uf','ufservico','Uf Serviço','Uf Servico'])||'')).trim().toUpperCase();
+    const cidade=repairPtBR((isSwapRow?String(Object.values(r)[22]??''):String(abCol(r,22,['Cidade','CIDADE','cidadeservico','Cidade Serviço','Cidade Servico'])||'')).trim());
     const regiao=repairPtBR(String(gv(r,['REGIAO','Região','Regiao'])||'').trim());
     const substatus=fmtSubstatus(repairPtBR(String(abCol(r,15,['Substatus','SUBSTATUS'])||'')));
-    const depAtual=repairPtBR(String(abCol(r,16,['Dep_Atual','DEP_ATUAL','Departamento Atual','Dep Atual'])||'').trim());
     const link=bestLink(gv(r,['Link Atrix','LINK','Link','Ticket Bdesk']),atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(gv(r,['Abertura do Ticket','Abertura','Data Abertura','Data de Abertura','Data/Hora Abertura']));
     const slaLimitH=slaBaseLimit(r);
@@ -10716,7 +10721,7 @@ function procAb(raw,fname){
     item.faixa=SLA_ORDER.find(f=>nk(faixaRaw).includes(nk(f)))||cf(item.slaH);
     item.statusSla=statusSla(item.slaH,mop,slaLimitH);
     return item;
-  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
   refreshAbBadge();
   lastAbFile=fname||'';
   lastAbAt=now2();updateUploadTimes();
