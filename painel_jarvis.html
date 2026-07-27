@@ -10222,7 +10222,7 @@ function procEnc(raw,fname){
   document.getElementById('dash-enc').style.display='block';
   const emptySi=document.getElementById('empty-si');if(emptySi)emptySi.style.display='none';
   const dashSi=document.getElementById('dash-si');if(dashSi)dashSi.style.display='block';
-  const showControls=document.getElementById('panel-encerrados').classList.contains('active');
+  const showControls=document.getElementById('panel-encerrados').classList.contains('active')||document.getElementById('panel-semintervencao').classList.contains('active');
   const encSubbarEl=document.getElementById('enc-subbar');
   if(encSubbarEl)encSubbarEl.classList.toggle('visible',showControls&&dEnc.length>0);
   saveState();autoSyncAfterBaseUpload('B2B Encerrados');updateClearBtns();
@@ -11187,18 +11187,18 @@ function encWeeksForMesArr(mesArr){
 function fillWeekSelector(){
   const semanas=encWeeksForMesArr(selMes);
   selWeek=selWeek.filter(s=>semanas.includes(s));
-  mselRender('week-selector',semanas,selWeek,{allLabel:'Todas as semanas',onChange:(v)=>{selWeek=v;renderAllEnc();saveState();}});
+  mselRender('week-selector',semanas,selWeek,{allLabel:'Todas as semanas',onChange:(v)=>{selWeek=v;renderAllEnc();renderAllSi();saveState();}});
 }
 function fillClusterSelector(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
   const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
   selCluster=selCluster.filter(c=>clusters.includes(c));
-  mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];fillFiltersEnc();renderAllEnc();saveState();}});
+  mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];selSiCluster=[];fillFiltersEnc();fillFiltersSi();renderAllEnc();renderAllSi();saveState();}});
 }
 function fillMesSelector(){
   const meses=[...new Set(dEnc.map(d=>d.mes).filter(Boolean))].sort();
   selMes=selMes.filter(m=>meses.includes(m));
-  mselRender('mes-selector',meses,selMes,{allLabel:'Todos os meses',labelFn:fmtMesLabel,onChange:(v)=>{selMes=v;fillWeekSelector();renderAllEnc();saveState();}});
+  mselRender('mes-selector',meses,selMes,{allLabel:'Todos os meses',labelFn:fmtMesLabel,onChange:(v)=>{selMes=v;fillWeekSelector();renderAllEnc();renderAllSi();saveState();}});
 }
 /* ─── Repetidos: filtros com persistência ─── */
 function onRepFilterChange(){
@@ -15481,9 +15481,11 @@ function switchTab(tab,persist=true){
   document.getElementById('panel-ofs').classList.toggle('active',isOfs);
   document.getElementById('panel-ativacoes').classList.toggle('active',isAtiv);
   document.getElementById('panel-preventivas').classList.toggle('active',isPrevent);
-  const showEncControls=isEnc&&dEnc.length>0;
+  const showEncControls=(isEnc||isSi)&&dEnc.length>0;
   const encSubbar=document.getElementById('enc-subbar');
   if(encSubbar)encSubbar.classList.toggle('visible',showEncControls);
+  const encSubbarLabel=document.querySelector('#enc-subbar .enc-subbar-label');
+  if(encSubbarLabel)encSubbarLabel.innerHTML=isSi?'<i class="ti ti-shield-check" style="font-size:12px;vertical-align:-1px;color:var(--blue);margin-right:3px"></i>B2B S/Intervenção':'<i class="ti ti-circle-check" style="font-size:12px;vertical-align:-1px;color:var(--green-dk);margin-right:3px"></i>B2B Encerrados';
   const upAb=document.getElementById('up-ab'),upEnc=document.getElementById('up-enc'),upFuel=document.getElementById('up-fuel'),upOfs=document.getElementById('up-ofs');
   if(upAb)upAb.style.display=isAb?'flex':'none';
   if(upEnc)upEnc.style.display=(isEnc||isRep||isSi)?'flex':'none';
