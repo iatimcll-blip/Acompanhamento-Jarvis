@@ -2546,18 +2546,21 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 /* ═══ MELHORIAS B2B ENCERRADOS ═══ */
 
 /* Tabela encerrados — colunas automáticas com quebra nos textos longos */
-#tbl-enc-main { table-layout: auto !important; width: 100% !important; }
-#tbl-enc-main th, #tbl-enc-main td { white-space: nowrap !important; }
+#tbl-enc-main, #tbl-si-main { table-layout: auto !important; width: 100% !important; }
+#tbl-enc-main th, #tbl-enc-main td, #tbl-si-main th, #tbl-si-main td { white-space: nowrap !important; }
 #tbl-enc-main td.enc-cli,
 #tbl-enc-main td.enc-cf,
-#tbl-enc-main td.enc-causa {
+#tbl-enc-main td.enc-causa,
+#tbl-si-main td.enc-cli,
+#tbl-si-main td.enc-cf {
   white-space: normal !important;
   word-break: break-word !important;
   max-width: 200px !important;
 }
 #tbl-enc-main td.enc-causa { max-width: 220px !important; color: var(--tx2) !important; }
-#tbl-enc-main td.enc-tempo { font-variant-numeric: tabular-nums !important; text-align: right !important; }
-#tbl-enc-main td.enc-semana { text-align: center !important; }
+#tbl-enc-main td.enc-tempo, #tbl-si-main td.enc-tempo { font-variant-numeric: tabular-nums !important; text-align: right !important; }
+#tbl-enc-main td.enc-semana, #tbl-si-main td.enc-semana { text-align: center !important; }
+#tbl-si-main td.enc-obs { white-space: normal !important; }
 
 /* Relatório Executivo no final */
 #exec-report { margin-top: 24px !important; }
@@ -3144,6 +3147,8 @@ tbody tr:last-child td {
 #tbl-enc-main td.enc-cli,
 #tbl-enc-main td.enc-cf,
 #tbl-enc-main td.enc-causa,
+#tbl-si-main td.enc-cli,
+#tbl-si-main td.enc-cf,
 .ab-bloco-tbl td.col-cliente,
 .ab-bloco-tbl td.col-causa {
   line-height: 1.38 !important;
@@ -6974,6 +6979,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <th onclick="sSi('semana')">Semana</th>
             <th onclick="sSi('tempoTotal')">Tempo</th>
             <th>Dentro 8h</th>
+            <th>Observações</th>
           </tr></thead>
           <tbody id="tb-si"></tbody>
         </table></div>
@@ -10164,6 +10170,8 @@ function procEnc(raw,fname){
   encChartBucket='';
   dEnc=raw.filter(r=>r['ticket_id']||r['protocolo']).map(r=>{
     const protocolo=String(r['protocolo']||r['ticket_id']||'').trim();
+    const ticketId=String(r['ticket_id']||'').trim();
+    const link=atrixTicketLink(ticketId||protocolo);
     const cliente=String(colVal(r,10,['Cliente','cliente'])||'').trim();
     const _vals=Object.values(r);
     const _ufPos=String(_vals[23]||'').trim();const _cidPos=String(_vals[24]||'').trim();
@@ -10199,8 +10207,9 @@ function procEnc(raw,fname){
     const outlier24h=_o24!==null?_o24:encBucket(tempoTotal)==='outlier';
     const mop=normMopByCity(uf,cidade);
     const mes=dataFechamentoParsed?`${dataFechamentoParsed.getFullYear()}-${String(dataFechamentoParsed.getMonth()+1).padStart(2,'0')}`:''
-    return{protocolo,os,cliente,uf,cidade,cidadeRaw,mop,mes,cluster,clusterCalc,clusterNome,causaRaiz,semana,segmento,faixa,tempoTotal,dentro8h,outlier24h,numplan,clienteId,titulo,clientesAfetados,dataAbertura:fmtReportDate(dataAbertura),dataFechamento:fmtReportDate(dataFechamento),periodoAtendimento:`${fmtReportDate(dataAbertura)} - ${fmtReportDate(dataFechamento)}`};
+    return{protocolo,ticketId,link,os,cliente,uf,cidade,cidadeRaw,mop,mes,cluster,clusterCalc,clusterNome,causaRaiz,semana,segmento,faixa,tempoTotal,dentro8h,outlier24h,numplan,clienteId,titulo,clientesAfetados,dataAbertura:fmtReportDate(dataAbertura),dataFechamento:fmtReportDate(dataFechamento),periodoAtendimento:`${fmtReportDate(dataAbertura)} - ${fmtReportDate(dataFechamento)}`};
   });
+  podaSiAnnotations();
   document.getElementById('nb-enc').textContent=slnEnc().length;
   const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent=slnSi().length;
   lastEncFile=fname||'';
@@ -12382,10 +12391,29 @@ function renderTSi(){
     const cfTC=d.titulo?titleCasePT(d.titulo)||d.titulo:'—';
     const clrDot=CCLR[d.cluster]||'#8e8e93';
     const clsSpan=`<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${clrDot};flex-shrink:0"></span>${d.cluster||'—'}</span>`;
-    return`<tr class="enc-flat"><td class="tid enc-nowrap">${d.protocolo}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td></tr>`;
-  }).join('')||'<tr><td colspan="9" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+    const cleanLink=safeUrl(d.link);
+    const protoCell=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.protocolo)}</a><i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i>`:eh(d.protocolo);
+    const obsCell=canEdit()?siAnnObsInput(d.protocolo):siAnnObsReadonly(d.protocolo);
+    return`<tr class="enc-flat"><td class="tid enc-nowrap">${protoCell}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td><td class="enc-obs">${obsCell}</td></tr>`;
+  }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sSi(c){scSi===c?sdSi*=-1:(scSi=c,sdSi=-1);renderTSi()}
+
+let siAnnotations={};
+const SI_ANN_KEY='atrix:si:annotations:v1';
+function loadSiAnnotations(){try{siAnnotations=JSON.parse(localStorage.getItem(SI_ANN_KEY)||'{}')||{};}catch{siAnnotations={};}}
+function saveSiAnnotation(id,value){if(!id)return;siAnnotations[id]=value;try{localStorage.setItem(SI_ANN_KEY,JSON.stringify(siAnnotations));}catch(e){console.warn('si ann save',e);}}
+function podaSiAnnotations(){
+  const ativos=new Set(slnSi().map(d=>d.protocolo));
+  Object.keys(siAnnotations).forEach(id=>{if(!ativos.has(id))delete siAnnotations[id];});
+  try{localStorage.setItem(SI_ANN_KEY,JSON.stringify(siAnnotations));}catch(e){console.warn('si ann poda',e);}
+}
+function siAnnObsInput(id){
+  const saved=siAnnotations[id]||'';
+  const escaped=saved.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<textarea class="ann-obs" placeholder="Observações…" rows="1" onclick="event.stopPropagation()" oninput="saveSiAnnotation('${eh(id)}',this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${escaped}</textarea>`;
+}
+function siAnnObsReadonly(id){const o=siAnnotations[id]||'';return o?`<span class="ann-readonly" title="${eh(o)}">${eh(o.length>30?o.slice(0,29)+'…':o)}</span>`:`<span class="ann-empty">—</span>`;}
 
 function exportSiCSV(){
   const rows=gFSi();
@@ -16735,7 +16763,7 @@ function rdeShowCalls(title,flatRecs){
   el.style.display='block';
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
-loadAbAnnotations();loadAleloCardImage();ofsTecLoad();
+loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
