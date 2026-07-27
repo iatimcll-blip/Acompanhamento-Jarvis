@@ -2121,18 +2121,52 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 }
 
 /* ─── TAB BAR — pill style colorido ─── */
-.top-tabbar {
+.top-tabbar-wrap {
   flex-shrink: 0 !important;
+  position: relative !important;
   display: flex !important; align-items: center !important;
-  overflow-x: auto !important; scrollbar-width: none !important;
-  padding: 0 16px !important;
-  gap: 1px !important;
   background: var(--surface) !important;
   border-bottom: 1px solid var(--bd) !important;
   height: 46px !important; min-height: 46px !important;
   z-index: 95 !important;
 }
+.top-tabbar {
+  flex: 1 !important; min-width: 0 !important;
+  display: flex !important; align-items: center !important;
+  overflow-x: auto !important; scrollbar-width: none !important;
+  scroll-behavior: smooth !important;
+  padding: 0 16px !important;
+  gap: 1px !important;
+  height: 46px !important; min-height: 46px !important;
+}
 .top-tabbar::-webkit-scrollbar { display: none !important; }
+.tabbar-arrow {
+  flex-shrink: 0 !important;
+  display: none;
+  align-items: center !important; justify-content: center !important;
+  width: 26px !important; height: 26px !important;
+  margin: 0 4px !important;
+  border: .5px solid var(--bd) !important;
+  border-radius: 50% !important;
+  background: var(--surface2) !important;
+  color: var(--tx2) !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  transition: background .12s !important;
+}
+.tabbar-arrow:hover { background: var(--surface3) !important; }
+.tabbar-arrow.show { display: inline-flex !important; }
+.top-tabbar-wrap.overflow-l::before,
+.top-tabbar-wrap.overflow-r::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important; bottom: 0 !important;
+  width: 24px !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+.top-tabbar-wrap.overflow-l::before { left: 34px !important; background: linear-gradient(90deg, var(--surface), rgba(0,0,0,0)) !important; }
+.top-tabbar-wrap.overflow-r::after { right: 34px !important; background: linear-gradient(270deg, var(--surface), rgba(0,0,0,0)) !important; }
 .top-tabbar .ntab {
   display: inline-flex !important; align-items: center !important;
   gap: 6px !important; flex-shrink: 0 !important;
@@ -6445,7 +6479,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </nav>
 
     <!-- ═══ TAB BAR SUPERIOR ═══ -->
-    <div class="top-tabbar">
+    <div class="top-tabbar-wrap">
+      <button type="button" class="tabbar-arrow tabbar-arrow-l" id="tabbar-arrow-l" onclick="scrollTabbar(-1)" title="Ver painéis anteriores"><i class="ti ti-chevron-left"></i></button>
+      <div class="top-tabbar" id="top-tabbar" onscroll="updateTabbarArrows()">
       <button class="ntab active" id="ntab-dash" onclick="switchTab('dashboard')">
         <i class="ti ti-layout-dashboard"></i><span class="ntab-label"> Dashboard</span>
       </button>
@@ -6499,6 +6535,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-sobreaviso" onclick="window.location.href='painel_sobreaviso.html'">
         <i class="ti ti-headset"></i><span class="ntab-label"> Sobreaviso</span>
       </button>
+      </div>
+      <button type="button" class="tabbar-arrow tabbar-arrow-r" id="tabbar-arrow-r" onclick="scrollTabbar(1)" title="Ver mais painéis"><i class="ti ti-chevron-right"></i></button>
     </div>
 
     <!-- ── ENC SUBBAR (Semana / Cluster — só aparece na aba Encerrados) ── -->
@@ -15458,6 +15496,26 @@ function atrixGlobalSearch(value){
   clearTimeout(atrixGlobalSearch.t);
   atrixGlobalSearch.t=setTimeout(()=>atxUpdateSearchTarget(value),250);
 }
+/* ─── Barra de painéis superior: setas de scroll quando os botões não cabem ─── */
+function updateTabbarArrows(){
+  const el=document.getElementById('top-tabbar');
+  const wrap=el&&el.closest('.top-tabbar-wrap');
+  const btnL=document.getElementById('tabbar-arrow-l'),btnR=document.getElementById('tabbar-arrow-r');
+  if(!el||!wrap||!btnL||!btnR)return;
+  const maxScroll=el.scrollWidth-el.clientWidth;
+  const showL=el.scrollLeft>4;
+  const showR=el.scrollLeft<maxScroll-40;
+  btnL.classList.toggle('show',showL);
+  btnR.classList.toggle('show',showR);
+  wrap.classList.toggle('overflow-l',showL);
+  wrap.classList.toggle('overflow-r',showR);
+}
+function scrollTabbar(dir){
+  const el=document.getElementById('top-tabbar');
+  if(!el)return;
+  el.scrollBy({left:dir*220,behavior:'smooth'});
+}
+window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
   if(!['dashboard','abertos','swap','encerrados','semIntervencao','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas'].includes(tab))tab='dashboard';
@@ -16765,7 +16823,7 @@ function rdeShowCalls(title,flatRecs){
   el.style.display='block';
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
-loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();
+loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
