@@ -92,6 +92,7 @@
   td.cell.warnv{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
   td.cell .lock{position:absolute; top:1px; right:2px; font-size:8px;}
   td.cell .fer-badge{position:absolute; top:1px; left:2px; font-size:8px;}
+  td.cell .reserva-badge{position:absolute; bottom:1px; left:2px; font-size:8px;}
   td.cell .horas-badge{position:absolute; bottom:1px; right:2px; font-size:8.5px; font-weight:800; color:var(--purple); background:#fff; border-radius:4px; padding:0 2px; border:1px solid var(--purple-bg);}
 
   .legend{display:flex; flex-wrap:wrap; gap:14px; padding:10px 16px; font-size:11.5px; color:var(--muted); border-top:1px solid var(--line);}
@@ -303,6 +304,7 @@
       <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--orange)"></span>Inconsistência de auditoria</span>
       <span>🔒 ajuste manual (protegido no recálculo)</span>
       <span>🎉 feriado (janela de domingo/feriado no cálculo de horas)</span>
+      <span>🛟 equipe reserva cobrindo domingo sem opção na própria cidade</span>
     </div>
   </div>
 
@@ -354,6 +356,7 @@
         </div>
         <div id="colabTecnicoWrap" style="display:none"><label>Ancorar ao técnico</label><select id="colabTecnicoVinculado"><option value="">— nenhum —</option></select><small style="display:block;margin-top:4px;color:var(--muted);font-size:10.5px">A escala do Técnico passa a seguir a escala deste Oficial.</small></div>
         <div><label>Equipe</label><input id="colabEquipe" list="equipesList" placeholder="Ex.: Equipe A"></div>
+        <div style="display:flex;align-items:end"><label class="nc-toggle"><input type="checkbox" id="colabReserva"> 🛟 Equipe reserva (cobre domingo sem ninguém disponível na cidade)</label></div>
         <div><label>UF</label><input id="colabUf" list="ufsList" placeholder="Ex.: MA"></div>
         <div><label>Localidade</label><input id="colabLocalidade" list="localidadesList" placeholder="Cidade do colaborador"></div>
         <div><label>G.A</label><input id="colabGA" placeholder="Gestor de Área"></div>
@@ -421,6 +424,8 @@
     <div class="mb">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Nacionais — aplicados automaticamente todo ano</div>
       <div id="feriadosNacLista" style="margin-bottom:18px"></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Estaduais — UF dos colaboradores cadastrados (confira a data oficial antes de usar em folha de pagamento)</div>
+      <div id="feriadosUfLista" style="margin-bottom:18px"></div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">Municipais — cidades dos Técnicos cadastrados (confira a data oficial antes de usar em folha de pagamento)</div>
       <div id="feriadosMuniLista"></div>
     </div>
@@ -616,6 +621,39 @@ function feriadosMunicipaisPadrao(){
     'São José de Ribamar': [ {mes:3, dia:19, nome:'São José (padroeiro)'} ]
   };
 }
+/* ================= FERIADOS ESTADUAIS (por UF dos colaboradores) ================= */
+function feriadosEstaduaisPadrao(){
+  return {
+    'MA': [ {mes:7, dia:28, nome:'Adesão do Maranhão à Independência do Brasil'} ],
+    'PI': [ {mes:10, dia:19, nome:'Dia do Piauí (instalação da província)'} ]
+  };
+}
+function ufNormalizada(uf){
+  return String(uf||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z]/g,'').toUpperCase();
+}
+function ufsConfiguradosTecnicos(){
+  const mapa = new Map();
+  const tecnicos = FUNCIONARIOS.filter(f=>f && f.tipo!=='Oficial' && f.uf);
+  const base = tecnicos.length ? tecnicos : FUNCIONARIOS.filter(f=>f && f.uf);
+  base.forEach(f=>{
+    const uf = ufNormalizada(f.uf);
+    if(uf) mapa.set(uf, uf);
+  });
+  return [...mapa.values()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function garantirFeriadosUfsConfiguradas(){
+  if(!STORE.feriadosEstaduais) STORE.feriadosEstaduais = feriadosEstaduaisPadrao();
+  const padrao = feriadosEstaduaisPadrao();
+  ufsConfiguradosTecnicos().forEach(uf=>{
+    if(!STORE.feriadosEstaduais[uf]){
+      STORE.feriadosEstaduais[uf] = padrao[uf] ? padrao[uf].map(f=>({...f})) : [];
+    }
+  });
+}
+function ufsFeriadosEstaduais(){
+  garantirFeriadosUfsConfiguradas();
+  return ufsConfiguradosTecnicos();
+}
 function localidadeNormalizada(loc){
   const raw = String(loc||'').replace(/\s+/g,' ').trim();
   const s = raw.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
@@ -657,10 +695,16 @@ function htmlTxt(s){
 function jsArgCidade(c){
   return String(c==null?'':c).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
-function feriadoDoDia(date, localidade){
+function feriadoDoDia(date, localidade, uf){
   const mes = date.getMonth()+1, dia = date.getDate(), ano = date.getFullYear();
   const nac = feriadosNacionais(ano).find(f=>f.mes===mes && f.dia===dia);
   if(nac) return {tipo:'nacional', nome:nac.nome};
+  const ufKey = ufNormalizada(uf);
+  if(ufKey){
+    const est = (STORE.feriadosEstaduais && STORE.feriadosEstaduais[ufKey]) || [];
+    const e = est.find(f=>f.mes===mes && f.dia===dia);
+    if(e) return {tipo:'estadual', nome:e.nome, uf:ufKey};
+  }
   const cidade = localidadeNormalizada(localidade);
   if(!cidade) return null;
   const muni = (STORE.feriadosMunicipais && STORE.feriadosMunicipais[cidade]) || [];
@@ -675,7 +719,7 @@ function aplicarFeriados(){
     if(!f.ativo || !grid[ei]) return;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
-      const fer = feriadoDoDia(DIAS[d], f.localidade);
+      const fer = feriadoDoDia(DIAS[d], f.localidade, f.uf);
       if(!fer){ cel.feriadoNome=''; continue; }
       cel.feriadoNome = fer.nome;
       if(!cel.lock && cel.st==='LIVRE') cel.st = 'FERIADO';
@@ -935,7 +979,7 @@ function mesclarEstadoRemotoSobreaviso(remoto){
         }
         return;
       }
-      FUNCIONARIOS.push({nome:rf.nome, tipo:rf.tipo||'Tecnico', equipe:rf.equipe||'', localidade:rf.localidade||'', uf:rf.uf||'', ga:rf.ga||'', go:rf.go||'', ferias:Array.isArray(rf.ferias)?rf.ferias:[], tecnicoVinculado:rf.tecnicoVinculado||'', janelasCustom:rf.janelasCustom?normalizarJanelas(rf.janelasCustom):null, ativo:rf.ativo!==false});
+      FUNCIONARIOS.push({nome:rf.nome, tipo:rf.tipo||'Tecnico', equipe:rf.equipe||'', localidade:rf.localidade||'', uf:rf.uf||'', ga:rf.ga||'', go:rf.go||'', ferias:Array.isArray(rf.ferias)?rf.ferias:[], tecnicoVinculado:rf.tecnicoVinculado||'', janelasCustom:rf.janelasCustom?normalizarJanelas(rf.janelasCustom):null, dataInicialSobreaviso:rf.dataInicialSobreaviso||'', reserva:!!rf.reserva, ativo:rf.ativo!==false});
       grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
       nomesLocais.add(keyNome);
       mudou = true;
@@ -985,6 +1029,7 @@ function mesclarEstadoRemotoSobreaviso(remoto){
     });
   }
   if(remoto.feriadosMunicipais && !STORE.feriadosMunicipais) STORE.feriadosMunicipais = remoto.feriadosMunicipais;
+  if(remoto.feriadosEstaduais && !STORE.feriadosEstaduais) STORE.feriadosEstaduais = remoto.feriadosEstaduais;
   if(mudou) ordenarColaboradoresAZ();
   return mudou;
 }
@@ -1001,11 +1046,12 @@ function agendarEnvioRemoto(){
 }
 function atualizarStoreDaMemoria(){
   salvarGridPeriodoAtual();
-  STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, ga:f.ga, go:f.go, ativo:f.ativo, ferias:f.ferias||[], tecnicoVinculado:f.tecnicoVinculado||'', janelasCustom:f.janelasCustom?normalizarJanelas(f.janelasCustom):null}));
+  STORE.funcionarios = FUNCIONARIOS.map(f=>({nome:f.nome, tipo:f.tipo, equipe:f.equipe, localidade:f.localidade, uf:f.uf, ga:f.ga, go:f.go, ativo:f.ativo, ferias:f.ferias||[], tecnicoVinculado:f.tecnicoVinculado||'', janelasCustom:f.janelasCustom?normalizarJanelas(f.janelasCustom):null, dataInicialSobreaviso:f.dataInicialSobreaviso||'', reserva:!!f.reserva}));
   STORE.cfg = cfg();
   STORE.janelas = normalizarJanelas(CFG_JANELAS);
   STORE.periodoAtual = periodoAno!=null ? periodoKeyAtual() : STORE.periodoAtual;
   if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  if(!STORE.feriadosEstaduais) STORE.feriadosEstaduais = feriadosEstaduaisPadrao();
 }
 function liberarEnvioRemotoInicial(){
   _syncRemotoInicialConcluido = true;
@@ -1132,7 +1178,7 @@ function janelasDoColaborador(ei){
 function janelasConfiguradasDoDia(date, ei, feriadoNome){
   const f = ei!=null ? FUNCIONARIOS[ei] : null;
   const cfg = janelasDoColaborador(ei);
-  const feriado = feriadoNome || (f ? feriadoDoDia(date, f.localidade) : null);
+  const feriado = feriadoNome || (f ? feriadoDoDia(date, f.localidade, f.uf) : null);
   const dow = date.getDay();
   let janelas;
   if(feriado || dow===0) janelas = [cfg.domFerMadrugada, cfg.domFer];
@@ -1204,7 +1250,7 @@ function pesoReducaoHorasSobreaviso(ei, idx){
   const mins = minutosSobreavisoConfigurado(date, ei);
   const dow = date.getDay();
   const f = FUNCIONARIOS[ei] || {};
-  const feriado = !!feriadoDoDia(date, f.localidade);
+  const feriado = !!feriadoDoDia(date, f.localidade, f.uf);
   const pesoFimSemana = dow===6 ? 0.50 : 0;
   const pesoFeriado = feriado ? 0.75 : 0;
   return mins + pesoFimSemana + pesoFeriado;
@@ -1831,11 +1877,57 @@ function selecionarGrupoSemanaOtimizado(candidatos, idxs, alvoCobertura, cargaHo
    colaborador ou importar base: a escala deve nascer em branco (LIVRE) e só ganhar
    SOBREAVISO/DSR por ajuste manual (clique na célula) a menos que o gestor peça geração
    automática explicitamente. */
+/* ================= ÂNCORA INDIVIDUAL DE DATA INICIAL (por colaborador) ================= */
+/* Ação manual (👥 Gerenciar colaboradores → 📅 Início): o gestor define a data em que o
+   colaborador começa o sobreaviso. A partir dali, a semana alterna sim/não (ciclo de 2
+   semanas, sempre a partir da segunda-feira da semana da data informada), usando a paridade
+   absoluta de semana já usada no rodízio geral (semanaAbsoluta/EPOCH_SEGUNDA), então funciona
+   igual em qualquer período/mês sem precisar reconfigurar. Dentro de cada semana "ligada", o
+   dia de descanso continua seguindo as mesmas regras de sempre (DSR Volante, DSR fixo por
+   G.O., ou o heurístico de maior redução de horas) via statusSobreavisoPlanejadoSemana. Fica
+   de fora do pool do rodízio automático — não compete por semana com os demais — e tem
+   prioridade sobre ele, igual à ancoragem Oficial→Técnico (que, se o Oficial tiver essa data
+   definida, replica automaticamente pro Técnico vinculado). */
+function semanaAbsolutaAncoraIndividual(f){
+  if(!f || !f.dataInicialSobreaviso) return null;
+  const d = new Date(f.dataInicialSobreaviso+'T00:00:00');
+  if(isNaN(d.getTime())) return null;
+  return semanaAbsoluta(segundaFeiraDe(d));
+}
+function colaboradorSegueAncoraDataInicial(ei){
+  return semanaAbsolutaAncoraIndividual(FUNCIONARIOS[ei])!=null;
+}
+function semanaEhSobreavisoPorAncoraIndividual(f, segFeira){
+  const base = semanaAbsolutaAncoraIndividual(f);
+  if(base==null) return false;
+  const abs = semanaAbsoluta(segFeira);
+  if(abs < base) return false; // não gera antes da data inicial
+  return (abs - base) % 2 === 0;
+}
+function aplicarAncoragemDataInicialIndividual(){
+  let mudou = false;
+  const semanas = semanasDoPeriodoSobreaviso();
+  FUNCIONARIOS.forEach((f, ei)=>{
+    if(!f.ativo || !grid[ei] || !colaboradorSegueAncoraDataInicial(ei)) return;
+    semanas.forEach(({idxs})=>{
+      const seg = segundaFeiraDe(DIAS[idxs[0]]);
+      const ligada = semanaEhSobreavisoPorAncoraIndividual(f, seg);
+      idxs.forEach(idx=>{
+        const cel = grid[ei][idx];
+        if(!cel || cel.lock) return;
+        const novo = ligada ? statusSobreavisoPlanejadoSemana(ei, idx, idxs) : 'LIVRE';
+        if(cel.st !== novo){ cel.st = novo; mudou = true; }
+      });
+    });
+  });
+  return mudou;
+}
 function aplicarRodizioAutomatico(){
   const ativos = ativosOrdenadosPorAncora();
   if(!ativos.length) return;
+  aplicarAncoragemDataInicialIndividual();
   const ctx = contextoAncoragemAutomatica();
-  const candidatos = ativos.filter(ei=>!ctx.tecnicosAncorados.has(ei));
+  const candidatos = ativos.filter(ei=>!ctx.tecnicosAncorados.has(ei) && !colaboradorSegueAncoraDataInicial(ei));
   const ordem = new Map(ativos.map((ei,i)=>[ei,i]));
   const cargaHoras = new Map(ativos.map(ei=>[ei,0]));
   const qtdSemanas = new Map(ativos.map(ei=>[ei,0]));
@@ -1890,7 +1982,7 @@ function aplicarRodizioAutomatico(){
       cursor = (escolhida+1)%semanas.length;
     });
   }
-  garantirCoberturaPorCidadeDomingo(candidatos, cargaHoras);
+  garantirCoberturaPorCidadeDomingo(ativos, cargaHoras);
 }
 /* Conta quantos dias CONSECUTIVOS de sobreaviso terminam logo antes do dia d (sem contar o
    próprio d) — usada pra não deixar a garantia de domingo (abaixo) criar um 7º dia seguido,
@@ -1904,36 +1996,44 @@ function _diasConsecutivosAntesDe(ei, d){
   return consec;
 }
 /* 3ª passada — garante que TODO domingo do período tenha pelo menos 1 colaborador de
-   sobreaviso em cada Cidade (Localidade) que tenha candidato ativo cadastrado. As duas
-   passadas acima já cobrem a maior parte dos domingos naturalmente (quase todo mundo já
-   tem alguma semana); esta só fecha os buracos que sobrarem por cidade. É uma GARANTIA —
-   pode ultrapassar o "Simultâneos/dia" configurado só nos domingos que precisarem, e só
-   nas cidades sem ninguém de sobreaviso naquele dia. Nunca mexe em célula travada (🔒) e
-   nunca escolhe alguém que já completou 6 dias seguidos (deixa pra outro candidato da
-   mesma cidade, se houver) — evita brigar com a regra dos 7 dias. Se realmente ninguém da
-   cidade estiver disponível naquele domingo (férias, trava ou sequência no limite pra
-   todos), a cobertura fica de fora mesmo — não tem solução sem violar outra regra. */
-function garantirCoberturaPorCidadeDomingo(candidatos, cargaHoras){
+   sobreaviso em cada Cidade (Localidade) que tenha alguém ativo cadastrado. As duas passadas
+   acima já cobrem a maior parte dos domingos naturalmente (quase todo mundo já tem alguma
+   semana); esta só fecha os buracos que sobrarem por cidade. É uma GARANTIA — pode
+   ultrapassar o "Simultâneos/dia" configurado só nos domingos que precisarem, e só nas
+   cidades sem ninguém de sobreaviso naquele dia. Nunca mexe em célula travada (🔒) e nunca
+   escolhe alguém que já completou 6 dias seguidos — evita brigar com a regra dos 7 dias.
+   Se ninguém DA PRÓPRIA CIDADE estiver disponível, cai pra EQUIPE RESERVA (colaboradores
+   marcados com 🛟 "Equipe reserva" no cadastro, de qualquer cidade) — sempre escolhendo quem
+   tem menor carga acumulada entre os disponíveis, o que naturalmente evita repetir sempre a
+   mesma pessoa da reserva quando há mais de uma opção. Só se NEM a própria cidade NEM a
+   reserva tiverem alguém disponível é que a cobertura fica de fora mesmo — não tem solução
+   sem violar outra regra. */
+function garantirCoberturaPorCidadeDomingo(ativos, cargaHoras){
   const porCidade = new Map();
-  candidatos.forEach(ei=>{
+  ativos.forEach(ei=>{
     const key = areaKeySobreaviso(FUNCIONARIOS[ei]);
     if(!key) return;
     if(!porCidade.has(key)) porCidade.set(key, []);
     porCidade.get(key).push(ei);
   });
   if(!porCidade.size) return;
+  const reservas = ativos.filter(ei=>FUNCIONARIOS[ei] && FUNCIONARIOS[ei].reserva);
+  const disponivelNoDia = (ei, d)=>{
+    const cel = grid[ei] && grid[ei][d];
+    if(!cel || cel.lock) return false;
+    if(estaDeFerias(FUNCIONARIOS[ei], DIAS[d])) return false;
+    if(_diasConsecutivosAntesDe(ei, d)>=6) return false;
+    return true;
+  };
   for(let d=0; d<NDIAS; d++){
     if(DIAS[d].getDay()!==0) continue; // só domingo
     porCidade.forEach(membros=>{
       const jaTemAlguem = membros.some(ei=>grid[ei] && grid[ei][d] && grid[ei][d].st==='SOBREAVISO');
       if(jaTemAlguem) return;
-      const disponiveis = membros.filter(ei=>{
-        const cel = grid[ei] && grid[ei][d];
-        if(!cel || cel.lock) return false;
-        if(estaDeFerias(FUNCIONARIOS[ei], DIAS[d])) return false;
-        if(_diasConsecutivosAntesDe(ei, d)>=6) return false;
-        return true;
-      });
+      let disponiveis = membros.filter(ei=>disponivelNoDia(ei, d));
+      if(!disponiveis.length){
+        disponiveis = reservas.filter(ei=>!membros.includes(ei) && disponivelNoDia(ei, d));
+      }
       if(!disponiveis.length) return;
       disponiveis.sort((a,b)=>(cargaHoras.get(a)||0)-(cargaHoras.get(b)||0));
       const ei = disponiveis[0];
@@ -2149,6 +2249,7 @@ function limitarSeteDiasConsecutivos(){
 function resolverSobreaviso(){
   limparMarcaGradeLimpaPeriodoAtual();
   avisarPendenciasSyncDsr(aplicarDsrDoDsrVolante().pendentes);
+  aplicarAncoragemDataInicialIndividual();
   aplicarFeriados();
   aplicarAncoragemOficialTecnico();
   aplicarDsrFixoDomingo();
@@ -2440,10 +2541,12 @@ function renderAll(){
       const ancoraTxt = oficiaisRef.length ? `Escala ancorada ao Oficial ${oficiaisRef[0]}` : '';
       const titleParts = [cel.feriadoNome, janelaTxt, ancoraTxt].filter(Boolean);
       const titleAttr = titleParts.length ? ` title="${titleParts.join(' · ')}"` : '';
+      const reservaCobrindo = f.reserva && cel.st==='SOBREAVISO' && d.getDay()===0;
       h += `<td class="${cls.join(' ')}"${titleAttr} onclick="abrirPop(event,${ei},${di})">`+
            `<span class="tag">${s.lbl}</span>`+
            (cel.feriadoNome?'<span class="fer-badge">🎉</span>':'')+
            (cel.lock?'<span class="lock">🔒</span>':'')+
+           (reservaCobrindo?'<span class="reserva-badge" title="Equipe reserva cobrindo domingo">🛟</span>':'')+
            (horasDia>0?`<span class="horas-badge">${fmtJanelaCompacta(cel,d,ei)}</span>`:'')+
            `</td>`;
     });
@@ -2613,6 +2716,7 @@ function editarColaborador(ei){
   atualizarSelectTecnicos(f.nome);
   document.getElementById('colabTecnicoVinculado').value = f.tecnicoVinculado||'';
   atualizarVisibilidadeTecnicoVinculado();
+  document.getElementById('colabReserva').checked = !!f.reserva;
   document.getElementById('btnIncluirColab').textContent = '💾 Salvar edição';
   document.getElementById('btnCancelarEdicao').style.display = 'inline-block';
   document.getElementById('colabNome').focus();
@@ -2629,6 +2733,7 @@ function cancelarEdicaoColab(){
   atualizarSelectTecnicos();
   document.getElementById('colabTecnicoVinculado').value = '';
   atualizarVisibilidadeTecnicoVinculado();
+  document.getElementById('colabReserva').checked = false;
   document.getElementById('btnIncluirColab').textContent = '➕ Incluir';
   document.getElementById('btnCancelarEdicao').style.display = 'none';
 }
@@ -2756,6 +2861,45 @@ function salvarJanelasIndividuais(ei){
   }
   renderAll(); renderListaColab(); lsSave();
 }
+/* ================= DATA INICIAL INDIVIDUAL DE SOBREAVISO (por colaborador) ================= */
+/* Painel expansível igual ao de Férias/Horário — define f.dataInicialSobreaviso e a escala
+   desse colaborador passa a ser calculada pela ancoragem individual (ver
+   aplicarAncoragemDataInicialIndividual), fora do rodízio automático geral. */
+let inicioAbertoEi = -1;
+function toggleInicioPainel(ei){
+  inicioAbertoEi = (inicioAbertoEi===ei) ? -1 : ei;
+  renderListaColab();
+}
+function renderInicioPainel(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!f) return '';
+  const atual = f.dataInicialSobreaviso
+    ? `<div style="margin-bottom:8px">Início atual: <b>${fmtDataBR(f.dataInicialSobreaviso)}</b> (semana sim/semana não a partir dali) <button class="btn-danger" onclick="removerInicioIndividual(${ei})">✕ Remover</button></div>`
+    : '<div style="color:var(--muted);font-size:11px;margin-bottom:8px">Sem data inicial definida — a escala segue o rodízio automático normal.</div>';
+  return `<div class="ferias-painel">
+    ${atual}
+    <div class="ferias-add-row">
+      <input type="date" id="inicioData-${ei}" value="${f.dataInicialSobreaviso||''}">
+      <button class="btn-primary" onclick="salvarInicioIndividual(${ei})">🚀 Gerar a partir desta data</button>
+    </div>
+    <div style="color:var(--muted);font-size:10.5px;margin-top:6px">A partir da data informada, este colaborador (e o Técnico ancorado a ele, se houver) passa a alternar semana de sobreaviso sim/semana não sozinho, seguindo os horários configurados — sai do rodízio automático geral, sem afetar a escala dos demais.</div>
+  </div>`;
+}
+function salvarInicioIndividual(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!f) return;
+  const data = document.getElementById('inicioData-'+ei).value;
+  if(!data){ alert('Informe a data inicial.'); return; }
+  f.dataInicialSobreaviso = data;
+  resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
+}
+function removerInicioIndividual(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!f) return;
+  if(!confirm('Remover a data inicial? A escala deste colaborador volta a seguir o rodízio automático geral.')) return;
+  f.dataInicialSobreaviso = '';
+  resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
+}
 function renderListaColab(){
   const el = document.getElementById('colabLista');
   if(!el) return;
@@ -2783,11 +2927,12 @@ function renderListaColab(){
       <div class="cr-actions">
         <button class="btn-ghost" onclick="toggleFeriasPainel(${ei})">🏖 Férias${nFerias?` (${nFerias})`:''}</button>
         <button class="btn-ghost" onclick="toggleJanelasPainel(${ei})">🕒 Horário${f.janelasCustom?' (próprio)':''}</button>
+        <button class="btn-ghost" onclick="toggleInicioPainel(${ei})">📅 Início${f.dataInicialSobreaviso?` (${fmtDataBR(f.dataInicialSobreaviso)})`:''}</button>
         <button class="btn-ghost" onclick="editarColaborador(${ei})">✏ Editar</button>
         <button class="btn-danger" onclick="removerColaborador(${ei})">✕ Remover</button>
       </div>
     </div>`;
-    return linha + (feriasAbertoEi===ei ? renderFeriasPainel(ei) : '') + (janelasAbertoEi===ei ? renderJanelasPainel(ei) : '');
+    return linha + (feriasAbertoEi===ei ? renderFeriasPainel(ei) : '') + (janelasAbertoEi===ei ? renderJanelasPainel(ei) : '') + (inicioAbertoEi===ei ? renderInicioPainel(ei) : '');
   }).join('');
 }
 function toggleAtivo(ei){
@@ -2813,14 +2958,15 @@ function incluirColaborador(){
   const ga = document.getElementById('colabGA').value.trim();
   const go = document.getElementById('colabGO').value.trim();
   const tecnicoVinculado = tipo==='Oficial' ? document.getElementById('colabTecnicoVinculado').value : '';
+  const reserva = document.getElementById('colabReserva').checked;
   if(idxEditando >= 0){
     const nomeAntigo = FUNCIONARIOS[idxEditando].nome;
     if(nomeAntigo !== nome){
       FUNCIONARIOS.forEach(f=>{ if(f.tecnicoVinculado===nomeAntigo) f.tecnicoVinculado = nome; });
     }
-    Object.assign(FUNCIONARIOS[idxEditando], {nome, tipo, equipe, uf, localidade, ga, go, tecnicoVinculado});
+    Object.assign(FUNCIONARIOS[idxEditando], {nome, tipo, equipe, uf, localidade, ga, go, tecnicoVinculado, reserva});
   } else {
-    FUNCIONARIOS.push({nome, tipo, equipe, localidade, uf, ga, go, tecnicoVinculado, ativo:true, ferias:[]});
+    FUNCIONARIOS.push({nome, tipo, equipe, localidade, uf, ga, go, tecnicoVinculado, reserva, ativo:true, ferias:[], dataInicialSobreaviso:''});
     grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
   }
   ordenarColaboradoresAZ();
@@ -2995,7 +3141,7 @@ function importarBaseXlsx(ev){
           if(go) existente.go = go;
           atualizados++;
         } else {
-          FUNCIONARIOS.push({nome, tipo, equipe, localidade, uf, ga, go, ativo:true, ferias:[], tecnicoVinculado:'', janelasCustom:null});
+          FUNCIONARIOS.push({nome, tipo, equipe, localidade, uf, ga, go, ativo:true, ferias:[], tecnicoVinculado:'', janelasCustom:null, dataInicialSobreaviso:'', reserva:false});
           grid.push(DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""})));
           incluidos++;
         }
@@ -3089,6 +3235,36 @@ function renderFeriadosModal(){
     <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${f.nome}</span></div>
   </div>`).join('');
 
+  garantirFeriadosUfsConfiguradas();
+  const ufEl = document.getElementById('feriadosUfLista');
+  if(ufEl){
+    const ufs = ufsFeriadosEstaduais();
+    if(!ufs.length){
+      ufEl.innerHTML = '<div style="color:var(--muted);font-size:11.5px;padding:8px 0">Cadastre a UF nos Técnicos para liberar os feriados estaduais.</div>';
+    } else {
+      ufEl.innerHTML = ufs.map(uf=>{
+        const lista = (STORE.feriadosEstaduais[uf] || []).slice().sort((a,b)=>a.mes-b.mes||a.dia-b.dia);
+        const linhas = lista.length ? lista.map((f)=>{
+          const idxReal = STORE.feriadosEstaduais[uf].indexOf(f);
+          return `<div class="colab-row" style="padding:5px 0">
+            <div class="cr-name"><b>${String(f.dia).padStart(2,'0')}/${String(f.mes).padStart(2,'0')}</b><span>${htmlTxt(f.nome)}</span></div>
+            <button class="btn-danger" onclick="removerFeriadoEstadual('${uf}',${idxReal})">✕</button>
+          </div>`;
+        }).join('') : '<div style="color:var(--muted);font-size:11.5px;padding:4px 0">Nenhum feriado cadastrado ainda.</div>';
+        return `<div style="margin-bottom:16px">
+          <div class="fer-cidade-tit">${uf}</div>
+          ${linhas}
+          <div class="fer-add-row">
+            <input type="number" min="1" max="31" placeholder="Dia" id="feDia-${uf}" style="width:60px">
+            <input type="number" min="1" max="12" placeholder="Mês" id="feMes-${uf}" style="width:60px">
+            <input type="text" placeholder="Nome do feriado" id="feNome-${uf}" style="flex:1">
+            <button class="btn-primary" onclick="incluirFeriadoEstadual('${uf}')">➕</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
   garantirFeriadosCidadesConfiguradas();
   const muniEl = document.getElementById('feriadosMuniLista');
   if(!muniEl) return;
@@ -3140,6 +3316,24 @@ function removerFeriadoMunicipal(cidade, idx){
   STORE.feriadosMunicipais[cidade].splice(idx,1);
   lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
 }
+function incluirFeriadoEstadual(uf){
+  uf = ufNormalizada(uf);
+  const dia = parseInt(document.getElementById('feDia-'+uf).value);
+  const mes = parseInt(document.getElementById('feMes-'+uf).value);
+  const nome = document.getElementById('feNome-'+uf).value.trim();
+  if(!dia || !mes || dia<1 || dia>31 || mes<1 || mes>12){ alert('Informe dia e mês válidos.'); return; }
+  if(!nome){ alert('Informe o nome do feriado.'); return; }
+  if(!STORE.feriadosEstaduais) STORE.feriadosEstaduais = feriadosEstaduaisPadrao();
+  if(!STORE.feriadosEstaduais[uf]) STORE.feriadosEstaduais[uf] = [];
+  STORE.feriadosEstaduais[uf].push({dia,mes,nome});
+  lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
+}
+function removerFeriadoEstadual(uf, idx){
+  uf = ufNormalizada(uf);
+  if(!confirm('Remover este feriado estadual?')) return;
+  STORE.feriadosEstaduais[uf].splice(idx,1);
+  lsSave(); renderFeriadosModal(); resolverSobreaviso(); renderAll();
+}
 
 /* ================= EXPORT XLSX ================= */
 function exportarXlsx(){
@@ -3173,6 +3367,8 @@ function iniciar(){
       ferias: Array.isArray(f.ferias) ? f.ferias : [],
       tecnicoVinculado: f.tecnicoVinculado||'',
       janelasCustom: f.janelasCustom?normalizarJanelas(f.janelasCustom):null,
+      dataInicialSobreaviso: f.dataInicialSobreaviso||'',
+      reserva: !!f.reserva,
       ativo: f.ativo!==false
     }));
     if(saved.janelas) CFG_JANELAS = normalizarJanelas(saved.janelas);
@@ -3185,6 +3381,7 @@ function iniciar(){
   }
   ordenarColaboradoresAZ();
   if(!STORE.feriadosMunicipais) STORE.feriadosMunicipais = feriadosMunicipaisPadrao();
+  if(!STORE.feriadosEstaduais) STORE.feriadosEstaduais = feriadosEstaduaisPadrao();
   popularSelectPeriodo();
   aplicarCfgSalvo();
   limparEstadoFiltros();
