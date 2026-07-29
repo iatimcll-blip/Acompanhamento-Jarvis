@@ -1395,17 +1395,34 @@ function _nomesNoDsrStore(dsrStore){
   if(!dsrStore || !Array.isArray(dsrStore.funcionarios)) return new Set();
   return new Set(dsrStore.funcionarios.map(f=>String(f.nome||'').trim().toUpperCase()));
 }
+/* Limite de segurança pra correção automática do DSR Volante: o mesmo limite de 6 dias
+   já usado na auditoria (CONSECUTIVO). Uma referência normal costuma divergir em 1 dia
+   por semana no máximo (o rodízio daqui "chuta" um DSR provisório até saber quem é
+   compartilhado); se a diferença passar de 6 dias pro mesmo colaborador, é sinal de que
+   uma das duas referências está desatualizada/dessincronizada — nesse caso NÃO aplica
+   sozinho (evita apagar em massa uma escala recém-gerada), só avisa o gestor. */
+const DSR_SYNC_LIMITE_DIAS = 6;
 function _aplicarDsrDeDsrStore(dsrStore, key){
-  if(!dsrStore || !dsrStore.periodos || !dsrStore.periodos[key]) return false;
+  if(!dsrStore || !dsrStore.periodos || !dsrStore.periodos[key]) return {mudou:false, pendentes:[]};
   const porNome = dsrStore.periodos[key].porNome;
-  if(!porNome) return false;
+  if(!porNome) return {mudou:false, pendentes:[]};
   const nomes = _nomesNoDsrStore(dsrStore);
   let mudou = false;
+  const pendentes = [];
   FUNCIONARIOS.forEach((f, ei)=>{
     if(!f.ativo || !grid[ei]) return;
     if(!nomes.has(f.nome.trim().toUpperCase())) return;
     const cels = porNome[f.nome];
     if(!cels || cels.length!==NDIAS) return;
+    let alteracoes = 0;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(cel.lock) continue;
+      const deveSerDsr = cels[d].st === 'DSR';
+      if((deveSerDsr && cel.st!=='DSR') || (!deveSerDsr && cel.st==='DSR')) alteracoes++;
+    }
+    if(!alteracoes) return;
+    if(alteracoes > DSR_SYNC_LIMITE_DIAS){ pendentes.push({nome:f.nome, alteracoes}); return; }
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
       if(cel.lock) continue; // respeita ajuste manual já feito aqui
@@ -1420,33 +1437,49 @@ function _aplicarDsrDeDsrStore(dsrStore, key){
       }
     }
   });
-  return mudou;
+  return {mudou, pendentes};
+}
+/* Mostra um aviso (em vez de aplicar sozinho) quando a sincronização com o DSR Volante
+   encontrou divergência grande demais pra confiar na correção automática. */
+function avisarPendenciasSyncDsr(pendentes){
+  if(!pendentes || !pendentes.length) return;
+  const linhas = pendentes.map(p=>`• ${p.nome}: ${p.alteracoes} dias divergentes`).join('\n');
+  alert('A referência de DSR do Painel DSR Volante está muito diferente da escala gerada aqui para '+pendentes.length+' colaborador(es) — mais de '+DSR_SYNC_LIMITE_DIAS+' dias divergentes, sinal de que uma das duas referências está desatualizada. Por segurança, NÃO apliquei a correção automática para esses casos (o restante da escala foi sincronizado normalmente):\n\n'+linhas+'\n\nConfira o Painel DSR Volante pra esse(s) colaborador(es) e recalcule lá se for o caso, ou ajuste manualmente aqui.');
 }
 /* Versão local (mesma aba/navegador) — lê direto do localStorage, sem round-trip de rede,
    chamada de dentro de resolverSobreaviso() a cada recálculo. */
 function aplicarDsrDoDsrVolante(){
   try{
-    if(periodoAno==null) return false;
+    if(periodoAno==null) return {mudou:false, pendentes:[]};
     const raw = localStorage.getItem(DSR_LS_KEY);
-    if(!raw) return false;
+    if(!raw) return {mudou:false, pendentes:[]};
     return _aplicarDsrDeDsrStore(JSON.parse(raw), periodoKeyAtual());
-  }catch(e){ return false; }
+  }catch(e){ return {mudou:false, pendentes:[]}; }
 }
 /* Versão remota (entre dispositivos) — busca o arquivo do DSR Volante no GitHub; só
    PUXA (nunca escreve de volta nesse arquivo, essa direção é somente leitura). Aplica
    diretamente na grade em memória (sem passar por resolverSobreaviso de novo, pra não criar
    um ciclo de reagendamento) e só re-renderiza/salva se algo realmente mudou. */
 function aplicarSomenteDsrDeDsrStore(dsrStore, key){
-  if(!dsrStore || !dsrStore.periodos || !dsrStore.periodos[key]) return false;
+  if(!dsrStore || !dsrStore.periodos || !dsrStore.periodos[key]) return {mudou:false, pendentes:[]};
   const porNome = dsrStore.periodos[key].porNome;
-  if(!porNome) return false;
+  if(!porNome) return {mudou:false, pendentes:[]};
   const nomes = _nomesNoDsrStore(dsrStore);
   let mudou = false;
+  const pendentes = [];
   FUNCIONARIOS.forEach((f, ei)=>{
     if(!f.ativo || !grid[ei]) return;
     if(!nomes.has(f.nome.trim().toUpperCase())) return;
     const cels = porNome[f.nome];
     if(!cels || cels.length!==NDIAS) return;
+    let alteracoes = 0;
+    for(let d=0; d<NDIAS; d++){
+      if(cels[d].st !== 'DSR') continue;
+      const cel = grid[ei][d];
+      if(cel.st !== 'DSR' || cel.lock || cel.feriadoNome) alteracoes++;
+    }
+    if(!alteracoes) return;
+    if(alteracoes > DSR_SYNC_LIMITE_DIAS){ pendentes.push({nome:f.nome, alteracoes}); return; }
     for(let d=0; d<NDIAS; d++){
       if(cels[d].st !== 'DSR') continue;
       const cel = grid[ei][d];
@@ -1458,15 +1491,15 @@ function aplicarSomenteDsrDeDsrStore(dsrStore, key){
       }
     }
   });
-  return mudou;
+  return {mudou, pendentes};
 }
 function aplicarSomenteDsrDoDsrVolante(){
   try{
-    if(periodoAno==null) return false;
+    if(periodoAno==null) return {mudou:false, pendentes:[]};
     const raw = localStorage.getItem(DSR_LS_KEY);
-    if(!raw) return false;
+    if(!raw) return {mudou:false, pendentes:[]};
     return aplicarSomenteDsrDeDsrStore(JSON.parse(raw), periodoKeyAtual());
-  }catch(e){ return false; }
+  }catch(e){ return {mudou:false, pendentes:[]}; }
 }
 let _dsrPullRemotoTimer = null;
 function agendarPullDsrRemoto(){
@@ -1475,10 +1508,11 @@ function agendarPullDsrRemoto(){
     if(periodoAno==null) return;
     try{
       const remoto = await ghFetchState(GH_SYNC_API_DSR);
-      const mudou = periodoComGradeLimpaManual()
+      const r = periodoComGradeLimpaManual()
         ? aplicarSomenteDsrDeDsrStore(remoto, periodoKeyAtual())
         : _aplicarDsrDeDsrStore(remoto, periodoKeyAtual());
-      if(mudou){ renderAll(); renderListaColab(); lsSave(); }
+      avisarPendenciasSyncDsr(r.pendentes);
+      if(r.mudou){ renderAll(); renderListaColab(); lsSave(); }
     }catch(e){ console.warn('Falha ao buscar DSR do DSR Volante remoto:', e); }
   }, 1500);
 }
@@ -1954,7 +1988,7 @@ function aplicarDsrFixoDomingo(){
 }
 function resolverSobreaviso(){
   limparMarcaGradeLimpaPeriodoAtual();
-  aplicarDsrDoDsrVolante();
+  avisarPendenciasSyncDsr(aplicarDsrDoDsrVolante().pendentes);
   aplicarFeriados();
   aplicarAncoragemOficialTecnico();
   aplicarDsrFixoDomingo();
