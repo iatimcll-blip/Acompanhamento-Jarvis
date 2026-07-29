@@ -1569,9 +1569,44 @@ function colaboradorTemDsrFixoDomingo(ei){
   const alvo = _normalizarNomeGO(f.go);
   return GO_DSR_FIXO_DOMINGO.some(go=>_normalizarNomeGO(go)===alvo);
 }
+/* Cache do localStorage do DSR Volante durante uma geração — evita reparsear o JSON a
+   cada dia x semana x colaborador (potencialmente centenas de leituras numa base grande).
+   Autoinvalida sozinho: se o conteúdo salvo mudar, a comparação da string bruta já não
+   bate e recarrega. */
+let _dsrVolanteCacheRaw = null, _dsrVolanteCacheStore = null;
+function _dsrVolanteStoreAtual(){
+  let raw;
+  try{ raw = localStorage.getItem(DSR_LS_KEY); }catch(e){ return null; }
+  if(raw === _dsrVolanteCacheRaw) return _dsrVolanteCacheStore;
+  _dsrVolanteCacheRaw = raw;
+  try{ _dsrVolanteCacheStore = raw ? JSON.parse(raw) : null; }
+  catch(e){ _dsrVolanteCacheStore = null; }
+  return _dsrVolanteCacheStore;
+}
+/* Se o colaborador já tem uma escala registrada no Painel DSR Volante pra este período,
+   devolve o array de células dele (mesmo índice de dia que DIAS/grid) — senão, null. Usada
+   na hora de GERAR (não só depois, como correção): se já existe referência, o rodízio
+   automático nasce respeitando o dia de descanso de lá, em vez de "chutar" um dia pelo
+   maior impacto de redução de horas e precisar corrigir depois. */
+function diasDsrVolantePara(nome, key){
+  const store = _dsrVolanteStoreAtual();
+  if(!store || !store.periodos || !store.periodos[key]) return null;
+  if(!_nomesNoDsrStore(store).has(String(nome||'').trim().toUpperCase())) return null;
+  const porNome = store.periodos[key].porNome;
+  if(!porNome) return null;
+  const cels = porNome[nome];
+  if(!cels || cels.length!==NDIAS) return null;
+  return cels;
+}
 function statusSobreavisoPlanejadoSemana(ei, di, idxs){
   if(colaboradorTemDsrFixoDomingo(ei)){
     if(DIAS[di].getDay()===0) return 'DSR';
+    return minutosSobreavisoConfigurado(DIAS[di], ei)>0 ? 'SOBREAVISO' : 'LIVRE';
+  }
+  const f = FUNCIONARIOS[ei];
+  const refDsr = f ? diasDsrVolantePara(f.nome, periodoKeyAtual()) : null;
+  if(refDsr){
+    if(refDsr[di] && refDsr[di].st === 'DSR') return 'DSR';
     return minutosSobreavisoConfigurado(DIAS[di], ei)>0 ? 'SOBREAVISO' : 'LIVRE';
   }
   return statusSobreavisoAjustadoSemana(ei, di, null, idxs);
