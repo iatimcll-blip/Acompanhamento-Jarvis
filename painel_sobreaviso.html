@@ -1507,12 +1507,17 @@ function ativosOrdenadosPorAncora(){
   const ativos = [];
   FUNCIONARIOS.forEach((f,ei)=>{ if(f.ativo) ativos.push(ei); });
   const posOriginal = new Map(ativos.map((ei,i)=>[ei,i]));
+  /* Prioridade do desempate: quem NUNCA entrou de sobreaviso vem primeiro — senão, como
+     cargaHoras/qtdSemanas zeram a cada geração (não acumulam de um período pro outro), o
+     desempate por âncora ficava favorecendo sempre quem já tinha âncora registrada,
+     recriando o mesmo grupo mês após mês e nunca alcançando o resto da lista. Entre quem já
+     tem âncora, mantém o critério original (âncora mais antiga primeiro). */
   return ativos.slice().sort((a,b)=>{
     const a1 = FUNCIONARIOS[a].primeiraSobreaviso, b1 = FUNCIONARIOS[b].primeiraSobreaviso;
-    if(a1 && b1) return a1.localeCompare(b1);
-    if(a1 && !b1) return -1;
-    if(!a1 && b1) return 1;
-    return posOriginal.get(a) - posOriginal.get(b);
+    if(!a1 && !b1) return posOriginal.get(a) - posOriginal.get(b);
+    if(!a1 && b1) return -1;
+    if(a1 && !b1) return 1;
+    return a1.localeCompare(b1);
   });
 }
 /* Registra a âncora de cada colaborador na primeira vez que aparecer com SOBREAVISO na grade
