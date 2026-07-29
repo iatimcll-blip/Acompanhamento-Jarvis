@@ -2227,6 +2227,47 @@ function aplicarDsrFixoDomingo(){
    escalado logo na semana N+1). Nunca sobrescreve um dia travado manualmente (🔒) — se a
    violação vier de um ajuste manual, a auditoria continua avisando, mas o motor automático
    não desfaz a escolha do gestor sozinho. */
+/* Reaplica a garantia de cobertura por Cidade aos domingos (garantirCoberturaPorCidadeDomingo,
+   com fallback de Equipe reserva) usando a carga de horas REAL da grade atual — não só quando
+   o gestor clica em "Gerar escala automática", mas em TODO recálculo (resolverSobreaviso). Sem
+   isso, qualquer edição posterior à geração (marcar férias, ajustar uma célula, sincronizar com
+   o DSR Volante etc.) que tirasse a única pessoa que cobria um domingo deixava aquele domingo
+   descoberto pra sempre, porque nada reavaliava a garantia depois — só uma nova geração
+   completa (que apaga os ajustes manuais) resolvia. */
+function garantirCoberturaPorCidadeDomingoAtual(){
+  const ativos = FUNCIONARIOS.map((f,ei)=>ei).filter(ei=>FUNCIONARIOS[ei].ativo && grid[ei]);
+  if(!ativos.length) return;
+  const cargaHoras = new Map(ativos.map(ei=>[ei, calcularHorasSobreaviso(ei)]));
+  garantirCoberturaPorCidadeDomingo(ativos, cargaHoras);
+}
+/* Regra fixa: quem estiver de SOBREAVISO num domingo OU num feriado (nacional/estadual/
+   municipal) precisa ter folga (qualquer status que não seja SOBREAVISO) no dia imediatamente
+   ANTES ou DEPOIS daquele dia — sempre, independente de quantos dias seguidos a pessoa já
+   acumulou (não é só uma consequência do limite de 6 dias em limitarSeteDiasConsecutivos, que
+   só age quando o 7º dia é alcançado). Se nenhum dos dois vizinhos já for folga, força o dia
+   seguinte a virar DSR (preferência) ou, se ele não existir no período ou estiver travado, o
+   dia anterior — só se ambos os vizinhos estiverem travados (🔒) ou fora do período é que a
+   folga fica de fora mesmo, sem solução sem violar um ajuste manual. Só converte SOBREAVISO em
+   DSR (nunca aumenta a carga de ninguém), então é seguro rodar antes do limite de 6 dias. */
+function garantirFolgaAdjacenteDomingoFeriado(){
+  let mudou = false;
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(!f.ativo || !grid[ei]) return;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(cel.st !== 'SOBREAVISO') continue;
+      const especial = DIAS[d].getDay()===0 || !!cel.feriadoNome;
+      if(!especial) continue;
+      const antes = d>0 ? grid[ei][d-1] : null;
+      const depois = d<NDIAS-1 ? grid[ei][d+1] : null;
+      const jaTemFolga = (antes && antes.st!=='SOBREAVISO') || (depois && depois.st!=='SOBREAVISO');
+      if(jaTemFolga) continue;
+      if(depois && !depois.lock){ depois.st = 'DSR'; mudou = true; }
+      else if(antes && !antes.lock){ antes.st = 'DSR'; mudou = true; }
+    }
+  });
+  return mudou;
+}
 function limitarSeteDiasConsecutivos(){
   let mudou = false;
   FUNCIONARIOS.forEach((f,ei)=>{
@@ -2254,6 +2295,8 @@ function resolverSobreaviso(){
   aplicarAncoragemOficialTecnico();
   aplicarDsrFixoDomingo();
   aplicarFeriasCadastradas();
+  garantirCoberturaPorCidadeDomingoAtual();
+  garantirFolgaAdjacenteDomingoFeriado();
   limitarSeteDiasConsecutivos();
   registrarPrimeiraSobreaviso();
   _ultimoSyncDsr = sincronizarComDsrVolante();
