@@ -1840,8 +1840,11 @@ function aplicarRodizioAutomatico(){
   const cargaHoras = new Map(ativos.map(ei=>[ei,0]));
   const qtdSemanas = new Map(ativos.map(ei=>[ei,0]));
   let semanaAnterior = new Set();
-  semanasDoPeriodoSobreaviso().forEach(({idxs})=>{
+  const semanas = semanasDoPeriodoSobreaviso();
+  const escolhidosPorSemana = [];
+  semanas.forEach(({idxs})=>{
     const assigned = selecionarGrupoSemanaOtimizado(candidatos, idxs, cfgN(), cargaHoras, qtdSemanas, semanaAnterior, ordem, ctx);
+    escolhidosPorSemana.push(assigned);
     ativos.forEach(ei=>{
       idxs.forEach(idx=>{
         const cel = grid[ei] && grid[ei][idx];
@@ -1856,6 +1859,37 @@ function aplicarRodizioAutomatico(){
     });
     semanaAnterior = assigned;
   });
+  /* 2ª passada — garante 100% dos colaboradores cobertos dentro do PRÓPRIO período gerado
+     (não só ao longo de vários meses, como o desempate por âncora já garantia). Se
+     "Simultâneos/dia" × nº de semanas do período for menor que o total de candidatos, a
+     passada acima sozinha deixa gente de fora até o próximo mês — aqui, cada candidato que
+     não entrou em NENHUMA semana ganha uma semana extra, escolhida entre as semanas em que
+     ele não está de férias, alternando (round-robin) qual semana recebe cada um, pra não
+     empilhar todo mundo na mesma semana. Pode ultrapassar o "Simultâneos/dia" configurado
+     nessas semanas específicas — é o mínimo necessário pra ninguém ficar sem escala. Quem
+     está de férias o período inteiro continua de fora (não tem como escalar). */
+  if(semanas.length){
+    const semNenhumaSemana = candidatos.filter(ei=>(qtdSemanas.get(ei)||0)===0);
+    let cursor = 0;
+    semNenhumaSemana.forEach(ei=>{
+      let escolhida = -1;
+      for(let t=0; t<semanas.length; t++){
+        const i = (cursor+t)%semanas.length;
+        if(!indisponivelParaSobreavisoSemana(ei, semanas[i].idxs)){ escolhida = i; break; }
+      }
+      if(escolhida===-1) return; // de férias o período inteiro — não dá pra escalar
+      const {idxs} = semanas[escolhida];
+      escolhidosPorSemana[escolhida].add(ei);
+      idxs.forEach(idx=>{
+        const cel = grid[ei] && grid[ei][idx];
+        if(!cel || cel.lock) return;
+        cel.st = statusSobreavisoPlanejadoSemana(ei, idx, idxs);
+      });
+      cargaHoras.set(ei, (cargaHoras.get(ei)||0) + horasSobreavisoPlanejadasSemana(ei, idxs));
+      qtdSemanas.set(ei, 1);
+      cursor = (escolhida+1)%semanas.length;
+    });
+  }
 }
 function aplicarSobreavisoManualOtimizadoArea(key, idxs, ctx){
   const ativos = ativosOrdenadosPorAncora();
