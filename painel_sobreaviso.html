@@ -84,6 +84,7 @@
   .st-LIVRE .tag{background:#EEF3FC; color:#5A6690;}
   .st-SOBREAVISO .tag{background:var(--purple-bg); color:var(--purple);}
   .st-DSR .tag{background:var(--red); color:#fff;}
+  .st-FOLGA_BH .tag{background:var(--green); color:#fff;}
   .st-FERIADO .tag{background:var(--yellow); color:#4A3A00;}
   .st-FERIAS .tag{background:#8FB3F5; color:#fff;}
   .st-AUSENCIA .tag{background:#D9DEEA; color:#555F7E;}
@@ -298,6 +299,7 @@
       <span><span class="sw" style="background:#EEF3FC"></span>Livre (fora do rodízio)</span>
       <span><span class="sw" style="background:var(--purple-bg)"></span>Sobreaviso</span>
       <span><span class="sw" style="background:var(--red)"></span>DSR (ajustado para reduzir horas de sobreaviso)</span>
+      <span><span class="sw" style="background:var(--green)"></span>Folga Banco de Horas (2ª folga da semana — domingo/feriado trabalhado)</span>
       <span><span class="sw" style="background:var(--yellow)"></span>Feriado</span>
       <span><span class="sw" style="background:#8FB3F5"></span>Férias</span>
       <span><span class="sw" style="background:#D9DEEA"></span>Ausência (atestado, INSS, etc.)</span>
@@ -476,6 +478,7 @@ const ST = {
   LIVRE:{lbl:"LIVRE", cls:"st-LIVRE"},
   SOBREAVISO:{lbl:"SOBREAV.", cls:"st-SOBREAVISO"},
   DSR:{lbl:"DSR", cls:"st-DSR"},
+  FOLGA_BH:{lbl:"FOLGA BH", cls:"st-FOLGA_BH"},
   FERIADO:{lbl:"FERIADO", cls:"st-FERIADO"},
   FERIAS:{lbl:"FÉRIAS", cls:"st-FERIAS"},
   ATESTADO:{lbl:"ATEST", cls:"st-AUSENCIA"},
@@ -483,7 +486,7 @@ const ST = {
   INSS:{lbl:"INSS", cls:"st-AUSENCIA"},
   FALTA:{lbl:"FALTA", cls:"st-AUSENCIA"}
 };
-const OPCOES = ["SOBREAVISO","LIVRE","DSR","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","FALTA"];
+const OPCOES = ["SOBREAVISO","LIVRE","DSR","FOLGA_BH","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","FALTA"];
 function nomeKey(s){
   return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
 }
@@ -2287,6 +2290,32 @@ function limitarSeteDiasConsecutivos(){
   });
   return mudou;
 }
+/* Regra: quando uma mesma semana (segunda a domingo) acaba ficando com MAIS de 1 dia marcado
+   como DSR — por exemplo, o DSR normal da semana (geralmente segunda) mais um dia de folga
+   extra forçado por garantirFolgaAdjacenteDomingoFeriado() ou por limitarSeteDiasConsecutivos
+   — só o PRIMEIRO DSR da semana continua sendo o descanso semanal remunerado oficial; os
+   demais viram FOLGA_BH (Folga Banco de Horas), pra deixar claro na grade que é uma folga de
+   compensação extra (ex.: por ter trabalhado domingo/feriado), não o DSR obrigatório em si.
+   Roda por último, depois de qualquer passada que possa gerar um segundo DSR na mesma semana,
+   e nunca mexe em célula travada (🔒). */
+function normalizarDsrDuplicadoParaFolgaBH(){
+  let mudou = false;
+  const semanas = semanasDoPeriodoSobreaviso();
+  FUNCIONARIOS.forEach((f, ei)=>{
+    if(!f.ativo || !grid[ei]) return;
+    semanas.forEach(({idxs})=>{
+      const diasDsr = idxs.filter(idx=>grid[ei][idx].st==='DSR');
+      if(diasDsr.length<=1) return;
+      diasDsr.slice(1).forEach(idx=>{
+        const cel = grid[ei][idx];
+        if(cel.lock) return;
+        cel.st = 'FOLGA_BH';
+        mudou = true;
+      });
+    });
+  });
+  return mudou;
+}
 function resolverSobreaviso(){
   limparMarcaGradeLimpaPeriodoAtual();
   avisarPendenciasSyncDsr(aplicarDsrDoDsrVolante().pendentes);
@@ -2298,6 +2327,7 @@ function resolverSobreaviso(){
   garantirCoberturaPorCidadeDomingoAtual();
   garantirFolgaAdjacenteDomingoFeriado();
   limitarSeteDiasConsecutivos();
+  normalizarDsrDuplicadoParaFolgaBH();
   registrarPrimeiraSobreaviso();
   _ultimoSyncDsr = sincronizarComDsrVolante();
   agendarSyncDsrRemoto();
