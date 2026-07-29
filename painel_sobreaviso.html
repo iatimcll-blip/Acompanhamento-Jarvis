@@ -1890,6 +1890,58 @@ function aplicarRodizioAutomatico(){
       cursor = (escolhida+1)%semanas.length;
     });
   }
+  garantirCoberturaPorCidadeDomingo(candidatos, cargaHoras);
+}
+/* Conta quantos dias CONSECUTIVOS de sobreaviso terminam logo antes do dia d (sem contar o
+   próprio d) — usada pra não deixar a garantia de domingo (abaixo) criar um 7º dia seguido,
+   que a regra de 6 dias consecutivos (limitarSeteDiasConsecutivos, em resolverSobreaviso)
+   ia desfazer de qualquer jeito depois, derrubando a cobertura que acabamos de garantir. */
+function _diasConsecutivosAntesDe(ei, d){
+  let consec = 0;
+  for(let k=d-1; k>=0; k--){
+    if(grid[ei][k] && grid[ei][k].st==='SOBREAVISO') consec++; else break;
+  }
+  return consec;
+}
+/* 3ª passada — garante que TODO domingo do período tenha pelo menos 1 colaborador de
+   sobreaviso em cada Cidade (Localidade) que tenha candidato ativo cadastrado. As duas
+   passadas acima já cobrem a maior parte dos domingos naturalmente (quase todo mundo já
+   tem alguma semana); esta só fecha os buracos que sobrarem por cidade. É uma GARANTIA —
+   pode ultrapassar o "Simultâneos/dia" configurado só nos domingos que precisarem, e só
+   nas cidades sem ninguém de sobreaviso naquele dia. Nunca mexe em célula travada (🔒) e
+   nunca escolhe alguém que já completou 6 dias seguidos (deixa pra outro candidato da
+   mesma cidade, se houver) — evita brigar com a regra dos 7 dias. Se realmente ninguém da
+   cidade estiver disponível naquele domingo (férias, trava ou sequência no limite pra
+   todos), a cobertura fica de fora mesmo — não tem solução sem violar outra regra. */
+function garantirCoberturaPorCidadeDomingo(candidatos, cargaHoras){
+  const porCidade = new Map();
+  candidatos.forEach(ei=>{
+    const key = areaKeySobreaviso(FUNCIONARIOS[ei]);
+    if(!key) return;
+    if(!porCidade.has(key)) porCidade.set(key, []);
+    porCidade.get(key).push(ei);
+  });
+  if(!porCidade.size) return;
+  for(let d=0; d<NDIAS; d++){
+    if(DIAS[d].getDay()!==0) continue; // só domingo
+    porCidade.forEach(membros=>{
+      const jaTemAlguem = membros.some(ei=>grid[ei] && grid[ei][d] && grid[ei][d].st==='SOBREAVISO');
+      if(jaTemAlguem) return;
+      const disponiveis = membros.filter(ei=>{
+        const cel = grid[ei] && grid[ei][d];
+        if(!cel || cel.lock) return false;
+        if(estaDeFerias(FUNCIONARIOS[ei], DIAS[d])) return false;
+        if(_diasConsecutivosAntesDe(ei, d)>=6) return false;
+        return true;
+      });
+      if(!disponiveis.length) return;
+      disponiveis.sort((a,b)=>(cargaHoras.get(a)||0)-(cargaHoras.get(b)||0));
+      const ei = disponiveis[0];
+      grid[ei][d].st = 'SOBREAVISO';
+      const horas = horasSobreavisoDia({st:'SOBREAVISO', lock:false, feriadoNome:grid[ei][d].feriadoNome||''}, DIAS[d], ei);
+      cargaHoras.set(ei, (cargaHoras.get(ei)||0) + horas);
+    });
+  }
 }
 function aplicarSobreavisoManualOtimizadoArea(key, idxs, ctx){
   const ativos = ativosOrdenadosPorAncora();
@@ -2065,6 +2117,35 @@ function aplicarDsrFixoDomingo(){
   });
   return mudou;
 }
+/* Regra de negócio: nenhum colaborador ativo ultrapassa 6 dias TRABALHADOS seguidos em
+   sobreaviso — o 7º dia consecutivo tem que ser descanso (mesmo limite que a auditoria já
+   cobrava, agora GARANTIDO na própria grade, não só apontado depois). Roda por último em
+   resolverSobreaviso(), depois de toda a geração automática, DSR Volante, feriados,
+   ancoragem e férias — pra contar a sequência já no estado final. Varre o período inteiro
+   (não só semana a semana) porque o estouro pode acontecer na fronteira entre duas semanas
+   (ex.: alguém escalado na semana N com folga no início dela e, sem querer, também
+   escalado logo na semana N+1). Nunca sobrescreve um dia travado manualmente (🔒) — se a
+   violação vier de um ajuste manual, a auditoria continua avisando, mas o motor automático
+   não desfaz a escolha do gestor sozinho. */
+function limitarSeteDiasConsecutivos(){
+  let mudou = false;
+  FUNCIONARIOS.forEach((f,ei)=>{
+    if(!f.ativo || !grid[ei]) return;
+    let consec = 0;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(cel.st === 'SOBREAVISO'){
+        consec++;
+        if(consec > 6){
+          if(!cel.lock){ cel.st = 'DSR'; mudou = true; consec = 0; }
+        }
+      } else {
+        consec = 0;
+      }
+    }
+  });
+  return mudou;
+}
 function resolverSobreaviso(){
   limparMarcaGradeLimpaPeriodoAtual();
   avisarPendenciasSyncDsr(aplicarDsrDoDsrVolante().pendentes);
@@ -2072,6 +2153,7 @@ function resolverSobreaviso(){
   aplicarAncoragemOficialTecnico();
   aplicarDsrFixoDomingo();
   aplicarFeriasCadastradas();
+  limitarSeteDiasConsecutivos();
   registrarPrimeiraSobreaviso();
   _ultimoSyncDsr = sincronizarComDsrVolante();
   agendarSyncDsrRemoto();
