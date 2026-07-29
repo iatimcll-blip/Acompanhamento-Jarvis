@@ -948,12 +948,22 @@ function mesclarEstadoRemotoSobreaviso(remoto){
       if(!p || !p.porNome) return;
       if(!STORE.periodos[key]) STORE.periodos[key] = {porNome:{}};
       const periodoLimpoRemoto = !!p.gradeLimpaManual;
-      if(periodoLimpoRemoto && !STORE.periodos[key].gradeLimpaManual){
+      const periodoLimpoLocal = !!STORE.periodos[key].gradeLimpaManual;
+      /* Só aceita a marca de "período limpo" do remoto se o LOCAL também concordar que
+         está limpo. Sem essa checagem, um remoto desatualizado (ex.: ping-pong do
+         debounce de 1.5s entre clicar em "Limpar tudo" e, logo em seguida, "Gerar
+         escala automática" — o push da limpeza ainda não chegou no GitHub quando o
+         pull da geração nova roda) apagava silenciosamente uma escala recém-gerada
+         aqui, sem nenhum aviso: o remoto "antigo" dizia período limpo, e essa marca
+         sozinha já bastava pra sobrescrever tudo. Agora só aplica quando os dois
+         lados concordam — remoto sozinho nunca mais derruba dado local mais novo. */
+      const aplicarLimpezaRemota = periodoLimpoRemoto && periodoLimpoLocal;
+      if(aplicarLimpezaRemota && !STORE.periodos[key].gradeLimpaManual){
         STORE.periodos[key].gradeLimpaManual = true;
         mudou = true;
       }
       Object.entries(p.porNome).forEach(([nome,cels])=>{
-        if(periodoLimpoRemoto || !STORE.periodos[key].porNome[nome]){
+        if(aplicarLimpezaRemota || !STORE.periodos[key].porNome[nome]){
           STORE.periodos[key].porNome[nome] = cels;
           if(key===keyAtual && Array.isArray(cels) && cels.length===NDIAS){
             const ei = FUNCIONARIOS.findIndex(f=>f.nome===nome);
@@ -961,7 +971,7 @@ function mesclarEstadoRemotoSobreaviso(remoto){
           }
         }
       });
-      if(periodoLimpoRemoto && key===keyAtual){
+      if(aplicarLimpezaRemota && key===keyAtual){
         FUNCIONARIOS.forEach((f,ei)=>{
           if(!grid[ei]) grid[ei] = DIAS.map(()=>({st:"LIVRE", lock:false, feriadoNome:""}));
           if(!STORE.periodos[key].porNome[f.nome]){
