@@ -2343,7 +2343,16 @@ function normalizarDsrDuplicadoParaFolgaBH(){
   });
   return mudou;
 }
-function resolverSobreaviso(){
+/* opts.semGarantiaDomingo=true pula garantirCoberturaPorCidadeDomingoAtual() — usada pela
+   ação "Gerar a partir desta data" (ancoragem individual), que deve afetar SÓ o colaborador
+   selecionado e o Oficial ancorado a ele: sem esse pulo, um domingo descoberto pelo padrão
+   individual do colaborador acabava sendo preenchido puxando OUTRA pessoa da mesma cidade
+   (ou da Equipe reserva), incluindo gente que o gestor não pediu pra incluir ainda — cada
+   colaborador entra nessa ancoragem um de cada vez; os demais continuam de fora até o
+   gestor gerar a data inicial deles também (ou até uma "Gerar escala automática"/recálculo
+   comum, que roda a garantia normalmente). */
+function resolverSobreaviso(opts){
+  const semGarantiaDomingo = !!(opts && opts.semGarantiaDomingo);
   limparMarcaGradeLimpaPeriodoAtual();
   avisarPendenciasSyncDsr(aplicarDsrDoDsrVolante().pendentes);
   aplicarAncoragemDataInicialIndividual();
@@ -2351,7 +2360,7 @@ function resolverSobreaviso(){
   aplicarAncoragemOficialTecnico();
   aplicarDsrFixoDomingo();
   aplicarFeriasCadastradas();
-  garantirCoberturaPorCidadeDomingoAtual();
+  if(!semGarantiaDomingo) garantirCoberturaPorCidadeDomingoAtual();
   garantirFolgaAdjacenteDomingoFeriado();
   limitarSeteDiasConsecutivos();
   normalizarDsrDuplicadoParaFolgaBH();
@@ -2976,7 +2985,7 @@ function renderInicioPainel(ei){
       <input type="date" id="inicioData-${ei}" value="${f.dataInicialSobreaviso||''}">
       <button class="btn-primary" onclick="salvarInicioIndividual(${ei})">🚀 Gerar a partir desta data</button>
     </div>
-    <div style="color:var(--muted);font-size:10.5px;margin-top:6px">A partir da data informada, este colaborador (e o Técnico ancorado a ele, se houver) passa a alternar semana de sobreaviso sim/semana não sozinho, seguindo os horários configurados — sai do rodízio automático geral, sem afetar a escala dos demais.</div>
+    <div style="color:var(--muted);font-size:10.5px;margin-top:6px">A partir da data informada, este colaborador (e o Oficial ancorado a ele, se houver) passa a alternar semana de sobreaviso sim/semana não sozinho, seguindo os horários configurados — sai do rodízio automático geral. Gera só pra este colaborador e o Oficial vinculado a ele; os demais colaboradores não são afetados e precisam ser incluídos individualmente, um de cada vez.</div>
   </div>`;
 }
 function salvarInicioIndividual(ei){
@@ -2985,7 +2994,7 @@ function salvarInicioIndividual(ei){
   const data = document.getElementById('inicioData-'+ei).value;
   if(!data){ alert('Informe a data inicial.'); return; }
   f.dataInicialSobreaviso = data;
-  resolverSobreaviso(); renderAll(); renderListaColab(); lsSave();
+  resolverSobreaviso({semGarantiaDomingo:true}); renderAll(); renderListaColab(); lsSave();
 }
 function removerInicioIndividual(ei){
   const f = FUNCIONARIOS[ei];
