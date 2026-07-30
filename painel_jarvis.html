@@ -7380,7 +7380,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="section-hd fuel-data-title">Dados da Frota <span class="sh-line"></span></div>
     <div class="fuel-split" id="fuel-split">
       <div class="fuel-split-pane" id="fuel-split-left">
-        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Orçamento, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button><button class="card-action admin-only" onclick="clearFuelVeiculos()" title="Limpar toda a base de veículos e condutores" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Limpar base</button></div></div>
+        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Orçamento, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="exportFuelVeiculosXlsx()" title="Exportar a base completa de veículos e condutores em XLSX (mesmas colunas aceitas em Anexar base)"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button><button class="card-action admin-only" onclick="clearFuelVeiculos()" title="Limpar toda a base de veículos e condutores" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Limpar base</button></div></div>
         <div class="tw"><table><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Orçamento</th><th title="Análise Orçamento x Consumido no ciclo atual">Farol</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-setor" onclick="mselToggleOpen('fv-f-setor')"><span class="msel-btn-lbl">Todos</span></button></div></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-superior" onclick="mselToggleOpen('fv-f-superior')"><span class="msel-btn-lbl">Todos</span></button></div></th><th></th><th></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-tipoCartao" onclick="mselToggleOpen('fv-f-tipoCartao')"><span class="msel-btn-lbl">Todos</span></button></div></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-status" onclick="mselToggleOpen('fv-f-status')"><span class="msel-btn-lbl">Todos</span></button></div></th><th></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
       </div>
       <div class="fuel-split-handle" id="fuel-split-handle" title="Arraste para redimensionar os painéis"></div>
@@ -12622,6 +12622,32 @@ function procFuelVeiculos(raw,fname){
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
   renderFuel();saveState();
   alert(`Base de veículos processada: ${adicionados} adicionado(s), ${atualizados} atualizado(s). Os demais veículos já cadastrados foram mantidos.`);
+}
+/* Exportador de base de Veículos e Condutores — gera um XLSX com as MESMAS colunas
+   aceitas por procFuelVeiculos() (round-trip: o que sai daqui pode ser reanexado em
+   "Anexar base" sem perda), pra uso externo/backup ou envio pro Painel Veículos e
+   Condutores. Exporta a base inteira (dFuelVehicles), não a visualização filtrada da
+   tabela — ao contrário de copiarFuelVTable(), que copia só o que está renderizado. */
+function exportFuelVeiculosXlsx(){
+  if(!dFuelVehicles.length){alert('Nenhum veículo cadastrado para exportar.');return}
+  const rows=dFuelVehicles.map(v=>({
+    'Placa':v.placa||'',
+    'Modelo':v.modelo||'',
+    'Ano':v.ano||'',
+    'Condutor':v.condutor||'',
+    'Setor':v.setor||'',
+    'Superior':v.superior||'',
+    'Orçamento':Number(v.orcamento||0),
+    'Tipo':v.tipo||'',
+    'Tipo cartão':v.tipoCartao||'',
+    'Status':v.status||'',
+    'Obs':v.obsStatus||''
+  }));
+  const ws=XLSX.utils.json_to_sheet(rows);
+  ws['!cols']=[{wch:10},{wch:20},{wch:8},{wch:24},{wch:18},{wch:24},{wch:12},{wch:12},{wch:12},{wch:12},{wch:24}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Veículos e Condutores');
+  XLSX.writeFile(wb,'veiculos_condutores_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 async function clearFuelVeiculos(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
