@@ -734,9 +734,10 @@ function feriadoDoDia(date, localidade, uf){
 }
 /* Marca o nome do feriado na célula (informativo, usado no cálculo de horas) sem sobrescrever
    o status de quem já está de sobreaviso naquele dia — só troca pra FERIADO quem estava LIVRE. */
-function aplicarFeriados(){
+function aplicarFeriados(apenasEis){
   FUNCIONARIOS.forEach((f,ei)=>{
     if(!f.ativo || !grid[ei]) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
       const fer = feriadoDoDia(DIAS[d], f.localidade, f.uf);
@@ -763,9 +764,10 @@ function estaDeFerias(f, date){
     return t>=ini && t<=fim;
   });
 }
-function aplicarFeriasCadastradas(){
+function aplicarFeriasCadastradas(apenasEis){
   FUNCIONARIOS.forEach((f,ei)=>{
     if(!f.ativo || !grid[ei]) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
       if(!estaDeFerias(f, DIAS[d])) continue;
@@ -1924,11 +1926,12 @@ function semanaEhSobreavisoPorAncoraIndividual(f, segFeira){
   if(abs < base) return false; // não gera antes da data inicial
   return (abs - base) % 2 === 0;
 }
-function aplicarAncoragemDataInicialIndividual(){
+function aplicarAncoragemDataInicialIndividual(apenasEis){
   let mudou = false;
   const semanas = semanasDoPeriodoSobreaviso();
   FUNCIONARIOS.forEach((f, ei)=>{
     if(!f.ativo || !grid[ei] || !colaboradorSegueAncoraDataInicial(ei)) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     semanas.forEach(({idxs})=>{
       const seg = segundaFeiraDe(DIAS[idxs[0]]);
       const ligada = semanaEhSobreavisoPorAncoraIndividual(f, seg);
@@ -2189,9 +2192,10 @@ function alvosReaisAjusteManual(eis){
   });
   return alvos;
 }
-function aplicarAncoragemOficialTecnico(){
+function aplicarAncoragemOficialTecnico(apenasEis){
   let mudou = false;
   mapearAncoragensOficialTecnico().forEach(a=>{
+    if(apenasEis && !apenasEis.has(a.eiOf) && !apenasEis.has(a.eiTec)) return;
     const oficial = FUNCIONARIOS[a.eiOf], tecnico = FUNCIONARIOS[a.eiTec];
     if(!oficial || !tecnico || !oficial.ativo || !tecnico.ativo || !grid[a.eiOf] || !grid[a.eiTec]) return;
     for(let d=0; d<NDIAS; d++){
@@ -2220,12 +2224,13 @@ const STATUS_AUSENCIA_DSR_FIXO = new Set(['FERIAS','ATESTADO','AFASTADO','INSS',
 function _normalizarNomeGO(s){
   return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
 }
-function aplicarDsrFixoDomingo(){
+function aplicarDsrFixoDomingo(apenasEis){
   const alvos = new Set(GO_DSR_FIXO_DOMINGO.map(_normalizarNomeGO));
   if(!alvos.size) return false;
   let mudou = false;
   FUNCIONARIOS.forEach((f, ei)=>{
     if(!f.ativo || !grid[ei]) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     if(!alvos.has(_normalizarNomeGO(f.go))) return;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
@@ -2279,10 +2284,11 @@ function garantirCoberturaPorCidadeDomingoAtual(){
    dia anterior — só se ambos os vizinhos estiverem travados (🔒) ou fora do período é que a
    folga fica de fora mesmo, sem solução sem violar um ajuste manual. Só converte SOBREAVISO em
    DSR (nunca aumenta a carga de ninguém), então é seguro rodar antes do limite de 6 dias. */
-function garantirFolgaAdjacenteDomingoFeriado(){
+function garantirFolgaAdjacenteDomingoFeriado(apenasEis){
   let mudou = false;
   FUNCIONARIOS.forEach((f,ei)=>{
     if(!f.ativo || !grid[ei]) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
       if(cel.st !== 'SOBREAVISO') continue;
@@ -2298,10 +2304,11 @@ function garantirFolgaAdjacenteDomingoFeriado(){
   });
   return mudou;
 }
-function limitarSeteDiasConsecutivos(){
+function limitarSeteDiasConsecutivos(apenasEis){
   let mudou = false;
   FUNCIONARIOS.forEach((f,ei)=>{
     if(!f.ativo || !grid[ei]) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     let consec = 0;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
@@ -2325,11 +2332,12 @@ function limitarSeteDiasConsecutivos(){
    compensação extra (ex.: por ter trabalhado domingo/feriado), não o DSR obrigatório em si.
    Roda por último, depois de qualquer passada que possa gerar um segundo DSR na mesma semana,
    e nunca mexe em célula travada (🔒). */
-function normalizarDsrDuplicadoParaFolgaBH(){
+function normalizarDsrDuplicadoParaFolgaBH(apenasEis){
   let mudou = false;
   const semanas = semanasDoPeriodoSobreaviso();
   FUNCIONARIOS.forEach((f, ei)=>{
     if(!f.ativo || !grid[ei]) return;
+    if(apenasEis && !apenasEis.has(ei)) return;
     semanas.forEach(({idxs})=>{
       const diasDsr = idxs.filter(idx=>grid[ei][idx].st==='DSR');
       if(diasDsr.length<=1) return;
@@ -2343,16 +2351,7 @@ function normalizarDsrDuplicadoParaFolgaBH(){
   });
   return mudou;
 }
-/* opts.semGarantiaDomingo=true pula garantirCoberturaPorCidadeDomingoAtual() — usada pela
-   ação "Gerar a partir desta data" (ancoragem individual), que deve afetar SÓ o colaborador
-   selecionado e o Oficial ancorado a ele: sem esse pulo, um domingo descoberto pelo padrão
-   individual do colaborador acabava sendo preenchido puxando OUTRA pessoa da mesma cidade
-   (ou da Equipe reserva), incluindo gente que o gestor não pediu pra incluir ainda — cada
-   colaborador entra nessa ancoragem um de cada vez; os demais continuam de fora até o
-   gestor gerar a data inicial deles também (ou até uma "Gerar escala automática"/recálculo
-   comum, que roda a garantia normalmente). */
-function resolverSobreaviso(opts){
-  const semGarantiaDomingo = !!(opts && opts.semGarantiaDomingo);
+function resolverSobreaviso(){
   limparMarcaGradeLimpaPeriodoAtual();
   avisarPendenciasSyncDsr(aplicarDsrDoDsrVolante().pendentes);
   aplicarAncoragemDataInicialIndividual();
@@ -2360,7 +2359,7 @@ function resolverSobreaviso(opts){
   aplicarAncoragemOficialTecnico();
   aplicarDsrFixoDomingo();
   aplicarFeriasCadastradas();
-  if(!semGarantiaDomingo) garantirCoberturaPorCidadeDomingoAtual();
+  garantirCoberturaPorCidadeDomingoAtual();
   garantirFolgaAdjacenteDomingoFeriado();
   limitarSeteDiasConsecutivos();
   normalizarDsrDuplicadoParaFolgaBH();
@@ -2368,6 +2367,38 @@ function resolverSobreaviso(opts){
   _ultimoSyncDsr = sincronizarComDsrVolante();
   agendarSyncDsrRemoto();
   agendarPullDsrRemoto();
+}
+/* Recalcula SÓ o colaborador informado (e o Oficial↔Técnico ancorado a ele, se houver) — usada
+   pela ação "🚀 Gerar a partir desta data" (ancoragem individual). Diferente de
+   resolverSobreaviso(), que roda todas as passadas pra TODOS os ativos (incluindo
+   garantirCoberturaPorCidadeDomingoAtual(), capaz de escalonar OUTRA pessoa da mesma cidade ou
+   da Equipe reserva pra cobrir um domingo) — aqui cada passada recebe um filtro "apenasEis"
+   restrito a {ei, ancoragem dele}, então absolutamente nada muda pra mais ninguém, mesmo que a
+   base já tenha dados prévios (manuais ou de uma geração automática anterior) que alguma regra
+   normalmente corrigiria. A garantia de cobertura por cidade fica de fora por completo (nunca
+   é chamada aqui) — cada colaborador entra nessa ancoragem um de cada vez; os demais só são
+   recalculados quando o gestor gerar a data inicial deles também, clicar em "Gerar escala
+   automática" ou editar uma célula (que chama resolverSobreaviso() normal). */
+function resolverSobreavisoIndividual(ei){
+  const f = FUNCIONARIOS[ei];
+  if(!f) return;
+  const apenasEis = new Set([ei]);
+  if(f.tipo==='Oficial' && f.tecnicoVinculado){
+    const anc = mapearAncoragensOficialTecnico().find(a=>a.eiOf===ei);
+    if(anc) apenasEis.add(anc.eiTec);
+  } else {
+    oficiaisAncoradosAoTecnico(ei, false).forEach(a=>apenasEis.add(a.eiOf));
+  }
+  limparMarcaGradeLimpaPeriodoAtual();
+  aplicarAncoragemDataInicialIndividual(apenasEis);
+  aplicarFeriados(apenasEis);
+  aplicarAncoragemOficialTecnico(apenasEis);
+  aplicarDsrFixoDomingo(apenasEis);
+  aplicarFeriasCadastradas(apenasEis);
+  garantirFolgaAdjacenteDomingoFeriado(apenasEis);
+  limitarSeteDiasConsecutivos(apenasEis);
+  normalizarDsrDuplicadoParaFolgaBH(apenasEis);
+  registrarPrimeiraSobreaviso();
 }
 let _dsrRemotoTimer = null;
 function agendarSyncDsrRemoto(){
@@ -2994,7 +3025,7 @@ function salvarInicioIndividual(ei){
   const data = document.getElementById('inicioData-'+ei).value;
   if(!data){ alert('Informe a data inicial.'); return; }
   f.dataInicialSobreaviso = data;
-  resolverSobreaviso({semGarantiaDomingo:true}); renderAll(); renderListaColab(); lsSave();
+  resolverSobreavisoIndividual(ei); renderAll(); renderListaColab(); lsSave();
 }
 function removerInicioIndividual(ei){
   const f = FUNCIONARIOS[ei];
