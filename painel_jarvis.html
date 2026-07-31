@@ -8,6 +8,7 @@
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
 <script src="assets/vendor/chartjs-plugin-datalabels/chartjs-plugin-datalabels.min.js"></script>
+<script src="assets/vendor/pptxgenjs/pptxgen.bundle.js"></script>
 <style>
 :root {
   --os: rgba(0,0,0,.04);
@@ -8302,6 +8303,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <button class="rpt-scope-btn" onclick="generateReport('repetidos')"><i class="ti ti-repeat" style="color:#af52de"></i> B2B Chamados Repetidos</button>
         <button class="rpt-scope-btn" onclick="generateReport('combustivel')"><i class="ti ti-gas-station" style="color:#ff9500"></i> Combustíveis</button>
         <button class="rpt-scope-btn" onclick="generateReport('ofs')"><i class="ti ti-chart-bar" style="color:#f97316"></i> Produtividade OFS</button>
+        <div style="height:.5px;background:var(--bd);margin:2px 0"></div>
+        <button class="rpt-scope-btn" onclick="generateReport('exec-aging')"><i class="ti ti-report" style="color:#1476c9"></i> Executivo B2B — Aging <span style="font-size:11px;color:var(--tx3);margin-left:auto">modelo PPT</span></button>
+        <button class="rpt-scope-btn" onclick="downloadExecAgingPptx()"><i class="ti ti-file-type-ppt" style="color:#13853a"></i> Baixar PPTX (modelo Aging) <span style="font-size:11px;color:var(--tx3);margin-left:auto">.pptx</span></button>
       </div>
     </div>
   </div>
@@ -15840,6 +15844,166 @@ function rptBuildEncerrados(){
   return _rSec('✅','B2B Chamados Encerrados',`${d.length} chamados · ${ctx}`,body,true);
 }
 
+/* Relatório Executivo B2B — Aging (modelo D:\Acompanhamento Jarvis\Relatórios\B2B_Aging_MA_Executivo.pptx):
+   agrupa o escopo atual de Encerrados (encScope(), já respeita selCluster/selMes/selWeek) por cluster —
+   % no prazo, % outlier e volume — pra reconstruir a tabela e o texto de decisão do slide 1/2 do modelo,
+   sempre com dados reais do painel. Reaproveitado tanto pelo relatório HTML (rptBuildExecAging) quanto
+   pela geração do .pptx (downloadExecAgingPptx), pra não duplicar a lógica de agrupamento. */
+function computeExecAgingData(){
+  const d=encScope();
+  const s=encRuleStats(d);
+  const grp={};
+  d.forEach(x=>{
+    const k=x.cluster||'—';
+    if(!grp[k])grp[k]={total:0,dentro:0,fora:0,outlier:0};
+    grp[k].total++;
+    if(x.dentro8h)grp[k].dentro++;
+    else if(x.outlier24h)grp[k].outlier++;
+    else grp[k].fora++;
+  });
+  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
+  const clusters=cardOrder.map(k=>{
+    const g=grp[k]||{total:0,dentro:0,fora:0,outlier:0};
+    const pPrazo=g.total?g.dentro/g.total*100:0;
+    const pOut=g.total?g.outlier/g.total*100:0;
+    const pFora=g.total?g.fora/g.total*100:0;
+    return{cluster:k,total:g.total,dentro:g.dentro,fora:g.fora,outlier:g.outlier,pPrazo,pOut,pFora};
+  }).filter(c=>c.total>0);
+  const causas=se(cnt(d.map(x=>({...x,causaRaiz:fmtCausaRaiz(x.causaRaiz)})),'causaRaiz'));
+  const piorCluster=clusters.length?clusters.reduce((a,b)=>(85-b.pPrazo)>(85-a.pPrazo)?b:a):null;
+  const abaixoMeta=clusters.filter(c=>c.pPrazo<85).length;
+  const ctxLabel=[selMes.length?selMes.map(fmtMesLabel).join('+'):'',selWeek.length?'Semana '+selWeek.join('+'):'',selCluster.length?selCluster.join('+'):'Todos os clusters'].filter(Boolean).join(' · ')||'Todos os períodos';
+  return{d,s,clusters,causas,piorCluster,abaixoMeta,ctxLabel};
+}
+function execAgingDecisionTxt(info){
+  return info.piorCluster?`Concentrar recuperação no ${info.piorCluster.cluster}: ${info.piorCluster.total} chamados, ${pp(info.piorCluster.pPrazo)}% no prazo e ${pp(info.piorCluster.pOut)}% de outliers. ${info.abaixoMeta} de ${info.clusters.length} cluster${info.clusters.length===1?'':'s'} abaixo da meta de 85%.`:'Sem clusters com volume no período selecionado.';
+}
+function rptBuildExecAging(){
+  const info=computeExecAgingData();
+  if(!info.d.length)return '';
+  const{d,s,clusters,causas,ctxLabel}=info;
+  const clusterRows=clusters.map(c=>`<tr>
+    <td style="font-weight:700">${eh(c.cluster)}</td>
+    <td style="color:${c.pPrazo>=85?'#13853a':'#ff3b30'};font-weight:700">${pp(c.pPrazo)}%</td>
+    <td style="color:${c.pOut<=1.98?'#13853a':'#ff3b30'};font-weight:700">${pp(c.pOut)}%</td>
+    <td>${c.fora} · ${pp(c.pFora)}%</td>
+    <td style="font-weight:700">${c.total}</td>
+  </tr>`).join('');
+  const topCausas=causas.slice(0,6);
+  const causaRows=topCausas.map(([k,v])=>{
+    const pct=d.length?Math.round(v/d.length*100):0;
+    return`<div class="brow"><span class="blbl">${eh(k)}</span><div class="btrk"><div class="bfil" style="width:${Math.min(100,pct*2)}%;background:#1476c9"></div></div><span class="bn">${v}</span></div>`;
+  }).join('');
+  const topCausa=topCausas[0]||['—',0];
+  const pctTopCausa=d.length?Math.round(topCausa[1]/d.length*100):0;
+  const offenders=clusters.filter(c=>c.pPrazo<85||c.pOut>1.98);
+  const fcaRows=(offenders.length?offenders:clusters).map(c=>`<tr>
+      <td style="font-size:11px">${eh(c.cluster)}: prazo ${pp(c.pPrazo)}% (meta 85%), outlier ${pp(c.pOut)}% (meta ≤2%) · ${c.total} chamados</td>
+      <td style="font-size:11px">${eh(topCausa[0])}</td>
+      <td class="fca-blank"></td>
+      <td class="fca-blank"></td>
+      <td class="fca-blank"></td>
+      <td class="fca-blank"></td>
+    </tr>`).join('');
+  const body=`
+  <p style="font-size:12px;color:#636366;margin-bottom:14px">Período: <strong>${eh(ctxLabel)}</strong> · Fonte: dados carregados no Painel B2B Encerrados · aging pelo tempo total (CCS)</p>
+  <div class="exec-decision"><div class="exec-decision-tit">Decisão operacional</div><div class="exec-decision-txt">${eh(execAgingDecisionTxt(info))}</div></div>
+  <div class="stit">Performance por cluster — meta prazo ≥85% · outlier ≤2%</div>
+  <div style="overflow-x:auto">${clusterRows?`<table class="rpt-table exec-kpi-table"><thead><tr><th>Cluster</th><th>% no Prazo</th><th>% Outlier</th><th>Fora do Prazo (8–24h)</th><th>Volume</th></tr></thead><tbody>${clusterRows}</tbody></table>`:'<p style="color:#8e8e93;font-size:12px;padding:8px 0">Sem dados.</p>'}</div>
+  <div class="g2r" style="margin-top:14px">
+    <div class="rcard">
+      <div class="rcardtit">Composição por faixa (aging CCS)</div>
+      <div class="brow"><span class="blbl">Prazo ≤8h</span><div class="btrk"><div class="bfil" style="width:${s.pPrazo.toFixed(1)}%;background:#13853a"></div></div><span class="bn">${s.prazo}</span></div>
+      <div class="brow"><span class="blbl">Fora do Prazo 8–24h</span><div class="btrk"><div class="bfil" style="width:${s.pInter.toFixed(1)}%;background:#ff9500"></div></div><span class="bn">${s.intermediario}</span></div>
+      <div class="brow"><span class="blbl">Outlier &gt;24h</span><div class="btrk"><div class="bfil" style="width:${s.pOut.toFixed(1)}%;background:#ff3b30"></div></div><span class="bn">${s.outlier}</span></div>
+    </div>
+    <div class="rcard">
+      <div class="rcardtit">Causa raiz dos chamados</div>
+      ${causaRows||'<p style="color:#8e8e93;font-size:11px">Sem dados de causa raiz.</p>'}
+    </div>
+  </div>
+  ${topCausa[1]?`<p style="font-size:11.5px;color:#3a3a3c;margin-top:6px"><b>${eh(topCausa[0])}</b> responde por ${pctTopCausa}% dos chamados do período — principal causa raiz.</p>`:''}
+  <div class="page-break"></div>
+  <div class="stit" style="margin-top:0">FCA — Fato, Causa e Ação <span style="font-weight:400;color:#8e8e93;text-transform:none">(preencher plano de ação)</span></div>
+  <div style="overflow-x:auto"><table class="rpt-table fca-table"><thead><tr><th>Fato</th><th>Causa</th><th>Ação</th><th>Prazo</th><th>Responsável</th><th>Status</th></tr></thead><tbody>${fcaRows||'<tr><td colspan="6" style="text-align:center;color:#8e8e93;padding:16px">Nenhum cluster com volume no período selecionado.</td></tr>'}</tbody></table></div>`;
+  return _rSec('📊','Executivo B2B — Aging',`${d.length} chamados · ${ctxLabel}`,body,false);
+}
+/* Baixa o mesmo relatório de rptBuildExecAging() como .pptx real (chartjs-plugin-datalabels/xlsx.full
+   já são vendorizados localmente em assets/vendor — pptxgenjs segue o mesmo padrão, sem CDN). Gerado
+   inteiramente no browser via PptxGenJS (window.PptxGenJS, carregado em assets/vendor/pptxgenjs). */
+function downloadExecAgingPptx(){
+  if(typeof PptxGenJS==='undefined'){alert('Biblioteca de geração de PPTX não carregada.');return;}
+  const info=computeExecAgingData();
+  if(!info.d.length){alert('Nenhum dado disponível. Carregue a base do painel B2B Encerrados antes de gerar o relatório.');return;}
+  const{d,s,clusters,causas,ctxLabel}=info;
+  const NAVY='081551',BLUE='1476C9',GREEN='13853A',RED='FF3B30',ORANGE='FF9500',GREY='667085',GREYL='D9E0EA',WHITE='FFFFFF',BGCARD='F5F6FA';
+  const now=new Date();
+  const pptx=new PptxGenJS();
+  pptx.defineLayout({name:'JARVIS_16x9',width:13.333,height:7.5});
+  pptx.layout='JARVIS_16x9';
+  function header(slide,kicker,title,pageLbl){
+    slide.background={color:WHITE};
+    slide.addShape('rect',{x:0,y:0,w:13.333,h:1.05,fill:{color:NAVY},line:{type:'none'}});
+    slide.addText('JARVIS MCLL',{x:0.4,y:0.15,w:5,h:0.35,fontSize:12,bold:true,color:WHITE,charSpacing:2});
+    slide.addText(kicker,{x:0.4,y:0.52,w:10.5,h:0.4,fontSize:10,color:'9FC9EE'});
+    slide.addText(pageLbl,{x:12.1,y:0.28,w:1,h:0.4,fontSize:10,color:WHITE,align:'right'});
+    slide.addText(title,{x:0.4,y:1.2,w:12.5,h:0.6,fontSize:22,bold:true,color:NAVY});
+  }
+  const dateStr=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+
+  const s1=pptx.addSlide();
+  header(s1,`OPERAÇÕES B2B · AGING · ${ctxLabel.toUpperCase()}`,'Performance por Cluster','1 / 3');
+  const headRow=['Cluster','% no Prazo (meta 85%)','% Outlier (meta ≤2%)','Fora do Prazo 8–24h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
+  const bodyRows=clusters.map(c=>[
+    {text:c.cluster,options:{bold:true,fontSize:11}},
+    {text:pp(c.pPrazo)+'%',options:{color:c.pPrazo>=85?GREEN:RED,bold:true,fontSize:11}},
+    {text:pp(c.pOut)+'%',options:{color:c.pOut<=1.98?GREEN:RED,bold:true,fontSize:11}},
+    {text:c.fora+' · '+pp(c.pFora)+'%',options:{fontSize:11}},
+    {text:String(c.total),options:{bold:true,fontSize:11}}
+  ]);
+  const tblRows=clusters.length?bodyRows.length+1:1;
+  if(clusters.length){
+    s1.addTable([headRow,...bodyRows],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.42,valign:'middle'});
+  }else{
+    s1.addText('Sem dados no período selecionado.',{x:0.4,y:2.0,w:12.5,h:0.5,fontSize:13,color:GREY});
+  }
+  const decisionY=2.0+0.42*tblRows+0.35;
+  s1.addShape('rect',{x:0.4,y:decisionY,w:12.5,h:1.35,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
+  s1.addText([{text:'DECISÃO OPERACIONAL\n',options:{bold:true,fontSize:10,color:GREY,breakLine:true}},{text:execAgingDecisionTxt(info),options:{fontSize:13,color:NAVY}}],{x:0.65,y:decisionY+0.15,w:12,h:1.05,valign:'top'});
+
+  const s2=pptx.addSlide();
+  header(s2,'Fonte: dados carregados no Painel B2B Encerrados · aging pelo tempo total (CCS)','Diagnóstico de Aging','2 / 3');
+  s2.addText(`${d.length} chamados encerrados`,{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
+  s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–24h','Outlier >24h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
+  s2.addText(`% no prazo: ${pp(s.pPrazo)}% (meta 85%) · % outlier: ${pp(s.pOut)}% (meta ≤2%)`,{x:0.4,y:5.75,w:5.8,h:0.4,fontSize:11,color:GREY});
+  const topCausas=causas.slice(0,5);
+  s2.addText('Causa raiz dos chamados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
+  if(topCausas.length){
+    s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:topCausas.map(c=>c[0]),values:topCausas.map(c=>c[1])}],{x:6.6,y:2.45,w:6.2,h:3.7,barDir:'bar',showValue:true,chartColors:[BLUE],showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,dataLabelFontSize:9});
+  }else{
+    s2.addText('Sem dados de causa raiz no período.',{x:6.6,y:2.55,w:6,h:0.5,fontSize:12,color:GREY});
+  }
+
+  const s3=pptx.addSlide();
+  header(s3,`Plano de recuperação do aging B2B · referência ${dateStr}`,'FCA — Fato, Causa e Ação','3 / 3');
+  const fcaHead=['Fato','Causa','Ação','Prazo','Responsável','Status'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
+  const offenders=clusters.filter(c=>c.pPrazo<85||c.pOut>1.98);
+  const topCausa=causas[0]||['—',0];
+  const fcaSrc=offenders.length?offenders:clusters;
+  const fcaBody=fcaSrc.length?fcaSrc.map(c=>[
+    {text:`${c.cluster}: prazo ${pp(c.pPrazo)}% (meta 85%), outlier ${pp(c.pOut)}% (meta ≤2%) · ${c.total} chamados`,options:{fontSize:10}},
+    {text:topCausa[0],options:{fontSize:10}},
+    {text:'',options:{fontSize:10}},
+    {text:'',options:{fontSize:10}},
+    {text:'',options:{fontSize:10}},
+    {text:'',options:{fontSize:10}}
+  ]):[[{text:'Nenhum cluster com volume no período selecionado.',options:{fontSize:10,color:GREY},colspan:6}]];
+  s3.addTable([fcaHead,...fcaBody],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.65,valign:'top'});
+  s3.addText('Preencher Ação, Prazo, Responsável e Status com o plano de recuperação definido.',{x:0.4,y:2.0+0.65*(fcaBody.length+1)+0.2,w:12.5,h:0.4,fontSize:10,italic:true,color:GREY});
+
+  pptx.writeFile({fileName:`Relatorio_Executivo_B2B_Aging_${now.toISOString().slice(0,10)}.pptx`});
+}
+
 function rptBuildRepetidos(){
   const data=repScope();if(!data.length)return '';
   const all=buildRepMap(data),totalRep=all.reduce((s,v)=>s+v.records.length,0);
@@ -15940,7 +16104,7 @@ function generateReport(scope){
   const now=new Date();
   const dateStr=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
   const timeStr=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const titles={'abertos':'B2B Chamados Abertos','encerrados':'B2B Chamados Encerrados','repetidos':'B2B Chamados Repetidos','combustivel':'Combustíveis','ofs':'Produtividade OFS','all':'Relatório Completo'};
+  const titles={'abertos':'B2B Chamados Abertos','encerrados':'B2B Chamados Encerrados','repetidos':'B2B Chamados Repetidos','combustivel':'Combustíveis','ofs':'Produtividade OFS','all':'Relatório Completo','exec-aging':'Executivo B2B — Aging'};
   const title=titles[scope]||scope;
   const user=currentUser&&(currentUser.name||currentUser.username)||'';
   let sections='';
@@ -15950,6 +16114,7 @@ function generateReport(scope){
   if(scope==='all'||scope==='repetidos')add(rptBuildRepetidos);
   if(scope==='all'||scope==='combustivel')add(rptBuildCombustiveis);
   if(scope==='all'||scope==='ofs')add(rptBuildOfs);
+  if(scope==='exec-aging')add(rptBuildExecAging);
   if(!sections){alert('Nenhum dado disponível. Carregue a base do painel antes de gerar o relatório.');return;}
   const css=`
 *{box-sizing:border-box;margin:0;padding:0}
@@ -16060,6 +16225,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .fuel-balance-summary,.fuel-extra-projection{background:#f5f5f7;border-radius:12px;padding:14px 16px;margin-bottom:10px}
 /* ─ exec report ─ */
 .exec-pre{font-size:11.5px;white-space:pre-wrap;line-height:1.7;color:#3a3a3c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;padding:4px 0}
+/* ─ exec-aging (modelo B2B_Aging_MA_Executivo.pptx) ─ */
+.exec-decision{background:#081551;border-radius:12px;padding:14px 18px;margin-bottom:14px;color:#fff}
+.exec-decision-tit{font-size:10px;font-weight:700;color:#9fc9ee;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.exec-decision-txt{font-size:13.5px;line-height:1.5}
+.exec-kpi-table th{background:#081551;color:#fff}
+.fca-table th{background:#081551;color:#fff}
+.fca-blank{min-width:90px;background:repeating-linear-gradient(-45deg,#fafafa,#fafafa 6px,#f0f0f2 6px,#f0f0f2 12px)}
 /* ─ misc ─ */
 .page-break{page-break-before:always}
 .no-print{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;gap:8px;flex-direction:column;align-items:flex-end}
@@ -16113,6 +16285,7 @@ button,select,input,textarea,.card-action,.admin-only,.tsec-meta,.fbar,.pfooter,
 </div>
 <div class="no-print">
   <button class="btn-p" onclick="window.print()">🖨 Imprimir / Salvar PDF</button>
+  ${scope==='exec-aging'?`<button class="btn-d" style="background:#13853a" onclick="window.opener&&window.opener.downloadExecAgingPptx&&window.opener.downloadExecAgingPptx()">⬇ Baixar PPTX</button>`:''}
   <button class="btn-d" onclick="downloadCurrentReport()">⬇ Baixar HTML</button>
   <button class="btn-c" onclick="window.close()">✕ Fechar</button>
 </div>
