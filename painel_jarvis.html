@@ -10261,7 +10261,12 @@ function procAbChamadosUF(rows,fname){
     const ticketId=cleanTicketId(r['Ticket ID']);
     const protocolo=String(r['Protocolo']||'').trim();
     const id=protocolo||ticketId;
-    const cliente=clienteAbertoNome(r);
+    /* Nesta aba a col G (Cliente) já vem direto e específica o suficiente — não precisa
+       do heurístico clienteAbertoNome()/AB_CLIENTE_COLC_ALIASES (criado pro layout antigo
+       da aba Export, com colunas em outras posições); usá-lo aqui lia por engano a col C
+       ("Origem UF/Cidade", um campo de auditoria interno tipo "Coluna V (ufservico)") toda
+       vez que o Cliente batia com um dos apelidos municipais genéricos da lista. */
+    const cliente=String(r['Cliente']||'').trim();
     const depAtual=repairPtBR(String(r['Depto. Atual']||'').trim());
     const uf=String(r['UF']||'').trim().toUpperCase();
     const cidade=repairPtBR(String(r['Cidade']||'').trim());
@@ -11584,7 +11589,11 @@ function renderTAb(){
     const subHtml=canEdit()?`<select class="substatus-select${_mSub?' substatus-manual':''}" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>${_mSub?`<span class="sub-manual-lock" title="Fixado manualmente — agente não sobrescreve. Clique para liberar." onclick="event.stopPropagation();_clearManualSubByRowKey(${d.rowKey})">M</span>`:''}`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
     const ann=abAnnotations[d.id]||{};
     const rowCls=isPurpleResponsavel(ann.prof)?'row-purple':abStatusCardClass(d.substatus);
-    const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
+    /* Padrão do card: linha de cima (destaque) sempre com o título do chamado
+       (col F da base — mais específico, ex.: "Atendimento para: Escola X - Unidade Y"),
+       linha de baixo (cinza) sempre com o cliente (col G — costuma ser um nome
+       genérico/guarda-chuva, ex.: "MUNICIPIO DE SAO LUIS SEMED"). */
+    const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.assunto)}</span><span class="abc-cliente-final">${eh(d.cliente)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
     return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span></span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
@@ -11748,7 +11757,11 @@ function renderTSwap(){
     const subHtml=canEdit()?`<select class="substatus-select${_mSub?' substatus-manual':''}" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>${_mSub?`<span class="sub-manual-lock" title="Fixado manualmente — agente não sobrescreve. Clique para liberar." onclick="event.stopPropagation();_clearManualSubByRowKey(${d.rowKey})">M</span>`:''}`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
     const ann=abAnnotations[d.id]||{};
     const rowCls=isPurpleResponsavel(ann.prof)?'row-purple':abStatusCardClass(d.substatus);
-    const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.cliente)}</span><span class="abc-cliente-final">${eh(d.assunto)}</span>`:eh(d.cliente);
+    /* Padrão do card: linha de cima (destaque) sempre com o título do chamado
+       (col F da base — mais específico, ex.: "Atendimento para: Escola X - Unidade Y"),
+       linha de baixo (cinza) sempre com o cliente (col G — costuma ser um nome
+       genérico/guarda-chuva, ex.: "MUNICIPIO DE SAO LUIS SEMED"). */
+    const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.assunto)}</span><span class="abc-cliente-final">${eh(d.cliente)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
     const delBtn=canEdit()?`<span class="card-action" style="color:var(--red)" onclick="event.stopPropagation();swapExcluirChamado(${d.rowKey})" title="Excluir chamado"><i class="ti ti-trash"></i></span>`:'';
