@@ -9954,7 +9954,19 @@ document.getElementById('file-ab').addEventListener('change',function(e){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
-  rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.toUpperCase()==='BASE')||wb.SheetNames[0];const ws=wb.Sheets[sn];procAb(applyTicketLinks(XLSX.utils.sheet_to_json(ws,{defval:''}),ws),f.name)}catch(er){alert('Erro: '+er.message)}};
+  rd.onload=ev=>{try{
+    const wb=XLSX.read(ev.target.result,{type:'array'});
+    const snUf=wb.SheetNames.find(n=>nk(n)===nk('Chamados UF'));
+    if(snUf){
+      /* header fica na 2ª linha da aba (1ª é o título mesclado) */
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[snUf],{defval:'',range:1});
+      procAbChamadosUF(rows,f.name);
+    }else{
+      const sn=wb.SheetNames.find(n=>n.toUpperCase()==='BASE')||wb.SheetNames[0];
+      const ws=wb.Sheets[sn];
+      procAb(applyTicketLinks(XLSX.utils.sheet_to_json(ws,{defval:''}),ws),f.name);
+    }
+  }catch(er){alert('Erro: '+er.message)}};
   rd.readAsArrayBuffer(f);this.value='';
 });
 document.getElementById('file-enc').addEventListener('change',function(e){
@@ -10217,6 +10229,12 @@ function procAb(raw,fname){
     item.statusSla=statusSla(item.slaH,mop,slaLimitH);
     return item;
   }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  finishAbUpload(fname);
+}
+/* Etapa final compartilhada por qualquer parser de upload de B2B Abertos (procAb,
+   procAbChamadosUF, ...) — roda depois que dAb já foi montado, independente do
+   layout de colunas da planilha de origem. */
+function finishAbUpload(fname){
   refreshAbBadge();
   lastAbFile=fname||'';
   lastAbAt=now2();updateUploadTimes();
@@ -10229,6 +10247,40 @@ function procAb(raw,fname){
   if(emptySwap)emptySwap.style.display=slnSwap().length?'none':'block';
   if(dashSwap)dashSwap.style.display=slnSwap().length?'block':'none';
   saveState();autoSyncAfterBaseUpload('B2B Abertos');updateClearBtns();
+}
+/* Modelo alternativo de base "Chamados UF" (D:\Acompanhamento Jarvis\Abertos\Painel_Chamados_UF.xlsx,
+   aba "Chamados UF"): planilha já pré-filtrada por UF (PI/MA/PA/AM/AP) + chamados "EVE" no título,
+   com cabeçalho na 2ª linha (1ª linha é só o título mesclado) e colunas já nomeadas de forma direta —
+   só usa as colunas A (UF), B (Cidade), D (Ticket ID), E (Protocolo), F (Título do Chamado),
+   G (Cliente), J (SLA (h)), K (Substatus) e L (Depto. Atual), pedidas explicitamente. A partir daí
+   segue a MESMA regra já usada em procAb(): SWAP é todo chamado cujo Depto. Atual bate com
+   isSwapDep() (col L → "CMO - REPARO SWAP"), faixa/status SLA vêm das mesmas funções (cf/statusSla)
+   e o filtro final por UF_PERMITIDAS+isSwapDep é idêntico — só a extração das colunas muda. */
+function procAbChamadosUF(rows,fname){
+  dAb=rows.filter(r=>String(r['Protocolo']||'').trim()!==''||String(r['Ticket ID']||'').trim()!=='').map((r,rowKey)=>{
+    const ticketId=cleanTicketId(r['Ticket ID']);
+    const protocolo=String(r['Protocolo']||'').trim();
+    const id=protocolo||ticketId;
+    const cliente=clienteAbertoNome(r);
+    const depAtual=repairPtBR(String(r['Depto. Atual']||'').trim());
+    const uf=String(r['UF']||'').trim().toUpperCase();
+    const cidade=repairPtBR(String(r['Cidade']||'').trim());
+    const substatus=fmtSubstatus(repairPtBR(String(r['Substatus']||'')));
+    const link=bestLink(atrixTicketLink(ticketId),id);
+    const openedAt=parseOpeningDate(r['Data de Abertura']);
+    const slaRaw=r['SLA (h)'];
+    const hasSheetSla=slaRaw!==undefined&&slaRaw!==null&&String(slaRaw).trim()!=='';
+    const originalSlaH=typeof slaRaw==='number'?slaRaw:ph(slaRaw);
+    const assunto=repairPtBR(String(r['Título do Chamado']||depAtual||'').trim());
+    const mop=normMopByCity(uf,cidade);
+    const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao:'',substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,slaBaseAt:new Date().toISOString(),tempoClienteH:0,tempoSuporteH:0,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH:0,pausedBusinessH:0,pauseStart:null,mop};
+    if(isPausedSubstatus(substatus))item.pauseStart=new Date();
+    item.slaH=computeSlaHours(item);
+    item.faixa=cf(item.slaH);
+    item.statusSla=statusSla(item.slaH,mop,0);
+    return item;
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  finishAbUpload(fname);
 }
 
 /* ─── PROCESS ENCERRADOS ─── */
