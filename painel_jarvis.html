@@ -3439,17 +3439,56 @@ tbody tr:last-child td {
 #panel-combustivel #fuel-route-calculator { order: 6; }
 #panel-combustivel .fuel-forms-admin { order: 8; }
 #panel-combustivel #fuel-driver-detail { order: 9; margin-bottom: 0 !important; }
-#panel-combustivel > .g2-charts { order: 10; margin-bottom: 0 !important; }
-#panel-combustivel > .g3-charts { order: 11; margin-bottom: 0 !important; }
-#panel-combustivel #fuel-projection-detail { order: 12; }
-#panel-combustivel .fuel-data-title { order: 13; margin-top: 6px !important; }
-#panel-combustivel #fuel-split { order: 14; }
-#panel-combustivel .fuel-admin-divider { order: 20; }
+#panel-combustivel .fuel-analises-title { order: 10; margin-top: 6px !important; }
+#panel-combustivel > .g2-charts { order: 11; margin-bottom: 0 !important; }
+#panel-combustivel > .g3-charts { order: 12; margin-bottom: 0 !important; }
+#panel-combustivel #fuel-projection-detail { order: 13; }
+#panel-combustivel .fuel-data-title { order: 14; margin-top: 6px !important; }
+#panel-combustivel #fuel-split { order: 15; }
+/* "Cadastrar veículo e condutor"/"Registrar solicitação" reagrupados dentro da zona
+   "Gestão e Operações" (junto de Aportes, Saldo cartão, Retirada, Portal Alelo e
+   Histórico) — antes ficavam soltos logo após "Projeção de Aporte Extra" (order:8),
+   longe de todo o resto da administração do ciclo. */
+#panel-combustivel .fuel-admin-divider { order: 19; }
+#panel-combustivel .fuel-forms-admin { order: 20; }
 #panel-combustivel .fuel-aportes-section { order: 21; }
 #panel-combustivel .fuel-card-balance-section { order: 22; }
 #panel-combustivel .fuel-withdraw-section { order: 23; }
 #panel-combustivel #tsec-alelo-portal { order: 24; }
 #panel-combustivel .fuel-history-section { order: 26; }
+/* Colapso de zonas (reduzir rolagem) — o painel tinha ~20 blocos sempre visíveis;
+   "Gestão e Operações" (formulários administrativos, pouco usados no dia a dia de
+   consulta) e "Análises e Gráficos" (informação de aprofundamento, não do primeiro
+   relance) podem ser recolhidos, mantendo tudo a 1 clique. Estado persistido em
+   localStorage (fuelZoneCollapsed). */
+#panel-combustivel.fz-gestao-collapsed .fuel-forms-admin,
+#panel-combustivel.fz-gestao-collapsed .fuel-aportes-section,
+#panel-combustivel.fz-gestao-collapsed .fuel-card-balance-section,
+#panel-combustivel.fz-gestao-collapsed .fuel-withdraw-section,
+#panel-combustivel.fz-gestao-collapsed #tsec-alelo-portal,
+#panel-combustivel.fz-gestao-collapsed .fuel-history-section {
+  display: none !important;
+}
+#panel-combustivel.fz-analises-collapsed > .g2-charts,
+#panel-combustivel.fz-analises-collapsed > .g3-charts,
+#panel-combustivel.fz-analises-collapsed #fuel-projection-detail {
+  display: none !important;
+}
+.fuel-zone-toggle {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
+  background: var(--blue-bg, rgba(37,99,235,.1));
+  border: none;
+  border-radius: 20px;
+  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.fuel-zone-toggle:hover { filter: brightness(0.95); }
 
 #panel-combustivel .fuel-gauge {
   display: grid;
@@ -7301,6 +7340,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div id="fuel-driver-detail" class="fuel-driver-detail" style="display:none"></div>
 
     <!-- 4. Gráficos de análise -->
+    <div class="section-hd fuel-analises-title">Análises e Gráficos <span class="sh-line"></span><button class="fuel-zone-toggle" id="fuel-zone-analises-btn" onclick="toggleFuelZone('analises')"><i class="ti ti-chevron-up"></i><span id="fuel-zone-analises-lbl">Ocultar</span></button></div>
     <div class="g2-charts fuel-consumo-layout">
       <div class="card fuel-alelo-balance-card">
         <div class="card-hd"><span class="card-title">Saldo Alelo</span></div>
@@ -7330,7 +7370,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div id="fuel-projection-detail"></div>
 
     <!-- Divisor zona admin -->
-    <div class="fuel-admin-divider"><span>Gestão e Operações</span></div>
+    <div class="fuel-admin-divider"><span>Gestão e Operações</span><button class="fuel-zone-toggle" id="fuel-zone-gestao-btn" onclick="toggleFuelZone('gestao')"><i class="ti ti-chevron-down"></i><span id="fuel-zone-gestao-lbl">Mostrar</span></button></div>
 
     <!-- 6. Aportes do ciclo (admin) -->
     <div class="tsec admin-only fuel-aportes-section">
@@ -7406,11 +7446,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="fuel-split" id="fuel-split">
       <div class="fuel-split-pane" id="fuel-split-left">
         <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Veículos e condutores</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-v" style="color:var(--tx3);font-size:11px"></span><span id="fv-base-ts" style="color:var(--tx3);font-size:10px"></span><button class="card-action admin-only" onclick="document.getElementById('file-fuel-veiculos').click()" title="Anexar planilha de veículos e condutores (Placa, Modelo, Ano, Condutor, Setor, Superior, Orçamento, Tipo cartão, Status, Obs) — atualiza por placa sem apagar os demais"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button><button class="card-action" onclick="exportFuelVeiculosXlsx()" title="Exportar a base completa de veículos e condutores em XLSX (mesmas colunas aceitas em Anexar base)"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar base</button><button class="card-action" onclick="copiarFuelVTable(this)" title="Copiar tabela"><i class="ti ti-clipboard" style="font-size:11px;vertical-align:-1px"></i> Copiar</button><button class="card-action admin-only" onclick="clearFuelVeiculos()" title="Limpar toda a base de veículos e condutores" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Limpar base</button></div></div>
-        <div class="tw"><table><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Orçamento</th><th title="Análise Orçamento x Consumido no ciclo atual">Farol</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-setor" onclick="mselToggleOpen('fv-f-setor')"><span class="msel-btn-lbl">Todos</span></button></div></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-superior" onclick="mselToggleOpen('fv-f-superior')"><span class="msel-btn-lbl">Todos</span></button></div></th><th></th><th></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-tipoCartao" onclick="mselToggleOpen('fv-f-tipoCartao')"><span class="msel-btn-lbl">Todos</span></button></div></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-status" onclick="mselToggleOpen('fv-f-status')"><span class="msel-btn-lbl">Todos</span></button></div></th><th></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
+        <div class="tw"><table style="width:max-content;min-width:1400px"><thead><tr><th>Placa</th><th>Modelo</th><th>Ano</th><th>Condutor</th><th>Setor</th><th>Superior</th><th>Orçamento</th><th title="Análise Orçamento x Consumido no ciclo atual">Farol</th><th>Tipo cartão</th><th>Status</th><th>Obs</th><th class="admin-only">Ações</th><th class="admin-only" style="white-space:nowrap" title="Rateio de saldo Alelo — só veículos ativos">Consumido no ciclo</th><th class="admin-only" style="white-space:nowrap">Rateio sugerido</th><th class="admin-only" style="white-space:nowrap">Diferença</th><th class="admin-only" style="white-space:nowrap" title="Copiar dados de rateio pro portal Alelo">Ação</th></tr><tr class="fv-frow"><th><input class="fv-finput" id="fv-f-placa" placeholder="🔍" oninput="setFuelVF('placa',this.value)"></th><th></th><th></th><th><input class="fv-finput" id="fv-f-condutor" placeholder="🔍" oninput="setFuelVF('condutor',this.value)"></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-setor" onclick="mselToggleOpen('fv-f-setor')"><span class="msel-btn-lbl">Todos</span></button></div></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-superior" onclick="mselToggleOpen('fv-f-superior')"><span class="msel-btn-lbl">Todos</span></button></div></th><th></th><th></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-tipoCartao" onclick="mselToggleOpen('fv-f-tipoCartao')"><span class="msel-btn-lbl">Todos</span></button></div></th><th><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fv-f-status" onclick="mselToggleOpen('fv-f-status')"><span class="msel-btn-lbl">Todos</span></button></div></th><th></th><th class="admin-only"></th><th class="admin-only"></th><th class="admin-only"></th><th class="admin-only"></th><th class="admin-only"></th></tr></thead><tbody id="tb-fuel-v"></tbody></table></div>
       </div>
       <div class="fuel-split-handle" id="fuel-split-handle" title="Arraste para redimensionar os painéis"></div>
       <div class="fuel-split-pane" id="fuel-split-right">
-        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Solicitações registradas</span><span id="cnt-fuel-r" style="color:var(--tx3);font-size:11px"></span></div>
+        <div class="tsec-hd" style="padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span class="tsec-title">Solicitações registradas</span><div style="display:flex;align-items:center;gap:10px"><span id="cnt-fuel-r" style="color:var(--tx3);font-size:11px"></span><button class="card-action admin-only" onclick="openCentral('fuel')" title="Anexar a Base Alelo (CSV) — reconciliada com Veículos e condutores; compras, créditos e débitos emergenciais aparecem aqui"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar base</button></div></div>
         <div class="fuel-request-filters">
           <input class="finput" id="fuel-rf-q" placeholder="Filtrar placa ou condutor" oninput="setFuelRF('q',this.value)">
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fuel-rf-tipo" onclick="mselToggleOpen('fuel-rf-tipo')"><span class="msel-btn-lbl">Todas as transações</span></button></div>
@@ -8543,6 +8583,23 @@ let dAb=[],dEnc=[],dAtiv=[];
 let aleloCardImage=null,aleloCardImageAt='';
 let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false;
 let editingFuelPlate='',editingFuelRequestId='',editingFuelWithdrawalId='',selectedFuelDriver='';
+/* Estado de colapso das zonas do Painel Combustíveis (reduz rolagem) — persistido em
+   localStorage pra manter a preferência entre sessões. "gestao" (Cadastro, Aportes,
+   Saldo cartão, Retirada, Portal Alelo, Histórico) começa recolhida por padrão (uso
+   administrativo esporádico); "analises" (gráficos + projeção detalhada) começa aberta. */
+const FUEL_ZONE_KEY='atrix:fuel:zones:v1';
+let fuelZoneCollapsed={gestao:true,analises:false};
+try{const saved=JSON.parse(localStorage.getItem(FUEL_ZONE_KEY)||'null');if(saved&&typeof saved==='object')fuelZoneCollapsed={...fuelZoneCollapsed,...saved};}catch(e){}
+function toggleFuelZone(zone){fuelZoneCollapsed[zone]=!fuelZoneCollapsed[zone];try{localStorage.setItem(FUEL_ZONE_KEY,JSON.stringify(fuelZoneCollapsed));}catch(e){}applyFuelZoneCollapse();}
+function applyFuelZoneCollapse(){
+  const panel=document.getElementById('panel-combustivel');if(!panel)return;
+  panel.classList.toggle('fz-gestao-collapsed',!!fuelZoneCollapsed.gestao);
+  panel.classList.toggle('fz-analises-collapsed',!!fuelZoneCollapsed.analises);
+  const gBtn=document.getElementById('fuel-zone-gestao-btn'),gLbl=document.getElementById('fuel-zone-gestao-lbl');
+  if(gBtn&&gLbl){gLbl.textContent=fuelZoneCollapsed.gestao?'Mostrar':'Ocultar';gBtn.querySelector('i').className='ti '+(fuelZoneCollapsed.gestao?'ti-chevron-down':'ti-chevron-up');}
+  const aBtn=document.getElementById('fuel-zone-analises-btn'),aLbl=document.getElementById('fuel-zone-analises-lbl');
+  if(aBtn&&aLbl){aLbl.textContent=fuelZoneCollapsed.analises?'Mostrar':'Ocultar';aBtn.querySelector('i').className='ti '+(fuelZoneCollapsed.analises?'ti-chevron-down':'ti-chevron-up');}
+}
 let fuelVFilter={placa:'',condutor:'',setor:[],superior:[],tipoCartao:[],status:[]};
 function setFuelVF(k,v){fuelVFilter[k]=String(v||'').trim();_renderFuelVTable();}
 let fuelRFilter={q:'',tipo:[],tipoCartao:[],dataIni:'',dataFim:''};
@@ -13165,17 +13222,13 @@ function renderAleloPanel(){
   const aleloCount=dFuelRequests.filter(fuelIsAleloImport).length;
   const deleteBaseBtn=canEdit()?`<button class="card-action admin-only" onclick="deleteFuelAleloBase()" style="color:var(--red)"><i class="ti ti-trash" style="font-size:11px;vertical-align:-1px"></i> Excluir base${aleloCount?` (${aleloCount})`:''}</button>`:'';
   const active=dFuelVehicles.filter(v=>v.status==='Ativo');
-  const projection=fuelMonthProjection();
   const sugg=active.length>0?bal.saldoGeral/active.length:0;
   const cards=active.length?`<div class="mc c-blue"><div class="mc-label">Saldo Geral</div><div class="mc-val">${brl(bal.saldoGeral)}</div><div class="mc-sub">base para rateio</div></div><div class="mc c-green"><div class="mc-label">Veículos ativos</div><div class="mc-val">${active.length}</div><div class="mc-sub">participam do rateio</div></div><div class="mc c-orange"><div class="mc-label">Rateio sugerido</div><div class="mc-val">${brl(sugg)}</div><div class="mc-sub">por veículo ativo</div></div>`:'';
-  const rows=active.map(v=>{
-    const p=projection.find(x=>x.placa===v.placa)||{atual:0};
-    const diff=sugg-p.atual;
-    const dc=diff>=0?'var(--green)':'var(--red)';
-    const diffFmt=(diff>=0?'+ ':'- ')+brl(Math.abs(diff));
-    return `<tr><td class="tid">${eh(v.placa)}</td><td>${eh(v.condutor||'-')}</td><td>${brl(p.atual)}</td><td>${brl(sugg)}</td><td style="color:${dc};font-weight:600">${diffFmt}</td><td><span class="card-action" onclick="copyAleloRemanejo('${eh(v.placa)}','${eh(v.condutor||'')}',${sugg},${diff})"><i class="ti ti-clipboard"></i> Copiar</span></td></tr>`;
-  }).join('');
-  const mainContent=`<div class="mrow" style="padding:12px 16px 0">${cards}</div><p class="alelo-note">Tabela de orientação para <b>inclusão de saldo</b> e <b>remanejamento</b> no portal Alelo. Diferença <b style="color:var(--green)">positiva</b> = veículo pode receber saldo adicional; <b style="color:var(--red)">negativa</b> = consumo já superou o rateio. Clique em <b>Copiar</b> para levar os dados ao portal.</p><div class="tw"><table><thead><tr><th>Placa</th><th>Condutor</th><th>Consumido no ciclo</th><th>Rateio sugerido</th><th>Diferença</th><th>Ação</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="nores">Nenhum veículo ativo cadastrado</td></tr>'}</tbody></table></div>`;
+  /* A tabela de rateio por placa (Consumido/Rateio sugerido/Diferença/Copiar) foi unificada
+     dentro de "Veículos e condutores" (Dados da Frota) pra não repetir a mesma lista de
+     veículos em dois blocos do painel — ver colunas extras em _renderFuelVTable(). Aqui fica
+     só o resumo (cards) e o atalho pro portal. */
+  const mainContent=`<div class="mrow" style="padding:12px 16px 0">${cards}</div><p class="alelo-note">Resumo do rateio de saldo pra <b>inclusão</b> e <b>remanejamento</b> no portal Alelo. Valores por veículo (Consumido no ciclo, Rateio sugerido, Diferença) e o botão <b>Copiar</b> estão na tabela <b>Veículos e condutores</b>, em Dados da Frota.</p>`;
   let imgSide='';
   if(aleloCardImage){
     const ts=aleloCardImageAt?new Date(aleloCardImageAt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
@@ -13229,6 +13282,14 @@ function _renderFuelVTable(){
   const cntEl=document.getElementById('cnt-fuel-v');if(cntEl)cntEl.textContent=rows.length===dFuelVehicles.length?dFuelVehicles.length+' veículos':rows.length+' de '+dFuelVehicles.length+' veículos';
   const tbody=document.getElementById('tb-fuel-v');if(!tbody)return;
   const consumidoMap=fuelConsumidoPorPlaca();
+  /* Colunas de rateio (Consumido no ciclo/Rateio sugerido/Diferença/Remanejamento) — mesmo
+     cálculo que antes vivia numa tabela separada em "Portal Alelo — Remanejamento de Saldo"
+     (renderAleloPanel). Unificadas aqui pra não repetir a mesma lista de veículos em dois
+     blocos do painel; só se aplicam a veículos com status Ativo (mesmo filtro de antes). */
+  const bal=fuelBalance();
+  const activeCount=fuelActiveVehicles().length;
+  const sugg=activeCount>0?bal.saldoGeral/activeCount:0;
+  const projection=fuelMonthProjection();
   tbody.innerHTML=rows.map(v=>{
     const isOf=v.status==='Oficina',isCo=v.tipoCartao==='Coringa',isAP=v.status==='Ativo'&&(v.tipoCartao||'Próprio')==='Próprio';
     const rowClr=isOf?'background:rgba(239,68,68,0.18);border-left:3px solid var(--red)':isCo?'background:rgba(249,115,22,0.18);border-left:3px solid var(--orange)':isAP?'background:rgba(52,199,89,0.12);border-left:3px solid var(--green)':'';
@@ -13237,7 +13298,15 @@ function _renderFuelVTable(){
     const farol=fuelFarolOrcamento(v.placa,v.orcamento,consumidoMap);
     const farolTitle=farol.ratio===null?farol.label:`${farol.label} — Consumido ${brl(farol.consumido)} de ${brl(farol.orcamento)} (${Math.round(farol.ratio*100)}%)`;
     const farolCell=`<span title="${eh(farolTitle)}" style="display:inline-flex;align-items:center;gap:5px"><i class="ti ti-circle-filled" style="color:${farol.cor};font-size:12px"></i>${farol.ratio===null?'':`<span style="font-size:10.5px;color:var(--tx3)">${Math.round(farol.ratio*100)}%</span>`}</span>`;
-    return`<tr style="${rowClr}"><td class="tid" style="font-weight:700;color:#1c1c1e">${eh(v.placa)}</td><td>${eh(v.modelo)}</td><td>${eh(v.ano)}</td><td>${eh(v.condutor)}</td><td>${eh(repairPtBR(v.setor))}</td><td>${eh(v.superior)}</td><td>${v.orcamento?brl(v.orcamento):'—'}</td><td>${farolCell}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelCardType('${eh(v.placa)}',this.value)"><option value="Próprio"${(v.tipoCartao||'Próprio')==='Próprio'?' selected':''}>Próprio</option><option value="Coringa"${v.tipoCartao==='Coringa'?' selected':''}>Coringa</option></select>`:eh(v.tipoCartao||'Próprio')}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelStatus('${eh(v.placa)}',this.value)">${FUEL_STATUS.map(s=>`<option value="${s}"${s===v.status?' selected':''}>${s}</option>`).join('')}</select>`:eh(v.status)}</td><td>${obsCell}</td><td class="admin-only"><span class="card-action" onclick="editFuelVehicle('${eh(v.placa)}')">Editar</span></td></tr>`;
+    let rateioCells='<td class="admin-only">—</td><td class="admin-only">—</td><td class="admin-only">—</td><td class="admin-only">—</td>';
+    if(v.status==='Ativo'){
+      const p=projection.find(x=>x.placa===v.placa)||{atual:0};
+      const diff=sugg-p.atual;
+      const dc=diff>=0?'var(--green)':'var(--red)';
+      const diffFmt=(diff>=0?'+ ':'- ')+brl(Math.abs(diff));
+      rateioCells=`<td class="admin-only">${brl(p.atual)}</td><td class="admin-only">${brl(sugg)}</td><td class="admin-only" style="color:${dc};font-weight:600">${diffFmt}</td><td class="admin-only"><span class="card-action" onclick="copyAleloRemanejo('${eh(v.placa)}','${eh(v.condutor||'')}',${sugg},${diff})"><i class="ti ti-clipboard"></i> Copiar</span></td>`;
+    }
+    return`<tr style="${rowClr}"><td class="tid" style="font-weight:700;color:#1c1c1e">${eh(v.placa)}</td><td>${eh(v.modelo)}</td><td>${eh(v.ano)}</td><td>${eh(v.condutor)}</td><td>${eh(repairPtBR(v.setor))}</td><td>${eh(v.superior)}</td><td>${v.orcamento?brl(v.orcamento):'—'}</td><td>${farolCell}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelCardType('${eh(v.placa)}',this.value)"><option value="Próprio"${(v.tipoCartao||'Próprio')==='Próprio'?' selected':''}>Próprio</option><option value="Coringa"${v.tipoCartao==='Coringa'?' selected':''}>Coringa</option></select>`:eh(v.tipoCartao||'Próprio')}</td><td>${canEdit()?`<select class="substatus-select" onchange="updateFuelStatus('${eh(v.placa)}',this.value)">${FUEL_STATUS.map(s=>`<option value="${s}"${s===v.status?' selected':''}>${s}</option>`).join('')}</select>`:eh(v.status)}</td><td>${obsCell}</td><td class="admin-only"><span class="card-action" onclick="editFuelVehicle('${eh(v.placa)}')">Editar</span></td>${rateioCells}</tr>`;
   }).join('');
 }
 function fuelEnsureHtml2Canvas(){
@@ -17146,7 +17215,7 @@ function rdeShowCalls(title,flatRecs){
   el.style.display='block';
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
-loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();
+loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
