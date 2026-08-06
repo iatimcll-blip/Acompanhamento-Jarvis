@@ -12660,20 +12660,24 @@ function renderFuelProjectionDetail(){
     const d=new Date((r.data||'')+'T00:00:00');
     if(!isNaN(d))histByPlaca[p].months.add(`${d.getFullYear()}-${d.getMonth()}`);
   });
-  const rows=proj.filter(e=>e.label&&(e.atual>0||e.proj>0)).map(e=>{
+  /* Lista TODOS os condutores/placas cadastrados (mesmo sem nenhuma compra no ciclo),
+     não só quem já tem consumo (atual>0) ou projeção (proj>0) — antes o filtro escondia
+     veículos zerados, então a tabela não servia como "todos os condutores e suas placas". */
+  const rows=proj.filter(e=>e.label).map(e=>{
     const h=histByPlaca[e.placa]||{sum:0,months:new Set([`0-0`])};
     const media=h.sum/Math.max(h.months.size,1);
     const tendencia=e.proj>media*1.1?'↑':e.proj<media*0.9?'↓':'=';
     const tColor=tendencia==='↑'?'var(--red)':tendencia==='↓'?'var(--green-dk)':'var(--tx3)';
     const v=dFuelVehicles.find(vv=>vv.placa===e.placa);
-    const condutorLabel=v?(v.condutor||e.placa):e.placa;
-    return{condutorLabel,atual:e.atual,media,proj:e.proj,tendencia,tColor};
-  }).sort((a,b)=>b.proj-a.proj);
+    const condutorLabel=v?(v.condutor||'Sem condutor'):e.placa;
+    return{placa:e.placa,condutorLabel,atual:e.atual,media,proj:e.proj,tendencia,tColor};
+  }).sort((a,b)=>b.proj-a.proj||a.condutorLabel.localeCompare(b.condutorLabel,'pt-BR'));
   el.innerHTML=`<div class="tsec" style="margin-bottom:16px">
-    <div class="tsec-hd"><span class="tsec-title"><i class="ti ti-chart-arrows-vertical" style="font-size:13px;vertical-align:-1px;margin-right:4px"></i>Projeção detalhada por condutor</span></div>
+    <div class="tsec-hd"><span class="tsec-title"><i class="ti ti-chart-arrows-vertical" style="font-size:13px;vertical-align:-1px;margin-right:4px"></i>Projeção detalhada por condutor</span><span style="color:var(--tx3);font-size:11px">${rows.length} condutor${rows.length!==1?'es':''}</span></div>
     <div class="tw"><table>
       <thead><tr>
         <th>Condutor</th>
+        <th>Placa</th>
         <th>Mês atual (R$)</th>
         <th>Média histórica (R$)</th>
         <th>Projeção mês atual (R$)</th>
@@ -12682,11 +12686,12 @@ function renderFuelProjectionDetail(){
       <tbody>
         ${rows.map(r=>`<tr>
           <td style="color:var(--tx)">${eh(r.condutorLabel)}</td>
+          <td class="tid">${eh(r.placa)}</td>
           <td>${brl(r.atual)}</td>
           <td>${brl(r.media)}</td>
           <td style="font-weight:600">${brl(r.proj)}</td>
           <td style="font-size:16px;font-weight:700;color:${r.tColor}" title="${r.tendencia==='↑'?'Acima da média':r.tendencia==='↓'?'Abaixo da média':'Na média'}">${r.tendencia}</td>
-        </tr>`).join('')||'<tr><td colspan="5" class="nores">Sem dados de projeção</td></tr>'}
+        </tr>`).join('')||'<tr><td colspan="6" class="nores">Sem dados de projeção</td></tr>'}
       </tbody>
     </table></div>
   </div>`;
