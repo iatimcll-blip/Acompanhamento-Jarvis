@@ -96,6 +96,7 @@
   .st-SOBREAVISO .tag{background:#DDD6FE; color:#5B21B6;}
   .st-FERIAS .tag{background:#8FB3F5; color:#fff;}
   .st-AUSENCIA .tag{background:#D9DEEA; color:#555F7E;}
+  .st-MEIOPERIODO .tag{background:#D6F0FA; color:#0E5F80;}
   td.cell.dom{background:#FBF9EF;}
   td.cell.viol{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
   td.cell.warnv{box-shadow:inset 0 0 0 2px var(--orange); background:var(--orange-bg);}
@@ -307,6 +308,7 @@
       <span><span class="sw" style="background:#DDD6FE"></span>Sobreaviso</span>
       <span><span class="sw" style="background:var(--yellow)"></span>Feriado</span>
       <span><span class="sw" style="background:#8FB3F5"></span>Férias</span>
+      <span><span class="sw" style="background:#D6F0FA"></span>Meio Período</span>
       <span><span class="sw" style="background:#D9DEEA"></span>Ausência (atestado, INSS, etc.)</span>
       <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--orange)"></span>Inconsistência de auditoria</span>
       <span>🔒 ajuste manual (protegido no recálculo)</span>
@@ -405,11 +407,11 @@
 </div>
 
 <script>
-/* ================= COLABORADORES (padrão inicial da planilha Escala_DSR_Volante.xlsx) ================= */
+/* ================= COLABORADORES (padrão inicial — alinhado com Escala_DSR_Volante_Sao_Luis_MA_Ago_Set_2026.xlsx) ================= */
 function funcionariosPadrao(){
   return [
-    "Clemilton Mendes Da Silva","Elton Jones Sousa Diniz","Igor Henrique Do Nascimento",
-    "Leandro Rodrigues Da Silva","Marcello Luiz Souza","Emidio Bruno Costa Neto","Romulo Jose Do Vale Araujo"
+    "Clemilton Mendes Da Silva","Moises Amorim Viana","Elton Jones Sousa Diniz","Igor Henrique Monteiro Do Nascimento",
+    "Leandro Rodrigues Da Silva","Marcello Luiz Souza","Romulo Jose Do Vale Araujo","Ronildo Vasconcelos Souza"
   ].map(n=>({nome:n, localidade:"São Luis", uf:"MA", gestor:"Aleksei Thomas Oliveira De Abreu", ativo:true, ajusteBH:0}));
 }
 let FUNCIONARIOS = [];
@@ -432,7 +434,8 @@ const ST = {
   AFASTADO:{lbl:"AFAST", cls:"st-AUSENCIA", rest:true},
   INSS:{lbl:"INSS", cls:"st-AUSENCIA", rest:true},
   TREINAMENTO:{lbl:"TREIN", cls:"st-TRABALHO", rest:false},
-  FALTA:{lbl:"FALTA", cls:"st-AUSENCIA", rest:true}
+  FALTA:{lbl:"FALTA", cls:"st-AUSENCIA", rest:true},
+  MEIO_PERIODO:{lbl:"MEIO PER", cls:"st-MEIOPERIODO", rest:false} // dia de trabalho reduzido (não é descanso, não debita Banco de Horas)
 };
 /* Desconto no Banco de Horas só ocorre para FOLGA_BH (folga custeada pelo banco — inclusive as
    compensatórias de feriado, geradas automaticamente) e FALTA. Sobreaviso, DSR e Feriado não
@@ -442,7 +445,7 @@ const STATUS_DEBITA_BH = ["FOLGA_BH","FALTA"];
 /* FOLGA (simples) não é mais oferecida como opção — a empresa só trabalha com Folga custeada
    pelo Banco de Horas (FOLGA_BH). O status FOLGA continua reconhecido só por compatibilidade
    com dados antigos já salvos. */
-const OPCOES = ["TRABALHO","DSR","FOLGA_BH","SOBREAVISO","FERIADO","FERIAS","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
+const OPCOES = ["TRABALHO","DSR","FOLGA_BH","SOBREAVISO","FERIADO","FERIAS","MEIO_PERIODO","ATESTADO","AFASTADO","INSS","TREINAMENTO","FALTA"];
 
 /* ================= SELEÇÃO MÚLTIPLA DE COLABORADORES ================= */
 /* Marcando o checkbox de um ou mais colaboradores, o próximo ajuste feito num dia da grade
@@ -1431,7 +1434,7 @@ function abrirPop(ev, ei, di){
   const cel = unico ? grid[popEis[0]][di] : null;
   document.getElementById('popOpts').innerHTML = OPCOES.map(o=>{
     const sel = unico && cel.st===o;
-    const rotulo = o==='DSR' ? 'DSR VOLANTE' : (o==='FOLGA_BH' ? 'FOLGA (BANCO DE HORAS)' : o);
+    const rotulo = o==='DSR' ? 'DSR VOLANTE' : (o==='FOLGA_BH' ? 'FOLGA (BANCO DE HORAS)' : (o==='MEIO_PERIODO' ? 'MEIO PERÍODO' : o));
     return `<button style="background:${sel?'var(--navy)':'#F2F5FB'};color:${sel?'#fff':'var(--navy)'}" onclick="setStatus('${o}')">${rotulo}</button>`;
   }).join('');
   // com vários colaboradores possivelmente em status diferentes, mostra os dois campos
@@ -1702,7 +1705,7 @@ function removerFeriadoMunicipal(cidade, idx){
 /* ================= EXPORT XLSX ================= */
 function exportarXlsx(){
   const EXPORTA = {TRABALHO:"ATIVO", DSR:"DSR VOLANTE", FOLGA:"FOLGA", FOLGA_BH:"FOLGA BANCO DE HORAS", FERIADO:"FERIADO", FERIAS:"FÉRIAS",
-    ATESTADO:"ATESTADO", AFASTADO:"AFASTADO", INSS:"INSS", TREINAMENTO:"TREINAMENTO", FALTA:"FALTA"};
+    MEIO_PERIODO:"MEIO PERIODO", ATESTADO:"ATESTADO", AFASTADO:"AFASTADO", INSS:"INSS", TREINAMENTO:"TREINAMENTO", FALTA:"FALTA"};
   const aoa = [];
   aoa.push(["","","","","","", ...DIAS.map(d=>d)]);
   aoa.push(["","","","","","", ...DIAS.map(d=>DOWPT[d.getDay()])]);
@@ -1722,7 +1725,7 @@ function exportarXlsx(){
   ws['!cols'] = [{wch:32},{wch:10},{wch:12},{wch:5},{wch:32},{wch:16}, ...DIAS.map(()=>({wch:12}))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "DSR VOLANTE");
-  const wl = XLSX.utils.aoa_to_sheet([["STATUS"],["ATIVO"],["DSR VOLANTE"],["FOLGA"],["FOLGA BANCO DE HORAS"],["FERIADO"],["FÉRIAS"],["ATESTADO"],["AFASTADO"],["INSS"],["TREINAMENTO"],["FALTA"]]);
+  const wl = XLSX.utils.aoa_to_sheet([["STATUS"],["ATIVO"],["DSR VOLANTE"],["FOLGA"],["FOLGA BANCO DE HORAS"],["FERIADO"],["FÉRIAS"],["MEIO PERIODO"],["ATESTADO"],["AFASTADO"],["INSS"],["TREINAMENTO"],["FALTA"]]);
   XLSX.utils.book_append_sheet(wb, wl, "LISTA");
   XLSX.writeFile(wb, `Escala_DSR_Volante_${periodoKeyAtual()}.xlsx`);
 }
