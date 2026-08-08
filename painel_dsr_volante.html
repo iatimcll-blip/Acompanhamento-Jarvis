@@ -442,6 +442,14 @@ const ST = {
    mexem no banco (se o colaborador for chamado durante o sobreaviso, o tempo trabalhado entra
    como Plantão, que credita o banco normalmente). */
 const STATUS_DEBITA_BH = ["FOLGA_BH","FALTA"];
+/* Contagem de dias consecutivos trabalhados (limite CLT de 6 dias, art. 67/Lei 605/49): Sobreaviso
+   CONTA como dia trabalhado nessa contagem específica, mesmo sendo "rest" pro resto do painel
+   (KPI de cobertura mínima, campos do popover) — quem está de sobreaviso pode ser acionado a
+   qualquer momento, não é descanso real. Usado só nos pontos que contam sequência de dias (motor
+   automático de DSR e a auditoria de CLT) — nunca substitui ST[st].rest de forma geral. */
+function contaComoDescansoParaConsecutivo(st){
+  return ST[st].rest && st !== 'SOBREAVISO';
+}
 /* FOLGA (simples) não é mais oferecida como opção — a empresa só trabalha com Folga custeada
    pelo Banco de Horas (FOLGA_BH). O status FOLGA continua reconhecido só por compatibilidade
    com dados antigos já salvos. */
@@ -1050,7 +1058,7 @@ function resolverColab(ei){
         else { cel.st = "TRABALHO"; }
         if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
       }
-      const rest = ST[cel.st].rest;
+      const rest = contaComoDescansoParaConsecutivo(cel.st);
       if(rest){
         consec = 0;
         if(cel.st === "DSR" || cel.st === "FOLGA" || cel.st === "FERIAS") alvo = d + gap;
@@ -1111,7 +1119,7 @@ function resolverColab(ei){
         else { cel.st = "TRABALHO"; }
         if(cel.st !== "TRABALHO" && cel.st !== "TREINAMENTO") cel.he = 0;
       }
-      consec = ST[cel.st].rest ? 0 : consec+1;
+      consec = contaComoDescansoParaConsecutivo(cel.st) ? 0 : consec+1;
     }
   }
   aplicarFerias(ei);
@@ -1144,9 +1152,93 @@ function garantirDomingoDSR(ei){
   const cel = grid[ei][elegivel];
   cel.st = 'DSR'; cel.he = 0; cel.plantao = 0; cel.feriadoNome = ''; cel.motivoFeriado = false;
 }
+/* ================= PLANTÃO DE FIM DE SEMANA/FERIADO (dupla fixa Moisés/Clemilton) =================
+   Regra do usuário: sábado (a partir das 14h), domingos e feriados (08:00-17:00) sempre têm
+   plantão coberto por um dos dois colaboradores fixos abaixo — nunca os dois juntos no mesmo
+   fim de semana, alternando uma semana inteira cada (rodízio semanal, não diário). A grade tem
+   granularidade de dia inteiro (sem horário), então sábado/domingo/feriado inteiros ficam
+   marcados como SOBREAVISO (mesmo status/cor já usado no painel) pro responsável da semana; o
+   "a partir das 14h" do sábado e o "08h-17h" do domingo/feriado são a janela real da regra, mas
+   não há como recortar só parte do dia nesta grade — documentado aqui como limitação conhecida.
+   Roda uma vez (para os dois nomes juntos) ao final de resolverTudo(), depois que a escala normal
+   de cada um já foi resolvida — decide com quem fica cada fim de semana sem duplicar. Respeita
+   células já travadas (ajuste manual, ou Sobreaviso real vindo do Painel Sobreaviso, nunca é
+   sobrescrito) e marca as que preenche como lock:true, pra sobreviver a recálculos seguintes.
+   A semana usa o número da semana ISO (estável ano a ano, independe de qual competência 15→14
+   está aberta), então a alternância nunca reinicia ao trocar de período; quem começa em qual
+   semana (par/ímpar) foi uma escolha arbitrária desta implementação — inverter é só trocar a
+   ordem do array PLANTAO_FDS_DUPLA. */
+const PLANTAO_FDS_DUPLA = ["Moises Amorim Viana", "Clemilton Mendes Da Silva"];
+function isoWeekNumber(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const diaIso = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - diaIso);
+  const inicioAno = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const semana = Math.ceil((((d - inicioAno) / 86400000) + 1) / 7);
+  return d.getUTCFullYear() * 100 + semana;
+}
+function plantonistaFdsDaSemana(date){
+  return PLANTAO_FDS_DUPLA[isoWeekNumber(date) % 2];
+}
+function aplicarPlantaoFimDeSemana(){
+  PLANTAO_FDS_DUPLA.forEach(nome=>{
+    const ei = FUNCIONARIOS.findIndex(f=>f.nome===nome && f.ativo);
+    if(ei===-1) return;
+    for(let d=0; d<NDIAS; d++){
+      const date = DIAS[d];
+      const dw = date.getDay();
+      const fer = feriadoDoDia(date, FUNCIONARIOS[ei].localidade);
+      if(dw!==6 && dw!==0 && !fer) continue; // só sábado, domingo e feriado
+      if(plantonistaFdsDaSemana(date) !== nome) continue;
+      const cel = grid[ei][d];
+      if(cel.lock) continue;
+      cel.st = 'SOBREAVISO'; cel.he = 0; cel.lock = true;
+    }
+  });
+}
+/* Sobrepor o plantão de fim de semana pode emendar a semana normal de trabalho direto no fim de
+   semana de plantão, estourando os 6 dias seguidos (regra 1, contando Sobreaviso). Corrige
+   forçando DSR no dia mais recente ainda livre (não travado) dentro do bloco que excedeu o
+   limite, quebrando a sequência — nunca mexe em célula travada (plantão, ajuste manual ou
+   Sobreaviso real do Painel Sobreaviso continuam intocáveis; se o bloco inteiro estiver travado,
+   desiste e deixa a auditoria sinalizar pro gestor resolver manualmente). Roda só pros 2 nomes
+   da dupla de plantão, depois que o plantão já foi todo aplicado. */
+function corrigirExcessoConsecutivo(ei, maxConsec){
+  let mudou = true;
+  while(mudou){
+    mudou = false;
+    let consec = 0, inicioBloco = 0;
+    for(let d=0; d<NDIAS; d++){
+      const cel = grid[ei][d];
+      if(contaComoDescansoParaConsecutivo(cel.st)){ consec = 0; continue; }
+      if(consec === 0) inicioBloco = d;
+      consec++;
+      if(consec > maxConsec){
+        let alvo = -1;
+        for(let k=d; k>=inicioBloco; k--){
+          const c2 = grid[ei][k];
+          if(!c2.lock && (c2.st==='TRABALHO' || c2.st==='TREINAMENTO')){ alvo = k; break; }
+        }
+        if(alvo !== -1){
+          grid[ei][alvo].st = 'DSR'; grid[ei][alvo].he = 0;
+          mudou = true;
+        }
+        break; // recomeça a varredura do zero após qualquer mudança (ou desiste se não achou alvo livre)
+      }
+    }
+  }
+}
 /* colaboradores desabilitados saem do motor automático — o restante da escala deles
    fica congelado no que já estava (não é reescrito a cada recálculo). */
-function resolverTudo(){ FUNCIONARIOS.forEach((f,e)=>{ if(f.ativo) resolverColab(e); }); }
+function resolverTudo(){
+  FUNCIONARIOS.forEach((f,e)=>{ if(f.ativo) resolverColab(e); });
+  aplicarPlantaoFimDeSemana();
+  const maxConsec = cfg().maxConsec;
+  PLANTAO_FDS_DUPLA.forEach(nome=>{
+    const ei = FUNCIONARIOS.findIndex(f=>f.nome===nome && f.ativo);
+    if(ei!==-1) corrigirExcessoConsecutivo(ei, maxConsec);
+  });
+}
 
 function gerarEscala(){
   if(grid.some(r=>r.some(c=>c.lock))){
@@ -1174,12 +1266,12 @@ function auditar(){
     let domSeq = 0;
     for(let d=0; d<NDIAS; d++){
       const cel = grid[ei][d];
-      const rest = ST[cel.st].rest;
+      const rest = contaComoDescansoParaConsecutivo(cel.st);
       if(!rest){
         if(consec===0) ini = d;
         consec++;
         if(consec > c.maxConsec){
-          viols.push({tipo:'err', codigo:'CONSECUTIVO', ei, dia:d, ini, msg:`${f.nome}: ${consec} dias consecutivos de trabalho até ${fmt(DIAS[d])} – DSR obrigatório antes do 7º dia (Lei 605/49).`});
+          viols.push({tipo:'err', codigo:'CONSECUTIVO', ei, dia:d, ini, msg:`${f.nome}: ${consec} dias consecutivos de trabalho (contando Sobreaviso) até ${fmt(DIAS[d])} – DSR obrigatório antes do 7º dia (Lei 605/49).`});
           for(let k=ini;k<=d;k++) violCells.add(ei+'-'+k);
         }
       } else consec = 0;
