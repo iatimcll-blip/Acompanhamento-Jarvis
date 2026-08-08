@@ -1234,6 +1234,53 @@ function aplicarPlantaoFimDeSemana(){
     });
   }
 }
+/* Moisés e Clemilton nunca podem estar de Folga OU DSR no mesmo dia — eles são a dupla fixa que
+   sustenta o plantão intercalado (sempre um dos dois trabalhando ou de plantão, em revezamento
+   com o outro colaborador do dia, ver aplicarPlantaoFimDeSemana acima), então não pode haver um
+   dia em que os dois descansem ao mesmo tempo. Isso normalmente não acontece no fim de semana
+   (lá o âncora do plantão já fica SOBREAVISO, não DSR/Folga), mas pode acontecer num dia de
+   semana comum, onde cada um tem sua própria escala semanal resolvida de forma independente —
+   ocasionalmente os dois calham de descansar no mesmo dia por coincidência do rodízio de cada
+   um. Só considera DSR/Folga/Folga(BH) — não mexe se um dos dois estiver em Férias, Atestado,
+   Feriado etc., que não são "descanso programável" pra essa regra. Quando encontra um conflito,
+   um dos dois cede o dia (vira Trabalho) — alterna quem cede a cada semana ISO, pra não
+   sobrecarregar sempre a mesma pessoa; se a célula de quem deveria ceder estiver travada, tenta
+   a do outro; se as duas estiverem travadas, desiste (ajuste manual nos dois lados venceu, fica
+   pra auditoria/gestor perceber e resolver manualmente). Roda logo depois do plantão de fim de
+   semana, seguido da correção de dias consecutivos (que pode precisar reinserir um descanso em
+   outro dia pra quem cedeu, se isso estourar os 6 dias seguidos). */
+const STATUS_DESCANSO_DUPLA = new Set(["DSR","FOLGA","FOLGA_BH"]);
+function corrigirDuplaFolgaMesmoDia(){
+  const eiM = FUNCIONARIOS.findIndex(f=>f.nome===PLANTAO_FDS_DUPLA[0] && f.ativo);
+  const eiC = FUNCIONARIOS.findIndex(f=>f.nome===PLANTAO_FDS_DUPLA[1] && f.ativo);
+  if(eiM===-1 || eiC===-1) return;
+  for(let d=0; d<NDIAS; d++){
+    const celM = grid[eiM][d], celC = grid[eiC][d];
+    if(!STATUS_DESCANSO_DUPLA.has(celM.st) || !STATUS_DESCANSO_DUPLA.has(celC.st)) continue;
+    const primeiroACeder = isoWeekNumber(DIAS[d]) % 2 === 0 ? eiM : eiC;
+    const segundoACeder = primeiroACeder===eiM ? eiC : eiM;
+    if(!grid[primeiroACeder][d].lock){
+      grid[primeiroACeder][d].st = 'TRABALHO'; grid[primeiroACeder][d].he = 0;
+    } else if(!grid[segundoACeder][d].lock){
+      grid[segundoACeder][d].st = 'TRABALHO'; grid[segundoACeder][d].he = 0;
+    }
+  }
+}
+/* Usado pela correção automática de violações (corrigirViolacoesAutomaticamente): antes de
+   forçar DSR/Folga pra Moisés ou Clemilton num dia específico, verifica se isso criaria um
+   conflito de "os dois descansando juntos" com o outro da dupla — se sim, a correção deve pular
+   pra próxima sugestão candidata em vez de aplicar essa (senão criaria, com lock:true, um
+   conflito que corrigirDuplaFolgaMesmoDia() depois não consegue mais desfazer, já que não mexe
+   em célula travada). Não se aplica a ninguém fora da dupla fixa. */
+function criariConflitoDuplaFolga(ei, d, novoSt){
+  if(!STATUS_DESCANSO_DUPLA.has(novoSt)) return false;
+  const nome = FUNCIONARIOS[ei] && FUNCIONARIOS[ei].nome;
+  const idxDupla = PLANTAO_FDS_DUPLA.indexOf(nome);
+  if(idxDupla===-1) return false;
+  const eiOutro = FUNCIONARIOS.findIndex(f=>f.nome===PLANTAO_FDS_DUPLA[idxDupla===0?1:0] && f.ativo);
+  if(eiOutro===-1 || !grid[eiOutro][d]) return false;
+  return STATUS_DESCANSO_DUPLA.has(grid[eiOutro][d].st);
+}
 /* Sobrepor o plantão de fim de semana pode emendar a semana normal de trabalho direto no fim de
    semana de plantão, estourando os 6 dias seguidos (regra 1, contando Sobreaviso). Corrige
    forçando DSR no dia mais recente ainda livre (não travado) dentro do bloco que excedeu o
@@ -1241,9 +1288,11 @@ function aplicarPlantaoFimDeSemana(){
    Sobreaviso real do Painel Sobreaviso continuam intocáveis; se o bloco inteiro estiver travado,
    desiste e deixa a auditoria sinalizar pro gestor resolver manualmente). Roda pra todo
    colaborador ativo (a dupla fixa E os demais técnicos que entraram no rodízio de plantão
-   daquela semana), depois que o plantão já foi todo aplicado. */
+   daquela semana), depois que o plantão já foi todo aplicado. Retorna se mudou algo, pra
+   resolverTudo() saber se precisa re-checar corrigirDuplaFolgaMesmoDia() em cima do resultado
+   (o DSR inserido aqui pode coincidir com o dia de descanso do outro da dupla fixa). */
 function corrigirExcessoConsecutivo(ei, maxConsec){
-  let mudou = true;
+  let mudou = true, mudouGeral = false;
   while(mudou){
     mudou = false;
     let consec = 0, inicioBloco = 0;
@@ -1256,16 +1305,21 @@ function corrigirExcessoConsecutivo(ei, maxConsec){
         let alvo = -1;
         for(let k=d; k>=inicioBloco; k--){
           const c2 = grid[ei][k];
-          if(!c2.lock && (c2.st==='TRABALHO' || c2.st==='TREINAMENTO')){ alvo = k; break; }
+          // pra Moisés/Clemilton, nunca propõe um dia que já é o descanso do outro da dupla —
+          // senão corrigirDuplaFolgaMesmoDia() reverte na rodada seguinte e os dois ficam
+          // brigando pelo mesmo dia sem nunca convergir (o colaborador simplesmente não tem
+          // folga naquele bloco, precisa de outro dia, não desse).
+          if(!c2.lock && (c2.st==='TRABALHO' || c2.st==='TREINAMENTO') && !criariConflitoDuplaFolga(ei, k, 'DSR')){ alvo = k; break; }
         }
         if(alvo !== -1){
           grid[ei][alvo].st = 'DSR'; grid[ei][alvo].he = 0;
-          mudou = true;
+          mudou = true; mudouGeral = true;
         }
         break; // recomeça a varredura do zero após qualquer mudança (ou desiste se não achou alvo livre)
       }
     }
   }
+  return mudouGeral;
 }
 /* colaboradores desabilitados saem do motor automático — o restante da escala deles
    fica congelado no que já estava (não é reescrito a cada recálculo). */
@@ -1274,10 +1328,19 @@ function resolverTudo(){
   const maxConsec = cfg().maxConsec;
   const reafirmarPlantao = ()=>{
     aplicarPlantaoFimDeSemana();
-    // corrige excesso de dias consecutivos pra todo mundo, não só a dupla fixa — os "demais
-    // técnicos" que entram no rodízio de plantão (Qtd. técnicos > 1) também podem emendar a
-    // semana normal de trabalho com o fim de semana de plantão e estourar os 6 dias.
-    FUNCIONARIOS.forEach((f,ei)=>{ if(f.ativo) corrigirExcessoConsecutivo(ei, maxConsec); });
+    // corrigirDuplaFolgaMesmoDia() e corrigirExcessoConsecutivo() podem se contradizer: o DSR
+    // que o 2º insere pra resolver um estouro de 6 dias pode coincidir com o dia de descanso do
+    // outro da dupla fixa (recriando o conflito), e a troca por Trabalho que o 1º aplica pra
+    // resolver um conflito pode por sua vez estourar os 6 dias de quem cedeu — por isso os dois
+    // rodam em conjunto, em algumas rodadas, até nenhum dos dois precisar mexer em nada mais
+    // (ou até o limite de segurança, deixando o resto pra auditoria sinalizar).
+    for(let tentativa=0; tentativa<8; tentativa++){
+      corrigirDuplaFolgaMesmoDia();
+      let mudouAlgo = false;
+      FUNCIONARIOS.forEach((f,ei)=>{ if(f.ativo && corrigirExcessoConsecutivo(ei, maxConsec)) mudouAlgo = true; });
+      if(!mudouAlgo) break;
+    }
+    corrigirDuplaFolgaMesmoDia();
   };
   reafirmarPlantao();
   corrigirViolacoesAutomaticamente();
@@ -1475,7 +1538,10 @@ function corrigirViolacoesAutomaticamente(){
       const sug = candidatos.find(s=>{
         if(!ACOES_DE_CELULA_UNICA.has(s.acao)) return true;
         const cel = v.ei!=null && grid[v.ei] ? grid[v.ei][s.d1] : null;
-        return !cel || !cel.lock;
+        if(cel && cel.lock) return false;
+        const novoSt = s.acao==='DSR' ? 'DSR' : s.acao==='FOLGA_BH' ? 'FOLGA_BH' : s.acao==='FOLGA_SIMPLES' ? 'FOLGA' : null;
+        if(novoSt && v.ei!=null && criariConflitoDuplaFolga(v.ei, s.d1, novoSt)) return false;
+        return true;
       });
       if(!sug) continue;
       const assinatura = `${v.codigo}|${v.ei}|${sug.acao}|${sug.d1}|${sug.d2}`;
