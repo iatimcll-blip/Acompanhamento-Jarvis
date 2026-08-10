@@ -7210,7 +7210,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </div>
           <div class="rde4-cbx">
             <button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rde4-cbx'),this)"><i class="ti ti-copy"></i></button>
-            <div class="rde4-title" id="rde4-prz-d-ttl">Prazo de Ocorrências por Mês | Mês Selecionado</div>
+            <div class="rde4-title" id="rde4-prz-d-ttl">Prazo de Ocorrências | Mês Selecionado</div>
             <div class="rde4-ch-wrap" style="height:200px"><canvas id="rde4-prz-d-ch"></canvas></div>
           </div>
         </div>
@@ -17020,8 +17020,22 @@ function rde4RenderAll(recs){
   if(!months.length){_rde4DestroyAll();return;}
   const mKeys=months.map(x=>x.key);
   const mLbls=mKeys.map(mk=>rdeMname(mk));
-  if(!rde4SelMes||!mKeys.includes(rde4SelMes))rde4SelMes=mKeys[mKeys.length-1]||'';
-  const onClickM=i=>{rde4SelMes=mKeys[i]||rde4SelMes;rde4RenderAll(recs);};
+  /* Os quatro gráficos de linha representam a evolução diária do mês escolhido no
+     filtro principal. Antes, eles mantinham uma seleção interna independente e só
+     mudavam ao clicar nos gráficos mensais, portanto podiam exibir outro mês. */
+  const filteredMonths=rdeGran==='m'?[...rdePeriod].filter(mk=>mKeys.includes(mk)).sort():[];
+  const filteredMonth=filteredMonths.length?filteredMonths[filteredMonths.length-1]:'';
+  if(filteredMonth)rde4SelMes=filteredMonth;
+  else if(!rde4SelMes||!mKeys.includes(rde4SelMes))rde4SelMes=mKeys[mKeys.length-1]||'';
+  const onClickM=i=>{
+    const month=mKeys[i];if(!month)return;
+    if(rdeGran==='m'){
+      rdePeriod=[month];rde4SelMes=month;rdeCallsOnRender=true;
+      rdeSyncControls();renderRede();rdeSaveUI();
+    }else{
+      rde4SelMes=month;rde4RenderAll(recs);
+    }
+  };
   // ── Outlier ──
   _rde4Destroy('outM');
   const outVals=months.map(x=>+x.outlier.toFixed(1));
@@ -17055,7 +17069,7 @@ function rde4RenderAll(recs){
   const mesLbl=rdeMname(rde4SelMes);
   const selTtlSfx=' | '+mesLbl;
   const outDTtl=document.getElementById('rde4-out-d-ttl');if(outDTtl)outDTtl.textContent='Outlier de Ocorrências'+selTtlSfx;
-  const przDTtl=document.getElementById('rde4-prz-d-ttl');if(przDTtl)przDTtl.textContent='Prazo de Ocorrências por Mês'+selTtlSfx;
+  const przDTtl=document.getElementById('rde4-prz-d-ttl');if(przDTtl)przDTtl.textContent='Prazo de Ocorrências'+selTtlSfx;
   const tmeDTtl=document.getElementById('rde4-tme-d-ttl');if(tmeDTtl)tmeDTtl.textContent=tl+' de Ocorrências'+selTtlSfx;
   const qtdDTtl=document.getElementById('rde4-qtd-d-ttl');if(qtdDTtl)qtdDTtl.textContent='Quantidade de Ocorrências por Dia'+selTtlSfx;
   _rde4Destroy('outD');_rde4Destroy('przD');_rde4Destroy('tmeD');_rde4Destroy('qtdD');
