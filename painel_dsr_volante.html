@@ -114,11 +114,22 @@
   .sw{width:12px; height:12px; border-radius:3px; display:inline-block;}
 
   #violPanel .body{padding:9px 16px; max-height:200px; overflow:auto;}
+  .audit-tools{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;margin-bottom:9px;}
+  .audit-summary{display:flex;gap:6px;flex-wrap:wrap;}
+  .audit-pill{font-size:10.5px;font-weight:700;padding:4px 8px;border-radius:999px;background:#EEF3FC;color:var(--navy);}
+  .audit-pill.err{background:var(--red-bg);color:var(--red);}.audit-pill.warn{background:var(--amber-bg);color:#8A5D0B;}
+  .audit-filter{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--ink);background:#fff;}
+  .audit-group{margin-bottom:10px;}.audit-group:last-child{margin-bottom:0;}
+  .audit-group-title{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--navy);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin:3px 0 5px;}
+  .audit-group-title span{background:#EEF3FC;border-radius:999px;padding:2px 7px;}
   .vitem{padding:5px 9px; border-radius:7px; margin-bottom:5px; font-size:11.5px;}
   .vitem-row{display:flex; gap:8px; align-items:flex-start;}
   .vfix-row{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px 22px;}
   .vfix-btn{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:6px; border:1px solid currentColor; background:rgba(255,255,255,.55); color:inherit; cursor:pointer; font-family:inherit;}
   .vfix-btn:hover{background:#fff;}
+  .vloc-btn{font-size:10px;padding:3px 7px;margin-left:auto;white-space:nowrap;background:#fff;color:var(--navy);border:1px solid var(--line);}
+  td.cell.audit-focus{animation:auditPulse 1.4s ease 2;outline:3px solid var(--amber);outline-offset:-3px;z-index:2;}
+  @keyframes auditPulse{50%{box-shadow:inset 0 0 0 4px rgba(232,160,32,.35);}}
   .vitem.err{background:var(--red-bg); color:#8C2B26; border:1px solid #F2C7C4;}
   .vitem.warn{background:var(--amber-bg); color:#8A5D0B; border:1px solid #F0DCAE;}
   .vempty{color:var(--green-d); font-weight:700; padding:8px 4px;}
@@ -162,6 +173,8 @@
   .rules-wrap #regrasBtn{font-size:11.5px; padding:7px 14px;}
   .note{font-size:11.5px; color:var(--muted); padding:12px 0 0; line-height:1.5;}
   .note b{color:var(--navy);}
+  .mobile-advanced-toggle{display:none;}
+  .toolbar-advanced{display:contents;}
 
   /* ================= RESPONSIVO ================= */
   /* Tablet / laptop pequeno: reduz respiros laterais e deixa os formulários dos modais em
@@ -212,6 +225,11 @@
     .toolbar select, .toolbar input[type=number]{width:100%; max-width:100%;}
     #cfgPeriodo{min-width:0;}
     .toolbar > button{width:100%;}
+    .mobile-advanced-toggle{display:block !important;width:100%;background:#fff;color:var(--navy);border:1px solid var(--line);}
+    .toolbar-advanced{display:none;width:100%;flex-direction:column;align-items:stretch;gap:5px;}
+    .toolbar-advanced.open{display:flex;}
+    .toolbar-advanced .grp{width:100%;}
+    .toolbar-advanced > button{width:100%;}
 
     .wrap{padding:0 10px 16px;}
     .rules-wrap{padding:0 10px 10px;}
@@ -251,7 +269,7 @@
 </header>
 
 <div class="kpis">
-  <div class="kpi ok"><div class="v" id="kConf">–</div><div class="l">Colaboradores em conformidade</div></div>
+  <div class="kpi ok"><div class="v" id="kConf">–</div><div class="l">Sem violações críticas</div></div>
   <div class="kpi bad"><div class="v" id="kViol">–</div><div class="l">Violações críticas</div></div>
   <div class="kpi warn"><div class="v" id="kWarn">–</div><div class="l">Alertas</div></div>
   <div class="kpi"><div class="v" id="kDsr">–</div><div class="l">DSRs no período</div></div>
@@ -266,6 +284,8 @@
     <label>Período</label>
     <select id="cfgPeriodo" onchange="mudarPeriodo()"></select>
   </div>
+  <button class="mobile-advanced-toggle" id="mobileAdvancedBtn" aria-expanded="false" onclick="toggleToolbarAdvanced()">⚙ Configurações e ações <span id="mobileAdvancedSeta">▾</span></button>
+  <div class="toolbar-advanced" id="toolbarAdvanced">
   <div class="grp">
     <label>Rotação</label>
     <select id="cfgModo" onchange="resolverTudo(); renderAll(); lsSave();">
@@ -295,6 +315,7 @@
   <button class="btn-ghost" onclick="abrirModalSync()">☁ Sincronização</button>
   <button class="btn-ghost" onclick="exportarXlsx()">⬇ Exportar XLSX</button>
   <button class="btn-danger" onclick="limparAjustes()">✕ Limpar ajustes manuais</button>
+  </div>
 </div>
 </div>
 
@@ -453,6 +474,11 @@ const STATUS_DEBITA_BH = ["FOLGA_BH","FALTA"];
    automático de DSR e a auditoria de CLT) — nunca substitui ST[st].rest de forma geral. */
 function contaComoDescansoParaConsecutivo(st){
   return ST[st].rest && st !== 'SOBREAVISO';
+}
+/* Cobertura operacional considera somente quem está efetivamente em campo. Sobreaviso pode
+   contar como dia trabalhado para a sequência CLT, mas não representa presença em campo. */
+function contaComoEmCampo(st){
+  return st==='TRABALHO' || st==='TREINAMENTO' || st==='MEIO_PERIODO';
 }
 /* FOLGA (simples) não é mais oferecida como opção — a empresa só trabalha com Folga custeada
    pelo Banco de Horas (FOLGA_BH). O status FOLGA continua reconhecido só por compatibilidade
@@ -1357,8 +1383,20 @@ function gerarEscala(){
   novaGrade(); resolverTudo(); renderAll(); lsSave();
 }
 function limparAjustes(){
+  const bloqueados = grid.reduce((n,r)=>n+r.filter(c=>c.lock).length,0);
+  if(!bloqueados){ alert('Não há ajustes manuais para limpar neste período.'); return; }
+  if(!confirm(`Limpar ${bloqueados} ajuste${bloqueados!==1?'s':''} manual${bloqueados!==1?'is':''} deste período?\n\nA escala será recalculada e esta ação não poderá ser desfeita.`)) return;
   grid.forEach(r=>r.forEach(c=>{c.lock=false;}));
   resolverTudo(); renderAll(); lsSave();
+}
+
+function toggleToolbarAdvanced(){
+  const box=document.getElementById('toolbarAdvanced'),btn=document.getElementById('mobileAdvancedBtn'),seta=document.getElementById('mobileAdvancedSeta');
+  if(!box||!btn)return;
+  const aberto=box.classList.toggle('open');
+  btn.setAttribute('aria-expanded',String(aberto));
+  if(seta)seta.textContent=aberto?'▴':'▾';
+  setTimeout(ajustarAlturaGrade,0);
 }
 
 /* ================= AUDITORIA (somente colaboradores ativos) ================= */
@@ -1416,7 +1454,7 @@ function auditar(){
   let minCob = Infinity, minDia = null;
   for(let d=0; d<NDIAS; d++){
     let ativos = 0;
-    ativosIdx.forEach(ei=>{ if(!ST[grid[ei][d].st].rest) ativos++; });
+    ativosIdx.forEach(ei=>{ if(contaComoEmCampo(grid[ei][d].st)) ativos++; });
     if(ativos < minCob){ minCob = ativos; minDia = d; }
     if(ativosIdx.length && ativos <= Math.floor(ativosIdx.length*0.6)){
       viols.push({tipo:'warn', codigo:'COBERTURA', dia:d, msg:`Cobertura reduzida em ${fmt(DIAS[d])}: apenas ${ativos}/${ativosIdx.length} em campo.`});
@@ -1554,6 +1592,22 @@ function corrigirViolacoesAutomaticamente(){
 }
 
 /* ================= RENDER ================= */
+let auditFiltroCategoria='TODOS';
+const AUDIT_CATEGORIAS={JORNADA:'Jornada e consecutivos',DSR:'DSR e domingos',BANCO:'Banco de Horas',COBERTURA:'Cobertura operacional'};
+function categoriaAuditoria(codigo){
+  if(codigo==='CONSECUTIVO'||codigo==='HORA_EXTRA')return'JORNADA';
+  if(codigo==='DOMINGO_SEQ'||codigo==='SEM_DOMINGO_DSR')return'DSR';
+  if(codigo==='BANCO_NEGATIVO')return'BANCO';
+  return'COBERTURA';
+}
+function setAuditFiltro(v){auditFiltroCategoria=v||'TODOS';renderAll();}
+function focarOcorrencia(ei,dia){
+  if(ei==null||dia==null)return;
+  const cel=document.querySelector(`td.cell[data-ei="${ei}"][data-di="${dia}"]`);if(!cel)return;
+  cel.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});
+  cel.classList.remove('audit-focus');void cel.offsetWidth;cel.classList.add('audit-focus');
+  setTimeout(()=>cel.classList.remove('audit-focus'),3000);
+}
 function renderAll(){
   const aud = auditar();
   const tbl = document.getElementById('grid');
@@ -1593,7 +1647,7 @@ function renderAll(){
       const titleSug = sugHoras!=null ? `Sugestão: +${sugHoras}h de hora extra aqui pra reduzir o banco negativo` : '';
       const titleFull = [titleBase, titleSug].filter(Boolean).join(' · ');
       const titleAttr = titleFull ? ` title="${titleFull}"` : '';
-      h += `<td class="${cls.join(' ')}"${titleAttr} onclick="abrirPop(event,${ei},${di})">`+
+      h += `<td class="${cls.join(' ')}" data-ei="${ei}" data-di="${di}" tabindex="0" role="button" aria-label="${f.nome}, ${fmt(d)}, ${s.lbl}"${titleAttr} onclick="abrirPop(event,${ei},${di})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();abrirPop(event,${ei},${di})}">`+
            `<span class="tag">${s.lbl}</span>`+
            (cel.motivoFeriado?'<span class="fer-badge">🎉</span>':'')+
            (cel.lock?'<span class="lock">🔒</span>':'')+
@@ -1624,15 +1678,20 @@ function renderAll(){
   if(aud.viols.length===0){ vb.innerHTML = '<div class="vempty">✅ Escala 100% conforme: nenhum colaborador ativo ultrapassa 6 dias consecutivos e nenhuma jornada excede 2h extras.</div>'; }
   else {
     const seen = new Set();
-    vb.innerHTML = aud.viols.filter(v=>{ if(seen.has(v.msg))return false; seen.add(v.msg); return true; })
-      .map(v=>{
-        const sugestoes = sugestoesParaViolacao(v);
-        const botoes = sugestoes.map(s=>`<button class="vfix-btn" onclick="aplicarSugestaoViolacao('${s.acao}',${v.ei},${s.d1},${s.d2})">${s.label}</button>`).join('');
-        return `<div class="vitem ${v.tipo}">
-          <div class="vitem-row">${v.tipo==='err'?'❌':'⚠️'} <span>${v.msg}</span></div>
-          ${botoes?`<div class="vfix-row">${botoes}</div>`:''}
-        </div>`;
-      }).join('');
+    const unicas=aud.viols.filter(v=>{if(seen.has(v.msg))return false;seen.add(v.msg);return true;});
+    const categorias=Object.keys(AUDIT_CATEGORIAS);
+    const filtradas=auditFiltroCategoria==='TODOS'?unicas:unicas.filter(v=>categoriaAuditoria(v.codigo)===auditFiltroCategoria);
+    const opts=`<option value="TODOS">Todas as categorias</option>`+categorias.map(c=>`<option value="${c}"${auditFiltroCategoria===c?' selected':''}>${AUDIT_CATEGORIAS[c]}</option>`).join('');
+    const grupos=categorias.map(cat=>{
+      const itens=filtradas.filter(v=>categoriaAuditoria(v.codigo)===cat);if(!itens.length)return'';
+      return `<div class="audit-group"><div class="audit-group-title">${AUDIT_CATEGORIAS[cat]} <span>${itens.length}</span></div>`+itens.map(v=>{
+        const sugestoes=sugestoesParaViolacao(v);
+        const botoes=sugestoes.map(s=>`<button class="vfix-btn" onclick="aplicarSugestaoViolacao('${s.acao}',${v.ei},${s.d1},${s.d2})">${s.label}</button>`).join('');
+        const localizar=v.ei!=null&&v.dia!=null?`<button class="vloc-btn" onclick="focarOcorrencia(${v.ei},${v.dia})">Localizar na escala</button>`:'';
+        return `<div class="vitem ${v.tipo}"><div class="vitem-row">${v.tipo==='err'?'❌':'⚠️'} <span>${v.msg}</span>${localizar}</div>${botoes?`<div class="vfix-row">${botoes}</div>`:''}</div>`;
+      }).join('')+'</div>';
+    }).join('');
+    vb.innerHTML=`<div class="audit-tools"><div class="audit-summary"><span class="audit-pill err">${nErr} críticas</span><span class="audit-pill warn">${nWarn} alertas</span></div><select class="audit-filter" aria-label="Filtrar auditoria por categoria" onchange="setAuditFiltro(this.value)">${opts}</select></div>${grupos||'<div class="vempty">Nenhuma ocorrência nesta categoria.</div>'}`;
   }
 
   // cabeçalho de período
