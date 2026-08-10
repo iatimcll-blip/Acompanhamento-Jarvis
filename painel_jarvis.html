@@ -13933,19 +13933,14 @@ function wppIsHostedPage(){return location.protocol==='https:'&&!['localhost','1
 function wppIsLocalBridgeUrl(u){return/^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(String(u||'').trim())}
 function wppStoredBridge(){
   const saved=(localStorage.getItem(WPP_BRIDGE_KEY)||'').trim().replace(/\/+$/,'');
-  if(saved&&wppIsHostedPage()&&wppIsLocalBridgeUrl(saved)){
-    localStorage.removeItem(WPP_BRIDGE_KEY);
-    return '';
-  }
   return saved;
 }
 function wppBridgeUrl(){
-  const fallback=wppIsHostedPage()?(WPP_BRIDGE_RAILWAY||''):WPP_BRIDGE_DEFAULT;
+  const fallback=WPP_BRIDGE_DEFAULT||WPP_BRIDGE_RAILWAY;
   return(wppActiveBridgeUrl||wppStoredBridge()||fallback||'').replace(/\/+$/,'')
 }
 function wppBridgeCandidates(){
-  const localOk=!wppIsHostedPage();
-  return[...new Set([wppActiveBridgeUrl,wppStoredBridge(),localOk?WPP_BRIDGE_LOCAL:'',WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
+  return[...new Set([wppActiveBridgeUrl,wppStoredBridge(),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
 }
 function wppWsUrl(){const base=wppBridgeUrl();return base?base.replace(/^http/i,'ws')+'/ws':''}
 function setWppDiag(text,kind=''){
@@ -14169,10 +14164,10 @@ async function restartWppBridge(){
   }
 }
 function openWhatsAppExternal(){
-  const next=prompt('URL HTTPS do Jarvis WhatsApp Bridge no Railway\nExemplo: https://seu-servico.up.railway.app',wppStoredBridge()||WPP_BRIDGE_RAILWAY||'');
+  const next=prompt('URL do Jarvis WhatsApp Bridge\nLocal: http://localhost:8788\nRailway: https://seu-servico.up.railway.app',wppStoredBridge()||WPP_BRIDGE_LOCAL||WPP_BRIDGE_RAILWAY||'');
   if(next===null)return;
   const clean=next.trim().replace(/\/+$/,'');
-  if(clean&&wppIsHostedPage()&&!/^https:\/\//i.test(clean)){alert('Na versão publicada, informe uma URL HTTPS do Railway.');return;}
+  if(clean&&wppIsHostedPage()&&!/^https:\/\//i.test(clean)&&!wppIsLocalBridgeUrl(clean)){alert('Informe uma URL HTTPS do Railway ou o bridge local http://localhost:8788.');return;}
   if(clean)localStorage.setItem(WPP_BRIDGE_KEY,clean);else localStorage.removeItem(WPP_BRIDGE_KEY);
   wppActiveBridgeUrl='';
   loadWhatsAppPanel(true);
