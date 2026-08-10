@@ -13923,6 +13923,7 @@ const WPP_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/
 const WPP_PANEL_ORIGIN='https://mcll-painel-acionamentos-production.up.railway.app';
 const MONITOR_PANEL_URL='https://mcll-painel-acionamentos-production.up.railway.app/monitor?embed=atrix';
 let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[],wppActiveBridgeUrl='',wppPollTimer=null;
+const wppMessageIds=new Set();
 let wppFilterEnabled=false,wppFilterIds=new Set(),wppSearchQuery='';
 function wppFilterLoad(){try{const s=JSON.parse(localStorage.getItem(WPP_FILTER_KEY)||'{}');wppFilterEnabled=!!s.enabled;wppFilterIds=new Set(Array.isArray(s.ids)?s.ids:[]);}catch(e){wppFilterEnabled=false;wppFilterIds=new Set();}}
 function wppFilterSave(){try{localStorage.setItem(WPP_FILTER_KEY,JSON.stringify({enabled:wppFilterEnabled,ids:[...wppFilterIds]}));}catch(e){}}
@@ -13944,7 +13945,7 @@ function wppBridgeUrl(){
 }
 function wppBridgeCandidates(){
   const localOk=!wppIsHostedPage();
-  return[...new Set([wppStoredBridge(),WPP_BRIDGE_RAILWAY,localOk?WPP_BRIDGE_LOCAL:''].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
+  return[...new Set([wppActiveBridgeUrl,wppStoredBridge(),localOk?WPP_BRIDGE_LOCAL:'',WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
 }
 function wppWsUrl(){const base=wppBridgeUrl();return base?base.replace(/^http/i,'ws')+'/ws':''}
 function setWppDiag(text,kind=''){
@@ -13958,14 +13959,16 @@ async function wppFetch(path,opts){
   const bases=wppBridgeCandidates();
   if(!bases.length)throw new Error('Configure a URL HTTPS do Railway WhatsApp Bridge.');
   for(const base of bases){
+    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
     try{
-      const res=await fetch(base+path,{cache:'no-store',...opts,headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+      const res=await fetch(base+path,{cache:'no-store',...opts,signal:controller.signal,headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})}});
       const data=await res.json().catch(()=>null);
       if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));
       wppActiveBridgeUrl=base;
       setWppDiag('Bridge conectado: '+base,'ok');
       return data;
-    }catch(e){lastErr=e;setWppDiag('Falha no bridge '+base+': '+(e&&e.message?e.message:e),'err')}
+    }catch(e){lastErr=e;const detail=e&&e.name==='AbortError'?'tempo de resposta excedido':(e&&e.message?e.message:e);setWppDiag('Falha no bridge '+base+': '+detail,'err')}
+    finally{clearTimeout(timeout)}
   }
   throw lastErr||new Error('Serviço WhatsApp indisponível');
 }
@@ -14019,7 +14022,7 @@ function renderWppState(st){
   const statusMsgs={starting:['Iniciando serviço WhatsApp...','ti-loader-2'],qr:['Aponte o celular para o QR Code','ti-qrcode'],authenticated:['Autenticado — carregando conversas...','ti-loader-2'],ready:['Sessão conectada','ti-check'],auth_failure:['Falha na autenticação','ti-alert-triangle'],disconnected:['Sessão desconectada','ti-alert-triangle'],error:['Erro no serviço WhatsApp','ti-alert-triangle']};
   const [stText,stIcon]=statusMsgs[wppBridgeState.status]||['Conectando...','ti-loader-2'];
   setWppStatus(stText,stIcon);
-  if(wppBridgeState.status)setWppDiag('Bridge conectado: '+wppBridgeUrl()+' | Status: '+wppBridgeState.status,'ok');
+  if(wppBridgeState.status){const failed=['error','auth_failure','disconnected'].includes(wppBridgeState.status),detail=wppBridgeState.lastError?' | '+wppBridgeState.lastError:'';setWppDiag('Bridge: '+wppBridgeUrl()+' | Status: '+wppBridgeState.status+detail,failed?'err':'ok');}
   const ready=wppBridgeState.status==='ready';
   setWppLoading(!ready);
   const input=document.getElementById('wpp-message-input'),btn=document.getElementById('wpp-send-btn');
@@ -14074,19 +14077,21 @@ function renderWppMessages(){
   renderWppState();
 }
 async function loadWppChats(){
-  try{wppChats=await wppFetch('/api/chats');renderWppChats();if(!wppActiveChat&&wppChats[0])selectWppChat(wppChats[0].id)}
+  try{wppChats=await wppFetch('/api/chats');if(wppActiveChat&&!wppChats.some(c=>c.id===wppActiveChat)){wppActiveChat='';wppMessages=[];wppMessageIds.clear();}renderWppChats();if(!wppActiveChat&&wppChats[0])selectWppChat(wppChats[0].id)}
   catch(e){console.warn('WhatsApp chats:',e);renderWppChats()}
 }
+function wppSetMessages(messages){wppMessageIds.clear();wppMessages=[];(Array.isArray(messages)?messages:[]).forEach(wppAddMessage)}
+function wppAddMessage(message){if(!message)return false;const id=message.id||[message.from,message.to,message.timestamp,message.body].join('|');if(id&&wppMessageIds.has(id))return false;if(id)wppMessageIds.add(id);wppMessages.push(message);return true}
 async function selectWppChat(id){
-  wppActiveChat=id;renderWppChats();renderWppMessages();
-  try{wppMessages=await wppFetch('/api/chats/'+encodeURIComponent(id)+'/messages?limit=60');renderWppMessages()}
-  catch(e){wppMessages=[];renderWppMessages();_ghToast('Erro ao carregar conversa: '+e.message,'var(--red)',5000)}
+  wppActiveChat=id;wppSetMessages([]);renderWppChats();renderWppMessages();
+  try{wppSetMessages(await wppFetch('/api/chats/'+encodeURIComponent(id)+'/messages?limit=60'));renderWppMessages()}
+  catch(e){wppSetMessages([]);renderWppMessages();_ghToast('Erro ao carregar conversa: '+e.message,'var(--red)',5000)}
 }
 async function sendWppMessage(ev){
   if(ev)ev.preventDefault();
   const input=document.getElementById('wpp-message-input');const body=(input&&input.value||'').trim();
   if(!body||!wppActiveChat)return;
-  try{const r=await wppFetch('/api/send-message',{method:'POST',body:JSON.stringify({to:wppActiveChat,body})});if(input)input.value='';wppMessages.push(r.message);renderWppMessages();loadWppChats()}
+  try{const r=await wppFetch('/api/send-message',{method:'POST',body:JSON.stringify({to:wppActiveChat,body})});if(input)input.value='';wppAddMessage(r.message);renderWppMessages();loadWppChats()}
   catch(e){_ghToast('Erro ao enviar WhatsApp: '+e.message,'var(--red)',6000)}
 }
 function connectWppBridge(force=false){
@@ -14105,9 +14110,9 @@ function connectWppBridge(force=false){
       const msg=JSON.parse(e.data);
       if(msg.state)renderWppState(msg.state);
       if(msg.type==='message'||msg.type==='message_create'){
-        if(msg.message&&(msg.message.from===wppActiveChat||msg.message.to===wppActiveChat)){wppMessages.push(msg.message);renderWppMessages();}
+        if(msg.message&&(msg.message.from===wppActiveChat||msg.message.to===wppActiveChat)){if(wppAddMessage(msg.message))renderWppMessages();}
         const srcId=msg.message&&msg.message.from;
-        if(activeTab!=='whatsapp'&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();playWppSound();}
+        if(msg.type==='message'&&msg.message&&!msg.message.fromMe&&activeTab!=='whatsapp'&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();playWppSound();}
         scheduleMonitorRefresh();
         loadWppChats();
       }else if(msg.state&&msg.state.status==='ready'){loadWppChats();}
@@ -14149,7 +14154,6 @@ function loadWhatsAppPanel(force=false){
 }
 function refreshWhatsAppPanel(){
   loadWhatsAppPanel(true);
-  loadWppChats();
 }
 async function restartWppBridge(){
   setWppStatus('Reiniciando bridge WhatsApp...','ti-refresh');

@@ -34,14 +34,14 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV WPP_AUTH_DIR=/data/.wwebjs_auth
 
-RUN mkdir -p /data/.wwebjs_auth && chown node:node /data/.wwebjs_auth
-
-USER node
+RUN mkdir -p /data/.wwebjs_auth && chown node:node /data/.wwebjs_auth /app
 
 COPY --chown=node:node package*.json ./
 RUN npm install --omit=dev
 
 COPY --chown=node:node server.js ./
+
+USER node
 
 EXPOSE 8788
 CMD ["node", "server.js"]
