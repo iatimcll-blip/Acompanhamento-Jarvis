@@ -6351,6 +6351,42 @@ canvas {
     height: 210px !important;
   }
 }
+
+/* Painel Combustíveis — consolidação visual e remoção de blocos redundantes */
+#panel-combustivel { gap: 12px !important; padding-bottom: 28px; }
+#panel-combustivel .fuel-page-head { padding: 20px 22px; border-radius: 12px; border-color: rgba(245,158,11,.24); }
+#panel-combustivel .section-hd,
+#panel-combustivel .fuel-admin-divider { min-height: 38px; margin: 8px 0 0 !important; padding: 0 2px; }
+#panel-combustivel #fuel-counter-row { display: grid !important; grid-template-columns: repeat(3,minmax(0,1fr)) !important; gap: 10px !important; }
+#panel-combustivel #fuel-counter-row .mc,
+#panel-combustivel #fuel-balance-summary .mc { min-height: 104px; border-radius: 10px; padding: 13px 14px; }
+#panel-combustivel #mrow-fuel { display: block !important; }
+#panel-combustivel .fuel-tools-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+#panel-combustivel .fuel-tools-grid > * { min-width: 0; margin: 0 !important; }
+#panel-combustivel .fuel-consumo-layout { grid-template-columns: minmax(0,1fr) !important; }
+#panel-combustivel .fuel-consumo-layout > .card { width: 100%; }
+#panel-combustivel .g2-charts .card,
+#panel-combustivel .g3-charts .card,
+#panel-combustivel .fuel-split-pane,
+#panel-combustivel .tsec { border-radius: 10px !important; }
+#panel-combustivel .fuel-forms-admin,
+#panel-combustivel .fuel-aportes-section,
+#panel-combustivel .fuel-card-balance-section,
+#panel-combustivel .fuel-withdraw-section,
+#panel-combustivel #tsec-alelo-portal,
+#panel-combustivel .fuel-history-section { margin-bottom: 0 !important; }
+#panel-combustivel .fuel-card-balance-section .fbar { padding-top: 4px; }
+#panel-combustivel .fuel-split-pane > .tsec-hd { min-height: 52px; gap: 12px; }
+#panel-combustivel .fuel-zone-toggle { min-height: 28px; padding: 5px 11px; }
+@media (max-width: 980px) {
+  #panel-combustivel #fuel-counter-row { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+}
+@media (max-width: 620px) {
+  #panel-combustivel #fuel-counter-row { grid-template-columns: 1fr !important; }
+  #panel-combustivel .fuel-page-head { padding: 16px; }
+  #panel-combustivel #fuel-counter-row .mc,
+  #panel-combustivel #fuel-balance-summary .mc { min-height: 92px; }
+}
 </style>
 </head>
 <body data-theme="light">
@@ -7342,10 +7378,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <!-- 4. Gráficos de análise -->
     <div class="section-hd fuel-analises-title">Análises e Gráficos <span class="sh-line"></span><button class="fuel-zone-toggle" id="fuel-zone-analises-btn" onclick="toggleFuelZone('analises')"><i class="ti ti-chevron-up"></i><span id="fuel-zone-analises-lbl">Ocultar</span></button></div>
     <div class="g2-charts fuel-consumo-layout">
-      <div class="card fuel-alelo-balance-card">
-        <div class="card-hd"><span class="card-title">Saldo Alelo</span></div>
-        <div id="fuel-alelo-balance" class="fuel-alelo-balance-body"></div>
-      </div>
       <div class="card">
         <div class="card-hd"><span class="card-title">Consumo por condutor — mês atual vs. projeção e tendência</span></div>
         <div class="cw"><canvas id="ch-fuel" role="img" aria-label="Consumo por condutor, projeção mensal e linha de tendência"></canvas></div>
@@ -7384,6 +7416,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="tw" style="margin-top:8px"><table><thead><tr><th>Data</th><th>Valor</th><th>Descrição</th><th class="admin-only">Ações</th></tr></thead><tbody id="tb-fuel-ap"></tbody></table></div>
     </div>
     <div class="tsec admin-only fuel-card-balance-section">
+      <div class="tsec-hd"><span class="tsec-title">Saldo disponível do cartão</span></div>
       <div class="fbar">
         <input class="finput" id="fuel-card-balance" type="number" step="0.01" min="0" placeholder="Saldo disponível / cartão R$">
         <span class="card-action" onclick="setFuelCardBalance()">Atualizar saldo cartão</span>
@@ -13407,11 +13440,8 @@ function renderFuel(){
   const cycleAction=canEdit()?`<span class="card-action" onclick="toggleFuelCalendarEdit()">${fuelCalendarEditing?'Fechar':'Editar calendário'}</span>`:'';
   document.getElementById('fuel-balance-summary').innerHTML=`<div class="mc c-blue"><div class="mc-label">Saldo Geral</div><div class="mc-val">${brl(bal.saldoGeral)}</div><div class="mc-sub">aportes − retiradas</div></div><div class="mc c-green"><div class="mc-label">Saldo Disponível</div><div class="mc-val" style="color:${color}">${brl(bal.available)}</div><div class="mc-sub">reflete o saldo combustível/cartão</div></div><div class="mc c-orange"><div class="mc-label">Período de renovação</div><div class="mc-val" style="font-size:15px">${eh(fuelCycle.label)}</div><div class="mc-sub">${fuelCycle.manual?'calendário manual':'ciclo automático 16-15'} ${cycleAction}</div>${cycleEditor}</div>`;
   const aportesCiclo=fuelAportesDoCiclo();
-  const aporteHistory=aportesCiclo.slice().sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(a=>`<div class="fuel-aporte-mini-row"><span>${fmtFuelDatetime(a.data)}</span><b>${brl(a.valor)}</b></div>`).join('')||'<div class="fuel-aporte-mini-row"><span>Nenhum aporte no ciclo atual</span><b>-</b></div>';
-  const manualControls=canEdit()?`<div class="mc c-green fuel-manual-card fuel-manual-inline admin-only"><div class="mc-label">Atualizar Saldo Disponível</div><div class="mc-val" id="fuel-card-balance-current" style="color:var(--green-dk)">${brl(bal.available)}</div><div class="mc-sub">ajuste manual do saldo combustível/cartão</div><div class="fuel-manual-form"><input class="finput" id="fuel-card-balance-quick" type="number" step="0.01" min="0" placeholder="Novo saldo R$"><span class="card-action" onclick="setFuelCardBalanceQuick()">Atualizar</span></div></div><div class="mc c-blue fuel-manual-card fuel-manual-inline fuel-aporte-card admin-only"><div class="mc-label">Aporte Manual</div><div class="mc-val" id="fuel-aporte-total-current">${brl(fuelBalanceTotal)}</div><div class="mc-sub">registro manual de aporte no ciclo</div><div class="fuel-manual-form"><input class="finput" id="fuel-aporte-date-quick" type="date"><input class="finput" id="fuel-aporte-valor-quick" type="number" step="0.01" min="0" placeholder="Valor R$"><input class="finput fuel-manual-wide" id="fuel-aporte-desc-quick" placeholder="Descrição"><span class="card-action" onclick="addFuelAporteQuick()">Registrar</span></div><div class="fuel-aporte-mini">${aporteHistory}</div></div>`:'';
-  const manualCards=manualControls?`<div class="fuel-manual-pair">${manualControls}</div>`:'';
-  document.getElementById('fuel-counter-row').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Crédito ${stbLabel}${stbConfigBtn}</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} crédito${stCreditos.length!==1?'s':''} ${stCreditos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débito ${stbLabel}${stbConfigBtn}</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} débito${stDebitos.length!==1?'s':''} ${stDebitos.length!==1?'emergenciais':'emergencial'} no período</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos no período</div></div><div class="mc c-orange"><div class="mc-label">Consumido registrado</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">compras aprovadas por placa</div></div><div class="mc c-blue"><div class="mc-label">Cartão Próprio</div><div class="mc-val">${brl(fuelTotalProprio)}</div><div class="mc-sub">${fuelComprasProprio.length} compra${fuelComprasProprio.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Cartão Coringa</div><div class="mc-val" style="color:var(--red)">${brl(fuelTotalCoringa)}</div><div class="mc-sub">${fuelComprasCoringa.length} compra${fuelComprasCoringa.length!==1?'s':''} no período</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos/outros fins</div></div><div class="mc c-blue"><div class="mc-label">Total movimentado</div><div class="mc-val">${brl(bal.moved)}</div><div class="mc-sub">retiradas - compras aprovadas</div></div>`;
-  document.getElementById('mrow-fuel').innerHTML=`${manualCards}${fuelAportePeriodCalcMarkup()}${fuelRouteCardMarkup()}`;
+  document.getElementById('fuel-counter-row').innerHTML=`<div class="mc c-blue"><div class="mc-label">Veículos</div><div class="mc-val"><b>${dFuelVehicles.length}</b></div><div class="mc-sub">${active} ativos</div></div><div class="mc c-green"><div class="mc-label">Solicitações</div><div class="mc-val" style="color:var(--green-dk)"><b>${validRequests.length}</b></div><div class="mc-sub">${fuelCompras.length} compras · ${fuelCreditos.length} créditos · ${fuelDebitos.length} débitos</div></div><div class="mc c-orange"><div class="mc-label">Consumido no ciclo</div><div class="mc-val" style="color:var(--orange)">${brl(totalValor)}</div><div class="mc-sub">${brl(fuelTotalProprio)} próprio · ${brl(fuelTotalCoringa)} coringa</div></div><div class="mc c-green fuel-stb-card"><div class="mc-label">Créditos ${stbLabel}${stbConfigBtn}</div><div class="mc-val" style="color:var(--green-dk)">${brl(stCreditoTotal)}</div><div class="mc-sub">${stCreditos.length} ${stCreditos.length===1?'emergencial':'emergenciais'}</div></div><div class="mc c-red fuel-stb-card"><div class="mc-label">Débitos ${stbLabel}${stbConfigBtn}</div><div class="mc-val" style="color:var(--red)">${brl(stDebitoTotal)}</div><div class="mc-sub">${stDebitos.length} ${stDebitos.length===1?'emergencial':'emergenciais'}</div></div><div class="mc c-red"><div class="mc-label">Retiradas</div><div class="mc-val" style="color:var(--red)">${brl(bal.withdrawn)}</div><div class="mc-sub">empréstimos e outros fins</div></div>`;
+  document.getElementById('mrow-fuel').innerHTML=`<div class="fuel-tools-grid">${fuelAportePeriodCalcMarkup()}${fuelRouteCardMarkup()}</div>`;
   fuelRouteInit();
   const top=fuelProjection()[0]||['-',{valor:0,litros:0,count:0}];
   const nextSuggestion=fuelNextMonthSuggestion();
@@ -13425,7 +13455,7 @@ function renderFuel(){
   renderFuelProjectionDetail();
   document.getElementById('fuel-status').innerHTML=listRows(se(cnt(dFuelVehicles,'status')),k=>({Ativo:'var(--green)',Inativo:'var(--tx3)',Oficina:'var(--orange)',Bloqueado:'var(--red)'}[k]||'var(--blue)'));
   const sel=document.getElementById('fuel-req-placa');if(sel){const cur=sel.value;const _ord={Ativo:0,Oficina:1,Inativo:2,Bloqueado:3};const _vs=[...dFuelVehicles].sort((a,b)=>(_ord[a.status]??9)-(_ord[b.status]??9)||a.condutor.localeCompare(b.condutor,'pt-BR'));sel.innerHTML='<option value="">Selecionar placa</option>'+_vs.map(v=>`<option value="${eh(v.placa)}">${eh(v.placa)} — ${eh(v.condutor)}${v.status!=='Ativo'?' ('+eh(v.status)+')':''}</option>`).join('');sel.value=[...sel.options].some(o=>o.value===cur)?cur:''}
-  ['fuel-withdraw-date','fuel-aporte-date','fuel-aporte-date-quick'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=new Date().toISOString().slice(0,10)});
+  ['fuel-withdraw-date','fuel-aporte-date'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=new Date().toISOString().slice(0,10)});
   _renderFuelVTable();
   renderFuelRequestsTable();
   const capEl=document.getElementById('cnt-fuel-ap');if(capEl)capEl.textContent=aportesCiclo.length+' aporte'+(aportesCiclo.length!==1?'s':'')+' no ciclo';
