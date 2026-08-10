@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Painel DSR Volante – MCLL Telecom | Alloha Fibra</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   :root{
     --navy:#1E2761; --navy-2:#2A3578; --green:#39B54A; --green-d:#2C9A3B;
@@ -2044,37 +2045,91 @@ function funcaoModeloDsr(funcionario){
   return funcionario.funcao || FUNCOES_MODELO_DSR[nome] || 'TECNICO ATIVAÇÃO';
 }
 
+function colunaExcel(indice){
+  let resultado = '';
+  for(let n=indice+1; n>0; n=Math.floor((n-1)/26)) resultado = String.fromCharCode(65+(n-1)%26) + resultado;
+  return resultado;
+}
+
+function serialExcel(data){
+  return Math.floor(Date.UTC(data.getFullYear(), data.getMonth(), data.getDate()) / 86400000) + 25569;
+}
+
+function escreverCelulaXml(documento, planilha, linha, coluna, valor, numerico=false){
+  const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const referencia = colunaExcel(coluna) + linha;
+  let row = Array.from(planilha.getElementsByTagName('row')).find(item=>Number(item.getAttribute('r'))===linha);
+  if(!row){
+    row = documento.createElementNS(ns,'row');
+    row.setAttribute('r',String(linha));
+    planilha.getElementsByTagName('sheetData')[0].appendChild(row);
+  }
+  let cell = Array.from(row.getElementsByTagName('c')).find(item=>item.getAttribute('r')===referencia);
+  if(!cell){
+    cell = documento.createElementNS(ns,'c');
+    cell.setAttribute('r',referencia);
+    row.appendChild(cell);
+  }
+  Array.from(cell.children).forEach(child=>cell.removeChild(child));
+  if(valor===null || valor===undefined || valor===''){
+    cell.removeAttribute('t');
+    return;
+  }
+  if(numerico){
+    cell.setAttribute('t','n');
+    const v = documento.createElementNS(ns,'v');
+    v.textContent = String(valor);
+    cell.appendChild(v);
+  }else{
+    cell.setAttribute('t','inlineStr');
+    const inline = documento.createElementNS(ns,'is');
+    const texto = documento.createElementNS(ns,'t');
+    texto.textContent = String(valor);
+    inline.appendChild(texto);
+    cell.appendChild(inline);
+  }
+}
+
 async function exportarXlsx(){
   const EXPORTA = {TRABALHO:'ATIVO', DSR:'FOLGA', FOLGA:'FOLGA', FOLGA_BH:'BH', SOBREAVISO:'SOBREAVISO', FERIADO:'FERIADO', FERIAS:'FÉRIAS',
     MEIO_PERIODO:'MEIO PERIODO', ATESTADO:'ATESTADO', AFASTADO:'AFASTADO', INSS:'INSS', TREINAMENTO:'TREINAMENTO', FALTA:'FALTA'};
   try{
     const resposta = await fetch(MODELO_XLSX_DSR);
     if(!resposta.ok) throw new Error(`Modelo não encontrado (${resposta.status})`);
-    const wbModelo = XLSX.read(await resposta.arrayBuffer(), {type:'array', cellDates:true, cellStyles:true});
-    const nomeAbaModelo = wbModelo.Sheets['Agosto 26'] ? 'Agosto 26' : wbModelo.SheetNames.find(nome=>wbModelo.Sheets[nome]);
-    if(!nomeAbaModelo) throw new Error('O arquivo-modelo não possui uma aba válida.');
-    const ws = wbModelo.Sheets[nomeAbaModelo];
+    if(typeof JSZip==='undefined') throw new Error('Biblioteca de exportação indisponível.');
+    const pacote = await JSZip.loadAsync(await resposta.arrayBuffer());
+    const parser = new DOMParser();
+    const serializer = new XMLSerializer();
+    const workbookXml = parser.parseFromString(await pacote.file('xl/workbook.xml').async('string'),'application/xml');
+    const relsXml = parser.parseFromString(await pacote.file('xl/_rels/workbook.xml.rels').async('string'),'application/xml');
+    const abas = Array.from(workbookXml.getElementsByTagName('sheet'));
+    const abaModelo = abas.find(aba=>aba.getAttribute('name')==='Agosto 26');
+    if(!abaModelo) throw new Error('A aba Agosto 26 não foi encontrada no arquivo-modelo.');
+    const relId = abaModelo.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id') || abaModelo.getAttribute('r:id');
+    const relacao = Array.from(relsXml.getElementsByTagName('Relationship')).find(rel=>rel.getAttribute('Id')===relId);
+    if(!relacao) throw new Error('A estrutura da aba-modelo está incompleta.');
+    const caminhoPlanilha = 'xl/' + relacao.getAttribute('Target').replace(/^\//,'').replace(/^xl\//,'');
+    const planilhaXml = parser.parseFromString(await pacote.file(caminhoPlanilha).async('string'),'application/xml');
     const ativos = FUNCIONARIOS.map((f,ei)=>({f,ei})).filter(({f})=>f.ativo);
     const primeiraLinhaDados = 4;
-    const ultimaLinhaModelo = XLSX.utils.decode_range(ws['!ref'] || 'A1:AJ200').e.r + 1;
-    const ultimaColunaModelo = Math.max(35, XLSX.utils.decode_range(ws['!ref'] || 'A1:AJ200').e.c);
+    const ultimaLinhaModelo = 200;
+    const ultimaColunaModelo = 35;
 
     for(let linha=primeiraLinhaDados; linha<=ultimaLinhaModelo; linha++){
       for(let coluna=0; coluna<=ultimaColunaModelo; coluna++){
-        const endereco = XLSX.utils.encode_cell({r:linha-1,c:coluna});
-        if(ws[endereco]) delete ws[endereco].v, delete ws[endereco].w, delete ws[endereco].f;
+        escreverCelulaXml(planilhaXml, planilhaXml.documentElement, linha, coluna, null);
       }
     }
 
     const cabecalhos = ['COLABORADOR ','FUNÇÃO','LOCALIDADE','UF','GESTOR'];
-    cabecalhos.forEach((valor,coluna)=>XLSX.utils.sheet_add_aoa(ws, [[valor]], {origin:{r:2,c:coluna}}));
+    cabecalhos.forEach((valor,coluna)=>escreverCelulaXml(planilhaXml, planilhaXml.documentElement, 3, coluna, valor));
     DIAS.forEach((dia,di)=>{
-      XLSX.utils.sheet_add_aoa(ws, [[dia]], {origin:{r:1,c:5+di}, cellDates:true});
-      XLSX.utils.sheet_add_aoa(ws, [[DIA_SEMANA_MODELO[dia.getDay()]]], {origin:{r:2,c:5+di}});
+      escreverCelulaXml(planilhaXml, planilhaXml.documentElement, 2, 5+di, serialExcel(dia), true);
+      escreverCelulaXml(planilhaXml, planilhaXml.documentElement, 3, 5+di, DIA_SEMANA_MODELO[dia.getDay()]);
     });
     for(let di=DIAS.length; di<31; di++){
-      XLSX.utils.sheet_add_aoa(ws, [['']], {origin:{r:1,c:5+di}});
-      XLSX.utils.sheet_add_aoa(ws, [['']], {origin:{r:2,c:5+di}});
+      escreverCelulaXml(planilhaXml, planilhaXml.documentElement, 2, 5+di, null);
+      escreverCelulaXml(planilhaXml, planilhaXml.documentElement, 3, 5+di, null);
     }
 
     ativos.forEach(({f,ei},indice)=>{
@@ -2087,18 +2142,30 @@ async function exportarXlsx(){
         if(celula.plantao>0) valor += ` +${celula.plantao}H PLANTÃO`;
         valores.push(valor);
       });
-      XLSX.utils.sheet_add_aoa(ws, [valores], {origin:{r:linha-1,c:0}});
+      valores.forEach((valor,coluna)=>escreverCelulaXml(planilhaXml, planilhaXml.documentElement, linha, coluna, valor));
     });
 
     const ultimaColuna = 5 + Math.max(0, DIAS.length-1);
     const ultimaLinha = Math.max(3, primeiraLinhaDados + ativos.length - 1);
-    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:ultimaLinha-1,c:ultimaColuna}});
-    ws['!autofilter'] = {ref:XLSX.utils.encode_range({s:{r:2,c:0},e:{r:ultimaLinha-1,c:ultimaColuna}})};
-    ws['!freeze'] = {xSplit:5, ySplit:3, topLeftCell:'F4', activePane:'bottomRight', state:'frozen'};
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'DSR VOLANTE');
-    XLSX.writeFile(wb, `Escala_DSR_Volante_${periodoKeyAtual()}.xlsx`, {cellStyles:true});
+    const dimensao = planilhaXml.getElementsByTagName('dimension')[0];
+    if(dimensao) dimensao.setAttribute('ref',`A1:${colunaExcel(ultimaColuna)}${ultimaLinha}`);
+    abas.forEach(aba=>{
+      if(aba===abaModelo){
+        aba.setAttribute('name','DSR VOLANTE');
+        aba.removeAttribute('state');
+      }else aba.setAttribute('state','hidden');
+    });
+    pacote.file(caminhoPlanilha, serializer.serializeToString(planilhaXml));
+    pacote.file('xl/workbook.xml', serializer.serializeToString(workbookXml));
+    const blob = await pacote.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Escala_DSR_Volante_${periodoKeyAtual()}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }catch(erro){
     console.error('Falha ao exportar a escala no modelo oficial:', erro);
     alert('Não foi possível carregar o modelo oficial da planilha. Atualize a página e tente novamente.');
