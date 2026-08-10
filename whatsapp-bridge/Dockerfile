@@ -41,7 +41,7 @@ RUN npm install --omit=dev
 
 COPY --chown=node:node server.js ./
 
-# O volume persistente do Railway e montado em runtime como root. O bridge
+# O volume persistente do provedor e montado em runtime como root. O bridge
 # precisa gravar a sessao do WhatsApp em /data para manter o QR autenticado.
 # Chromium continua isolado com --no-sandbox no server.js.
 

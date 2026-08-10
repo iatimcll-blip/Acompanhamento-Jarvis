@@ -13914,7 +13914,7 @@ function playWppSound(){
     setTimeout(()=>{try{ctx.close();}catch(_){}},600);
   }catch(_){}
 }
-const WPP_BRIDGE_RAILWAY='https://jarvis-whatsapp-bridge-production.up.railway.app';
+const WPP_BRIDGE_RENDER='https://jarvis-whatsapp-bridge-mcll.onrender.com';
 const WPP_BRIDGE_LOCAL='http://localhost:8788';
 const WPP_BRIDGE_DEFAULT=WPP_BRIDGE_LOCAL;
 const WPP_BRIDGE_KEY='jarvis:wpp:bridge-url';
@@ -13936,11 +13936,11 @@ function wppStoredBridge(){
   return saved;
 }
 function wppBridgeUrl(){
-  const fallback=WPP_BRIDGE_DEFAULT||WPP_BRIDGE_RAILWAY;
+  const fallback=WPP_BRIDGE_DEFAULT||WPP_BRIDGE_RENDER;
   return(wppActiveBridgeUrl||wppStoredBridge()||fallback||'').replace(/\/+$/,'')
 }
 function wppBridgeCandidates(){
-  return[...new Set([wppActiveBridgeUrl,wppStoredBridge(),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
+  return[...new Set([wppActiveBridgeUrl,wppStoredBridge(),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RENDER].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
 }
 function wppWsUrl(){const base=wppBridgeUrl();return base?base.replace(/^http/i,'ws')+'/ws':''}
 function setWppDiag(text,kind=''){
@@ -13952,7 +13952,7 @@ function setWppDiag(text,kind=''){
 async function wppFetch(path,opts){
   let lastErr=null;
   const bases=wppBridgeCandidates();
-  if(!bases.length)throw new Error('Configure a URL HTTPS do Railway WhatsApp Bridge.');
+  if(!bases.length)throw new Error('Configure a URL HTTPS do Render WhatsApp Bridge.');
   for(const base of bases){
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
     try{
@@ -14094,8 +14094,8 @@ function connectWppBridge(force=false){
   try{if(wppWs){wppWs.onclose=null;wppWs.close();}}catch(_){}
   clearInterval(wppPollTimer);wppPollTimer=null;
   if(!wppWsUrl()){
-    setWppStatus('Configure a URL do Railway WhatsApp','ti-alert-triangle');
-    setWppDiag('No GitHub Pages o WhatsApp precisa de uma URL HTTPS pública do Railway. Clique em Configurar URL e cole a URL do serviço jarvis-whatsapp-bridge.','err');
+    setWppStatus('Configure a URL do Render WhatsApp','ti-alert-triangle');
+    setWppDiag('No GitHub Pages o WhatsApp precisa da URL HTTPS pública do Render. Clique em Configurar URL e informe o serviço jarvis-whatsapp-bridge-mcll.','err');
     return;
   }
   setWppStatus('Conectando ao serviço WhatsApp...','ti-loader-2');
@@ -14120,8 +14120,8 @@ function connectWppBridge(force=false){
 function _startWppPolling(){
   if(wppPollTimer)return;
   if(!wppBridgeCandidates().length){
-    setWppStatus('Configure a URL do Railway WhatsApp','ti-alert-triangle');
-    setWppDiag('Nenhuma URL pública do Railway configurada para o WhatsApp Bridge.','err');
+    setWppStatus('Configure a URL do Render WhatsApp','ti-alert-triangle');
+    setWppDiag('Nenhuma URL pública do Render configurada para o WhatsApp Bridge.','err');
     return;
   }
   wppPollTimer=setInterval(async()=>{
@@ -14144,8 +14144,8 @@ function loadWhatsAppPanel(force=false){
   wppFilterLoad();
   setWppLoading(true);
   const bases=wppBridgeCandidates();
-  setWppDiag(bases.length?'Testando bridge: '+bases.join(' | '):'Configure a URL HTTPS do Railway para habilitar o WhatsApp neste painel.','');
-  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats();}).catch(e=>{setWppDiag('Serviço WhatsApp indisponível. Inicie o bridge em D:\\Acompanhamento Jarvis\\iniciar-whatsapp-bridge.bat ou configure a URL Railway correta. Detalhe: '+(e&&e.message?e.message:e),'err');connectWppBridge(force);});
+  setWppDiag(bases.length?'Testando bridge: '+bases.join(' | '):'Configure a URL HTTPS do Render para habilitar o WhatsApp neste painel.','');
+  wppFetch('/api/status').then(st=>{renderWppState(st);connectWppBridge(force);if(st.status==='ready')loadWppChats();}).catch(e=>{setWppDiag('Serviço WhatsApp indisponível. Inicie o bridge em D:\\Acompanhamento Jarvis\\iniciar-whatsapp-bridge.bat ou configure a URL Render correta. Detalhe: '+(e&&e.message?e.message:e),'err');connectWppBridge(force);});
 }
 function refreshWhatsAppPanel(){
   loadWhatsAppPanel(true);
@@ -14164,10 +14164,10 @@ async function restartWppBridge(){
   }
 }
 function openWhatsAppExternal(){
-  const next=prompt('URL do Jarvis WhatsApp Bridge\nLocal: http://localhost:8788\nRailway: https://seu-servico.up.railway.app',wppStoredBridge()||WPP_BRIDGE_LOCAL||WPP_BRIDGE_RAILWAY||'');
+  const next=prompt('URL do Jarvis WhatsApp Bridge\nLocal: http://localhost:8788\nRender: https://jarvis-whatsapp-bridge-mcll.onrender.com',wppStoredBridge()||WPP_BRIDGE_LOCAL||WPP_BRIDGE_RENDER||'');
   if(next===null)return;
   const clean=next.trim().replace(/\/+$/,'');
-  if(clean&&wppIsHostedPage()&&!/^https:\/\//i.test(clean)&&!wppIsLocalBridgeUrl(clean)){alert('Informe uma URL HTTPS do Railway ou o bridge local http://localhost:8788.');return;}
+  if(clean&&wppIsHostedPage()&&!/^https:\/\//i.test(clean)&&!wppIsLocalBridgeUrl(clean)){alert('Informe uma URL HTTPS do Render ou o bridge local http://localhost:8788.');return;}
   if(clean)localStorage.setItem(WPP_BRIDGE_KEY,clean);else localStorage.removeItem(WPP_BRIDGE_KEY);
   wppActiveBridgeUrl='';
   loadWhatsAppPanel(true);
@@ -14620,7 +14620,7 @@ async function loadMonitorPanel(force=false){
     const total=Object.values(bucket).reduce((s,a)=>s+a.length,0);
     renderMonitorBlocks(bucket,`${total} mensagens de hoje classificadas · atualização ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`);
   }catch(e){
-    renderMonitorBlocks(empty,'Serviço WhatsApp indisponível. Verifique o bridge Railway no Painel WhatsApp.');
+    renderMonitorBlocks(empty,'Serviço WhatsApp indisponível. Verifique o bridge Render no Painel WhatsApp.');
     const st=document.getElementById('monitor-status');if(st)st.innerHTML=`<i class="ti ti-alert-triangle"></i><span>${eh(e&&e.message?e.message:'Erro ao carregar Monitor')}</span>`;
   }finally{setMonitorLoading(false);}
 }

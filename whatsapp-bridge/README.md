@@ -34,13 +34,12 @@ Padrao:
 - `WPP_CLIENT_ID`: nome da sessao local, padrao `jarvis`
 - `WPP_AUTH_DIR`: pasta da sessao WhatsApp, padrao `.wwebjs_auth`
 
-## Railway
+## Render
 
-1. Crie um novo servico no Railway apontando para este repositorio.
-2. Configure o **Root Directory** como `whatsapp-bridge`.
-3. Use o deploy por Dockerfile. O arquivo `railway.json` ja define `Dockerfile` e healthcheck.
-4. Adicione um volume persistente no Railway e monte em `/data`.
-5. Configure as variaveis:
+1. No Render, crie um **Blueprint** apontando para este repositorio.
+2. O arquivo `render.yaml` na raiz configura Docker, healthcheck e o servico web.
+3. Confirme o plano Starter e o disco persistente de 1 GB montado em `/data`.
+4. As variaveis abaixo ja fazem parte do Blueprint:
 
 ```env
 WPP_AUTH_DIR=/data/.wwebjs_auth
@@ -48,7 +47,7 @@ WPP_CORS_ORIGIN=https://iatimcll-blip.github.io
 WPP_CLIENT_ID=jarvis
 ```
 
-6. Gere o dominio publico do servico no Railway.
-7. No painel Jarvis, aba WhatsApp, clique em **Configurar servico** e informe a URL do Railway se ela for diferente do padrao.
+5. O dominio padrao esperado e `https://jarvis-whatsapp-bridge-mcll.onrender.com`.
+6. No painel Jarvis, clique em **Configurar URL** caso o Render gere outro dominio.
 
-Sem volume persistente, o WhatsApp pedira QR Code novamente a cada redeploy.
+O disco persistente e necessario para evitar um novo QR Code a cada reinicio ou deploy.
