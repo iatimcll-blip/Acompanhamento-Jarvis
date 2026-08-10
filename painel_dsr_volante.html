@@ -2026,31 +2026,83 @@ function removerFeriadoMunicipal(cidade, idx){
 }
 
 /* ================= EXPORT XLSX ================= */
-function exportarXlsx(){
-  const EXPORTA = {TRABALHO:"ATIVO", DSR:"DSR VOLANTE", FOLGA:"FOLGA", FOLGA_BH:"FOLGA BANCO DE HORAS", FERIADO:"FERIADO", FERIAS:"FÉRIAS",
-    MEIO_PERIODO:"MEIO PERIODO", ATESTADO:"ATESTADO", AFASTADO:"AFASTADO", INSS:"INSS", TREINAMENTO:"TREINAMENTO", FALTA:"FALTA"};
-  const aoa = [];
-  aoa.push(["","","","","","", ...DIAS.map(d=>d)]);
-  aoa.push(["","","","","","", ...DIAS.map(d=>DOWPT[d.getDay()])]);
-  aoa.push(["COLABORADOR","STATUS","LOCALIDADE","UF","GESTOR","BANCO DE HORAS (h)", ...DIAS.map(()=> "")]);
-  FUNCIONARIOS.forEach((f,ei)=>{
-    if(!f.ativo) return; // exportação sempre só com colaboradores ativos
-    const bh = calcularBancoHoras(f, ei);
-    aoa.push([f.nome, "ATIVO", f.localidade, f.uf, f.gestor, bh, ...DIAS.map((_,di)=>{
-      const c = grid[ei][di];
-      let v = EXPORTA[c.st];
-      if(c.he>0) v += ` +${c.he}HE`;
-      if(c.plantao>0) v += ` +${c.plantao}PLANTAO`;
-      return v;
-    })]);
-  });
-  const ws = XLSX.utils.aoa_to_sheet(aoa, {cellDates:true});
-  ws['!cols'] = [{wch:32},{wch:10},{wch:12},{wch:5},{wch:32},{wch:16}, ...DIAS.map(()=>({wch:12}))];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "DSR VOLANTE");
-  const wl = XLSX.utils.aoa_to_sheet([["STATUS"],["ATIVO"],["DSR VOLANTE"],["FOLGA"],["FOLGA BANCO DE HORAS"],["FERIADO"],["FÉRIAS"],["MEIO PERIODO"],["ATESTADO"],["AFASTADO"],["INSS"],["TREINAMENTO"],["FALTA"]]);
-  XLSX.utils.book_append_sheet(wb, wl, "LISTA");
-  XLSX.writeFile(wb, `Escala_DSR_Volante_${periodoKeyAtual()}.xlsx`);
+const MODELO_XLSX_DSR = 'assets/templates/Escala%202026%20GG%20NO.xlsx';
+const FUNCOES_MODELO_DSR = {
+  'CLEMILTON MENDES DA SILVA':'TECNICO DE FIBRA OPTICA',
+  'MOISES AMORIM VIANA':'TECNICO DE MANUTENÇÃO DE REDE',
+  'ELTON JONES SOUSA DINIZ':'TECNICO EM SERVIÇO AO CLIENTE B2B',
+  'IGOR HENRIQUE MONTEIRO DO NASCIMENTO':'TECNICO ATIVAÇÃO',
+  'LEANDRO RODRIGUES DA SILVA':'TECNICO ATIVAÇÃO',
+  'MARCELLO LUIZ SOUZA':'TECNICO ATIVAÇÃO',
+  'ROMULO JOSE DO VALE ARAUJO':'TECNICO ATIVAÇÃO',
+  'RONILDO VASCONCELOS SOUZA':'TECNICO DE SERVIÇO AO CLIENTE B2B'
+};
+const DIA_SEMANA_MODELO = ['DOMINGO','SEGUNDA','TERÇA','QUARTA','QUINTA','SEXTA','SABADO'];
+
+function funcaoModeloDsr(funcionario){
+  const nome = String(funcionario.nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+  return funcionario.funcao || FUNCOES_MODELO_DSR[nome] || 'TECNICO ATIVAÇÃO';
+}
+
+async function exportarXlsx(){
+  const EXPORTA = {TRABALHO:'ATIVO', DSR:'FOLGA', FOLGA:'FOLGA', FOLGA_BH:'BH', SOBREAVISO:'SOBREAVISO', FERIADO:'FERIADO', FERIAS:'FÉRIAS',
+    MEIO_PERIODO:'MEIO PERIODO', ATESTADO:'ATESTADO', AFASTADO:'AFASTADO', INSS:'INSS', TREINAMENTO:'TREINAMENTO', FALTA:'FALTA'};
+  try{
+    const resposta = await fetch(MODELO_XLSX_DSR);
+    if(!resposta.ok) throw new Error(`Modelo não encontrado (${resposta.status})`);
+    const wbModelo = XLSX.read(await resposta.arrayBuffer(), {type:'array', cellDates:true, cellStyles:true});
+    const nomeAbaModelo = wbModelo.Sheets['Agosto 26'] ? 'Agosto 26' : wbModelo.SheetNames.find(nome=>wbModelo.Sheets[nome]);
+    if(!nomeAbaModelo) throw new Error('O arquivo-modelo não possui uma aba válida.');
+    const ws = wbModelo.Sheets[nomeAbaModelo];
+    const ativos = FUNCIONARIOS.map((f,ei)=>({f,ei})).filter(({f})=>f.ativo);
+    const primeiraLinhaDados = 4;
+    const ultimaLinhaModelo = XLSX.utils.decode_range(ws['!ref'] || 'A1:AJ200').e.r + 1;
+    const ultimaColunaModelo = Math.max(35, XLSX.utils.decode_range(ws['!ref'] || 'A1:AJ200').e.c);
+
+    for(let linha=primeiraLinhaDados; linha<=ultimaLinhaModelo; linha++){
+      for(let coluna=0; coluna<=ultimaColunaModelo; coluna++){
+        const endereco = XLSX.utils.encode_cell({r:linha-1,c:coluna});
+        if(ws[endereco]) delete ws[endereco].v, delete ws[endereco].w, delete ws[endereco].f;
+      }
+    }
+
+    const cabecalhos = ['COLABORADOR ','FUNÇÃO','LOCALIDADE','UF','GESTOR'];
+    cabecalhos.forEach((valor,coluna)=>XLSX.utils.sheet_add_aoa(ws, [[valor]], {origin:{r:2,c:coluna}}));
+    DIAS.forEach((dia,di)=>{
+      XLSX.utils.sheet_add_aoa(ws, [[dia]], {origin:{r:1,c:5+di}, cellDates:true});
+      XLSX.utils.sheet_add_aoa(ws, [[DIA_SEMANA_MODELO[dia.getDay()]]], {origin:{r:2,c:5+di}});
+    });
+    for(let di=DIAS.length; di<31; di++){
+      XLSX.utils.sheet_add_aoa(ws, [['']], {origin:{r:1,c:5+di}});
+      XLSX.utils.sheet_add_aoa(ws, [['']], {origin:{r:2,c:5+di}});
+    }
+
+    ativos.forEach(({f,ei},indice)=>{
+      const linha = primeiraLinhaDados + indice;
+      const valores = [f.nome.toUpperCase(), funcaoModeloDsr(f), (f.localidade||'').toUpperCase(), (f.uf||'').toUpperCase(), (f.gestor||'').toUpperCase()];
+      DIAS.forEach((_,di)=>{
+        const celula = grid[ei][di];
+        let valor = EXPORTA[celula.st] || celula.st;
+        if(celula.he>0) valor += ` +${celula.he}H HE`;
+        if(celula.plantao>0) valor += ` +${celula.plantao}H PLANTÃO`;
+        valores.push(valor);
+      });
+      XLSX.utils.sheet_add_aoa(ws, [valores], {origin:{r:linha-1,c:0}});
+    });
+
+    const ultimaColuna = 5 + Math.max(0, DIAS.length-1);
+    const ultimaLinha = Math.max(3, primeiraLinhaDados + ativos.length - 1);
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:ultimaLinha-1,c:ultimaColuna}});
+    ws['!autofilter'] = {ref:XLSX.utils.encode_range({s:{r:2,c:0},e:{r:ultimaLinha-1,c:ultimaColuna}})};
+    ws['!freeze'] = {xSplit:5, ySplit:3, topLeftCell:'F4', activePane:'bottomRight', state:'frozen'};
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DSR VOLANTE');
+    XLSX.writeFile(wb, `Escala_DSR_Volante_${periodoKeyAtual()}.xlsx`, {cellStyles:true});
+  }catch(erro){
+    console.error('Falha ao exportar a escala no modelo oficial:', erro);
+    alert('Não foi possível carregar o modelo oficial da planilha. Atualize a página e tente novamente.');
+  }
 }
 
 /* ================= INICIALIZAÇÃO ================= */
