@@ -10,7 +10,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const PORT = Number(process.env.PORT || process.env.WPP_PORT || 8788);
 const CORS_ORIGIN = process.env.WPP_CORS_ORIGIN || '*';
 const CLIENT_ID = process.env.WPP_CLIENT_ID || 'jarvis';
-const AUTH_DIR = process.env.WPP_AUTH_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, '.wwebjs_auth') : path.join(__dirname, '.wwebjs_auth'));
+const AUTH_DIR = process.env.WPP_AUTH_DIR || path.join(__dirname, '.wwebjs_auth');
 
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 
@@ -170,14 +170,21 @@ async function startClient() {
       }
     });
   });
-  client.on('auth_failure', msg => setStatus('auth_failure', { lastError: String(msg || 'Falha de autenticação') }));
-  client.on('disconnected', reason => setStatus('disconnected', { lastError: String(reason || 'Sessão desconectada') }));
+  client.on('auth_failure', msg => {
+    setStatus('auth_failure', { lastError: String(msg || 'Falha de autenticação') });
+    scheduleRestart(3000);
+  });
+  client.on('disconnected', reason => {
+    setStatus('disconnected', { lastError: String(reason || 'Sessão desconectada') });
+    scheduleRestart(3000);
+  });
   client.on('message', async message => {
     state.unread += 1;
     touch();
     broadcast('message', { message: await summarizeMessage(message) });
   });
   client.on('message_create', async message => {
+    if (!message.fromMe) return;
     touch();
     broadcast('message_create', { message: await summarizeMessage(message) });
   });
@@ -195,12 +202,22 @@ async function startClient() {
 // whatsapp-web.js throw outside any try/catch we control. Without these handlers
 // that throw would kill the whole process instead of just failing the connection.
 let restartTimer = null;
+async function restartClient() {
+  const oldClient = client;
+  client = null;
+  initializing = false;
+  if (oldClient) {
+    oldClient.removeAllListeners();
+    await oldClient.destroy().catch(() => {});
+  }
+  contactCache.clear();
+  await startClient();
+}
 function scheduleRestart(delayMs = 5000) {
   if (restartTimer) return;
-  restartTimer = setTimeout(() => {
+  restartTimer = setTimeout(async () => {
     restartTimer = null;
-    initializing = false;
-    startClient();
+    await restartClient();
   }, delayMs);
 }
 process.on('uncaughtException', err => {
@@ -220,8 +237,9 @@ app.get('/api/status', (_req, res) => res.json(publicState()));
 
 app.post('/api/restart', async (_req, res) => {
   try {
-    if (client) await client.destroy().catch(() => {});
-    await startClient();
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = null;
+    await restartClient();
     res.json(publicState());
   } catch (err) {
     res.status(500).json({ error: err.message });
