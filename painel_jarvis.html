@@ -1502,6 +1502,10 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rede-cnt{display:inline-block;background:rgba(0,0,0,.12);border-radius:99px;padding:0 5px;font-size:9px;font-weight:700;min-width:16px;text-align:center;margin-left:3px;line-height:15px;vertical-align:middle}
 .rede-sgbtn.on .rede-cnt{background:rgba(255,255,255,.22)}
 .rede-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+/* #rde-kpis tem 5 cartões (MTTR, Projeção MTTR, Prazo, Outlier, TME/TMR) — todos numa linha
+   só em telas largas; volta a quebrar em telas menores pra não espremer os números. */
+#rde-kpis{grid-template-columns:repeat(5,1fr)}
+@media(max-width:1180px){#rde-kpis{grid-template-columns:repeat(3,1fr)}}
 .rede-kpi-card{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);padding:16px}
 .rede-kpi-card .rkl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:4px}
 .rede-kpi-card .rkv{font-size:26px;font-weight:700;line-height:1;margin:4px 0 2px}
@@ -1523,7 +1527,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rede-report-box .rr-para{margin-bottom:6px}
 .rede-report-box b{color:var(--tx)}
 .rr-ok{color:#34c759;font-weight:600}.rr-wn{color:#ff9500;font-weight:600}.rr-bd{color:#ff3b30;font-weight:600}
-@media(max-width:720px){.rede-kpi-grid{grid-template-columns:1fr}.rede-charts-2{grid-template-columns:1fr}}
+@media(max-width:720px){.rede-kpi-grid,#rde-kpis{grid-template-columns:1fr}.rede-charts-2{grid-template-columns:1fr}}
 @media(max-width:600px){.rede-krow{grid-template-columns:1fr}.rede-sgrid{grid-template-columns:1fr}.rede-meta-info{grid-template-columns:1fr}}
 
 /* ─── FILTROS TABELA VEÍCULOS ─── */
@@ -7221,22 +7225,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </button>
         </div>
       </div>
-      <!-- MTTR (contador combinado Acesso+Backbone, com expurgo já descontado) -->
-      <div class="rede-section-title" style="margin-top:0">MTTR — Tempo Médio de Reparo (mês atual)</div>
-      <div class="rede-kpi-grid" style="grid-template-columns:repeat(2,1fr)">
-        <div class="rede-kpi-card">
-          <div class="rkl">MTTR do mês (Acesso + Backbone)</div>
-          <div class="rkv" id="rde-mttr-val">–</div>
-          <div class="rkmeta" id="rde-mttr-sub"></div>
-        </div>
-        <div class="rede-kpi-card">
-          <div class="rkl">Projeção do MTTR (fim do mês)</div>
-          <div class="rkv" id="rde-mttr-proj">–</div>
-          <div class="rkmeta" id="rde-mttr-proj-sub"></div>
-        </div>
-      </div>
-
-      <!-- KPI cards -->
+      <!-- KPI cards (Prazo/Outlier/TME-TMR + MTTR/Projeção, todos numa linha só) -->
       <div class="rede-kpi-grid" id="rde-kpis"></div>
 
       <!-- ── 4 Analytics Sections ── -->
@@ -16788,26 +16777,6 @@ function rdeComputeMttr(){
   const hoje=new Date(),diaAtual=hoje.getDate(),diasNoMes=new Date(hoje.getFullYear(),hoje.getMonth()+1,0).getDate();
   return{n:validos.length,total:flat.length,expurgados,avg:+avg.toFixed(2),diaAtual,diasNoMes};
 }
-function rdeRenderMttr(){
-  const valEl=document.getElementById('rde-mttr-val'),subEl=document.getElementById('rde-mttr-sub');
-  const projEl=document.getElementById('rde-mttr-proj'),projSubEl=document.getElementById('rde-mttr-proj-sub');
-  if(!valEl||!projEl)return;
-  const m=rdeComputeMttr();
-  const mesNome=new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-  if(!m.n){
-    valEl.textContent='–';valEl.className='rkv';projEl.textContent='–';projEl.className='rkv';
-    if(subEl)subEl.textContent='Sem chamados fechados em '+mesNome+' ainda.';
-    if(projSubEl)projSubEl.textContent='';
-    return;
-  }
-  const cls=m.avg<=RDE_MTME?'ok':m.avg<=RDE_MTME*1.5?'wn':'bd';
-  valEl.textContent=m.avg.toFixed(2)+'h';
-  valEl.className='rkv '+cls;
-  projEl.textContent=m.avg.toFixed(2)+'h';
-  projEl.className='rkv '+cls;
-  if(subEl)subEl.textContent=m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+' · meta ≤'+RDE_MTME+'h';
-  if(projSubEl)projSubEl.textContent='Ritmo até o dia '+m.diaAtual+' de '+m.diasNoMes+' de '+mesNome;
-}
 function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
 function rdePeriodClick(p){rdePeriod=rdePeriod.includes(p)?rdePeriod.filter(x=>x!==p):[...rdePeriod,p];rdeCallsOnRender=true;rdeSyncControls();renderRede();rdeSaveUI();}
@@ -17238,7 +17207,6 @@ function renderRede(){
   const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
   const gk=rdePKey();
   rdeSyncControls();
-  rdeRenderMttr();
   const thTme=document.getElementById('rde-th-tme');if(thTme)thTme.textContent=tl;
   // KPIs
   const kpiEl=document.getElementById('rde-kpis');
@@ -17250,7 +17218,18 @@ function renderRede(){
     const pGap=a.prazo>=RDE_M89?'✓ dentro da meta':'▼ '+(RDE_M89-a.prazo).toFixed(1)+' p.p. abaixo';
     const oGap=a.outlier<=RDE_MOUT?'✓ dentro da meta':'▲ '+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima';
     const tGap=a.tAvg<=RDE_MTME?'✓ dentro da meta':'▲ '+(a.tAvg-RDE_MTME).toFixed(2)+'h acima';
+    // MTTR + Projeção do MTTR entram nos mesmos 5 cartões da linha, à esquerda dos 3 já
+    // existentes (Prazo/Outlier/TME-TMR) — mesmo visual (rkl/rkv/rkmeta/rkgap/rkbar).
+    const m=rdeComputeMttr();
+    const mCls=m.n?(m.avg<=RDE_MTME?'ok':m.avg<=RDE_MTME*1.5?'wn':'bd'):'';
+    const mGap=m.n?(m.avg<=RDE_MTME?'✓ dentro da meta':'▲ '+(m.avg-RDE_MTME).toFixed(2)+'h acima'):'';
+    const mBar=m.n?`<div class="rkbar"><div class="rkfill" style="width:${Math.min(m.avg/RDE_MTME/2*100,100).toFixed(0)}%;background:${c3(mCls)}"></div></div>`:'';
+    const mesNome=new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    const mttrMeta=m.n?(m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+' · meta ≤'+RDE_MTME+'h'):('Sem chamados em '+mesNome+' ainda');
+    const projMeta=m.n?('Ritmo até o dia '+m.diaAtual+' de '+m.diasNoMes+' de '+mesNome):'';
     kpiEl.innerHTML=
+      `<div class="rede-kpi-card"><div class="rkl">MTTR do mês</div><div class="rkv ${mCls}">${m.n?m.avg.toFixed(2)+'h':'–'}</div><div class="rkmeta">${mttrMeta}</div><div class="rkgap ${mCls}">${mGap}</div>${mBar}</div>`+
+      `<div class="rede-kpi-card"><div class="rkl">Projeção MTTR (fim do mês)</div><div class="rkv ${mCls}">${m.n?m.avg.toFixed(2)+'h':'–'}</div><div class="rkmeta">${projMeta}</div><div class="rkgap ${mCls}">${mGap}</div>${mBar}</div>`+
       `<div class="rede-kpi-card"><div class="rkl">Prazo</div><div class="rkv ${pCls}">${a.prazo.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.p===1).length} de ${a.n} · meta ≥${RDE_M89}%</div><div class="rkgap ${pCls}">${pGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.prazo,100).toFixed(0)}%;background:${c3(pCls)}"></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">Outlier</div><div class="rkv ${oCls}">${a.outlier.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.o===1).length} de ${a.n} · meta ≤${RDE_MOUT}%</div><div class="rkgap ${oCls}">${oGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.outlier/10*100,100).toFixed(0)}%;background:${c3(oCls)}"></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">${tl} médio</div><div class="rkv ${tCls}">${a.tAvg.toFixed(2)}h</div><div class="rkmeta">mediana ${a.tMed.toFixed(2)}h · meta ≤${RDE_MTME}h</div><div class="rkgap ${tCls}">${tGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.tAvg/RDE_MTME/2*100,100).toFixed(0)}%;background:${c3(tCls)}"></div></div></div>`;
