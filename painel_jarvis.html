@@ -7221,6 +7221,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </button>
         </div>
       </div>
+      <!-- MTTR (contador combinado Acesso+Backbone, com expurgo já descontado) -->
+      <div class="rede-section-title" style="margin-top:0">MTTR — Tempo Médio de Reparo (mês atual)</div>
+      <div class="rede-kpi-grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="rede-kpi-card">
+          <div class="rkl">MTTR do mês (Acesso + Backbone)</div>
+          <div class="rkv" id="rde-mttr-val">–</div>
+          <div class="rkmeta" id="rde-mttr-sub"></div>
+        </div>
+        <div class="rede-kpi-card">
+          <div class="rkl">Projeção do MTTR (fim do mês)</div>
+          <div class="rkv" id="rde-mttr-proj">–</div>
+          <div class="rkmeta" id="rde-mttr-proj-sub"></div>
+        </div>
+      </div>
+
       <!-- KPI cards -->
       <div class="rede-kpi-grid" id="rde-kpis"></div>
 
@@ -7334,7 +7349,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="rede-cbx" style="padding:0;overflow-x:auto;max-height:440px;overflow-y:auto">
           <table class="rede-dtable" style="font-size:11px">
-            <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th class="rede-num">TME/TMR</th><th style="text-align:center">Prazo</th><th style="text-align:center">Outlier</th><th class="rede-num">Excedente</th><th>Causa</th><th>Criticidade</th></tr></thead>
+            <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th class="rede-num">TME/TMR</th><th style="text-align:center">Prazo</th><th style="text-align:center">Outlier</th><th class="rede-num">Excedente</th><th>Causa</th><th>Criticidade</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
             <tbody id="rde-calls-body"></tbody>
           </table>
         </div>
@@ -9625,7 +9640,7 @@ function shouldApplyRemoteState(st){
   if(remoteAt&&remoteAt>=localAt)return true;
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
-function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||''}}
+function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||'',expurgo:rdeExpurgo||{}}}
 /* fuelRFilter.q/fuelVFilter.placa/condutor são caixas de busca por texto livre — nunca
    devem ir pro estado sincronizado (senão um termo digitado por qualquer usuário passa
    a filtrar a tabela de TODOS os outros, já que o estado é compartilhado). Já aconteceu
@@ -16509,6 +16524,18 @@ const RDE_M89_DEF=85,RDE_MOUT_DEF=4.9,RDE_MTME_DEF=6.0;
 let RDE_M89=RDE_M89_DEF,RDE_MOUT=RDE_MOUT_DEF,RDE_MTME=RDE_MTME_DEF;
 let rdeModo='m',rdeSelMonth='',rdeSelWeek='',rdeActiveView='bb',rdeCharts={};
 let rdeTab='ACESSO',rdeGran='all',rdePeriod=[],rdeCluster=[],rdeYear=[],rdeCallsOnRender=false,rdeLineCh2=null,rdeTimeCh2=null,rdeCauseCh2=null,rdeCityCh2=null;
+/* Chamados marcados como expurgo (excluídos do cálculo do MTTR) — chave "ac:<os>" ou
+   "bb:<os>" (kind+OS/ID do chamado), pra nunca colidir entre Acesso e Backbone mesmo se
+   os números de OS se repetirem entre os dois sistemas. Só entra {chave:true}; desmarcar
+   remove a chave (nunca fica {chave:false} salvo à toa). Sincroniza entre dispositivos
+   junto com o resto do estado da Rede (buildRedeState()/rdeApplyStoredState()), igual à
+   base de dados — não é uma configuração só deste aparelho. */
+let rdeExpurgo={};
+/* Lista atualmente exibida em #rde-calls-body, na mesma ordem renderizada — usada pelo
+   checkbox de expurgo de cada linha pra achar o registro certo por índice, sem precisar
+   escapar OS/ID (que vem de planilha e pode ter aspas/caracteres especiais) dentro de um
+   atributo onclick. */
+let rdeCallsShown=[];
 const REDE_STORAGE='atrix:rede:bases:v2';
 const REDE_UI_KEY='atrix:rede:ui:v1';
 function rdeNk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase()}
@@ -16577,7 +16604,7 @@ function rdeApplyRows(rows,fileName){
   if(bb.length)rdeBD=bb;if(ac.length)rdeAD=ac;
   const _now=new Date();
   rdeBaseFile=fileName||'';rdeBaseAt=_now.toISOString();
-  const st={version:3,BD:rdeBD,AD:rdeAD,fileName:rdeBaseFile,M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt};
+  const st={version:3,BD:rdeBD,AD:rdeAD,fileName:rdeBaseFile,M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt,expurgo:rdeExpurgo};
   idbSet(REDE_STORAGE,st).catch(e=>console.warn('rede IndexedDB save',e));
   try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
   const fn=document.getElementById('rede-fname');if(fn)fn.textContent=fileName;
@@ -16600,6 +16627,7 @@ function rdeApplyStoredState(st){
   if(Array.isArray(st.AD))rdeAD=st.AD;
   if(Object.prototype.hasOwnProperty.call(st,'fileName'))rdeBaseFile=st.fileName||'';
   if(Object.prototype.hasOwnProperty.call(st,'at'))rdeBaseAt=st.at||'';
+  if(st.expurgo&&typeof st.expurgo==='object')rdeExpurgo=st.expurgo;
   const fn=document.getElementById('rede-fname');if(fn)fn.textContent=st.fileName||'';
   const ts=document.getElementById('rede-ts-text');if(ts)ts.textContent=st.at?'Anexado '+new Date(st.at).toLocaleDateString('pt-BR')+' '+new Date(st.at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
   rdeShowDash();
@@ -16716,6 +16744,69 @@ function rdeGetPreClusterRecs(){const flat=rdeGetAllFlat();const gk=rdePKey();re
 function rdeGetDisplayRecs(){let recs=rdeGetPreClusterRecs();if(rdeCluster.length)recs=recs.filter(r=>rdeClFilter(r.cl));return recs;}
 function rdeAgg2(recs){const n=recs.length;if(!n)return{n:0,prazo:0,outlier:0,tAvg:0,tMed:0};const p=recs.filter(r=>r.p===1).length,o=recs.filter(r=>r.o===1).length;const ts=recs.map(r=>r.t).filter(t=>t>0).sort((a,b)=>a-b);const tAvg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;const tMed=ts.length?(ts.length%2?ts[(ts.length-1)/2]:(ts[ts.length/2-1]+ts[ts.length/2])/2):0;return{n,prazo:p/n*100,outlier:o/n*100,tAvg,tMed};}
 function rdeChipHtml(a){if(!a.n)return'<span class="rede-chip">—</span>';if(a.prazo>=RDE_M89&&a.outlier<=RDE_MOUT&&a.tAvg<=RDE_MTME)return'<span class="rede-chip ok">na meta</span>';return(a.prazo<75||a.outlier>15)?'<span class="rede-chip bd">crítico</span>':'<span class="rede-chip wn">atenção</span>';}
+/* ================= MTTR (Acesso + Backbone combinados, com expurgo) =================
+   Chave estável do chamado pra marcar/consultar expurgo — usa o OS/ID gravado no detail
+   (rdeCompactDetail), prefixado pelo escopo (ac/bb) pra nunca colidir entre os dois
+   sistemas. Retorna null se o chamado não tem OS/ID (não dá pra marcar com segurança —
+   marcaria qualquer outro chamado sem OS junto). */
+function rdeChaveExpurgo(r){
+  const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:null;
+  const os=det?String(det.os||det.id||'').trim():'';
+  return os?(r._scope+':'+os):null;
+}
+function rdeCurrentMonthKey(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');}
+/* Todos os chamados (Acesso+Backbone) do mês corrente (mês de abertura, mesma referência
+   já usada pelos gráficos "por mês" do painel), respeitando o cluster liberado pro usuário
+   e o filtro de Cluster selecionado na tela — mas NUNCA a aba ACESSO/BACKBONE/AMBOS nem o
+   filtro de Período/Granularidade, já que o MTTR é um contador fixo "mês atual, os dois
+   tipos juntos", independente do que estiver selecionado nos gráficos abaixo. */
+function rdeMttrFlat(){
+  let out=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
+  const cl=userAllowedClusters();
+  if(cl)out=out.filter(r=>cl.includes(r.cl));
+  out=out.filter(r=>rdeClFilter(r.cl));
+  const mk=rdeCurrentMonthKey();
+  return out.filter(r=>r.m===mk);
+}
+/* MTTR = tempo médio de reparo do mês corrente, unificando TME (Acesso) e TMR (Backbone)
+   numa única média — os chamados marcados como expurgo (rdeExpurgo) são excluídos tanto do
+   somatório quanto da contagem, exatamente como pedido: "quando estiver com a opção
+   expurgo marcada o TME ou TMR não entram no cálculo do MTTR". A "projeção do mês" é o
+   próprio MTTR calculado com os chamados fechados até agora — a leitura é "se o ritmo
+   atual se mantiver, essa é a média esperada no fechamento do mês" (não há como projetar
+   uma média por volume/dias sem inventar peso arbitrário: multiplicar dias já cancela
+   matematicamente numerador e denominador e devolve o mesmo valor). O contexto de "dias x
+   o que falta pro fim do mês" fica exposto como texto de apoio (dia atual/dias do mês),
+   não como fator multiplicador da média. */
+function rdeComputeMttr(){
+  const flat=rdeMttrFlat();
+  const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
+  const expurgados=flat.length-validos.length;
+  const ts=validos.map(r=>r.t).filter(t=>t>0);
+  const avg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;
+  const hoje=new Date(),diaAtual=hoje.getDate(),diasNoMes=new Date(hoje.getFullYear(),hoje.getMonth()+1,0).getDate();
+  return{n:validos.length,total:flat.length,expurgados,avg:+avg.toFixed(2),diaAtual,diasNoMes};
+}
+function rdeRenderMttr(){
+  const valEl=document.getElementById('rde-mttr-val'),subEl=document.getElementById('rde-mttr-sub');
+  const projEl=document.getElementById('rde-mttr-proj'),projSubEl=document.getElementById('rde-mttr-proj-sub');
+  if(!valEl||!projEl)return;
+  const m=rdeComputeMttr();
+  const mesNome=new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  if(!m.n){
+    valEl.textContent='–';valEl.className='rkv';projEl.textContent='–';projEl.className='rkv';
+    if(subEl)subEl.textContent='Sem chamados fechados em '+mesNome+' ainda.';
+    if(projSubEl)projSubEl.textContent='';
+    return;
+  }
+  const cls=m.avg<=RDE_MTME?'ok':m.avg<=RDE_MTME*1.5?'wn':'bd';
+  valEl.textContent=m.avg.toFixed(2)+'h';
+  valEl.className='rkv '+cls;
+  projEl.textContent=m.avg.toFixed(2)+'h';
+  projEl.className='rkv '+cls;
+  if(subEl)subEl.textContent=m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+' · meta ≤'+RDE_MTME+'h';
+  if(projSubEl)projSubEl.textContent='Ritmo até o dia '+m.diaAtual+' de '+m.diasNoMes+' de '+mesNome;
+}
 function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
 function rdePeriodClick(p){rdePeriod=rdePeriod.includes(p)?rdePeriod.filter(x=>x!==p):[...rdePeriod,p];rdeCallsOnRender=true;rdeSyncControls();renderRede();rdeSaveUI();}
@@ -17146,6 +17237,7 @@ function renderRede(){
   const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
   const gk=rdePKey();
   rdeSyncControls();
+  rdeRenderMttr();
   const thTme=document.getElementById('rde-th-tme');if(thTme)thTme.textContent=tl;
   // KPIs
   const kpiEl=document.getElementById('rde-kpis');
@@ -17275,13 +17367,31 @@ function rdeShowCalls(title,flatRecs){
     return parts.length?parts.join(' · '):'—';
   };
   const sorted=[...flatRecs].sort((a,b)=>{const sa=(a.o===1?2:0)+(a.p===0?1:0),sb=(b.o===1?2:0)+(b.p===0?1:0);return sb-sa;});
-  tbody.innerHTML=sorted.map(r=>{
+  rdeCallsShown=sorted;
+  tbody.innerHTML=sorted.map((r,i)=>{
     const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
     const os=String(det.os||det.id||'—'),uf=String(det.uf||'—'),cr=crCls(r);
-    return`<tr><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(excCell(r))}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl(r)}</span></td></tr>`;
-  }).join('')||`<tr><td colspan="10" class="rede-dmuted">Sem chamados para exibir.</td></tr>`;
+    const chave=rdeChaveExpurgo(r),marcado=!!(chave&&rdeExpurgo[chave]);
+    const expCell=chave
+      ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="rdeToggleExpurgo(${i})"></label>`
+      :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
+    return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(excCell(r))}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl(r)}</span></td><td style="text-align:center">${expCell}</td></tr>`;
+  }).join('')||`<tr><td colspan="11" class="rede-dmuted">Sem chamados para exibir.</td></tr>`;
   el.style.display='block';
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+/* Marca/desmarca expurgo de um chamado exibido na lista de chamados (índice dentro de
+   rdeCallsShown, a mesma ordem renderizada — evita ter que escapar OS/ID vindo de
+   planilha dentro de um atributo onclick). Recalcula tudo (KPIs, MTTR, gráficos) mantendo
+   a lista de chamados aberta na mesma view, já que renderRede() por padrão fecha o painel
+   de chamados quando não foi disparado por um clique de período/gráfico. */
+function rdeToggleExpurgo(i){
+  const r=rdeCallsShown&&rdeCallsShown[i];if(!r)return;
+  const chave=rdeChaveExpurgo(r);if(!chave)return;
+  if(rdeExpurgo[chave])delete rdeExpurgo[chave];else rdeExpurgo[chave]=true;
+  rdeCallsOnRender=true;
+  renderRede();
+  saveState();
 }
 loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 /* boot via URL params */
