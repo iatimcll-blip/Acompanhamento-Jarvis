@@ -7321,6 +7321,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="rede-cbx" style="min-height:260px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-city-ch"></canvas></div>
         <div class="rede-cbx" style="min-height:260px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-cause-ch"></canvas></div>
       </div>
+      <!-- Atenuação (bloco fixo, sempre visível — respeita a aba/cluster/período atuais) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+        <div class="rede-section-title" style="margin:0">Chamados — Causa: Atenuação</div>
+        <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-atenuacao-box'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
+      <div class="rede-sub" id="rde-atenuacao-sub">Chamados com causa relacionada a atenuação de sinal.</div>
+      <div class="rede-cbx" id="rde-atenuacao-box" style="padding:0;overflow-x:auto;max-height:360px;overflow-y:auto">
+        <table class="rede-dtable" style="font-size:11px">
+          <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th class="rede-num">TME/TMR</th><th style="text-align:center">Prazo</th><th style="text-align:center">Outlier</th><th class="rede-num">Excedente</th><th>Causa</th><th>Criticidade</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
+          <tbody id="rde-atenuacao-body"></tbody>
+        </table>
+      </div>
       <!-- Executive Report -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
         <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
@@ -17318,6 +17330,7 @@ function renderRede(){
       (topCity&&topCity.score>0?`<div class="rr-para"><b>Cidade mais ofensora:</b> ${eh(topCity.k)} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.</div>`:'')+
       (topCause&&topCause.fp+topCause.ou>0?`<div class="rr-para"><b>Causa dominante:</b> ${eh(topCause.k)} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.</div>`:'');
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados para o período selecionado.</span>';}
+  rdeRenderAtenuacao(recs);
   // Calls panel: show if triggered by period/chart click, hide otherwise
   const _ce=document.getElementById('rde-calls');
   if(rdeCallsOnRender){
@@ -17330,33 +17343,37 @@ function renderRede(){
   const recsForAnalytics=rdeCluster.length?allFlat.filter(r=>rdeClFilter(r.cl)):allFlat;
   rde4RenderAll(recsForAnalytics);
 }
-function rdeShowCalls(title,flatRecs){
-  const el=document.getElementById('rde-calls'),tbody=document.getElementById('rde-calls-body'),tit=document.getElementById('rde-calls-title');
-  if(!el||!tbody)return;
-  if(tit)tit.textContent=title+' ('+flatRecs.length+' chamado'+(flatRecs.length===1?'':'s')+')';
-  const crCls=r=>{if(r.o===1)return'bd';if(r.p===0)return'wn';return'ok';};
-  const crLbl=r=>{if(r.o===1&&r.p===0)return'Crítico';if(r.o===1)return'Outlier';if(r.p===0)return'Fora do Prazo';return'No Prazo';};
+/* Gera o <tr> de um chamado — usado tanto pela lista sob demanda (rde-calls, aberta por
+   clique num período/gráfico) quanto pelo bloco fixo de causa específica (Atenuação, sempre
+   visível). toggleFn é o nome da função global que o checkbox de Expurgo chama ao mudar —
+   cada lista guarda seu próprio array de índices (rdeCallsShown / rdeAtenuacaoShown), pra
+   nunca embaralhar o índice de uma lista com o da outra. */
+function rdeCallRowHtml(r,i,toggleFn){
+  const cr=r.o===1?'bd':r.p===0?'wn':'ok';
+  const crLbl=r.o===1&&r.p===0?'Crítico':r.o===1?'Outlier':r.p===0?'Fora do Prazo':'No Prazo';
   /* Excedente: quanto o chamado passou da referência de cada indicador — Prazo usa a
      meta TMR/TME configurada (RDE_MTME); Outlier usa 24h, o mesmo limite que o código
      já usa internamente quando precisa classificar outlier a partir do tempo bruto. */
   const RDE_OUT_H=24;
-  const excCell=r=>{
-    const parts=[];
-    if(r.p===0&&r.t>0)parts.push('Prazo +'+Math.max(0,r.t-RDE_MTME).toFixed(2)+'h');
-    if(r.o===1&&r.t>0)parts.push('Outlier +'+Math.max(0,r.t-RDE_OUT_H).toFixed(2)+'h');
-    return parts.length?parts.join(' · '):'—';
-  };
+  const excParts=[];
+  if(r.p===0&&r.t>0)excParts.push('Prazo +'+Math.max(0,r.t-RDE_MTME).toFixed(2)+'h');
+  if(r.o===1&&r.t>0)excParts.push('Outlier +'+Math.max(0,r.t-RDE_OUT_H).toFixed(2)+'h');
+  const exc=excParts.length?excParts.join(' · '):'—';
+  const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
+  const os=String(det.os||det.id||'—'),uf=String(det.uf||'—');
+  const chave=rdeChaveExpurgo(r),marcado=!!(chave&&rdeExpurgo[chave]);
+  const expCell=chave
+    ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="${toggleFn}(${i})"></label>`
+    :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
+  return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(exc)}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl}</span></td><td style="text-align:center">${expCell}</td></tr>`;
+}
+function rdeShowCalls(title,flatRecs){
+  const el=document.getElementById('rde-calls'),tbody=document.getElementById('rde-calls-body'),tit=document.getElementById('rde-calls-title');
+  if(!el||!tbody)return;
+  if(tit)tit.textContent=title+' ('+flatRecs.length+' chamado'+(flatRecs.length===1?'':'s')+')';
   const sorted=[...flatRecs].sort((a,b)=>{const sa=(a.o===1?2:0)+(a.p===0?1:0),sb=(b.o===1?2:0)+(b.p===0?1:0);return sb-sa;});
   rdeCallsShown=sorted;
-  tbody.innerHTML=sorted.map((r,i)=>{
-    const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
-    const os=String(det.os||det.id||'—'),uf=String(det.uf||'—'),cr=crCls(r);
-    const chave=rdeChaveExpurgo(r),marcado=!!(chave&&rdeExpurgo[chave]);
-    const expCell=chave
-      ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="rdeToggleExpurgo(${i})"></label>`
-      :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
-    return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(excCell(r))}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl(r)}</span></td><td style="text-align:center">${expCell}</td></tr>`;
-  }).join('')||`<tr><td colspan="11" class="rede-dmuted">Sem chamados para exibir.</td></tr>`;
+  tbody.innerHTML=sorted.map((r,i)=>rdeCallRowHtml(r,i,'rdeToggleExpurgo')).join('')||`<tr><td colspan="11" class="rede-dmuted">Sem chamados para exibir.</td></tr>`;
   el.style.display='block';
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -17370,6 +17387,32 @@ function rdeToggleExpurgo(i){
   const chave=rdeChaveExpurgo(r);if(!chave)return;
   if(rdeExpurgo[chave])delete rdeExpurgo[chave];else rdeExpurgo[chave]=true;
   rdeCallsOnRender=true;
+  renderRede();
+  saveState();
+}
+/* ================= BLOCO FIXO: CHAMADOS COM CAUSA DE ATENUAÇÃO =================
+   Diferente de rde-calls (só aparece sob demanda, ao clicar num período/gráfico), este
+   bloco fica sempre visível e sempre atualizado a cada renderRede() — mostra todos os
+   chamados cuja causa contém "ATENUA" (normalizado via rdeNk: sem acento, maiúsculas),
+   cobrindo variações como "Ajuste de Atenuação" ou "Atenuação de Sinal" vindas da planilha.
+   Usa os mesmos `recs` já filtrados por aba/cluster/período no topo de renderRede(), então
+   respeita os filtros correntes do painel como o resto das seções. */
+function rdeAtenuacaoRecs(recs){
+  return recs.filter(r=>rdeNk(r.c).includes('ATENUA'));
+}
+let rdeAtenuacaoShown=[];
+function rdeRenderAtenuacao(recs){
+  const tbody=document.getElementById('rde-atenuacao-body'),sub=document.getElementById('rde-atenuacao-sub');
+  if(!tbody)return;
+  const filtrados=rdeAtenuacaoRecs(recs).sort((a,b)=>{const sa=(a.o===1?2:0)+(a.p===0?1:0),sb=(b.o===1?2:0)+(b.p===0?1:0);return sb-sa;});
+  rdeAtenuacaoShown=filtrados;
+  if(sub)sub.textContent=filtrados.length+' chamado'+(filtrados.length!==1?'s':'')+' com causa relacionada a atenuação de sinal, no filtro atual.';
+  tbody.innerHTML=filtrados.map((r,i)=>rdeCallRowHtml(r,i,'rdeToggleExpurgoAtenuacao')).join('')||`<tr><td colspan="11" class="rede-dmuted">Nenhum chamado com causa de atenuação no filtro atual.</td></tr>`;
+}
+function rdeToggleExpurgoAtenuacao(i){
+  const r=rdeAtenuacaoShown&&rdeAtenuacaoShown[i];if(!r)return;
+  const chave=rdeChaveExpurgo(r);if(!chave)return;
+  if(rdeExpurgo[chave])delete rdeExpurgo[chave];else rdeExpurgo[chave]=true;
   renderRede();
   saveState();
 }
