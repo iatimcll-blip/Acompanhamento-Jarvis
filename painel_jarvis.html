@@ -9491,7 +9491,13 @@ function fmtDay(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(
 function workWindow(d){const day=d.getDay();if(day===0||holidaySet(d.getFullYear()).has(fmtDay(d)))return null;const start=new Date(d.getFullYear(),d.getMonth(),d.getDate(),8,0,0,0);const end=day===6?new Date(d.getFullYear(),d.getMonth(),d.getDate(),12,0,0,0):new Date(d.getFullYear(),d.getMonth(),d.getDate(),18,0,0,0);return{start,end}}
 function businessHoursBetween(start,end){if(!start||!end||end<=start)return 0;let total=0,cur=new Date(start.getFullYear(),start.getMonth(),start.getDate());const guard=new Date(end.getFullYear(),end.getMonth(),end.getDate());for(let i=0;cur<=guard&&i<3700;i++,cur=addDays(cur,1)){const w=workWindow(cur);if(!w)continue;const a=new Date(Math.max(start,w.start)),b=new Date(Math.min(end,w.end));if(b>a)total+=(b-a)/3600000}return Math.max(0,total)}
 function slaActiveHoursBetween(start,end,d){if(!start||!end||end<=start)return 0;if(isSwapRepair(d))return Math.max(0,(end-start)/3600000);let total=0,cur=new Date(start.getFullYear(),start.getMonth(),start.getDate());const guard=new Date(end.getFullYear(),end.getMonth(),end.getDate());for(let i=0;cur<=guard&&i<3700;i++,cur=addDays(cur,1)){const a0=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),0,0,0,0),a1=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),18,0,0,0);const a=new Date(Math.max(start,a0)),b=new Date(Math.min(end,a1));if(b>a)total+=(b-a)/3600000}return Math.max(0,total)}
-function computeSlaHours(d,now=new Date()){if(d.dynamicSheetSla){const base=Number(d.sheetSlaH??d.originalSlaH??d.slaH??0);const anchor=parseOpeningDate(d.slaBaseAt)||now;const end=isPausedSubstatus(d.substatus)?(d.pauseStart||anchor):now;return Math.max(0,base+slaActiveHoursBetween(anchor,end,d))}if(!d.openedAt)return d.originalSlaH||d.slaLimitH||0;if(isOperatorClient(d))return Math.max(0,(now-d.openedAt)/3600000);const base=businessHoursBetween(d.openedAt,now);const paused=Number(d.pausedBusinessH||0)+(d.pauseStart?businessHoursBetween(d.pauseStart,now):0);return Math.max(0,base-paused)}
+/* Fora do modo dynamicSheetSla (sem SLA vindo de planilha — caso da base "BASE ABERTA", que
+   não tem SLA numérico pré-calculado), chamados CMO - Reparo Swap também precisam do relógio
+   corrido de 24h, igual clientes operadora — antes só o ramo dynamicSheetSla (via
+   slaActiveHoursBetween) tratava isSwapRepair(); nos formatos antigos isso nunca aparecia porque
+   a planilha sempre trazia um SLA pronto (dynamicSheetSla ficava true pra todo mundo, inclusive
+   Swap), mas pra uma base sem esse campo o Swap caía por engano no cálculo de horário comercial. */
+function computeSlaHours(d,now=new Date()){if(d.dynamicSheetSla){const base=Number(d.sheetSlaH??d.originalSlaH??d.slaH??0);const anchor=parseOpeningDate(d.slaBaseAt)||now;const end=isPausedSubstatus(d.substatus)?(d.pauseStart||anchor):now;return Math.max(0,base+slaActiveHoursBetween(anchor,end,d))}if(!d.openedAt)return d.originalSlaH||d.slaLimitH||0;if(isOperatorClient(d)||isSwapRepair(d))return Math.max(0,(now-d.openedAt)/3600000);const base=businessHoursBetween(d.openedAt,now);const paused=Number(d.pausedBusinessH||0)+(d.pauseStart?businessHoursBetween(d.pauseStart,now):0);return Math.max(0,base-paused)}
 function slaBaseLimit(r){const v=gv(r,['SLA Base','SLA Meta','Meta SLA','Prazo SLA','SLA Prazo','SLA Contratado','SLA Limite','SLA limite (h)','Prazo (h)','Prazo']);return v===''?0:ph(v)}
 const SLA_LIMIT_POR_MOP={'MA CAP':8,'MA INT':8,'PI CAP':8,'PI INT':8,'PA CAP':8,'PA INT':8,'AP / AM':4,'SLN MA':8,'SLN PA':8,'GIGA+ MA':8,'GIGA+ PI':8,'ADX':4};
 function statusSla(slaH,mop,limitH){const lim=limitH||SLA_LIMIT_POR_MOP[mop]||8;return slaH>lim?'FORA DO PRAZO':'NO PRAZO'}
@@ -10096,7 +10102,20 @@ document.getElementById('file-ab').addEventListener('change',function(e){
     }else{
       const sn=wb.SheetNames.find(n=>n.toUpperCase()==='BASE')||wb.SheetNames[0];
       const ws=wb.Sheets[sn];
-      procAb(applyTicketLinks(XLSX.utils.sheet_to_json(ws,{defval:''}),ws),f.name);
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      /* Layout "BASE ABERTA" (D:\Acompanhamento Jarvis\BASE ABERTA\BASE ABERTA.xlsx) detectado
+         pelas colunas "Departamento" + "Tipo de Atendimento" (exatas, sem variação) — exclusivas
+         desse modelo — só ele não tem SLA pré-calculado na planilha, então o cálculo em horas
+         parte sempre de openedAt (ver procAbBaseAberta). NÃO usar "Ticket Bdesk" como assinatura:
+         apesar de existir nesse modelo, também é um alias de link já reconhecido em procAb()
+         (formato "Export" antigo) — usá-la aqui faria uma planilha Export legítima cair, por
+         engano, no parser errado. */
+      const isBaseAberta=rows.length>0&&Object.keys(rows[0]).some(k=>k.trim()==='Departamento')&&Object.keys(rows[0]).some(k=>k.trim()==='Tipo de Atendimento');
+      if(isBaseAberta){
+        procAbBaseAberta(rows,f.name);
+      }else{
+        procAb(applyTicketLinks(rows,ws),f.name);
+      }
     }
   }catch(er){alert('Erro: '+er.message)}};
   rd.readAsArrayBuffer(f);this.value='';
@@ -10411,6 +10430,46 @@ function procAbChamadosUF(rows,fname){
     const assunto=repairPtBR(String(r['Título do Chamado']||depAtual||'').trim());
     const mop=normMopByCity(uf,cidade);
     const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao:'',substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,slaBaseAt:new Date().toISOString(),tempoClienteH:0,tempoSuporteH:0,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH:0,pausedBusinessH:0,pauseStart:null,mop};
+    if(isPausedSubstatus(substatus))item.pauseStart=new Date();
+    item.slaH=computeSlaHours(item);
+    item.faixa=cf(item.slaH);
+    item.statusSla=statusSla(item.slaH,mop,0);
+    return item;
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  finishAbUpload(fname);
+}
+/* Modelo alternativo de base "BASE ABERTA" (D:\Acompanhamento Jarvis\BASE ABERTA\BASE ABERTA.xlsx),
+   aba única, cabeçalho já na 1ª linha, colunas: " ID Ticket", "Cliente", "Departamento", "Tipo
+   de Atendimento", "Assunto", " Abertura do Ticket", " Tempo", "Status", "Substatus", "Ticket
+   Bdesk", "Cidade", "UF" (algumas com espaço à esquerda no nome — por isso usa gv(), que casa
+   por nome normalizado, em vez de acesso direto por chave). Detectada automaticamente pelas
+   colunas "Departamento" + "Tipo de Atendimento" (ver dispatch no listener de file-ab) — não
+   por "Ticket Bdesk", que também é um alias de link já usado pelo formato "Export" antigo.
+   O campo " Tempo" da planilha é a idade do chamado em formato MISTO e nunca é usado como SLA:
+   pra chamados com menos de 1 dia vem como duração Excel (H:MM:SS), mas a partir de 1 dia vira
+   um TEXTO livre "N dia(s)" (sem hora/minuto, tipo inconsistente entre linhas) — por isso o SLA
+   em horas nunca vem da planilha aqui (dynamicSheetSla:false) e é sempre CALCULADO do zero a
+   partir da abertura do ticket (openedAt) até agora, pelas mesmas regras de horário
+   comercial/relógio corrido que já valiam pro resto do painel (computeSlaHours()) — é exatamente
+   o "SLA em dias → transformar em horas, horário comercial pra CMO-Reparo e relógio corrido pra
+   CMO-Reparo Swap" pedido: não se traduz o texto "N dia(s)", se recalcula certo com as duas
+   regras. Chamados SWAP costumam vir sem Cidade/UF preenchidos na planilha de origem — mesmo
+   comportamento já aceito em procAb() para o layout antigo, por isso o filtro final também
+   aceita isSwapDep(item) independente da UF. */
+function procAbBaseAberta(rows,fname){
+  dAb=rows.filter(r=>String(gv(r,['ID Ticket',' ID Ticket'])||'').trim()!=='').map((r,rowKey)=>{
+    const ticketId=cleanTicketId(gv(r,['ID Ticket',' ID Ticket']));
+    const id=ticketId;
+    const cliente=String(gv(r,['Cliente'])||'').trim();
+    const depAtual=repairPtBR(String(gv(r,['Departamento'])||'').trim());
+    const uf=String(gv(r,['UF'])||'').trim().toUpperCase();
+    const cidade=repairPtBR(String(gv(r,['Cidade'])||'').trim());
+    const substatus=fmtSubstatus(repairPtBR(String(gv(r,['Substatus'])||'')));
+    const link=bestLink(atrixTicketLink(ticketId),id);
+    const openedAt=parseOpeningDate(gv(r,['Abertura do Ticket',' Abertura do Ticket']));
+    const assunto=repairPtBR(String(gv(r,['Assunto'])||depAtual||'').trim());
+    const mop=normMopByCity(uf,cidade);
+    const item={rowKey,id,ticketId,protocolo:id,cliente,assunto,depAtual,uf,cidade,regiao:'',substatus,link,openedAt,originalSlaH:0,sheetSlaH:0,slaBaseAt:new Date().toISOString(),tempoClienteH:0,tempoSuporteH:0,dynamicSheetSla:false,slaLimitH:0,pausedBusinessH:0,pauseStart:null,mop};
     if(isPausedSubstatus(substatus))item.pauseStart=new Date();
     item.slaH=computeSlaHours(item);
     item.faixa=cf(item.slaH);
