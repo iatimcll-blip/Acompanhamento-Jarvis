@@ -10112,7 +10112,7 @@ document.getElementById('file-ab').addEventListener('change',function(e){
          engano, no parser errado. */
       const isBaseAberta=rows.length>0&&Object.keys(rows[0]).some(k=>k.trim()==='Departamento')&&Object.keys(rows[0]).some(k=>k.trim()==='Tipo de Atendimento');
       if(isBaseAberta){
-        procAbBaseAberta(rows,f.name);
+        procAbBaseAberta(applyTicketLinks(rows,ws),f.name);
       }else{
         procAb(applyTicketLinks(rows,ws),f.name);
       }
@@ -10455,7 +10455,13 @@ function procAbChamadosUF(rows,fname){
    CMO-Reparo Swap" pedido: não se traduz o texto "N dia(s)", se recalcula certo com as duas
    regras. Chamados SWAP costumam vir sem Cidade/UF preenchidos na planilha de origem — mesmo
    comportamento já aceito em procAb() para o layout antigo, por isso o filtro final também
-   aceita isSwapDep(item) independente da UF. */
+   aceita isSwapDep(item) independente da UF.
+   Espera receber `rows` já passado por applyTicketLinks(rows,ws) (feito no dispatch de
+   file-ab, igual já era feito pro formato Export) — o texto do " ID Ticket" desta base
+   ("DDMMYYYY-XXXXX") é um identificador da própria planilha, não o ID interno do Atrix, então
+   um link montado a partir dele abriria o ticket errado; a célula, porém, já vem com um
+   hiperlink de verdade embutido no Excel apontando pro ticket certo, e applyTicketLinks()
+   extrai esse link real pra 'Link Atrix' antes de chegar aqui. */
 function procAbBaseAberta(rows,fname){
   dAb=rows.filter(r=>String(gv(r,['ID Ticket',' ID Ticket'])||'').trim()!=='').map((r,rowKey)=>{
     const ticketId=cleanTicketId(gv(r,['ID Ticket',' ID Ticket']));
@@ -10465,7 +10471,14 @@ function procAbBaseAberta(rows,fname){
     const uf=String(gv(r,['UF'])||'').trim().toUpperCase();
     const cidade=repairPtBR(String(gv(r,['Cidade'])||'').trim());
     const substatus=fmtSubstatus(repairPtBR(String(gv(r,['Substatus'])||'')));
-    const link=bestLink(atrixTicketLink(ticketId),id);
+    /* O ID Ticket desta base ("DDMMYYYY-XXXXX") é um identificador PRÓPRIO da planilha, não
+       o ID interno do Atrix — um link montado a partir dele (atrixTicketLink) aponta pra um
+       ticket errado/inexistente. A célula da coluna ID Ticket, porém, já vem com um hiperlink
+       de verdade embutido no Excel, apontando pro ticket certo (ID interno do Atrix, ex.:
+       "6130893") — applyTicketLinks() (chamado no dispatch de file-ab antes de montar `rows`)
+       extrai esse link real pra 'Link Atrix'; só cai pro link sintético se por algum motivo a
+       célula não tiver hiperlink embutido. */
+    const link=bestLink(gv(r,['Link Atrix']),atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(gv(r,['Abertura do Ticket',' Abertura do Ticket']));
     const assunto=repairPtBR(String(gv(r,['Assunto'])||depAtual||'').trim());
     const mop=normMopByCity(uf,cidade);
