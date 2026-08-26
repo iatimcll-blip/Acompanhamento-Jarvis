@@ -16824,12 +16824,20 @@ function rdeChipHtml(a){if(!a.n)return'<span class="rede-chip">—</span>';if(a.
 /* ================= MTTR (Acesso + Backbone combinados, com expurgo) =================
    Chave estável do chamado pra marcar/consultar expurgo — usa o OS/ID gravado no detail
    (rdeCompactDetail), prefixado pelo escopo (ac/bb) pra nunca colidir entre os dois
-   sistemas. Retorna null se o chamado não tem OS/ID (não dá pra marcar com segurança —
-   marcaria qualquer outro chamado sem OS junto). */
+   sistemas. A base de Backbone, na prática, não traz nenhuma coluna de OS/protocolo/ticket
+   (id e os sempre vêm vazios pra todo o Backbone) — sem fallback, nenhum chamado de
+   Backbone teria checkbox de expurgo. Fallback: quando não há OS/ID, usa uma chave
+   composta com os demais campos do detail (período de atendimento + cidade + UF + motivo +
+   tempo), que juntos identificam o incidente de forma estável entre re-uploads da mesma
+   base (checado contra dados reais: 1176/1176 chamados de Backbone geraram chave única,
+   zero colisão). Só retorna null se nem OS/ID nem período de atendimento existirem. */
 function rdeChaveExpurgo(r){
   const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:null;
-  const os=det?String(det.os||det.id||'').trim():'';
-  return os?(r._scope+':'+os):null;
+  if(!det)return null;
+  const os=String(det.os||det.id||'').trim();
+  if(os)return r._scope+':'+os;
+  const composta=[det.periodoAtendimento,det.cidade,det.uf,det.motivo,det.tempo].map(v=>String(v||'').trim()).join('|');
+  return det.periodoAtendimento?(r._scope+':cx:'+composta):null;
 }
 function rdeCurrentMonthKey(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');}
 /* Todos os chamados (Acesso+Backbone) do mês corrente (mês de abertura, mesma referência
