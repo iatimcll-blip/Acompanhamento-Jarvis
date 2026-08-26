@@ -9584,7 +9584,15 @@ const ATRIX_TICKET_BASE='https://atrix.mobtelecom.com.br/controle/addonmodules.p
 function cleanTicketId(v){const s=String(v??'').trim();return s.replace(/\.0+$/,'')}
 function atrixTicketLink(ticketId){const id=cleanTicketId(ticketId);return id?ATRIX_TICKET_BASE+encodeURIComponent(id):''}
 function abCol(r,idx,ns){const byName=gv(r,ns);if(byName!==undefined&&byName!==null&&byName!=='')return byName;return Object.values(r)[idx]??''}
-function applyTicketLinks(raw,ws){if(!ws||!raw.length||!XLSX.utils.decode_range)return raw;const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1');let idCol=-1;for(let c=range.s.c;c<=range.e.c;c++){const cell=ws[XLSX.utils.encode_cell({r:range.s.r,c})];if(cell&&(nk(cell.v)===nk('ID Ticket')||nk(cell.v)===nk('TicketID'))){idCol=c;break}}if(idCol<0)return raw;raw.forEach((row,i)=>{const cell=ws[XLSX.utils.encode_cell({r:range.s.r+i+1,c:idCol})];const target=cell&&cell.l&&cell.l.Target;if(target&&!gv(row,['Link Atrix','LINK','Link','Ticket Bdesk']))row['Link Atrix']=target});return raw}
+/* A guarda de "já existe link" abaixo checava também os aliases 'LINK'/'Link'/'Ticket Bdesk'
+   pra não sobrescrever um link já presente — mas na base "BASE ABERTA", a coluna "Ticket
+   Bdesk" guarda um ID interno de outro sistema (numérico, ex.: 601873), não uma URL. Quando
+   essa coluna vinha preenchida, a guarda barrava a extração do hiperlink real embutido na
+   célula de ID Ticket, e o link acabava caindo no sintético (errado) via bestLink(). Como
+   'Link Atrix' já tem prioridade máxima em todo bestLink() que a consome (procAb e
+   procAbBaseAberta), não há necessidade de proteger os outros aliases aqui — só evita
+   sobrescrever se 'Link Atrix' já tiver sido setado. */
+function applyTicketLinks(raw,ws){if(!ws||!raw.length||!XLSX.utils.decode_range)return raw;const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1');let idCol=-1;for(let c=range.s.c;c<=range.e.c;c++){const cell=ws[XLSX.utils.encode_cell({r:range.s.r,c})];if(cell&&(nk(cell.v)===nk('ID Ticket')||nk(cell.v)===nk('TicketID'))){idCol=c;break}}if(idCol<0)return raw;raw.forEach((row,i)=>{const cell=ws[XLSX.utils.encode_cell({r:range.s.r+i+1,c:idCol})];const target=cell&&cell.l&&cell.l.Target;if(target&&!gv(row,['Link Atrix']))row['Link Atrix']=target});return raw}
 function serializeAb(){return dAb.map(d=>({...d,openedAt:d.openedAt?d.openedAt.toISOString():'',pauseStart:d.pauseStart?d.pauseStart.toISOString():''}))}
 function idbOpen(){
   return new Promise((resolve,reject)=>{
