@@ -7028,6 +7028,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="tsec-meta">
             <span id="cnt-enc" style="color:var(--tx3)"></span>
             <span class="card-action" onclick="clearEncFilters()">Limpar filtros</span>
+            <span class="card-action" onclick="downloadEncPptx()"><i class="ti ti-file-type-ppt" style="font-size:11px;vertical-align:-1px"></i> Gerar Relatório PPT</span>
             <span class="card-action" onclick="exportCSV('enc')"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar CSV</span>
           </div>
         </div>
@@ -16264,6 +16265,25 @@ function rptBuildExecAging(){
   <div style="overflow-x:auto"><table class="rpt-table fca-table"><thead><tr><th>Fato</th><th>Causa</th><th>Ação</th><th>Prazo</th><th>Responsável</th><th>Status</th></tr></thead><tbody>${fcaRows||'<tr><td colspan="6" style="text-align:center;color:#8e8e93;padding:16px">Nenhum cluster com volume no período selecionado.</td></tr>'}</tbody></table></div>`;
   return _rSec('📊','Executivo B2B — Aging',`${d.length} chamados · ${ctxLabel}`,body,false);
 }
+/* ── PPTX genérico: helpers compartilhados por TODO relatório .pptx gerado no painel ──
+   Extraído de dentro de downloadExecAgingPptx() (era uma função local, só dessa) pra virar
+   reaproveitável por qualquer painel novo com botão de "Gerar Relatório PPT" (ex.:
+   downloadEncPptx() logo abaixo) sem duplicar layout/paleta/cabeçalho a cada painel. */
+const PPTX_NAVY='081551',PPTX_BLUE='1476C9',PPTX_GREEN='13853A',PPTX_RED='FF3B30',PPTX_ORANGE='FF9500',PPTX_GREY='667085',PPTX_GREYL='D9E0EA',PPTX_WHITE='FFFFFF',PPTX_BGCARD='F5F6FA';
+function pptxNewDeck(){
+  const pptx=new PptxGenJS();
+  pptx.defineLayout({name:'JARVIS_16x9',width:13.333,height:7.5});
+  pptx.layout='JARVIS_16x9';
+  return pptx;
+}
+function pptxHeader(slide,kicker,title,pageLbl){
+  slide.background={color:PPTX_WHITE};
+  slide.addShape('rect',{x:0,y:0,w:13.333,h:1.05,fill:{color:PPTX_NAVY},line:{type:'none'}});
+  slide.addText('JARVIS MCLL',{x:0.4,y:0.15,w:5,h:0.35,fontSize:12,bold:true,color:PPTX_WHITE,charSpacing:2});
+  slide.addText(kicker,{x:0.4,y:0.52,w:10.5,h:0.4,fontSize:10,color:'9FC9EE'});
+  slide.addText(pageLbl,{x:12.1,y:0.28,w:1,h:0.4,fontSize:10,color:PPTX_WHITE,align:'right'});
+  slide.addText(title,{x:0.4,y:1.2,w:12.5,h:0.6,fontSize:22,bold:true,color:PPTX_NAVY});
+}
 /* Baixa o mesmo relatório de rptBuildExecAging() como .pptx real (chartjs-plugin-datalabels/xlsx.full
    já são vendorizados localmente em assets/vendor — pptxgenjs segue o mesmo padrão, sem CDN). Gerado
    inteiramente no browser via PptxGenJS (window.PptxGenJS, carregado em assets/vendor/pptxgenjs). */
@@ -16272,19 +16292,10 @@ function downloadExecAgingPptx(){
   const info=computeExecAgingData();
   if(!info.d.length){alert('Nenhum dado disponível. Carregue a base do painel B2B Encerrados antes de gerar o relatório.');return;}
   const{d,s,clusters,causas,ctxLabel}=info;
-  const NAVY='081551',BLUE='1476C9',GREEN='13853A',RED='FF3B30',ORANGE='FF9500',GREY='667085',GREYL='D9E0EA',WHITE='FFFFFF',BGCARD='F5F6FA';
+  const NAVY=PPTX_NAVY,BLUE=PPTX_BLUE,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE,BGCARD=PPTX_BGCARD;
   const now=new Date();
-  const pptx=new PptxGenJS();
-  pptx.defineLayout({name:'JARVIS_16x9',width:13.333,height:7.5});
-  pptx.layout='JARVIS_16x9';
-  function header(slide,kicker,title,pageLbl){
-    slide.background={color:WHITE};
-    slide.addShape('rect',{x:0,y:0,w:13.333,h:1.05,fill:{color:NAVY},line:{type:'none'}});
-    slide.addText('JARVIS MCLL',{x:0.4,y:0.15,w:5,h:0.35,fontSize:12,bold:true,color:WHITE,charSpacing:2});
-    slide.addText(kicker,{x:0.4,y:0.52,w:10.5,h:0.4,fontSize:10,color:'9FC9EE'});
-    slide.addText(pageLbl,{x:12.1,y:0.28,w:1,h:0.4,fontSize:10,color:WHITE,align:'right'});
-    slide.addText(title,{x:0.4,y:1.2,w:12.5,h:0.6,fontSize:22,bold:true,color:NAVY});
-  }
+  const pptx=pptxNewDeck();
+  const header=pptxHeader;
   const dateStr=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
 
   const s1=pptx.addSlide();
@@ -16338,6 +16349,118 @@ function downloadExecAgingPptx(){
   s3.addText('Preencher Ação, Prazo, Responsável e Status com o plano de recuperação definido.',{x:0.4,y:2.0+0.65*(fcaBody.length+1)+0.2,w:12.5,h:0.4,fontSize:10,italic:true,color:GREY});
 
   pptx.writeFile({fileName:`Relatorio_Executivo_B2B_Aging_${now.toISOString().slice(0,10)}.pptx`});
+}
+/* Relatório PPT do Painel B2B Encerrados — a pedido do usuário: "o PPT será gerado conforme
+   dados dos painéis... para que seja gerado conforme configuração de filtros". Diferente do
+   Executivo Aging acima (que só respeita selMes/selWeek/selCluster via encScope()), este usa
+   gFEnc() — o MESMO array que a tabela visível do painel usa — então herda automaticamente
+   TODOS os filtros ativos na tela: os 3 do subbar (Mês/Semana/Cluster) + os 6 da própria
+   tabela (cluster, faixa, causa, UF, semana, segmento) + busca livre + drill-down de clique
+   no gráfico (encChartBucket). Reaproveita pptxNewDeck()/pptxHeader() e a mesma paleta/
+   convenção de FCA em branco (só Fato/Causa preenchidos) já estabelecida acima. */
+function computeEncPptxData(){
+  const d=gFEnc();
+  const s=encRuleStats(d);
+  const grp={};
+  d.forEach(x=>{
+    const k=x.cluster||'—';
+    if(!grp[k])grp[k]={total:0,dentro:0,fora:0,outlier:0};
+    grp[k].total++;
+    if(x.dentro8h)grp[k].dentro++;
+    else if(x.outlier24h)grp[k].outlier++;
+    else grp[k].fora++;
+  });
+  const clusterFiltro=selEncCluster.length?selEncCluster:selCluster;
+  const cardOrder=clusterFiltro.length?CLUSTER_ORDER.filter(c=>clusterFiltro.includes(c)):CLUSTER_ORDER;
+  const clusters=cardOrder.map(k=>{
+    const g=grp[k]||{total:0,dentro:0,fora:0,outlier:0};
+    const pPrazo=g.total?g.dentro/g.total*100:0;
+    const pOut=g.total?g.outlier/g.total*100:0;
+    const pFora=g.total?g.fora/g.total*100:0;
+    return{cluster:k,total:g.total,dentro:g.dentro,fora:g.fora,outlier:g.outlier,pPrazo,pOut,pFora};
+  }).filter(c=>c.total>0);
+  const causas=se(cnt(d.map(x=>({...x,causaRaiz:fmtCausaRaiz(x.causaRaiz)})),'causaRaiz'));
+  const piorCluster=clusters.length?clusters.reduce((a,b)=>(85-b.pPrazo)>(85-a.pPrazo)?b:a):null;
+  const abaixoMeta=clusters.filter(c=>c.pPrazo<85).length;
+  const parts=[];
+  if(selMes.length)parts.push(selMes.map(fmtMesLabel).join('+'));
+  if(selWeek.length)parts.push('Semana '+selWeek.join('+'));
+  if(selCluster.length)parts.push(selCluster.join('+'));
+  if(selEncCluster.length)parts.push(selEncCluster.join('+'));
+  if(selEncAging.length)parts.push(selEncAging.join('+'));
+  if(selEncCausa.length)parts.push(selEncCausa.join('+'));
+  if(selEncUf.length)parts.push(selEncUf.join('+'));
+  if(selEncSemana.length)parts.push(selEncSemana.join('+'));
+  if(selEncSeg.length)parts.push(selEncSeg.join('+'));
+  const srchEl=document.getElementById('f-srch-enc');
+  if(srchEl&&srchEl.value.trim())parts.push('busca "'+srchEl.value.trim()+'"');
+  if(encChartBucket)parts.push(encChartBucket==='prazo'?'no prazo':encChartBucket==='outlier'?'outlier':'8–24h');
+  const ctxLabel=parts.length?parts.join(' · '):'Todos os períodos e filtros';
+  return{d,s,clusters,causas,piorCluster,abaixoMeta,ctxLabel};
+}
+function encPptxDecisionTxt(info){
+  return info.piorCluster?`Concentrar recuperação no ${info.piorCluster.cluster}: ${info.piorCluster.total} chamados, ${pp(info.piorCluster.pPrazo)}% no prazo e ${pp(info.piorCluster.pOut)}% de outliers. ${info.abaixoMeta} de ${info.clusters.length} cluster${info.clusters.length===1?'':'s'} abaixo da meta de 85%.`:'Sem clusters com volume no filtro selecionado.';
+}
+function downloadEncPptx(){
+  if(typeof PptxGenJS==='undefined'){alert('Biblioteca de geração de PPTX não carregada.');return;}
+  const info=computeEncPptxData();
+  if(!info.d.length){alert('Nenhum dado no filtro atual. Ajuste os filtros ou carregue a base do painel B2B Encerrados.');return;}
+  const{d,s,clusters,causas,ctxLabel}=info;
+  const NAVY=PPTX_NAVY,BLUE=PPTX_BLUE,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE,BGCARD=PPTX_BGCARD;
+  const now=new Date();
+  const pptx=pptxNewDeck();
+
+  const s1=pptx.addSlide();
+  pptxHeader(s1,`B2B ENCERRADOS · ${ctxLabel.toUpperCase()}`,'Performance por Cluster','1 / 3');
+  const headRow=['Cluster','% no Prazo (meta 85%)','% Outlier (meta ≤2%)','Fora do Prazo 8–24h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
+  const bodyRows=clusters.map(c=>[
+    {text:c.cluster,options:{bold:true,fontSize:11}},
+    {text:pp(c.pPrazo)+'%',options:{color:c.pPrazo>=85?GREEN:RED,bold:true,fontSize:11}},
+    {text:pp(c.pOut)+'%',options:{color:c.pOut<=1.98?GREEN:RED,bold:true,fontSize:11}},
+    {text:c.fora+' · '+pp(c.pFora)+'%',options:{fontSize:11}},
+    {text:String(c.total),options:{bold:true,fontSize:11}}
+  ]);
+  const tblRows=clusters.length?bodyRows.length+1:1;
+  if(clusters.length){
+    s1.addTable([headRow,...bodyRows],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.42,valign:'middle'});
+  }else{
+    s1.addText('Sem dados no filtro selecionado.',{x:0.4,y:2.0,w:12.5,h:0.5,fontSize:13,color:GREY});
+  }
+  const decisionY=2.0+0.42*tblRows+0.35;
+  s1.addShape('rect',{x:0.4,y:decisionY,w:12.5,h:1.35,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
+  s1.addText([{text:'DECISÃO OPERACIONAL\n',options:{bold:true,fontSize:10,color:GREY,breakLine:true}},{text:encPptxDecisionTxt(info),options:{fontSize:13,color:NAVY}}],{x:0.65,y:decisionY+0.15,w:12,h:1.05,valign:'top'});
+
+  const s2=pptx.addSlide();
+  pptxHeader(s2,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos na tela','Diagnóstico','2 / 3');
+  s2.addText(`${d.length} chamados encerrados`,{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
+  s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–24h','Outlier >24h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
+  s2.addText(`% no prazo: ${pp(s.pPrazo)}% (meta 85%) · % outlier: ${pp(s.pOut)}% (meta ≤2%)`,{x:0.4,y:5.75,w:5.8,h:0.4,fontSize:11,color:GREY});
+  const topCausas=causas.slice(0,5);
+  s2.addText('Causa raiz dos chamados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
+  if(topCausas.length){
+    s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:topCausas.map(c=>c[0]),values:topCausas.map(c=>c[1])}],{x:6.6,y:2.45,w:6.2,h:3.7,barDir:'bar',showValue:true,chartColors:[BLUE],showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,dataLabelFontSize:9});
+  }else{
+    s2.addText('Sem dados de causa raiz no filtro selecionado.',{x:6.6,y:2.55,w:6,h:0.5,fontSize:12,color:GREY});
+  }
+
+  const s3=pptx.addSlide();
+  pptxHeader(s3,`Plano de recuperação · referência ${now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}`,'FCA — Fato, Causa e Ação','3 / 3');
+  const fcaHead=['Fato','Causa','Ação','Prazo','Responsável','Status'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
+  const offenders=clusters.filter(c=>c.pPrazo<85||c.pOut>1.98);
+  const topCausa=causas[0]||['—',0];
+  const fcaSrc=offenders.length?offenders:clusters;
+  const fcaBody=fcaSrc.length?fcaSrc.map(c=>[
+    {text:`${c.cluster}: prazo ${pp(c.pPrazo)}% (meta 85%), outlier ${pp(c.pOut)}% (meta ≤2%) · ${c.total} chamados`,options:{fontSize:10}},
+    {text:topCausa[0],options:{fontSize:10}},
+    {text:'',options:{fontSize:10}},
+    {text:'',options:{fontSize:10}},
+    {text:'',options:{fontSize:10}},
+    {text:'',options:{fontSize:10}}
+  ]):[[{text:'Nenhum cluster com volume no filtro selecionado.',options:{fontSize:10,color:GREY},colspan:6}]];
+  s3.addTable([fcaHead,...fcaBody],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.65,valign:'top'});
+  s3.addText('Preencher Ação, Prazo, Responsável e Status com o plano de recuperação definido.',{x:0.4,y:2.0+0.65*(fcaBody.length+1)+0.2,w:12.5,h:0.4,fontSize:10,italic:true,color:GREY});
+
+  pptx.writeFile({fileName:`Relatorio_B2B_Encerrados_${now.toISOString().slice(0,10)}.pptx`});
 }
 
 function rptBuildRepetidos(){
