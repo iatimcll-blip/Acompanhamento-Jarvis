@@ -6598,6 +6598,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <i class="ti ti-shield-check"></i><span class="ntab-label"> B2B S/Intervenção</span>
         <span class="ntab-badge nb-blue" id="nb-si">0</span>
       </button>
+      <button class="ntab" id="ntab-pref" onclick="switchTab('prefeitura')">
+        <i class="ti ti-building-bank"></i><span class="ntab-label"> B2B Prefeitura</span>
+        <span class="ntab-badge nb-blue" id="nb-pref">0</span>
+      </button>
       <button class="ntab" id="ntab-rep" onclick="switchTab('repetidos')">
         <i class="ti ti-repeat"></i><span class="ntab-label"> B2B Repetidos</span>
         <span class="ntab-badge nb-purple" id="nb-rep">0</span>
@@ -6759,6 +6763,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-ativacoes" onclick="switchTab('ativacoes')"><i class="ti ti-plug-connected"></i><strong>Ativações B2B</strong><span>MRR contratado aguardando ativação técnica, aging, gargalos e carteira por analista.</span></button>
       <button class="dash-module" id="dash-mod-encerrados" onclick="switchTab('encerrados')"><i class="ti ti-circle-check"></i><strong>B2B Encerrados</strong><span>Período, cluster, causa raiz, semana e indicadores históricos.</span></button>
       <button class="dash-module" id="dash-mod-semintervencao" onclick="switchTab('semIntervencao')"><i class="ti ti-shield-check"></i><strong>B2B S/Intervenção</strong><span>Chamados encerrados sem necessidade de intervenção técnica.</span></button>
+      <button class="dash-module" id="dash-mod-prefeitura" onclick="switchTab('prefeitura')"><i class="ti ti-building-bank"></i><strong>B2B Prefeitura</strong><span>Chamados encerrados do cliente Município de São Luís.</span></button>
       <button class="dash-module" id="dash-mod-rede" onclick="switchTab('rede')"><i class="ti ti-router"></i><strong>Rede</strong><span>Metas, prazo, outlier, TME, TMR e performance por cluster.</span></button>
       <button class="dash-module" id="dash-mod-ofs" onclick="switchTab('ofs')"><i class="ti ti-chart-bar"></i><strong>Produtividade OFS</strong><span>Técnicos, ordens, alertas e ranking de produtividade.</span></button>
       <button class="dash-module" id="dash-mod-combustivel" onclick="switchTab('combustivel')"><i class="ti ti-gas-station"></i><strong>Combustíveis</strong><span>Saldo, frota, solicitações, aportes, retiradas e Alelo.</span></button>
@@ -7142,6 +7147,88 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <th>Observações</th>
           </tr></thead>
           <tbody id="tb-si"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAINEL B2B PREFEITURA ── -->
+  <div class="panel" id="panel-prefeitura">
+    <div id="empty-pref" class="empty">
+      <div class="empty-icon"><i class="ti ti-building-bank"></i></div>
+      <h2>B2B Prefeitura</h2>
+      <p>Carregue a base de B2B Encerrados para ver este recorte (Cliente = Município de São Luís).</p>
+      <button class="empty-btn eb-enc admin-only" onclick="switchTab('encerrados')"><i class="ti ti-database" style="font-size:14px"></i> Ir para B2B Encerrados</button>
+    </div>
+    <div id="dash-pref" style="display:none">
+      <div class="mrow" id="mrow-pref"></div>
+      <div class="prow" id="prow-pref"></div>
+      <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
+      <div id="week-banner-pref"></div>
+      <div class="section-hd">Performance por cluster <span class="sh-line"></span></div>
+      <div class="cluster-grid" id="cluster-cards-pref"></div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Faixa de SLA (aging CCS)</span></div>
+          <div id="sla-pref"></div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Distribuição por regra SLA</span></div>
+          <div class="cw"><canvas id="ch-pref" role="img" aria-label="Distribuição por regra de SLA — Prefeitura"></canvas></div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Análise de prazo e outlier</span></div>
+          <div id="meta8-pref"></div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Volume / Semana</span></div>
+          <div class="cw"><canvas id="ch-sem-pref" role="img" aria-label="Volume por Semana — Prefeitura" style="cursor:pointer"></canvas></div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Por segmento</span></div>
+          <div id="seg-pref"></div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Por UF</span></div>
+          <div id="uf-pref"></div>
+        </div>
+      </div>
+      <div class="tsec">
+        <div class="tsec-hd">
+          <span class="tsec-title">Chamados da Prefeitura</span>
+          <div class="tsec-meta">
+            <span id="cnt-pref" style="color:var(--tx3)"></span>
+            <span class="card-action" onclick="clearPrefFilters()">Limpar filtros</span>
+            <span class="card-action" onclick="exportPrefCSV()"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar CSV</span>
+          </div>
+        </div>
+        <div class="fbar">
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-cluster" onclick="mselToggleOpen('fpref-cluster')"><span class="msel-btn-lbl">Todos clusters</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-aging" onclick="mselToggleOpen('fpref-aging')"><span class="msel-btn-lbl">Todas as faixas</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-causa" onclick="mselToggleOpen('fpref-causa')"><span class="msel-btn-lbl">Todas causas</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-uf" onclick="mselToggleOpen('fpref-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-semana" onclick="mselToggleOpen('fpref-semana')"><span class="msel-btn-lbl">Todas semanas</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-seg" onclick="mselToggleOpen('fpref-seg')"><span class="msel-btn-lbl">Todos segmentos</span></button></div>
+          <input class="finput" id="f-srch-pref" placeholder="Buscar cliente ou protocolo…" oninput="renderTPref()">
+        </div>
+        <div class="tw"><table id="tbl-pref-main">
+          <thead><tr>
+            <th onclick="sPref('protocolo')">Protocolo</th>
+            <th onclick="sPref('cliente')">Cliente</th>
+            <th onclick="sPref('titulo')">Cliente Final</th>
+            <th>UF/Cidade</th>
+            <th onclick="sPref('cluster')">Cluster</th>
+            <th onclick="sPref('faixa')">Faixa SLA</th>
+            <th onclick="sPref('semana')">Semana</th>
+            <th onclick="sPref('tempoTotal')">Tempo</th>
+            <th>Dentro 8h</th>
+            <th>Causa</th>
+          </tr></thead>
+          <tbody id="tb-pref"></tbody>
         </table></div>
       </div>
     </div>
@@ -8680,21 +8767,23 @@ function setFuelVF(k,v){fuelVFilter[k]=String(v||'').trim();_renderFuelVTable();
 let fuelRFilter={q:'',tipo:[],tipoCartao:[],dataIni:'',dataFim:''};
 function setFuelRF(k,v){fuelRFilter[k]=String(v||'').trim();renderFuelRequestsTable();}
 function clearFuelRF(){fuelRFilter={q:'',tipo:[],tipoCartao:[],dataIni:'',dataFim:''};['fuel-rf-q','fuel-rf-ini','fuel-rf-fim'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});renderFuelRequestsTable();}
-let scAb='slaH',sdAb=-1,scEnc='tempoTotal',sdEnc=-1,scSi='tempoTotal',sdSi=-1;
+let scAb='slaH',sdAb=-1,scEnc='tempoTotal',sdEnc=-1,scSi='tempoTotal',sdSi=-1,scPref='tempoTotal',sdPref=-1;
 let abHideInactive=localStorage.getItem('jarvis:ab:hideInactive')==='1';
 let scSwap='slaH',sdSwap=-1;
 let swapHideInactive=localStorage.getItem('jarvis:swap:hideInactive')==='1';
-let chAb=null,chEnc=null,chSem=null,chFuel=null,chFuelProj=null,chFuelTop=null,chSi=null,chSemSi=null,chMetaEnc=null,chWowEnc=null;
+let chAb=null,chEnc=null,chSem=null,chFuel=null,chFuelProj=null,chFuelTop=null,chSi=null,chSemSi=null,chMetaEnc=null,chWowEnc=null,chPref=null,chSemPref=null;
 let selWeek=[];
 let selCluster=[];
 let selMes=[];
 let encChartBucket='';
 let siChartBucket='';
+let prefChartBucket='';
 let selRepMes=[],selRepSemana=[],selRepCluster=[],selRepCausa=[],selRepSeg=[],selRepSrch='';
 let selAbMop=[],selAbFaixa=[],selAbSub=[],selAbUf=[];
 let selSwapMop=[],selSwapFaixa=[],selSwapSub=[],selSwapUf=[];
 let selEncCluster=[],selEncAging=[],selEncCausa=[],selEncUf=[],selEncSemana=[],selEncSeg=[];
 let selSiCluster=[],selSiAging=[],selSiCausa=[],selSiUf=[],selSiSemana=[],selSiSeg=[];
+let selPrefCluster=[],selPrefAging=[],selPrefCausa=[],selPrefUf=[],selPrefSemana=[],selPrefSeg=[];
 let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivSubstatus=[],selAtivProd=[],selAtivTec=[],selAtivSrch='';
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
 let activeTab='dashboard';
@@ -8772,8 +8861,8 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas'];
-const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','repetidos','rede','ofs'];
+const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas'];
+const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -8809,6 +8898,7 @@ const PANEL_NAV_MAP={
   swap:['ntab-swap','dash-mod-swap'],
   encerrados:['ntab-enc','dash-mod-encerrados'],
   semIntervencao:['ntab-si','dash-mod-semintervencao'],
+  prefeitura:['ntab-pref','dash-mod-prefeitura'],
   repetidos:['ntab-rep'],
   rede:['ntab-rede','dash-mod-rede'],
   ofs:['ntab-ofs','dash-mod-ofs'],
@@ -9136,7 +9226,7 @@ function deleteUser(username){
   saveState();
   renderUsers();
 }
-const PANEL_LABELS={abertos:'B2B Abertos',swap:'SWAP',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas'};
+const PANEL_LABELS={abertos:'B2B Abertos',swap:'SWAP',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -9678,7 +9768,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -9873,13 +9963,32 @@ function applyState(st,label){
       selSiSeg=asArr(st.selSiSeg).filter(s=>_siSegs.includes(s));
       const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent=_siBase.length;
       fillFiltersSi();
+      /* restaura filtros do painel B2B Prefeitura — mesmo padrão do S/Intervenção acima:
+         recorte derivado de dEnc pelo Cliente (Município de São Luís), sem base própria */
+      const _prefBase=dEnc.filter(prefIsCliente);
+      const _prefClusters=CLUSTER_ORDER.filter(c=>_prefBase.some(d=>d.cluster===c));
+      const _prefCausas=[...new Set(_prefBase.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))];
+      const _prefUfs=[...new Set(_prefBase.map(d=>d.uf).filter(Boolean))];
+      const _prefSemanas=[...new Set(_prefBase.map(d=>d.semana).filter(Boolean))];
+      const _prefSegs=[...new Set(_prefBase.map(d=>repairPtBR(d.segmento)).filter(Boolean))];
+      selPrefCluster=asArr(st.selPrefCluster).filter(c=>_prefClusters.includes(c));
+      selPrefAging=asArr(st.selPrefAging).filter(f=>SLA_ORDER.includes(f));
+      selPrefCausa=asArr(st.selPrefCausa).filter(c=>_prefCausas.includes(c));
+      selPrefUf=asArr(st.selPrefUf).filter(u=>_prefUfs.includes(u));
+      selPrefSemana=asArr(st.selPrefSemana).filter(s=>_prefSemanas.includes(s));
+      selPrefSeg=asArr(st.selPrefSeg).filter(s=>_prefSegs.includes(s));
+      const nbPref=document.getElementById('nb-pref');if(nbPref)nbPref.textContent=_prefBase.length;
+      fillFiltersPref();
       renderAllEnc();
       renderAllSi();
+      renderAllPref();
       renderPanelRepetidos();
       document.getElementById('empty-enc').style.display=dEnc.length?'none':'block';
       document.getElementById('dash-enc').style.display=dEnc.length?'block':'none';
       document.getElementById('empty-si').style.display=dEnc.length?'none':'block';
       document.getElementById('dash-si').style.display=dEnc.length?'block':'none';
+      document.getElementById('empty-pref').style.display=dEnc.length?'none':'block';
+      document.getElementById('dash-pref').style.display=dEnc.length?'block':'none';
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar B2B Encerrados:',e);}
@@ -10208,18 +10317,22 @@ async function clearAb(){
 }
 async function clearEnc(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
-  if(!confirm('Limpar toda a base de B2B Encerrados? Isso também limpará B2B Repetidos e B2B S/Intervenção.'))return;
-  dEnc=[];lastEncAt='';lastEncFile='';encChartBucket='';siChartBucket='';updateUploadTimes();
+  if(!confirm('Limpar toda a base de B2B Encerrados? Isso também limpará B2B Repetidos, B2B S/Intervenção e B2B Prefeitura.'))return;
+  dEnc=[];lastEncAt='';lastEncFile='';encChartBucket='';siChartBucket='';prefChartBucket='';updateUploadTimes();
   const nbEnc=document.getElementById('nb-enc');if(nbEnc)nbEnc.textContent='0';
   const nbRep=document.getElementById('nb-rep');if(nbRep)nbRep.textContent='0';
   const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent='0';
+  const nbPref=document.getElementById('nb-pref');if(nbPref)nbPref.textContent='0';
   const empty=document.getElementById('empty-enc');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-enc');if(dash)dash.style.display='none';
   const emptySi=document.getElementById('empty-si');if(emptySi)emptySi.style.display='';
   const dashSi=document.getElementById('dash-si');if(dashSi)dashSi.style.display='none';
+  const emptyPref=document.getElementById('empty-pref');if(emptyPref)emptyPref.style.display='';
+  const dashPref=document.getElementById('dash-pref');if(dashPref)dashPref.style.display='none';
   const encSubbar=document.getElementById('enc-subbar');if(encSubbar)encSubbar.classList.remove('visible');
   renderPanelRepetidos();
   renderAllSi();
+  renderAllPref();
   await persistClearedBase('B2B Encerrados');
 }
 async function clearRede(){
@@ -10300,7 +10413,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 function updateClearBtns(){
-  const isAb=activeTab==='abertos'||activeTab==='swap',isEnc=activeTab==='encerrados',isSi=activeTab==='semIntervencao',isRep=activeTab==='repetidos',isRede=activeTab==='rede',isOfs=activeTab==='ofs',isAtiv=activeTab==='ativacoes';
+  const isAb=activeTab==='abertos'||activeTab==='swap',isEnc=activeTab==='encerrados',isSi=activeTab==='semIntervencao',isPref=activeTab==='prefeitura',isRep=activeTab==='repetidos',isRede=activeTab==='rede',isOfs=activeTab==='ofs',isAtiv=activeTab==='ativacoes';
   const podeLimpar=canEdit();
   const bAb=document.getElementById('clear-ab-btn');
   const bEnc=document.getElementById('clear-enc-btn');
@@ -10308,7 +10421,7 @@ function updateClearBtns(){
   const bOfs=document.getElementById('clear-ofs-btn');
   const bAtiv=document.getElementById('clear-ativ-btn');
   if(bAb)bAb.style.display=podeLimpar&&isAb&&dAb.length?'flex':'none';
-  if(bEnc)bEnc.style.display=podeLimpar&&(isEnc||isRep||isSi)&&dEnc.length?'flex':'none';
+  if(bEnc)bEnc.style.display=podeLimpar&&(isEnc||isRep||isSi||isPref)&&dEnc.length?'flex':'none';
   if(bRede)bRede.style.display=podeLimpar&&isRede&&(rdeBD.length||rdeAD.length)?'flex':'none';
   if(bOfs)bOfs.style.display=podeLimpar&&isOfs&&ofsRows.length?'flex':'none';
   if(bAtiv)bAtiv.style.display=podeLimpar&&isAtiv&&dAtiv.length?'flex':'none';
@@ -10561,17 +10674,21 @@ function procEnc(raw,fname){
   podaSiAnnotations();
   document.getElementById('nb-enc').textContent=slnEnc().length;
   const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent=slnSi().length;
+  const nbPref=document.getElementById('nb-pref');if(nbPref)nbPref.textContent=slnPref().length;
   lastEncFile=fname||'';
   lastEncAt=now2();updateUploadTimes();
-  fillFiltersEnc();fillFiltersSi();fillWeekSelector();fillClusterSelector();fillMesSelector();
+  fillFiltersEnc();fillFiltersSi();fillFiltersPref();fillWeekSelector();fillClusterSelector();fillMesSelector();
   renderAllEnc();
   renderAllSi();
+  renderAllPref();
   renderPanelRepetidos();
   document.getElementById('empty-enc').style.display='none';
   document.getElementById('dash-enc').style.display='block';
   const emptySi=document.getElementById('empty-si');if(emptySi)emptySi.style.display='none';
   const dashSi=document.getElementById('dash-si');if(dashSi)dashSi.style.display='block';
-  const showControls=document.getElementById('panel-encerrados').classList.contains('active')||document.getElementById('panel-semintervencao').classList.contains('active');
+  const emptyPref=document.getElementById('empty-pref');if(emptyPref)emptyPref.style.display='none';
+  const dashPref=document.getElementById('dash-pref');if(dashPref)dashPref.style.display='block';
+  const showControls=document.getElementById('panel-encerrados').classList.contains('active')||document.getElementById('panel-semintervencao').classList.contains('active')||document.getElementById('panel-prefeitura').classList.contains('active');
   const encSubbarEl=document.getElementById('enc-subbar');
   if(encSubbarEl)encSubbarEl.classList.toggle('visible',showControls&&dEnc.length>0);
   saveState();autoSyncAfterBaseUpload('B2B Encerrados');updateClearBtns();
@@ -11536,18 +11653,18 @@ function encWeeksForMesArr(mesArr){
 function fillWeekSelector(){
   const semanas=encWeeksForMesArr(selMes);
   selWeek=selWeek.filter(s=>semanas.includes(s));
-  mselRender('week-selector',semanas,selWeek,{allLabel:'Todas as semanas',onChange:(v)=>{selWeek=v;renderAllEnc();renderAllSi();saveState();}});
+  mselRender('week-selector',semanas,selWeek,{allLabel:'Todas as semanas',onChange:(v)=>{selWeek=v;renderAllEnc();renderAllSi();renderAllPref();saveState();}});
 }
 function fillClusterSelector(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
   const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
   selCluster=selCluster.filter(c=>clusters.includes(c));
-  mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];selSiCluster=[];fillFiltersEnc();fillFiltersSi();renderAllEnc();renderAllSi();saveState();}});
+  mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];selSiCluster=[];selPrefCluster=[];fillFiltersEnc();fillFiltersSi();fillFiltersPref();renderAllEnc();renderAllSi();renderAllPref();saveState();}});
 }
 function fillMesSelector(){
   const meses=[...new Set(dEnc.map(d=>d.mes).filter(Boolean))].sort();
   selMes=selMes.filter(m=>meses.includes(m));
-  mselRender('mes-selector',meses,selMes,{allLabel:'Todos os meses',labelFn:fmtMesLabel,onChange:(v)=>{selMes=v;fillWeekSelector();renderAllEnc();renderAllSi();saveState();}});
+  mselRender('mes-selector',meses,selMes,{allLabel:'Todos os meses',labelFn:fmtMesLabel,onChange:(v)=>{selMes=v;fillWeekSelector();renderAllEnc();renderAllSi();renderAllPref();saveState();}});
 }
 /* ─── Repetidos: filtros com persistência ─── */
 function onRepFilterChange(){
@@ -11564,10 +11681,10 @@ function clearRepFilters(){
 }
 function clearEncSubbarFilters(){
   selMes=[];selWeek=[];selCluster=[];
-  selEncCluster=[];selSiCluster=[];
+  selEncCluster=[];selSiCluster=[];selPrefCluster=[];
   fillMesSelector();fillWeekSelector();fillClusterSelector();
-  fillFiltersEnc();fillFiltersSi();
-  renderAllEnc();renderAllSi();
+  fillFiltersEnc();fillFiltersSi();fillFiltersPref();
+  renderAllEnc();renderAllSi();renderAllPref();
   saveState();
 }
 function selectClusterCard(cluster){
@@ -12866,6 +12983,241 @@ function exportSiCSV(){
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='jarvis_b2b_sem_intervencao_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+}
+
+/* ─── PAINEL B2B PREFEITURA — recorte de dEnc pelo Cliente (col K da base de origem) ===
+   "Município de São Luís" (+ complementos de secretaria/departamento, ex.: "MUNICIPIO DE
+   SAO LUIS SEMED", "... SEMIT"). Mesmo padrão do B2B S/Intervenção acima: sem upload
+   próprio, é 100% derivado de dEnc. Usa nk() (normaliza acento/maiúscula/espaço) e
+   comparação por PREFIXO, não "contém" — "contém SAO LUIS" pegaria clientes sem nenhuma
+   relação (hospital, distribuidora, cartório...) que só têm "São Luís" no nome por
+   coincidência; só o prefixo "Município de São Luís"/"Prefeitura [Municipal] de São Luís"
+   identifica a prefeitura em si, com qualquer complemento de secretaria depois. Verificado
+   contra dados reais de produção: 574 chamados, só os 2 clientes certos (SEMED/SEMIT), zero
+   falso-positivo. */
+const PREF_CLIENTE_PREFIXES=['MUNICIPIO DE SAO LUIS','PREFEITURA MUNICIPAL DE SAO LUIS','PREFEITURA DE SAO LUIS'].map(nk);
+function prefIsCliente(d){const c=nk(d.cliente);return PREF_CLIENTE_PREFIXES.some(p=>c.startsWith(p));}
+function prefScope(){return encScope().filter(prefIsCliente);}
+function slnPref(){return dEnc.filter(prefIsCliente);}
+
+function renderAllPref(){
+  const d=prefScope();
+  rBannerPref(d);rMetPref(d);rPillPref(d);rClusterCardsPref(d);
+  rSlaPref(d);rMeta8Pref(d);rChPref(d);rChSemPref();
+  rSegPref(d);rUfPref(d);renderTPref();
+}
+
+function rBannerPref(d){
+  const el=document.getElementById('week-banner-pref');if(!el)return;
+  const totalBase=slnPref().length;
+  if(selMes.length||selWeek.length||selCluster.length){
+    const total=d.length,d8=d.filter(x=>x.dentro8h).length,pct=Math.round(d8/Math.max(total,1)*100);
+    const parts=[selMes.length?selMes.map(fmtMesLabel).join('+'):'',selWeek.join('+'),selCluster.join('+')].filter(Boolean);
+    el.innerHTML=`<div class="week-banner"><i class="ti ti-filter"></i><span class="wb-label">${eh(parts.join(' · '))}</span><span class="wb-sub">— ${total} chamados da Prefeitura · ${d8} dentro de 8h (${pct}%)</span></div>`;
+  }else{
+    el.innerHTML=`<div class="week-banner all"><i class="ti ti-calendar"></i><span class="wb-label">Todos os meses</span><span class="wb-sub">— ${totalBase} chamados da Prefeitura no período completo</span></div>`;
+  }
+}
+
+function rMetPref(d){
+  const s=encRuleStats(d);
+  const vs=d.map(x=>x.tempoTotal).filter(v=>v>0);
+  const avg=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;
+  document.getElementById('mrow-pref').innerHTML=`
+    <div class="mc c-teal"><div class="mc-label">Total Prefeitura</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
+    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div></div>
+    <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. 1,98%':'dentro do máx. 1,98%'}</div></div>
+    <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>`;
+}
+
+function rPillPref(d){
+  const s=encRuleStats(d);
+  const tc=se(cnt(d,'cluster'))[0]||['-',0];
+  document.getElementById('prow-pref').innerHTML=`
+    <div class="pc"><div class="pico pi-g"><i class="ti ti-circle-check"></i></div><div><div class="pv">${s.prazo}</div><div class="ps">Prazo ≤8h <b>(${pp(s.pPrazo)}%)</b> · meta ≥85%</div></div></div>
+    <div class="pc"><div class="pico pi-o"><i class="ti ti-clock-exclamation"></i></div><div><div class="pv">${s.intermediario}</div><div class="ps">8h a 24h <b>(${pp(s.pInter)}%)</b> fora da meta</div></div></div>
+    <div class="pc"><div class="pico pi-r"><i class="ti ti-alert-triangle"></i></div><div><div class="pv">${s.outlier}</div><div class="ps">Outlier &gt;24h <b>(${pp(s.pOut)}%)</b> · máx. 1,98%</div></div></div>
+    <div class="pc"><div class="pico pi-b"><i class="ti ti-map-pin"></i></div><div><div class="pv" style="font-size:14px;letter-spacing:-.01em">${tc[0]}</div><div class="ps">${tc[1]} chamados · cluster maior</div></div></div>`;
+}
+
+function selectClusterCardPref(cluster){
+  selCluster=selCluster.includes(cluster)?selCluster.filter(c=>c!==cluster):[...selCluster,cluster];
+  selPrefCluster=[];
+  fillClusterSelector();fillFiltersPref();
+  renderAllPref();
+  saveState();
+}
+function rClusterCardsPref(d){
+  const grp={};
+  d.forEach(x=>{
+    const k=x.cluster;
+    if(!grp[k])grp[k]={total:0,dentro:0,outlier:0};
+    grp[k].total++;if(x.dentro8h)grp[k].dentro++;if(x.outlier24h)grp[k].outlier++;
+  });
+  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
+  document.getElementById('cluster-cards-pref').innerHTML=cardOrder.map(k=>{
+    const g=grp[k]||{total:0,dentro:0,outlier:0};
+    const pct=g.total?Math.round(g.dentro/g.total*100):0;
+    const cls=pct>=85?'met':pct>=70?'warn':'unmet';
+    const barC=pct>=85?'var(--green)':pct>=70?'var(--orange)':'var(--red)';
+    const ci=CLUSTER_INFO[k]||{clr:'#8e8e93',desc:k};
+    return`<div class="cc ${cls}" onclick="selectClusterCardPref('${eh(k)}')" title="${selCluster.includes(k)?'Clique para remover este cluster do filtro':'Clique para adicionar este cluster ao filtro'}" style="cursor:pointer">
+      <div class="cc-stripe" style="background:${ci.clr}"></div>
+      <div class="cc-name">${eh(k)}</div>
+      <div class="cc-desc">${eh(ci.desc)}</div>
+      <div class="cc-pct"><b>${pct}%</b></div>
+      <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
+      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span>≥85%</span></div>
+      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function rSlaPref(d){
+  const c={};SLA_ORDER.forEach(f=>c[f]=0);d.forEach(x=>{if(x.faixa)c[x.faixa]=(c[x.faixa]||0)+1});
+  const mx=Math.max(...Object.values(c),1);
+  document.getElementById('sla-pref').innerHTML=barRows(SLA_ORDER.map(f=>[f,c[f]]),k=>SLA_CLR[k],mx);
+}
+
+function rMeta8Pref(d){
+  const s=encRuleStats(d);
+  const pct=s.pPrazo;
+  const met=pct>=85;
+  const r=36,circ=2*Math.PI*r;
+  const dash=circ*(pct/100);
+  const ringC=met?'#34c759':pct>=70?'#ff9500':'#ff3b30';
+  document.getElementById('meta8-pref').innerHTML=`
+    <div class="meta-wrap">
+      <div class="meta-circle">
+        <svg class="meta-svg" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--surface2)" stroke-width="7"/>
+          <circle cx="40" cy="40" r="${r}" fill="none" stroke="${ringC}" stroke-width="7"
+            stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"/>
+        </svg>
+        <div class="meta-num" style="color:${ringC}">${pp(pct)}%</div>
+        <div class="meta-lbl">Prazo</div>
+      </div>
+      <div class="meta-detail">
+        <div class="meta-tag" style="background:${met?'var(--green-bg)':'var(--red-bg)'};color:${met?'var(--green-dk)':'var(--red-dk)'}">
+          <i class="ti ti-${met?'check':'x'}" style="font-size:11px"></i>
+          ${met?'Meta ≥85% atingida':'Faltam '+pp(s.gapPrazo)+' p.p. para a meta de prazo'}
+        </div>
+        <div class="brow"><div class="blbl">Prazo ≤8h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pPrazo)}%;background:var(--green)"></div></div><div class="bn">${s.prazo} · ${pp(s.pPrazo)}%</div></div>
+        <div class="brow"><div class="blbl">8h a 24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
+        <div class="brow"><div class="blbl">Outlier &gt;24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
+        <div style="font-size:9px;color:var(--tx3);margin-top:8px">Fora da meta 8h: ${s.fora8} chamados (${pp(s.pFora8)}%) · Outlier acima do limite 1,98%: ${pp(s.excessoOutlier)} p.p.</div>
+      </div>
+    </div>`;
+}
+
+function rChPref(d){
+  const s=encRuleStats(d);
+  if(chPref){chPref.destroy();chPref=null}
+  const ctx=document.getElementById('ch-pref');if(!ctx)return;
+  const dk=document.body.dataset.theme==='dark';
+  const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  const BASE=['#34c759','#ff9500','#ff3b30'];
+  const BUCKETS=['prazo','inter','outlier'];
+  const bgColors=prefChartBucket?BASE.map((c,i)=>BUCKETS[i]===prefChartBucket?c:'rgba(150,150,150,.22)'):BASE;
+  chPref=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 24h','Outlier >24h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];prefChartBucket=(prefChartBucket===b?'':b);renderAllPref();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
+}
+
+function rChSemPref(){
+  const base=prefScope();
+  const semD=cnt(base,'semana');
+  const labels=Object.keys(semD).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const vals=labels.map(k=>semD[k]);
+  const bgColors=labels.map(k=>selWeek.length?(selWeek.includes(k)?'#007aff':'rgba(0,122,255,.2)'):'#007aff');
+  if(chSemPref){chSemPref.destroy();chSemPref=null}
+  const ctx=document.getElementById('ch-sem-pref');if(!ctx)return;
+  const dk=document.body.dataset.theme==='dark';
+  const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  chSemPref=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels,datasets:[{data:vals,backgroundColor:bgColors,borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>'Semana '+c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const week=labels[els[0].index];selWeek=selWeek.includes(week)?selWeek.filter(w=>w!==week):[...selWeek,week];fillWeekSelector();renderAllPref();saveState();},scales:{x:{grid:{display:false},ticks:{font:{size:8},color:dk?'#636366':'#8e8e93',maxRotation:45,autoSkip:false}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:10}}}}});
+}
+
+function rSegPref(d){
+  const SCLR={'Público':'#007aff','Corporativo':'#af52de','Operadoras':'#ff6b35','Provedores':'#34c759'};
+  document.getElementById('seg-pref').innerHTML=listRows(se(cnt(d.map(x=>({...x,segmento:repairPtBR(x.segmento)})),'segmento')),k=>SCLR[k]||'#8e8e93');
+}
+function rUfPref(d){
+  const UCLR={'MA':'#007aff','PA':'#af52de','PI':'#ff6b35','AM':'#34c759','AP':'#8e8e93'};
+  document.getElementById('uf-pref').innerHTML=listRows(se(cnt(d,'uf')),k=>UCLR[k]||'#8e8e93');
+}
+
+function clearPrefFilters(){
+  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];
+  prefChartBucket='';
+  const srch=document.getElementById('f-srch-pref');if(srch)srch.value='';
+  fillFiltersPref();
+  renderAllPref();
+  saveState();
+}
+function fillFiltersPref(){
+  const base=slnPref();
+  const allC=[...new Set(base.map(d=>d.cluster).filter(Boolean))];
+  const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
+  const causas=[...new Set(base.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
+  const ufs=[...new Set(base.map(d=>d.uf).filter(Boolean))].sort();
+  const semanas=[...new Set(base.map(d=>d.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const segs=[...new Set(base.map(d=>repairPtBR(d.segmento)).filter(Boolean))].sort();
+  selPrefCluster=selPrefCluster.filter(c=>clusters.includes(c));
+  selPrefCausa=selPrefCausa.filter(c=>causas.includes(c));
+  selPrefUf=selPrefUf.filter(u=>ufs.includes(u));
+  selPrefSemana=selPrefSemana.filter(s=>semanas.includes(s));
+  selPrefAging=selPrefAging.filter(f=>SLA_ORDER.includes(f));
+  selPrefSeg=selPrefSeg.filter(s=>segs.includes(s));
+  mselRender('fpref-cluster',clusters,selPrefCluster,{allLabel:'Todos clusters',onChange:(v)=>{selPrefCluster=v;renderTPref();saveState();}});
+  mselRender('fpref-causa',causas,selPrefCausa,{allLabel:'Todas causas',onChange:(v)=>{selPrefCausa=v;renderTPref();saveState();}});
+  mselRender('fpref-uf',ufs,selPrefUf,{allLabel:'Todas UFs',onChange:(v)=>{selPrefUf=v;renderTPref();saveState();}});
+  mselRender('fpref-semana',semanas,selPrefSemana,{allLabel:'Todas semanas',onChange:(v)=>{selPrefSemana=v;renderTPref();saveState();}});
+  mselRender('fpref-aging',SLA_ORDER,selPrefAging,{allLabel:'Todas as faixas',onChange:(v)=>{selPrefAging=v;renderTPref();saveState();}});
+  mselRender('fpref-seg',segs,selPrefSeg,{allLabel:'Todos segmentos',onChange:(v)=>{selPrefSeg=v;renderTPref();saveState();}});
+}
+
+function gFPref(){
+  const srchEl=document.getElementById('f-srch-pref');
+  const srch=(srchEl&&srchEl.value||'').toLowerCase();
+  let f=prefScope();
+  if(selPrefCluster.length)f=f.filter(d=>selPrefCluster.includes(d.cluster));if(selPrefAging.length)f=f.filter(d=>selPrefAging.includes(d.faixa));
+  if(selPrefCausa.length)f=f.filter(d=>selPrefCausa.includes(fmtCausaRaiz(d.causaRaiz)));
+  if(selPrefUf.length)f=f.filter(d=>selPrefUf.includes(d.uf));
+  if(selPrefSemana.length)f=f.filter(d=>selPrefSemana.includes(d.semana));if(selPrefSeg.length)f=f.filter(d=>selPrefSeg.includes(repairPtBR(d.segmento)));
+  if(srch)f=f.filter(d=>d.cliente.toLowerCase().includes(srch)||d.protocolo.toLowerCase().includes(srch)||(d.titulo||'').toLowerCase().includes(srch));
+  if(prefChartBucket==='prazo')f=f.filter(d=>d.dentro8h);
+  else if(prefChartBucket==='inter')f=f.filter(d=>!d.dentro8h&&!d.outlier24h);
+  else if(prefChartBucket==='outlier')f=f.filter(d=>d.outlier24h);
+  return f.slice().sort((a,b)=>typeof a[scPref]==='number'?(a[scPref]-b[scPref])*sdPref:String(a[scPref]).localeCompare(String(b[scPref]))*sdPref);
+}
+
+function renderTPref(){
+  const f=gFPref();
+  document.getElementById('cnt-pref').textContent=f.length+' de '+prefScope().length+' chamados';
+  const CCLR={'MA CAP':'#007aff','MA INT':'#5ac8fa','PA CAP':'#af52de','PA INT':'#bf5af2','PI CAP':'#ff6b35','PI INT':'#ff9f0a','AM/AP':'#34c759'};
+  document.getElementById('tb-pref').innerHTML=f.map(d=>{
+    const bc=SLA_BADGE[d.faixa]||'b-blue';
+    const sc=d.tempoTotal>24?'color:var(--red);font-weight:600':d.tempoTotal>8?'color:var(--orange);font-weight:600':'color:var(--green-dk);font-weight:600';
+    const d8=d.dentro8h?'<span class="badge b-in">Sim</span>':'<span class="badge b-out">Não</span>';
+    const cidadeUf=d.cidade?`${d.uf}/${d.cidade}`:d.uf||'—';
+    const cliTC=titleCasePT(d.cliente)||d.cliente;
+    const cfTC=d.titulo?titleCasePT(d.titulo)||d.titulo:'—';
+    const clrDot=CCLR[d.cluster]||'#8e8e93';
+    const clsSpan=`<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${clrDot};flex-shrink:0"></span>${d.cluster||'—'}</span>`;
+    const cleanLink=safeUrl(d.link);
+    const protoCell=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.protocolo)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:eh(d.protocolo);
+    const causa=fmtCausaRaiz(d.causaRaiz);
+    return`<tr class="enc-flat"><td class="tid enc-nowrap">${protoCell}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td><td class="enc-nowrap" title="${eh(causa)}" style="color:var(--tx3)">${eh(causa)}</td></tr>`;
+  }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+}
+function sPref(c){scPref===c?sdPref*=-1:(scPref=c,sdPref=-1);renderTPref()}
+
+function exportPrefCSV(){
+  const rows=gFPref();
+  const header=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +24h','Semana','Segmento','Causa Raiz'];
+  const lines=[header.join(';')].concat(rows.map(d=>[d.protocolo,d.cliente,d.uf,d.cluster,d.tempoTotal,d.faixa,d.dentro8h?'Sim':'Não',d.outlier24h?'Sim':'Não',d.semana,repairPtBR(d.segmento),fmtCausaRaiz(d.causaRaiz)].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')));
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='jarvis_b2b_prefeitura_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
 /* ─── FUEL PROJECTION DETAIL ─── */
@@ -15855,6 +16207,7 @@ const TAB_META={
   swap:['SWAP','Chamados direcionados ao departamento SWAP'],
   encerrados:['B2B Encerrados','Histórico, semanas, clusters e causa raiz'],
   semIntervencao:['B2B S/Intervenção','Encerrados sem necessidade de intervenção técnica'],
+  prefeitura:['B2B Prefeitura','Chamados encerrados do cliente Município de São Luís'],
   repetidos:['B2B Repetidos','Clientes recorrentes, reincidência e ofensores'],
   rede:['Rede','Metas, prazo, outlier, TME, TMR e clusters'],
   ofs:['Produtividade OFS','Técnicos, ordens, pendências e risco operacional'],
@@ -15964,19 +16317,20 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','swap','encerrados','semIntervencao','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas'].includes(tab))tab='dashboard';
+  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas';
+  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':'rep');
+  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
   document.getElementById('panel-swap').classList.toggle('active',isSwap);
   document.getElementById('panel-encerrados').classList.toggle('active',isEnc);
   document.getElementById('panel-semintervencao').classList.toggle('active',isSi);
+  document.getElementById('panel-prefeitura').classList.toggle('active',isPref);
   document.getElementById('panel-rede').classList.toggle('active',isRede);
   document.getElementById('panel-combustivel').classList.toggle('active',isFuel);
   document.getElementById('panel-repetidos').classList.toggle('active',isRep);
@@ -15985,18 +16339,19 @@ function switchTab(tab,persist=true){
   document.getElementById('panel-ofs').classList.toggle('active',isOfs);
   document.getElementById('panel-ativacoes').classList.toggle('active',isAtiv);
   document.getElementById('panel-preventivas').classList.toggle('active',isPrevent);
-  const showEncControls=(isEnc||isSi)&&dEnc.length>0;
+  const showEncControls=(isEnc||isSi||isPref)&&dEnc.length>0;
   const encSubbar=document.getElementById('enc-subbar');
   if(encSubbar)encSubbar.classList.toggle('visible',showEncControls);
   const encSubbarLabel=document.querySelector('#enc-subbar .enc-subbar-label');
-  if(encSubbarLabel)encSubbarLabel.innerHTML=isSi?'<i class="ti ti-shield-check" style="font-size:12px;vertical-align:-1px;color:var(--blue);margin-right:3px"></i>B2B S/Intervenção':'<i class="ti ti-circle-check" style="font-size:12px;vertical-align:-1px;color:var(--green-dk);margin-right:3px"></i>B2B Encerrados';
+  if(encSubbarLabel)encSubbarLabel.innerHTML=isSi?'<i class="ti ti-shield-check" style="font-size:12px;vertical-align:-1px;color:var(--blue);margin-right:3px"></i>B2B S/Intervenção':isPref?'<i class="ti ti-building-bank" style="font-size:12px;vertical-align:-1px;color:var(--blue);margin-right:3px"></i>B2B Prefeitura':'<i class="ti ti-circle-check" style="font-size:12px;vertical-align:-1px;color:var(--green-dk);margin-right:3px"></i>B2B Encerrados';
   const upAb=document.getElementById('up-ab'),upEnc=document.getElementById('up-enc'),upFuel=document.getElementById('up-fuel'),upOfs=document.getElementById('up-ofs');
   if(upAb)upAb.style.display=isAb?'flex':'none';
-  if(upEnc)upEnc.style.display=(isEnc||isRep||isSi)?'flex':'none';
+  if(upEnc)upEnc.style.display=(isEnc||isRep||isSi||isPref)?'flex':'none';
   if(upFuel)upFuel.style.display=isFuel?'':'none';
   if(upOfs)upOfs.style.display=isOfs?'flex':'none';
   if(isFuel){renderFuel();setTimeout(initFuelSplit,80);}
   if(isSi)renderAllSi();
+  if(isPref)renderAllPref();
   if(isRep)renderPanelRepetidos();
   if(isOfs)renderOfs();
   if(isRede){rdeSyncControls();renderRede();}
