@@ -6651,6 +6651,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="msel"><button type="button" class="msel-btn" id="msel-btn-week-selector" onclick="mselToggleOpen('week-selector')"><span class="msel-btn-lbl">Todas as semanas</span></button></div>
       <span class="week-label" style="margin-left:6px"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
       <div class="msel"><button type="button" class="msel-btn" id="msel-btn-cluster-selector" onclick="mselToggleOpen('cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
+      <span class="card-action" style="margin-left:6px" onclick="clearEncSubbarFilters()">Limpar filtros</span>
     </div>
 
     <!-- ═══ APP BODY ═══ -->
@@ -11548,6 +11549,14 @@ function clearRepFilters(){
   renderPanelRepetidos();
   saveState();
 }
+function clearEncSubbarFilters(){
+  selMes=[];selWeek=[];selCluster=[];
+  selEncCluster=[];selSiCluster=[];
+  fillMesSelector();fillWeekSelector();fillClusterSelector();
+  fillFiltersEnc();fillFiltersSi();
+  renderAllEnc();renderAllSi();
+  saveState();
+}
 function selectClusterCard(cluster){
   selCluster=selCluster.includes(cluster)?selCluster.filter(c=>c!==cluster):[...selCluster,cluster];
   selEncCluster=[];
@@ -11650,15 +11659,21 @@ function mselLabel(selectedArr,allLabel,labelFn){
   if(selectedArr.length===1)return labelFn?labelFn(selectedArr[0]):selectedArr[0];
   return selectedArr.length+' selecionados';
 }
+/* Atualiza só o label/estado visual do botão (sem tocar no painel de checkboxes) — usado
+   tanto pelo mselRender() (rebuild completo) quanto por mselToggleValue()/mselClear()
+   (clique dentro do painel já aberto), pra o botão nunca ficar com o label desatualizado
+   em relação ao array selecionado de verdade. */
+function _mselUpdateBtn(id,selectedArr,allLabel,labelFn){
+  const btn=document.getElementById('msel-btn-'+id);
+  if(!btn)return;
+  const lbl=btn.querySelector('.msel-btn-lbl');
+  if(lbl)lbl.textContent=mselLabel(selectedArr,allLabel,labelFn);
+  btn.classList.toggle('has-sel',selectedArr.length>0);
+}
 function mselRender(id,options,selectedArr,opts){
   const wasOpen=!!(MSEL_REGISTRY[id]&&MSEL_REGISTRY[id].open);
   MSEL_REGISTRY[id]={options,selected:selectedArr,allLabel:opts.allLabel,labelFn:opts.labelFn,onChange:opts.onChange,open:wasOpen};
-  const btn=document.getElementById('msel-btn-'+id);
-  if(btn){
-    const lbl=btn.querySelector('.msel-btn-lbl');
-    if(lbl)lbl.textContent=mselLabel(selectedArr,opts.allLabel,opts.labelFn);
-    btn.classList.toggle('has-sel',selectedArr.length>0);
-  }
+  _mselUpdateBtn(id,selectedArr,opts.allLabel,opts.labelFn);
   let panel=document.getElementById('msel-panel-'+id);
   if(!panel){
     panel=document.createElement('div');
@@ -11675,12 +11690,30 @@ function mselRender(id,options,selectedArr,opts){
     }).join(''):'<div class="msel-empty">Nenhuma opção</div>');
   if(wasOpen)mselPosition(id);
 }
+/* BUG real corrigido aqui: cfg.selected só era atualizado quando mselRender() rodava de
+   novo — mas nenhum onChange registrado pelos ~30 filtros do painel (mês/semana/cluster,
+   causa, UF, faixa, etc.) chamava seu próprio fill*() de volta. Resultado: 2 cliques
+   seguidos no mesmo painel (sem fechar/reabrir) liam sempre o MESMO cfg.selected
+   desatualizado — o 2º clique sobrescrevia o 1º em vez de acumular (ex.: marcar
+   janeiro+fevereiro no seletor de Mês resultava em selMes=['fevereiro'], perdendo
+   janeiro), e o label do botão nunca refletia a seleção real, ficando preso no texto
+   "Todos ...". Agora cfg.selected é sincronizado e o botão atualizado a cada clique,
+   sem depender do onChange de cada filtro individual fazer isso por conta própria. */
 function mselToggleValue(id,value){
   const cfg=MSEL_REGISTRY[id];if(!cfg)return;
   const next=cfg.selected.includes(value)?cfg.selected.filter(v=>v!==value):[...cfg.selected,value];
+  cfg.selected=next;
+  _mselUpdateBtn(id,next,cfg.allLabel,cfg.labelFn);
   cfg.onChange(next);
 }
-function mselClear(id){const cfg=MSEL_REGISTRY[id];if(cfg)cfg.onChange([]);}
+function mselClear(id){
+  const cfg=MSEL_REGISTRY[id];if(!cfg)return;
+  cfg.selected=[];
+  _mselUpdateBtn(id,[],cfg.allLabel,cfg.labelFn);
+  const panel=document.getElementById('msel-panel-'+id);
+  if(panel)panel.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
+  cfg.onChange([]);
+}
 function mselToggleOpen(id){
   const willOpen=!(MSEL_REGISTRY[id]&&MSEL_REGISTRY[id].open);
   mselCloseAll();
