@@ -16401,6 +16401,53 @@ function computeEncPptxData(){
 function encPptxDecisionTxt(info){
   return info.piorCluster?`Concentrar recuperação no ${info.piorCluster.cluster}: ${info.piorCluster.total} chamados, ${pp(info.piorCluster.pPrazo)}% no prazo e ${pp(info.piorCluster.pOut)}% de outliers. ${info.abaixoMeta} de ${info.clusters.length} cluster${info.clusters.length===1?'':'s'} abaixo da meta de 85%.`:'Sem clusters com volume no filtro selecionado.';
 }
+/* Semana Contra Semana (WoW) — a pedido do usuário: "Realizar as análises de todos os
+   painéis SEMANA contra SEMANA" (inspirado no gráfico "Variação Semana Contra Semana" do
+   modelo Relatórios/3Ps_MaranhaoPiaui_Executivo_S35_2026.pptx). Escopo: respeita Cluster/
+   Causa/UF/Segmento/busca do filtro atual, mas DELIBERADAMENTE ignora Semana/Mês — senão
+   sobraria só 1 semana e não haveria o que comparar. O "streak" (quantas altas/quedas
+   seguidas terminando na última semana) é puramente aritmético, sem hipótese de causa —
+   só a contagem de sinais consecutivos, igual ao "queda pela 2ª semana seguida" do modelo. */
+function encWoWSeries(){
+  let base=slnEnc();
+  const clusterFiltro=selEncCluster.length?selEncCluster:selCluster;
+  if(clusterFiltro.length)base=base.filter(x=>clusterFiltro.includes(x.cluster));
+  if(selEncCausa.length)base=base.filter(x=>selEncCausa.includes(fmtCausaRaiz(x.causaRaiz)));
+  if(selEncUf.length)base=base.filter(x=>selEncUf.includes(x.uf));
+  if(selEncSeg.length)base=base.filter(x=>selEncSeg.includes(repairPtBR(x.segmento)));
+  const srchEl=document.getElementById('f-srch-enc');
+  const srch=(srchEl&&srchEl.value||'').toLowerCase();
+  if(srch)base=base.filter(x=>x.cliente.toLowerCase().includes(srch)||x.protocolo.toLowerCase().includes(srch)||(x.titulo||'').toLowerCase().includes(srch));
+  const porSemana={};
+  base.forEach(x=>{if(!x.semana)return;(porSemana[x.semana]=porSemana[x.semana]||[]).push(x)});
+  const labels=Object.keys(porSemana).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const weeks=labels.map(k=>{
+    const rows=porSemana[k];
+    const st=encRuleStats(rows);
+    return{semana:k,total:rows.length,pPrazo:st.pPrazo};
+  });
+  return weeks.map((w,i)=>{
+    const prev=i>0?weeks[i-1]:null;
+    const varPct=prev&&prev.total?((w.total-prev.total)/prev.total*100):null;
+    return{...w,varPct};
+  });
+}
+function encWoWInsightTxt(weeks){
+  if(weeks.length<2)return 'Dados insuficientes para comparação semana a semana (mínimo 2 semanas no filtro atual).';
+  const last=weeks[weeks.length-1];
+  if(last.varPct===null)return `Semana ${last.semana}: ${last.total} chamados — sem semana anterior no filtro atual para comparar.`;
+  const dir=last.varPct>=0?'alta':'queda';
+  let streak=1;
+  for(let i=weeks.length-2;i>=1;i--){
+    const cur=weeks[i].varPct;
+    if(cur===null)break;
+    const curDir=cur>=0?'alta':'queda';
+    if(curDir===dir)streak++;
+    else break;
+  }
+  const streakTxt=streak>=2?`, a ${streak}ª ${dir} seguida`:'';
+  return `Semana ${last.semana}: ${pp(Math.abs(last.varPct))}% de ${dir} em volume frente à semana anterior${streakTxt}.`;
+}
 function downloadEncPptx(){
   if(typeof PptxGenJS==='undefined'){alert('Biblioteca de geração de PPTX não carregada.');return;}
   const info=computeEncPptxData();
@@ -16411,7 +16458,7 @@ function downloadEncPptx(){
   const pptx=pptxNewDeck();
 
   const s1=pptx.addSlide();
-  pptxHeader(s1,`B2B ENCERRADOS · ${ctxLabel.toUpperCase()}`,'Performance por Cluster','1 / 3');
+  pptxHeader(s1,`B2B ENCERRADOS · ${ctxLabel.toUpperCase()}`,'Performance por Cluster','1 / 4');
   const headRow=['Cluster','% no Prazo (meta 85%)','% Outlier (meta ≤2%)','Fora do Prazo 8–24h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
   const bodyRows=clusters.map(c=>[
     {text:c.cluster,options:{bold:true,fontSize:11}},
@@ -16431,20 +16478,38 @@ function downloadEncPptx(){
   s1.addText([{text:'DECISÃO OPERACIONAL\n',options:{bold:true,fontSize:10,color:GREY,breakLine:true}},{text:encPptxDecisionTxt(info),options:{fontSize:13,color:NAVY}}],{x:0.65,y:decisionY+0.15,w:12,h:1.05,valign:'top'});
 
   const s2=pptx.addSlide();
-  pptxHeader(s2,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos na tela','Diagnóstico','2 / 3');
-  s2.addText(`${d.length} chamados encerrados`,{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
-  s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–24h','Outlier >24h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
-  s2.addText(`% no prazo: ${pp(s.pPrazo)}% (meta 85%) · % outlier: ${pp(s.pOut)}% (meta ≤2%)`,{x:0.4,y:5.75,w:5.8,h:0.4,fontSize:11,color:GREY});
-  const topCausas=causas.slice(0,5);
-  s2.addText('Causa raiz dos chamados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
-  if(topCausas.length){
-    s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:topCausas.map(c=>c[0]),values:topCausas.map(c=>c[1])}],{x:6.6,y:2.45,w:6.2,h:3.7,barDir:'bar',showValue:true,chartColors:[BLUE],showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,dataLabelFontSize:9});
+  pptxHeader(s2,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos (exceto Semana/Mês)','Semana Contra Semana (WoW)','2 / 4');
+  const wow=encWoWSeries();
+  if(wow.length){
+    s2.addText('Volume de chamados encerrados por semana',{x:0.4,y:1.95,w:12.5,h:0.35,fontSize:13,bold:true,color:NAVY});
+    const wowColors=wow.map(w=>w.varPct===null?GREYL:(w.varPct>=0?GREEN:RED));
+    s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:wow.map(w=>w.semana),values:wow.map(w=>w.total)}],{x:0.4,y:2.35,w:12.5,h:2.75,barDir:'col',showValue:true,chartColors:wowColors,showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,dataLabelFontSize:9});
+    s2.addShape('rect',{x:0.4,y:5.25,w:12.5,h:1.4,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
+    const varTxt=wow.slice(-8).map(w=>w.semana+': '+(w.varPct===null?'—':(w.varPct>=0?'+':'')+pp(w.varPct)+'%')).join('   ·   ');
+    s2.addText([
+      {text:'VARIAÇÃO SEMANA A SEMANA\n',options:{bold:true,fontSize:10,color:GREY,breakLine:true}},
+      {text:encWoWInsightTxt(wow)+'\n',options:{fontSize:13,color:NAVY,breakLine:true}},
+      {text:varTxt,options:{fontSize:9.5,color:GREY}}
+    ],{x:0.65,y:5.4,w:12,h:1.15,valign:'top'});
   }else{
-    s2.addText('Sem dados de causa raiz no filtro selecionado.',{x:6.6,y:2.55,w:6,h:0.5,fontSize:12,color:GREY});
+    s2.addText('Sem dados de semana no filtro selecionado.',{x:0.4,y:2.0,w:12.5,h:0.5,fontSize:13,color:GREY});
   }
 
   const s3=pptx.addSlide();
-  pptxHeader(s3,`Plano de recuperação · referência ${now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}`,'FCA — Fato, Causa e Ação','3 / 3');
+  pptxHeader(s3,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos na tela','Diagnóstico','3 / 4');
+  s3.addText(`${d.length} chamados encerrados`,{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
+  s3.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–24h','Outlier >24h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
+  s3.addText(`% no prazo: ${pp(s.pPrazo)}% (meta 85%) · % outlier: ${pp(s.pOut)}% (meta ≤2%)`,{x:0.4,y:5.75,w:5.8,h:0.4,fontSize:11,color:GREY});
+  const topCausas=causas.slice(0,5);
+  s3.addText('Causa raiz dos chamados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
+  if(topCausas.length){
+    s3.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:topCausas.map(c=>c[0]),values:topCausas.map(c=>c[1])}],{x:6.6,y:2.45,w:6.2,h:3.7,barDir:'bar',showValue:true,chartColors:[BLUE],showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,dataLabelFontSize:9});
+  }else{
+    s3.addText('Sem dados de causa raiz no filtro selecionado.',{x:6.6,y:2.55,w:6,h:0.5,fontSize:12,color:GREY});
+  }
+
+  const s4=pptx.addSlide();
+  pptxHeader(s4,`Plano de recuperação · referência ${now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}`,'FCA — Fato, Causa e Ação','4 / 4');
   const fcaHead=['Fato','Causa','Ação','Prazo','Responsável','Status'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
   const offenders=clusters.filter(c=>c.pPrazo<85||c.pOut>1.98);
   const topCausa=causas[0]||['—',0];
@@ -16457,8 +16522,8 @@ function downloadEncPptx(){
     {text:'',options:{fontSize:10}},
     {text:'',options:{fontSize:10}}
   ]):[[{text:'Nenhum cluster com volume no filtro selecionado.',options:{fontSize:10,color:GREY},colspan:6}]];
-  s3.addTable([fcaHead,...fcaBody],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.65,valign:'top'});
-  s3.addText('Preencher Ação, Prazo, Responsável e Status com o plano de recuperação definido.',{x:0.4,y:2.0+0.65*(fcaBody.length+1)+0.2,w:12.5,h:0.4,fontSize:10,italic:true,color:GREY});
+  s4.addTable([fcaHead,...fcaBody],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.65,valign:'top'});
+  s4.addText('Preencher Ação, Prazo, Responsável e Status com o plano de recuperação definido.',{x:0.4,y:2.0+0.65*(fcaBody.length+1)+0.2,w:12.5,h:0.4,fontSize:10,italic:true,color:GREY});
 
   pptx.writeFile({fileName:`Relatorio_B2B_Encerrados_${now.toISOString().slice(0,10)}.pptx`});
 }
