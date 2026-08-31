@@ -11340,14 +11340,19 @@ function podaPopAcAnnotations(){
 }
 function fillFiltersPop(){
   const ufs=[...new Set(dPop.map(p=>p.uf).filter(Boolean))].sort();
-  const cidades=[...new Set(dPop.map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  /* Cidade é escopada pela UF já selecionada (cascata, igual prevPopCidadesForUf()
+     do Agendamento de Preventivas) — sem isso o dropdown listava as 765 cidades do
+     Brasil inteiro mesmo com UF=MA marcado, e escolher uma cidade de outro estado
+     ali travava a tabela em "0 resultados" sem nenhuma pista do motivo. */
+  const baseParaCidade=selPopUf.length?dPop.filter(p=>selPopUf.includes(p.uf)):dPop;
+  const cidades=[...new Set(baseParaCidade.map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const regimes=[...new Set(dPop.map(p=>p.regime).filter(Boolean))].sort();
   const tiers=[...new Set(dPop.map(p=>p.tier).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
   selPopUf=selPopUf.filter(u=>ufs.includes(u));
   selPopCidade=selPopCidade.filter(c=>cidades.includes(c));
   selPopRegime=selPopRegime.filter(r=>regimes.includes(r));
   selPopTier=selPopTier.filter(t=>tiers.includes(t));
-  mselRender('fpop-uf',ufs,selPopUf,{allLabel:'Todas UFs',onChange:(v)=>{selPopUf=v;renderAllPop();saveState();}});
+  mselRender('fpop-uf',ufs,selPopUf,{allLabel:'Todas UFs',onChange:(v)=>{selPopUf=v;fillFiltersPop();renderAllPop();saveState();}});
   mselRender('fpop-cidade',cidades,selPopCidade,{allLabel:'Todas cidades',onChange:(v)=>{selPopCidade=v;renderAllPop();saveState();}});
   mselRender('fpop-regime',regimes,selPopRegime,{allLabel:'Todos regimes',labelFn:(v)=>POP_REGIME_LABEL[v]||v,onChange:(v)=>{selPopRegime=v;renderAllPop();saveState();}});
   mselRender('fpop-tier',tiers,selPopTier,{allLabel:'Todos os tiers',labelFn:(v)=>'Tier '+v,onChange:(v)=>{selPopTier=v;renderAllPop();saveState();}});
