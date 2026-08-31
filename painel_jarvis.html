@@ -1024,6 +1024,8 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .sub-manual-lock { display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:#f59e0b;color:#000;font-size:8px;font-weight:900;cursor:pointer;flex-shrink:0;margin-left:2px;line-height:1;user-select:none }
 .sub-manual-lock:hover { background:#d97706; color:#fff }
 .substatus-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; min-width: 0; }
+.abc-check-btn { display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;background:var(--blue-bg);color:var(--blue);font-size:10px;cursor:pointer;flex-shrink:0;margin-left:2px;border:none;padding:0 }
+.abc-check-btn:hover { background:var(--blue);color:#fff }
 /* annotation cells */
 .td-ann { min-width: 130px; }
 .td-obs { min-width: 180px; }
@@ -12284,6 +12286,17 @@ function updateSubstatus(rowKey,value){
      que efetivamente contém esse chamado sempre reflita a mudança */
   fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();saveState()
 }
+/* Botão "Atualizar substatus" (pedido do usuário): abre o link do chamado (Atrix/Bdesk)
+   pra consulta manual e já deixa o seletor de substatus pronto pra escolher — não busca
+   nem atualiza nada sozinho (o Agente Atrix que fazia isso automaticamente foi removido
+   de propósito em 2026-07-26; substatus continua 100% manual). "Atualiza só quando clica"
+   = só troca o valor quando o usuário de fato seleciona uma opção no <select>, igual antes. */
+function abAbrirELocalizarSubstatus(e,link,rowKey){
+  if(e)e.stopPropagation();
+  if(link)window.open(link,'_blank','noopener,noreferrer');
+  const sel=document.querySelector('.ab-card[data-rowkey="'+rowKey+'"] .substatus-select');
+  if(sel){sel.focus();if(typeof sel.showPicker==='function'){try{sel.showPicker()}catch(_){}}}
+}
 function gFAb(){
   const srch=(document.getElementById('f-srch-ab').value||'').toLowerCase();
   let f=slnAb();
@@ -12322,6 +12335,7 @@ function renderTAb(){
     const ticketAttrs=cleanLink?` href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket"`:'';
     const _mSub=_hasManualSub(d.id||d.ticketId);
     const subHtml=canEdit()?`<select class="substatus-select${_mSub?' substatus-manual':''}" title="Alterar substatus" onclick="event.stopPropagation()" onchange="updateSubstatus(${d.rowKey},this.value)">${getSubstatusOptions(d.substatus)}</select>${_mSub?`<span class="sub-manual-lock" title="Fixado manualmente — agente não sobrescreve. Clique para liberar." onclick="event.stopPropagation();_clearManualSubByRowKey(${d.rowKey})">M</span>`:''}`:`<span class="substatus-readonly">${eh(fmtSubstatus(d.substatus)||'Sem substatus')}</span>`;
+    const checkBtn=(canEdit()&&cleanLink)?`<button type="button" class="abc-check-btn" title="Abrir chamado e atualizar substatus" onclick="abAbrirELocalizarSubstatus(event,'${eh(cleanLink)}',${d.rowKey})"><i class="ti ti-refresh"></i></button>`:'';
     const ann=abAnnotations[d.id]||{};
     const rowCls=isPurpleResponsavel(ann.prof)?'row-purple':abStatusCardClass(d.substatus);
     /* Padrão do card: linha de cima (destaque) sempre com o título do chamado
@@ -12331,7 +12345,7 @@ function renderTAb(){
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.assunto)}</span><span class="abc-cliente-final">${eh(d.cliente)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span></span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
