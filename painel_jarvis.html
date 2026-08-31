@@ -11373,16 +11373,24 @@ function onPopPropriedadeChange(nome,selectEl){
   }
   savePopAc(nome,'propriedade',selectEl.value);
 }
+/* Painel POP só mostra a área de atuação (mesma UFs de B2B Abertos/Encerrados,
+   AB_UF_PERMITIDAS) — restrito aqui, na VISÃO do painel, não em dPop em si:
+   dPop é compartilhado com o autocomplete UF→Cidade→POP do Agendamento de
+   Preventivas (prevPopCidadesForUf), que continua cobrindo o Brasil inteiro;
+   filtrar na fonte quebraria silenciosamente esse autocomplete pra qualquer UF
+   fora da lista. */
+function popScope(){return dPop.filter(p=>AB_UF_PERMITIDAS.includes(p.uf));}
 function fillFiltersPop(){
-  const ufs=[...new Set(dPop.map(p=>p.uf).filter(Boolean))].sort();
+  const base=popScope();
+  const ufs=[...new Set(base.map(p=>p.uf).filter(Boolean))].sort();
   /* Cidade é escopada pela UF já selecionada (cascata, igual prevPopCidadesForUf()
      do Agendamento de Preventivas) — sem isso o dropdown listava as 765 cidades do
      Brasil inteiro mesmo com UF=MA marcado, e escolher uma cidade de outro estado
      ali travava a tabela em "0 resultados" sem nenhuma pista do motivo. */
-  const baseParaCidade=selPopUf.length?dPop.filter(p=>selPopUf.includes(p.uf)):dPop;
+  const baseParaCidade=selPopUf.length?base.filter(p=>selPopUf.includes(p.uf)):base;
   const cidades=[...new Set(baseParaCidade.map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  const regimes=[...new Set(dPop.map(p=>p.regime).filter(Boolean))].sort();
-  const tiers=[...new Set(dPop.map(p=>p.tier).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  const regimes=[...new Set(base.map(p=>p.regime).filter(Boolean))].sort();
+  const tiers=[...new Set(base.map(p=>p.tier).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
   selPopUf=selPopUf.filter(u=>ufs.includes(u));
   selPopCidade=selPopCidade.filter(c=>cidades.includes(c));
   selPopRegime=selPopRegime.filter(r=>regimes.includes(r));
@@ -11402,7 +11410,7 @@ function clearPopFilters(){
 function gFPop(){
   const srchEl=document.getElementById('f-srch-pop');
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
-  let f=dPop;
+  let f=popScope();
   if(selPopUf.length)f=f.filter(p=>selPopUf.includes(p.uf));
   if(selPopCidade.length)f=f.filter(p=>selPopCidade.includes(p.cidade));
   if(selPopRegime.length)f=f.filter(p=>selPopRegime.includes(p.regime));
@@ -11422,14 +11430,14 @@ function rMetPop(){
   const propria=f.filter(p=>p.regime==='PROPRIO').length;
   const pctPropria=f.length?Math.round(propria/f.length*100):0;
   document.getElementById('mrow-pop').innerHTML=`
-    <div class="mc c-teal"><div class="mc-label">Total de POPs</div><div class="mc-val" style="color:var(--teal-dk)"><b>${f.length}</b></div><div class="mc-sub">de ${dPop.length} no catálogo</div></div>
+    <div class="mc c-teal"><div class="mc-label">Total de POPs</div><div class="mc-val" style="color:var(--teal-dk)"><b>${f.length}</b></div><div class="mc-sub">de ${popScope().length} no catálogo</div></div>
     <div class="mc c-blue"><div class="mc-label">UFs</div><div class="mc-val"><b>${ufsN}</b></div><div class="mc-sub">${cidadesN} cidades</div></div>
     <div class="mc c-green"><div class="mc-label">Regime Próprio</div><div class="mc-val" style="color:var(--green-dk)"><b>${propria}</b></div><div class="mc-sub"><span class="tag tag-green">${pctPropria}%</span> do filtro atual</div></div>
     <div class="mc c-orange"><div class="mc-label">Collocation</div><div class="mc-val" style="color:var(--orange)"><b>${f.length-propria}</b></div><div class="mc-sub">${100-pctPropria}% do filtro atual</div></div>`;
 }
 function renderTPop(){
   const f=gFPop();
-  document.getElementById('cnt-pop').textContent=f.length+' de '+dPop.length+' POPs';
+  document.getElementById('cnt-pop').textContent=f.length+' de '+popScope().length+' POPs';
   document.getElementById('tb-pop').innerHTML=f.map(p=>{
     const mapa=(p.lat&&p.lon)?`<a href="https://www.google.com/maps?q=${encodeURIComponent(p.lat+','+p.lon)}" target="_blank" rel="noopener noreferrer" title="Ver no mapa">${eh(p.lat)}, ${eh(p.lon)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:'—';
     const bairroCell=p.bairro?(p.bairroInferido?`${eh(p.bairro)} <i class="ti ti-wand" style="font-size:10px;color:var(--tx3);vertical-align:1px" title="Bairro em branco na base — extraído automaticamente do Endereço"></i>`:eh(p.bairro)):'—';
