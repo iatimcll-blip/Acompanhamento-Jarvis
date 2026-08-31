@@ -8812,7 +8812,7 @@ let selPrefCluster=[],selPrefAging=[],selPrefCausa=[],selPrefUf=[],selPrefSemana
 let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivSubstatus=[],selAtivProd=[],selAtivTec=[],selAtivSrch='';
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
 let activeTab='dashboard';
-let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='';
+let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='',abLastUpd='';
 let lastAtivAt='',lastAtivFile='';
 let wppUnreadCount=0,wppInitialized=false;
 const STORAGE_KEY='atrix:painel:bases:v1';
@@ -9793,7 +9793,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -9839,6 +9839,7 @@ function applyState(st,label){
       refreshAbBadge();refreshSwapBadge();
       if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
+      abLastUpd=Object.prototype.hasOwnProperty.call(st,'abLastUpd')&&st.abLastUpd?st.abLastUpd:lastAbAt;
       const _abMops=[...new Set(dAb.map(d=>d.mop).filter(Boolean))];
       const _abUfs=[...new Set(dAb.map(d=>d.uf).filter(Boolean))];
       const _abSubs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...dAb.map(d=>d.substatus)]);
@@ -10333,7 +10334,7 @@ function clienteAbertoNome(r){
 async function clearAb(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Abertos? Essa ação não pode ser desfeita.'))return;
-  dAb=[];lastAbAt='';lastAbFile='';updateUploadTimes();
+  dAb=[];lastAbAt='';lastAbFile='';abLastUpd='';updateUploadTimes();
   const nb=document.getElementById('nb-ab');if(nb)nb.textContent='0';
   const empty=document.getElementById('empty-ab');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ab');if(dash)dash.style.display='none';
@@ -10388,9 +10389,9 @@ function updateUploadTimes(){
   const se=document.getElementById('ts-enc');if(se)se.textContent=lastEncAt?'Anexado '+(lastEncFile?lastEncFile+' · ':'')+lastEncAt:'';
   ['ts-ab-panel','ts-swap-panel'].forEach(id=>{
     const el=document.getElementById(id);if(!el)return;
-    el.textContent=lastAbAt?'Atualizado em '+lastAbAt:'Nenhuma base carregada';
+    el.textContent=abLastUpd?'Atualizado em '+abLastUpd:'Nenhuma base carregada';
     const badge=document.getElementById(id==='ts-ab-panel'?'ab-upd-badge-ab':'ab-upd-badge-swap');
-    if(badge)badge.title=lastAbAt&&lastAbFile?'Arquivo: '+lastAbFile:'';
+    if(badge)badge.title=abLastUpd&&lastAbFile?'Arquivo: '+lastAbFile:'';
   });
   updateCentralStatus();
 }
@@ -10554,7 +10555,7 @@ function procAb(raw,fname){
 function finishAbUpload(fname){
   refreshAbBadge();
   lastAbFile=fname||'';
-  lastAbAt=now2();updateUploadTimes();
+  lastAbAt=now2();abLastUpd=lastAbAt;updateUploadTimes();
   podaAbAnnotations(); // apaga anotações de tickets que saíram da base
   refreshSwapBadge();
   fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();
@@ -11951,6 +11952,7 @@ function updateSubstatus(rowKey,value){
   _saveManualSub(item.id||item.ticketId);
   if(willPause)item.pauseStart=now;
   item.slaH=computeSlaHours(item,now);item.faixa=cf(item.slaH);item.statusSla=statusSla(item.slaH,item.mop,item.slaLimitH);
+  abLastUpd=now2();updateUploadTimes();
   /* card pode ser do painel Abertos ou do SWAP — re-renderiza os dois pra garantir que o
      que efetivamente contém esse chamado sempre reflita a mudança */
   fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();saveState()
