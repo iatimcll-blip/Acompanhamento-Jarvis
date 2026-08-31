@@ -12931,8 +12931,8 @@ function rChMetaEnc(){
 /* Semana Contra Semana (WoW), na tela (não só no relatório PPT) — reaproveita encWoWSeries()/
    encWoWInsightTxt(), já usados por downloadEncPptx(), pra não duplicar o cálculo: variação %
    do volume de chamados encerrados frente à semana anterior, barras verdes/vermelhas conforme
-   alta/queda. Mesmo escopo do PPT: respeita Cluster/Causa/UF/Segmento/busca, ignora Semana/Mês
-   de propósito (senão sobraria só 1 semana pra comparar). */
+   alta/queda. Mesmo escopo do PPT: respeita todos os filtros do painel, inclusive Mês/Semana
+   do subbar (a pedido do usuário — antes ignorava esses dois de propósito). */
 function rChWowEnc(){
   const wow=encWoWSeries();
   const insEl=document.getElementById('enc-wow-insight');
@@ -17198,13 +17198,15 @@ function encPptxDecisionTxt(info){
 }
 /* Semana Contra Semana (WoW) — a pedido do usuário: "Realizar as análises de todos os
    painéis SEMANA contra SEMANA" (inspirado no gráfico "Variação Semana Contra Semana" do
-   modelo Relatórios/3Ps_MaranhaoPiaui_Executivo_S35_2026.pptx). Escopo: respeita Cluster/
-   Causa/UF/Segmento/busca do filtro atual, mas DELIBERADAMENTE ignora Semana/Mês — senão
-   sobraria só 1 semana e não haveria o que comparar. O "streak" (quantas altas/quedas
+   modelo Relatórios/3Ps_MaranhaoPiaui_Executivo_S35_2026.pptx). Escopo: respeita TODOS os
+   filtros do painel, inclusive Mês/Semana do subbar (encWeek() já aplica selMes+selWeek) —
+   antes ignorava Mês/Semana de propósito pra sempre sobrar mais de 1 semana pra comparar;
+   a pedido do usuário, agora o WoW reflete só o período selecionado (se restar 1 semana ou
+   nenhuma anterior, encWoWInsightTxt() já trata isso). O "streak" (quantas altas/quedas
    seguidas terminando na última semana) é puramente aritmético, sem hipótese de causa —
    só a contagem de sinais consecutivos, igual ao "queda pela 2ª semana seguida" do modelo. */
 function encWoWSeries(){
-  let base=slnEnc();
+  let base=encWeek();
   const clusterFiltro=selEncCluster.length?selEncCluster:selCluster;
   if(clusterFiltro.length)base=base.filter(x=>clusterFiltro.includes(x.cluster));
   if(selEncCausa.length)base=base.filter(x=>selEncCausa.includes(fmtCausaRaiz(x.causaRaiz)));
@@ -17273,7 +17275,7 @@ function downloadEncPptx(){
   s1.addText([{text:'DECISÃO OPERACIONAL\n',options:{bold:true,fontSize:10,color:GREY,breakLine:true}},{text:encPptxDecisionTxt(info),options:{fontSize:13,color:NAVY}}],{x:0.65,y:decisionY+0.15,w:12,h:1.05,valign:'top'});
 
   const s2=pptx.addSlide();
-  pptxHeader(s2,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos (exceto Semana/Mês)','Semana Contra Semana (WoW)','2 / 4');
+  pptxHeader(s2,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos','Semana Contra Semana (WoW)','2 / 4');
   const wow=encWoWSeries();
   if(wow.length){
     s2.addText('Volume de chamados encerrados por semana',{x:0.4,y:1.95,w:12.5,h:0.35,fontSize:13,bold:true,color:NAVY});
