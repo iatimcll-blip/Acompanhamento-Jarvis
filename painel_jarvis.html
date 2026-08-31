@@ -8332,6 +8332,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <th onclick="sPop('tier')">Tier</th>
             <th>Bateria</th>
             <th>AR</th>
+            <th>Quantidade</th>
+            <th>Modelos</th>
           </tr></thead>
           <tbody id="tb-pop"></tbody>
         </table></div>
@@ -11293,6 +11295,7 @@ function procPop(matrix,fname){
   }).filter(p=>p.nome);
   lastPopFile=fname||'';
   lastPopAt=now2();
+  podaPopAcAnnotations();
   renderPreventCidadeDatalist();
   renderPreventPopDatalist();
   fillFiltersPop();renderAllPop();
@@ -11306,6 +11309,35 @@ function procPop(matrix,fname){
 /* ─── Painel POP (catálogo completo, distinto do Agendamento de Preventivas —
    aquele é calendário de visitas; este é a ficha de cada site) ─── */
 const POP_REGIME_LABEL={PROPRIO:'Próprio',COLLOCATION:'Collocation'};
+/* Capacidade de AR e marca/quantidade de aparelhos não existem em nenhuma aba da
+   base (conferido) — são cadastro manual, editável direto na tabela, guardado só
+   no navegador (mesmo padrão de siAnnotations/SI_ANN_KEY do S/Intervenção: não
+   sincroniza entre usuários, sobrevive a re-upload da base via poda por nome). */
+const POP_AR_CAPACIDADES=[9000,12000,18000,22000,24000,30000,36000,48000,60000];
+function popFmtBtu(n){return(Number(n)/1000).toLocaleString('pt-BR')+'.000 BTUs'}
+function popNormalizeAr(raw){
+  const m=String(raw||'').match(/(\d+)/);
+  if(!m)return'';
+  const n=Number(m[1])*1000;
+  return POP_AR_CAPACIDADES.includes(n)?String(n):'';
+}
+const POP_AC_MARCAS=['Springer Midea','Consul','Elgin','Gree','LG','Samsung','Fujitsu General','Daikin','Carrier','Philco','Electrolux','TCL','Hitachi','Komeco','Agratto'];
+let popAcAnn={};
+const POP_AC_KEY='atrix:pop:ac:v1';
+function loadPopAcAnnotations(){try{popAcAnn=JSON.parse(localStorage.getItem(POP_AC_KEY)||'{}')||{};}catch{popAcAnn={};}}
+function savePopAc(nome,field,value){
+  if(!nome||!canEdit())return;
+  popAcAnn[nome]=popAcAnn[nome]||{};
+  popAcAnn[nome][field]=value;
+  try{localStorage.setItem(POP_AC_KEY,JSON.stringify(popAcAnn));}catch(e){console.warn('pop ac save',e);}
+  renderTPop();
+}
+function podaPopAcAnnotations(){
+  const ativos=new Set(dPop.map(p=>p.nome));
+  let changed=false;
+  Object.keys(popAcAnn).forEach(nome=>{if(!ativos.has(nome)){delete popAcAnn[nome];changed=true;}});
+  if(changed)try{localStorage.setItem(POP_AC_KEY,JSON.stringify(popAcAnn));}catch(e){}
+}
 function fillFiltersPop(){
   const ufs=[...new Set(dPop.map(p=>p.uf).filter(Boolean))].sort();
   const cidades=[...new Set(dPop.map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
@@ -11361,6 +11393,20 @@ function renderTPop(){
   document.getElementById('tb-pop').innerHTML=f.map(p=>{
     const mapa=(p.lat&&p.lon)?`<a href="https://www.google.com/maps?q=${encodeURIComponent(p.lat+','+p.lon)}" target="_blank" rel="noopener noreferrer" title="Ver no mapa">${eh(p.lat)}, ${eh(p.lon)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:'—';
     const bairroCell=p.bairro?(p.bairroInferido?`${eh(p.bairro)} <i class="ti ti-wand" style="font-size:10px;color:var(--tx3);vertical-align:1px" title="Bairro em branco na base — extraído automaticamente do Endereço"></i>`:eh(p.bairro)):'—';
+    const ann=popAcAnn[p.nome]||{};
+    const arVal=ann.ar!==undefined?ann.ar:popNormalizeAr(p.ar);
+    const qtdVal=ann.qtd!==undefined?ann.qtd:'';
+    const modeloVal=ann.modelo!==undefined?ann.modelo:'';
+    const selStyle='font:inherit;font-size:11px;padding:3px 5px;border-radius:5px;border:.5px solid var(--bd);background:var(--surface);color:var(--tx);max-width:130px';
+    const arCell=canEdit()
+      ?`<select style="${selStyle}" onchange="savePopAc('${eh(p.nome)}','ar',this.value)"><option value="">—</option>${POP_AR_CAPACIDADES.map(c=>`<option value="${c}"${String(c)===String(arVal)?' selected':''}>${popFmtBtu(c)}</option>`).join('')}</select>`
+      :`<span>${arVal?popFmtBtu(arVal):'—'}</span>`;
+    const qtdCell=canEdit()
+      ?`<input type="number" min="0" value="${eh(qtdVal)}" style="width:52px;font:inherit;font-size:11px;padding:3px 5px;border-radius:5px;border:.5px solid var(--bd);background:var(--surface);color:var(--tx)" onchange="savePopAc('${eh(p.nome)}','qtd',this.value)">`
+      :`<span>${eh(qtdVal)||'—'}</span>`;
+    const modeloCell=canEdit()
+      ?`<select style="${selStyle}" onchange="savePopAc('${eh(p.nome)}','modelo',this.value)"><option value="">—</option>${POP_AC_MARCAS.map(m=>`<option value="${eh(m)}"${m===modeloVal?' selected':''}>${eh(m)}</option>`).join('')}</select>`
+      :`<span>${eh(modeloVal)||'—'}</span>`;
     return`<tr>
       <td style="color:var(--tx)">${eh(p.cidade)||'—'}</td>
       <td>${eh(p.uf)||'—'}</td>
@@ -11374,16 +11420,22 @@ function renderTPop(){
       <td class="enc-nowrap">${mapa}</td>
       <td>${p.tier?'Tier '+eh(p.tier):'—'}</td>
       <td>${eh(p.bateria)||'—'}</td>
-      <td>${eh(p.ar)||'—'}</td>
+      <td>${arCell}</td>
+      <td>${qtdCell}</td>
+      <td>${modeloCell}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="13" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+  }).join('')||'<tr><td colspan="15" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sPop(c){scPop===c?sdPop*=-1:(scPop=c,sdPop=1);renderTPop()}
 function renderAllPop(){rMetPop();renderTPop();}
 function exportPopCSV(){
   const rows=gFPop();
-  const header=['Cidade','UF','Endereço','Bairro','Sigla','Nomenclatura','Regime','POP','Apelido','Latitude','Longitude','Tier','Bateria','AR'];
-  const lines=[header.join(';')].concat(rows.map(p=>[p.cidade,p.uf,p.endereco,p.bairro,p.sigla,p.nome,POP_REGIME_LABEL[p.regime]||p.regime,p.pop,p.apelido,p.lat,p.lon,p.tier,p.bateria,p.ar].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')));
+  const header=['Cidade','UF','Endereço','Bairro','Sigla','Nomenclatura','Regime','POP','Apelido','Latitude','Longitude','Tier','Bateria','AR','Quantidade AR','Modelo AR'];
+  const lines=[header.join(';')].concat(rows.map(p=>{
+    const ann=popAcAnn[p.nome]||{};
+    const ar=ann.ar!==undefined?ann.ar:popNormalizeAr(p.ar);
+    return[p.cidade,p.uf,p.endereco,p.bairro,p.sigla,p.nome,POP_REGIME_LABEL[p.regime]||p.regime,p.pop,p.apelido,p.lat,p.lon,p.tier,p.bateria,ar?popFmtBtu(ar):'',ann.qtd||'',ann.modelo||''].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';');
+  }));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='jarvis_pop_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href);
 }
@@ -18462,7 +18514,7 @@ function rdeToggleExpurgoAtenuacao(i){
   renderRede();
   saveState();
 }
-loadAbAnnotations();loadSiAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
+loadAbAnnotations();loadSiAnnotations();loadPopAcAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
