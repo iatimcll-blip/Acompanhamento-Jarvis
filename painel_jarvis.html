@@ -11253,25 +11253,44 @@ let dPrevTecnicos=[];
    F=5 CIDADE, G=6 SIGLA CIDADE, I=8 POP, J=9 APELIDO/BAIRRO, K=10 UF, L=11
    LATITUDE, M=12 LONGITUDE, N=13 BAIRRO, O=14 ENDEREÇO, P=15 Tier, Q=16 BATERIA,
    R=17 AR, X=23 REGIME, AD=29 TIPO DE COLLOCATION. */
+/* Bairro vem em branco na coluna N (BAIRRO) pra boa parte da base (~49% dos POPs
+   nacionais), mas o texto livre da coluna O (ENDEREÇO) segue o padrão
+   "LOGRADOURO, NÚMERO, BAIRRO, CIDADE, UF, CEP" — testado nos dados reais: quando
+   ENDEREÇO tem >=4 segmentos separados por vírgula, o penúltimo-3º (a partir do
+   fim) bate com a própria CIDADE do registro em 801/803 casos (99,75%), então o
+   3º a partir do fim (posição -4) é o bairro. Só extrai quando a coluna N já vier
+   vazia — nunca sobrescreve um valor real da planilha. */
+function popExtractBairroFromEndereco(endereco){
+  const parts=String(endereco||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(parts.length<4)return'';
+  return titleCasePT(repairPtBR(parts[parts.length-4]));
+}
 function procPop(matrix,fname){
-  dPop=(matrix||[]).slice(1).map((row,i)=>({
-    rowKey:i,
-    nome:String(row[4]||'').trim(),
-    cidade:titleCasePT(repairPtBR(String(row[5]||'').trim())),
-    sigla:String(row[6]||'').trim().toUpperCase(),
-    pop:String(row[8]||'').trim(),
-    apelido:repairPtBR(String(row[9]||'').trim()),
-    uf:String(row[10]||'').trim().toUpperCase(),
-    lat:String(row[11]||'').trim(),
-    lon:String(row[12]||'').trim(),
-    bairro:titleCasePT(repairPtBR(String(row[13]||'').trim())),
-    endereco:String(row[14]||'').trim(),
-    tier:String(row[15]||'').trim(),
-    bateria:String(row[16]||'').trim(),
-    ar:String(row[17]||'').trim(),
-    regime:String(row[23]||'').trim().toUpperCase(),
-    collocation:String(row[29]||'').trim(),
-  })).filter(p=>p.nome);
+  dPop=(matrix||[]).slice(1).map((row,i)=>{
+    const endereco=String(row[14]||'').trim();
+    const bairroBase=titleCasePT(repairPtBR(String(row[13]||'').trim()));
+    const bairroInferido=!bairroBase;
+    const bairro=bairroBase||popExtractBairroFromEndereco(endereco);
+    return{
+      rowKey:i,
+      nome:String(row[4]||'').trim(),
+      cidade:titleCasePT(repairPtBR(String(row[5]||'').trim())),
+      sigla:String(row[6]||'').trim().toUpperCase(),
+      pop:String(row[8]||'').trim(),
+      apelido:repairPtBR(String(row[9]||'').trim()),
+      uf:String(row[10]||'').trim().toUpperCase(),
+      lat:String(row[11]||'').trim(),
+      lon:String(row[12]||'').trim(),
+      bairro,
+      bairroInferido:bairroInferido&&!!bairro,
+      endereco,
+      tier:String(row[15]||'').trim(),
+      bateria:String(row[16]||'').trim(),
+      ar:String(row[17]||'').trim(),
+      regime:String(row[23]||'').trim().toUpperCase(),
+      collocation:String(row[29]||'').trim(),
+    };
+  }).filter(p=>p.nome);
   lastPopFile=fname||'';
   lastPopAt=now2();
   renderPreventCidadeDatalist();
@@ -11341,11 +11360,12 @@ function renderTPop(){
   document.getElementById('cnt-pop').textContent=f.length+' de '+dPop.length+' POPs';
   document.getElementById('tb-pop').innerHTML=f.map(p=>{
     const mapa=(p.lat&&p.lon)?`<a href="https://www.google.com/maps?q=${encodeURIComponent(p.lat+','+p.lon)}" target="_blank" rel="noopener noreferrer" title="Ver no mapa">${eh(p.lat)}, ${eh(p.lon)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:'—';
+    const bairroCell=p.bairro?(p.bairroInferido?`${eh(p.bairro)} <i class="ti ti-wand" style="font-size:10px;color:var(--tx3);vertical-align:1px" title="Bairro em branco na base — extraído automaticamente do Endereço"></i>`:eh(p.bairro)):'—';
     return`<tr>
       <td style="color:var(--tx)">${eh(p.cidade)||'—'}</td>
       <td>${eh(p.uf)||'—'}</td>
       <td title="${eh(p.endereco)}" style="color:var(--tx2);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${eh(p.endereco)||'—'}</td>
-      <td>${eh(p.bairro)||'—'}</td>
+      <td>${bairroCell}</td>
       <td>${eh(p.sigla)||'—'}</td>
       <td style="color:var(--tx2)">${eh(p.nome)||'—'}</td>
       <td>${eh(POP_REGIME_LABEL[p.regime]||p.regime)||'—'}</td>
