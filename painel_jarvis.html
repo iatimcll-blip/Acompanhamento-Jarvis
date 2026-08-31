@@ -6638,6 +6638,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <i class="ti ti-calendar"></i><span class="ntab-label"> Preventivas POP</span>
         <span class="ntab-badge nb-red" id="nb-prevent" style="display:none">0</span>
       </button>
+      <button class="ntab" id="ntab-pop" onclick="switchTab('pop')">
+        <i class="ti ti-map-pin"></i><span class="ntab-label"> POP</span>
+      </button>
       <button class="ntab" id="ntab-monitor" onclick="switchTab('monitor')">
         <i class="ti ti-radar"></i><span class="ntab-label"> Monitor</span>
       </button>
@@ -6786,6 +6789,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-ofs" onclick="switchTab('ofs')"><i class="ti ti-chart-bar"></i><strong>Produtividade OFS</strong><span>Técnicos, ordens, alertas e ranking de produtividade.</span></button>
       <button class="dash-module" id="dash-mod-combustivel" onclick="switchTab('combustivel')"><i class="ti ti-gas-station"></i><strong>Combustíveis</strong><span>Saldo, frota, solicitações, aportes, retiradas e Alelo.</span></button>
       <button class="dash-module" id="dash-mod-preventivas" onclick="switchTab('preventivas')"><i class="ti ti-calendar"></i><strong>Agendamento de Preventivas</strong><span>Calendário de manutenção preventiva dos POPs, checklist de sistemas e histórico de conclusões.</span></button>
+      <button class="dash-module" id="dash-mod-pop" onclick="switchTab('pop')"><i class="ti ti-map-pin"></i><strong>POP</strong><span>Catálogo de POPs e endereços — cidade, regime, tier, bateria, AR e mapa.</span></button>
       <button class="dash-module" id="dash-mod-monitor" onclick="switchTab('monitor')"><i class="ti ti-radar"></i><strong>Monitor</strong><span>Blocos MA CAP, SLN PA, MASSIVA e INFRA.</span></button>
       <button class="dash-module" id="dash-mod-whatsapp" onclick="switchTab('whatsapp')"><i class="ti ti-brand-whatsapp"></i><strong>WhatsApp</strong><span>Espelho interno do WhatsApp Web dentro do painel.</span></button>
       <button class="dash-module" id="dash-mod-dsr" onclick="window.location.href='painel_dsr_volante.html'"><i class="ti ti-calendar-time"></i><strong>DSR Volante</strong><span>Escala automática de folgas, auditoria CLT e controle de horas extras.</span></button>
@@ -8286,6 +8290,55 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
   </div>
 
+  <!-- ── PAINEL POP (catálogo de sites — cidade, endereço, tier, bateria, AR, mapa) ── -->
+  <div class="panel" id="panel-pop">
+    <div id="empty-pop" class="empty">
+      <div class="empty-icon"><i class="ti ti-map-pin"></i></div>
+      <h2>POP</h2>
+      <p>Carregue a base oficial de POPs e endereços (aba Oficial) para ver o catálogo completo.</p>
+      <button class="empty-btn admin-only" onclick="openCentral('pop')"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
+    </div>
+    <div id="dash-pop" style="display:none">
+      <div class="mrow" id="mrow-pop"></div>
+      <button class="mop-ref-btn admin-only" onclick="openCentral('pop')"><i class="ti ti-database"></i> Atualizar base de POPs</button>
+      <div class="tsec">
+        <div class="tsec-hd">
+          <span class="tsec-title">Catálogo de POPs</span>
+          <div class="tsec-meta">
+            <span id="cnt-pop" style="color:var(--tx3)"></span>
+            <span class="card-action" onclick="clearPopFilters()">Limpar filtros</span>
+            <span class="card-action" onclick="exportPopCSV()"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar CSV</span>
+          </div>
+        </div>
+        <div class="fbar">
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-uf" onclick="mselToggleOpen('fpop-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-cidade" onclick="mselToggleOpen('fpop-cidade')"><span class="msel-btn-lbl">Todas cidades</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-regime" onclick="mselToggleOpen('fpop-regime')"><span class="msel-btn-lbl">Todos regimes</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-tier" onclick="mselToggleOpen('fpop-tier')"><span class="msel-btn-lbl">Todos os tiers</span></button></div>
+          <div class="srch-wrap"><input class="finput" id="f-srch-pop" placeholder="Buscar cidade, bairro, nomenclatura ou apelido…" oninput="renderTPop()"><button class="srch-clear" onclick="document.getElementById('f-srch-pop').value='';renderTPop()" title="Limpar busca">×</button></div>
+        </div>
+        <div class="tw"><table id="tbl-pop-main">
+          <thead><tr>
+            <th onclick="sPop('cidade')">Cidade</th>
+            <th onclick="sPop('uf')">UF</th>
+            <th>Endereço</th>
+            <th onclick="sPop('bairro')">Bairro</th>
+            <th onclick="sPop('sigla')">Sigla</th>
+            <th onclick="sPop('nome')">Nomenclatura</th>
+            <th onclick="sPop('regime')">Regime</th>
+            <th onclick="sPop('pop')">POP</th>
+            <th>Apelido</th>
+            <th>Mapa</th>
+            <th onclick="sPop('tier')">Tier</th>
+            <th>Bateria</th>
+            <th>AR</th>
+          </tr></thead>
+          <tbody id="tb-pop"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── PAINEL B2B REPETIDOS ── -->
   <div class="panel" id="panel-repetidos">
     <div id="empty-rep" class="empty">
@@ -8793,6 +8846,7 @@ let fuelRFilter={q:'',tipo:[],tipoCartao:[],dataIni:'',dataFim:''};
 function setFuelRF(k,v){fuelRFilter[k]=String(v||'').trim();renderFuelRequestsTable();}
 function clearFuelRF(){fuelRFilter={q:'',tipo:[],tipoCartao:[],dataIni:'',dataFim:''};['fuel-rf-q','fuel-rf-ini','fuel-rf-fim'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});renderFuelRequestsTable();}
 let scAb='slaH',sdAb=-1,scEnc='tempoTotal',sdEnc=-1,scSi='tempoTotal',sdSi=-1,scPref='tempoTotal',sdPref=-1;
+let scPop='cidade',sdPop=1;
 let abHideInactive=localStorage.getItem('jarvis:ab:hideInactive')==='1';
 let scSwap='slaH',sdSwap=-1;
 let swapHideInactive=localStorage.getItem('jarvis:swap:hideInactive')==='1';
@@ -8809,6 +8863,7 @@ let selSwapMop=[],selSwapFaixa=[],selSwapSub=[],selSwapUf=[];
 let selEncCluster=[],selEncAging=[],selEncCausa=[],selEncUf=[],selEncSemana=[],selEncSeg=[];
 let selSiCluster=[],selSiAging=[],selSiCausa=[],selSiUf=[],selSiSemana=[],selSiSeg=[];
 let selPrefCluster=[],selPrefAging=[],selPrefCausa=[],selPrefUf=[],selPrefSemana=[],selPrefSeg=[];
+let selPopUf=[],selPopCidade=[],selPopRegime=[],selPopTier=[];
 let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivSubstatus=[],selAtivProd=[],selAtivTec=[],selAtivSrch='';
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
 let activeTab='dashboard';
@@ -8886,7 +8941,7 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas'];
+const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop'];
 const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
@@ -8934,6 +8989,7 @@ const PANEL_NAV_MAP={
   sobreaviso:['ntab-sobreaviso','dash-mod-sobreaviso'],
   ativacoes:['ntab-ativacoes','dash-mod-ativacoes'],
   preventivas:['ntab-preventivas','dash-mod-preventivas'],
+  pop:['ntab-pop','dash-mod-pop'],
 };
 function applyPanelVisibility(){
   ALL_PANEL_KEYS.forEach(tab=>{
@@ -9251,7 +9307,7 @@ function deleteUser(username){
   saveState();
   renderUsers();
 }
-const PANEL_LABELS={abertos:'B2B Abertos',swap:'SWAP',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas'};
+const PANEL_LABELS={abertos:'B2B Abertos',swap:'SWAP',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -9925,6 +9981,10 @@ function applyState(st,label){
       if(Object.prototype.hasOwnProperty.call(st,'lastPopFile'))lastPopFile=st.lastPopFile||'';
       renderPreventCidadeDatalist();
       renderPreventPopDatalist();
+      fillFiltersPop();renderAllPop();
+      const emptyPop=document.getElementById('empty-pop'),dashPop=document.getElementById('dash-pop');
+      if(emptyPop)emptyPop.style.display=dPop.length?'none':'block';
+      if(dashPop)dashPop.style.display=dPop.length?'block':'none';
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar catálogo de POPs:',e);}
@@ -10296,8 +10356,13 @@ document.getElementById('file-pop').addEventListener('change',function(e){
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
   /* lê por posição (header:1), não por nome de coluna: a aba Oficial tem centenas de
-     colunas com cabeçalho em branco (repetido) que colidiriam se lida por nome */
-  rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.trim().toUpperCase()==='OFICIAL')||wb.SheetNames.find(n=>n.toUpperCase().includes('OFICIAL'))||wb.SheetNames[0];procPop(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}),f.name)}catch(er){alert('Erro ao ler base de POPs: '+er.message)}};
+     colunas com cabeçalho em branco (repetido) que colidiriam se lida por nome.
+     Range de coluna limitado a A:AF (0-31, última usada por procPop é AD=29): o
+     !ref real da planilha "Oficial" da base oficial vai até XFB (formatação
+     residual bem além dos dados), então sheet_to_json sem range trava o navegador
+     por ~30s construindo ~16.4 mil colunas por linha à toa (medido com o arquivo
+     real: 32ms com range travado vs ~32s sem). */
+  rd.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>n.trim().toUpperCase()==='OFICIAL')||wb.SheetNames.find(n=>n.toUpperCase().includes('OFICIAL'))||wb.SheetNames[0];const ws=wb.Sheets[sn];const fullRange=XLSX.utils.decode_range(ws['!ref']);const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',range:{s:{r:0,c:0},e:{r:fullRange.e.r,c:31}}});procPop(matrix,f.name)}catch(er){alert('Erro ao ler base de POPs: '+er.message)}};
   rd.readAsArrayBuffer(f);this.value='';
 });
 document.getElementById('file-fuel').addEventListener('change',function(e){
@@ -11182,24 +11247,127 @@ let lastPopAt='',lastPopFile='';
    sugestão no campo Responsável técnico (não vem de planilha nenhuma). */
 let dPrevTecnicos=[];
 
-/* Lê por posição (E,F,K,O,AD = índices 4,5,10,14,29), não por nome de cabeçalho:
-   a aba Oficial tem centenas de colunas com cabeçalho em branco (repetido), então
-   sheet_to_json por nome colidiria e perderia colunas — header:1 evita isso. */
+/* Lê por posição, não por nome de cabeçalho: a aba Oficial tem centenas de colunas
+   com cabeçalho em branco (repetido), então sheet_to_json por nome colidiria e
+   perderia colunas — header:1 evita isso. Índices (0-based): E=4 NOMENCLATURA,
+   F=5 CIDADE, G=6 SIGLA CIDADE, I=8 POP, J=9 APELIDO/BAIRRO, K=10 UF, L=11
+   LATITUDE, M=12 LONGITUDE, N=13 BAIRRO, O=14 ENDEREÇO, P=15 Tier, Q=16 BATERIA,
+   R=17 AR, X=23 REGIME, AD=29 TIPO DE COLLOCATION. */
 function procPop(matrix,fname){
-  dPop=(matrix||[]).slice(1).map(row=>({
+  dPop=(matrix||[]).slice(1).map((row,i)=>({
+    rowKey:i,
     nome:String(row[4]||'').trim(),
     cidade:titleCasePT(repairPtBR(String(row[5]||'').trim())),
+    sigla:String(row[6]||'').trim().toUpperCase(),
+    pop:String(row[8]||'').trim(),
+    apelido:repairPtBR(String(row[9]||'').trim()),
     uf:String(row[10]||'').trim().toUpperCase(),
+    lat:String(row[11]||'').trim(),
+    lon:String(row[12]||'').trim(),
+    bairro:titleCasePT(repairPtBR(String(row[13]||'').trim())),
     endereco:String(row[14]||'').trim(),
+    tier:String(row[15]||'').trim(),
+    bateria:String(row[16]||'').trim(),
+    ar:String(row[17]||'').trim(),
+    regime:String(row[23]||'').trim().toUpperCase(),
     collocation:String(row[29]||'').trim(),
   })).filter(p=>p.nome);
   lastPopFile=fname||'';
   lastPopAt=now2();
   renderPreventCidadeDatalist();
   renderPreventPopDatalist();
+  fillFiltersPop();renderAllPop();
+  const emptyPop=document.getElementById('empty-pop'),dashPop=document.getElementById('dash-pop');
+  if(emptyPop)emptyPop.style.display=dPop.length?'none':'block';
+  if(dashPop)dashPop.style.display=dPop.length?'block':'none';
   saveState();
   updateCentralStatus();
 }
+
+/* ─── Painel POP (catálogo completo, distinto do Agendamento de Preventivas —
+   aquele é calendário de visitas; este é a ficha de cada site) ─── */
+const POP_REGIME_LABEL={PROPRIO:'Próprio',COLLOCATION:'Collocation'};
+function fillFiltersPop(){
+  const ufs=[...new Set(dPop.map(p=>p.uf).filter(Boolean))].sort();
+  const cidades=[...new Set(dPop.map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const regimes=[...new Set(dPop.map(p=>p.regime).filter(Boolean))].sort();
+  const tiers=[...new Set(dPop.map(p=>p.tier).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  selPopUf=selPopUf.filter(u=>ufs.includes(u));
+  selPopCidade=selPopCidade.filter(c=>cidades.includes(c));
+  selPopRegime=selPopRegime.filter(r=>regimes.includes(r));
+  selPopTier=selPopTier.filter(t=>tiers.includes(t));
+  mselRender('fpop-uf',ufs,selPopUf,{allLabel:'Todas UFs',onChange:(v)=>{selPopUf=v;renderAllPop();saveState();}});
+  mselRender('fpop-cidade',cidades,selPopCidade,{allLabel:'Todas cidades',onChange:(v)=>{selPopCidade=v;renderAllPop();saveState();}});
+  mselRender('fpop-regime',regimes,selPopRegime,{allLabel:'Todos regimes',labelFn:(v)=>POP_REGIME_LABEL[v]||v,onChange:(v)=>{selPopRegime=v;renderAllPop();saveState();}});
+  mselRender('fpop-tier',tiers,selPopTier,{allLabel:'Todos os tiers',labelFn:(v)=>'Tier '+v,onChange:(v)=>{selPopTier=v;renderAllPop();saveState();}});
+}
+function clearPopFilters(){
+  selPopUf=[];selPopCidade=[];selPopRegime=[];selPopTier=[];
+  const srch=document.getElementById('f-srch-pop');if(srch)srch.value='';
+  fillFiltersPop();
+  renderAllPop();
+  saveState();
+}
+function gFPop(){
+  const srchEl=document.getElementById('f-srch-pop');
+  const srch=(srchEl&&srchEl.value||'').toLowerCase();
+  let f=dPop;
+  if(selPopUf.length)f=f.filter(p=>selPopUf.includes(p.uf));
+  if(selPopCidade.length)f=f.filter(p=>selPopCidade.includes(p.cidade));
+  if(selPopRegime.length)f=f.filter(p=>selPopRegime.includes(p.regime));
+  if(selPopTier.length)f=f.filter(p=>selPopTier.includes(p.tier));
+  if(srch)f=f.filter(p=>(p.cidade+' '+p.bairro+' '+p.nome+' '+p.apelido+' '+p.endereco+' '+p.sigla).toLowerCase().includes(srch));
+  return f.slice().sort((a,b)=>{
+    const av=a[scPop],bv=b[scPop];
+    const an=Number(av),bn=Number(bv);
+    if(av!==''&&bv!==''&&!isNaN(an)&&!isNaN(bn))return(an-bn)*sdPop;
+    return String(av||'').localeCompare(String(bv||''),'pt-BR')*sdPop;
+  });
+}
+function rMetPop(){
+  const f=gFPop();
+  const ufsN=new Set(f.map(p=>p.uf)).size;
+  const cidadesN=new Set(f.map(p=>p.cidade)).size;
+  const propria=f.filter(p=>p.regime==='PROPRIO').length;
+  const pctPropria=f.length?Math.round(propria/f.length*100):0;
+  document.getElementById('mrow-pop').innerHTML=`
+    <div class="mc c-teal"><div class="mc-label">Total de POPs</div><div class="mc-val" style="color:var(--teal-dk)"><b>${f.length}</b></div><div class="mc-sub">de ${dPop.length} no catálogo</div></div>
+    <div class="mc c-blue"><div class="mc-label">UFs</div><div class="mc-val"><b>${ufsN}</b></div><div class="mc-sub">${cidadesN} cidades</div></div>
+    <div class="mc c-green"><div class="mc-label">Regime Próprio</div><div class="mc-val" style="color:var(--green-dk)"><b>${propria}</b></div><div class="mc-sub"><span class="tag tag-green">${pctPropria}%</span> do filtro atual</div></div>
+    <div class="mc c-orange"><div class="mc-label">Collocation</div><div class="mc-val" style="color:var(--orange)"><b>${f.length-propria}</b></div><div class="mc-sub">${100-pctPropria}% do filtro atual</div></div>`;
+}
+function renderTPop(){
+  const f=gFPop();
+  document.getElementById('cnt-pop').textContent=f.length+' de '+dPop.length+' POPs';
+  document.getElementById('tb-pop').innerHTML=f.map(p=>{
+    const mapa=(p.lat&&p.lon)?`<a href="https://www.google.com/maps?q=${encodeURIComponent(p.lat+','+p.lon)}" target="_blank" rel="noopener noreferrer" title="Ver no mapa">${eh(p.lat)}, ${eh(p.lon)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:'—';
+    return`<tr>
+      <td style="color:var(--tx)">${eh(p.cidade)||'—'}</td>
+      <td>${eh(p.uf)||'—'}</td>
+      <td title="${eh(p.endereco)}" style="color:var(--tx2);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${eh(p.endereco)||'—'}</td>
+      <td>${eh(p.bairro)||'—'}</td>
+      <td>${eh(p.sigla)||'—'}</td>
+      <td style="color:var(--tx2)">${eh(p.nome)||'—'}</td>
+      <td>${eh(POP_REGIME_LABEL[p.regime]||p.regime)||'—'}</td>
+      <td>${eh(p.pop)||'—'}</td>
+      <td>${eh(p.apelido)||'—'}</td>
+      <td class="enc-nowrap">${mapa}</td>
+      <td>${p.tier?'Tier '+eh(p.tier):'—'}</td>
+      <td>${eh(p.bateria)||'—'}</td>
+      <td>${eh(p.ar)||'—'}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="13" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+}
+function sPop(c){scPop===c?sdPop*=-1:(scPop=c,sdPop=1);renderTPop()}
+function renderAllPop(){rMetPop();renderTPop();}
+function exportPopCSV(){
+  const rows=gFPop();
+  const header=['Cidade','UF','Endereço','Bairro','Sigla','Nomenclatura','Regime','POP','Apelido','Latitude','Longitude','Tier','Bateria','AR'];
+  const lines=[header.join(';')].concat(rows.map(p=>[p.cidade,p.uf,p.endereco,p.bairro,p.sigla,p.nome,POP_REGIME_LABEL[p.regime]||p.regime,p.pop,p.apelido,p.lat,p.lon,p.tier,p.bateria,p.ar].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')));
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='jarvis_pop_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href);
+}
+
 function prevPopCidadesForUf(uf){
   return [...new Set(dPop.filter(p=>!uf||p.uf===uf).map(p=>p.cidade).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 }
@@ -16309,7 +16477,8 @@ const TAB_META={
   ofs:['Produtividade OFS','Técnicos, ordens, pendências e risco operacional'],
   combustivel:['Combustíveis / Alelo','Frota, saldo, solicitações, aportes e retiradas'],
   monitor:['Monitor','Massiva, Infraestrutura, Gerencial e Wanderson'],
-  whatsapp:['WhatsApp','Espelho interno do WhatsApp Web no Jarvis MCLL']
+  whatsapp:['WhatsApp','Espelho interno do WhatsApp Web no Jarvis MCLL'],
+  pop:['POP','Catálogo de POPs e endereços — base oficial']
 };
 function openMobileNav(){
   document.getElementById('atrix-sidebar')?.classList.add('open');
@@ -16413,13 +16582,13 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas'].includes(tab))tab='dashboard';
+  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas';
+  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':'rep');
+  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
@@ -16429,6 +16598,7 @@ function switchTab(tab,persist=true){
   document.getElementById('panel-prefeitura').classList.toggle('active',isPref);
   document.getElementById('panel-rede').classList.toggle('active',isRede);
   document.getElementById('panel-combustivel').classList.toggle('active',isFuel);
+  document.getElementById('panel-pop').classList.toggle('active',isPop);
   document.getElementById('panel-repetidos').classList.toggle('active',isRep);
   document.getElementById('panel-monitor').classList.toggle('active',isMon);
   document.getElementById('panel-whatsapp').classList.toggle('active',isWpp);
@@ -16455,6 +16625,7 @@ function switchTab(tab,persist=true){
   if(isWpp){wppUnreadCount=0;updateWppBadge();loadWhatsAppPanel();}
   if(isAtiv)renderPanelAtivacoes();
   if(isPrevent)renderPreventAll();
+  if(isPop)renderAllPop();
   if(isSwap&&dAb.length)renderAllSwap();
   if(isDash)renderExecutiveDashboard();
   updateShellTitle(tab);
