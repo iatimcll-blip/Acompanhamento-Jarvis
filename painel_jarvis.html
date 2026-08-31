@@ -8313,7 +8313,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fbar">
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-uf" onclick="mselToggleOpen('fpop-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-cidade" onclick="mselToggleOpen('fpop-cidade')"><span class="msel-btn-lbl">Todas cidades</span></button></div>
-          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-regime" onclick="mselToggleOpen('fpop-regime')"><span class="msel-btn-lbl">Todos regimes</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-regime" onclick="mselToggleOpen('fpop-regime')"><span class="msel-btn-lbl">Todos os tipos de POP</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpop-tier" onclick="mselToggleOpen('fpop-tier')"><span class="msel-btn-lbl">Todos os tiers</span></button></div>
           <div class="srch-wrap"><input class="finput" id="f-srch-pop" placeholder="Buscar cidade, bairro, nomenclatura ou apelido…" oninput="renderTPop()"><button class="srch-clear" onclick="document.getElementById('f-srch-pop').value='';renderTPop()" title="Limpar busca">×</button></div>
         </div>
@@ -8325,7 +8325,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <th onclick="sPop('bairro')">Bairro</th>
             <th onclick="sPop('sigla')">Sigla</th>
             <th onclick="sPop('nome')">Nomenclatura</th>
-            <th onclick="sPop('regime')">Regime</th>
+            <th onclick="sPop('regime')">Tipo de POP</th>
+            <th>Propriedade</th>
             <th onclick="sPop('pop')">POP</th>
             <th>Apelido</th>
             <th>Mapa</th>
@@ -11338,6 +11339,40 @@ function podaPopAcAnnotations(){
   Object.keys(popAcAnn).forEach(nome=>{if(!ativos.has(nome)){delete popAcAnn[nome];changed=true;}});
   if(changed)try{localStorage.setItem(POP_AC_KEY,JSON.stringify(popAcAnn));}catch(e){}
 }
+/* Propriedade (empresa parceira dona/operadora do POP): a coluna "EMPRESA PARCEIRA"
+   da base é texto livre com centenas de valores confusos (nomes de pessoa, notas
+   tipo "EM ANÁLISE (X)", endereços) — não dá pra mapear com segurança pra uma
+   lista curada, diferente do AR/Tier que vêm de campos limpos. Fica só cadastro
+   manual, sem seed automático da planilha. */
+const POP_PARCEIROS_PADRAO=['ALLOHA','SEA','CARAJAS NET','CONECT','VIRTUA NET','ONLINE','TIM','RNP','TELEBRAS','VIVO','CLARO','VTAL','MASTER TELECOMUNICAÇÕES','DINAMICA'];
+const POP_PARCEIRO_ADD_SENTINEL='__add_parceiro__';
+let popParceirosCustom=[];
+const POP_PARCEIROS_CUSTOM_KEY='atrix:pop:parceiros-custom:v1';
+function loadPopParceirosCustom(){try{popParceirosCustom=JSON.parse(localStorage.getItem(POP_PARCEIROS_CUSTOM_KEY)||'[]')||[];}catch{popParceirosCustom=[];}}
+function popParceirosTodos(){return[...POP_PARCEIROS_PADRAO,...popParceirosCustom.filter(p=>!POP_PARCEIROS_PADRAO.some(d=>nk(d)===nk(p)))];}
+function addPopParceiroCustom(nome){
+  const v=String(nome||'').trim();
+  if(!v)return null;
+  if(!popParceirosTodos().some(p=>nk(p)===nk(v))){
+    popParceirosCustom.push(v);
+    try{localStorage.setItem(POP_PARCEIROS_CUSTOM_KEY,JSON.stringify(popParceirosCustom));}catch(e){console.warn('pop parceiro custom save',e);}
+  }
+  return v;
+}
+/* onchange do select de Propriedade: se o usuário escolheu "+ Adicionar parceiro…",
+   pede o nome, cadastra no catálogo global (persistido, disponível pra todos os
+   POPs dali em diante) e já seleciona pro POP atual — em vez de deixar a opção
+   sentinela selecionada. */
+function onPopPropriedadeChange(nome,selectEl){
+  if(selectEl.value===POP_PARCEIRO_ADD_SENTINEL){
+    const novo=prompt('Nome do novo parceiro:');
+    const added=novo&&novo.trim()?addPopParceiroCustom(novo):null;
+    if(added)savePopAc(nome,'propriedade',added);
+    else renderTPop();
+    return;
+  }
+  savePopAc(nome,'propriedade',selectEl.value);
+}
 function fillFiltersPop(){
   const ufs=[...new Set(dPop.map(p=>p.uf).filter(Boolean))].sort();
   /* Cidade é escopada pela UF já selecionada (cascata, igual prevPopCidadesForUf()
@@ -11354,7 +11389,7 @@ function fillFiltersPop(){
   selPopTier=selPopTier.filter(t=>tiers.includes(t));
   mselRender('fpop-uf',ufs,selPopUf,{allLabel:'Todas UFs',onChange:(v)=>{selPopUf=v;fillFiltersPop();renderAllPop();saveState();}});
   mselRender('fpop-cidade',cidades,selPopCidade,{allLabel:'Todas cidades',onChange:(v)=>{selPopCidade=v;renderAllPop();saveState();}});
-  mselRender('fpop-regime',regimes,selPopRegime,{allLabel:'Todos regimes',labelFn:(v)=>POP_REGIME_LABEL[v]||v,onChange:(v)=>{selPopRegime=v;renderAllPop();saveState();}});
+  mselRender('fpop-regime',regimes,selPopRegime,{allLabel:'Todos os tipos de POP',labelFn:(v)=>POP_REGIME_LABEL[v]||v,onChange:(v)=>{selPopRegime=v;renderAllPop();saveState();}});
   mselRender('fpop-tier',tiers,selPopTier,{allLabel:'Todos os tiers',labelFn:(v)=>'Tier '+v,onChange:(v)=>{selPopTier=v;renderAllPop();saveState();}});
 }
 function clearPopFilters(){
@@ -11402,7 +11437,15 @@ function renderTPop(){
     const arVal=ann.ar!==undefined?ann.ar:popNormalizeAr(p.ar);
     const qtdVal=ann.qtd!==undefined?ann.qtd:'';
     const modeloVal=ann.modelo!==undefined?ann.modelo:'';
+    const tipoVal=ann.tipo!==undefined?ann.tipo:(p.regime||'');
+    const propriedadeVal=ann.propriedade||'';
     const selStyle='font:inherit;font-size:11px;padding:3px 5px;border-radius:5px;border:.5px solid var(--bd);background:var(--surface);color:var(--tx);max-width:130px';
+    const tipoCell=canEdit()
+      ?`<select style="${selStyle}" onchange="savePopAc('${eh(p.nome)}','tipo',this.value)"><option value="">—</option>${Object.keys(POP_REGIME_LABEL).map(k=>`<option value="${k}"${k===tipoVal?' selected':''}>${POP_REGIME_LABEL[k]}</option>`).join('')}</select>`
+      :`<span>${eh(POP_REGIME_LABEL[tipoVal]||tipoVal)||'—'}</span>`;
+    const propriedadeCell=canEdit()
+      ?`<select style="${selStyle}" onchange="onPopPropriedadeChange('${eh(p.nome)}',this)"><option value="">—</option>${popParceirosTodos().map(pa=>`<option value="${eh(pa)}"${pa===propriedadeVal?' selected':''}>${eh(pa)}</option>`).join('')}<option value="${POP_PARCEIRO_ADD_SENTINEL}">+ Adicionar parceiro…</option></select>`
+      :`<span>${eh(propriedadeVal)||'—'}</span>`;
     const arCell=canEdit()
       ?`<select style="${selStyle}" onchange="savePopAc('${eh(p.nome)}','ar',this.value)"><option value="">—</option>${POP_AR_CAPACIDADES.map(c=>`<option value="${c}"${String(c)===String(arVal)?' selected':''}>${popFmtBtu(c)}</option>`).join('')}</select>`
       :`<span>${arVal?popFmtBtu(arVal):'—'}</span>`;
@@ -11419,7 +11462,8 @@ function renderTPop(){
       <td>${bairroCell}</td>
       <td>${eh(p.sigla)||'—'}</td>
       <td style="color:var(--tx2)">${eh(p.nome)||'—'}</td>
-      <td>${eh(POP_REGIME_LABEL[p.regime]||p.regime)||'—'}</td>
+      <td>${tipoCell}</td>
+      <td>${propriedadeCell}</td>
       <td>${eh(p.pop)||'—'}</td>
       <td>${eh(p.apelido)||'—'}</td>
       <td class="enc-nowrap">${mapa}</td>
@@ -11429,17 +11473,18 @@ function renderTPop(){
       <td>${qtdCell}</td>
       <td>${modeloCell}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="15" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+  }).join('')||'<tr><td colspan="16" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sPop(c){scPop===c?sdPop*=-1:(scPop=c,sdPop=1);renderTPop()}
 function renderAllPop(){rMetPop();renderTPop();}
 function exportPopCSV(){
   const rows=gFPop();
-  const header=['Cidade','UF','Endereço','Bairro','Sigla','Nomenclatura','Regime','POP','Apelido','Latitude','Longitude','Tier','Bateria','AR','Quantidade AR','Modelo AR'];
+  const header=['Cidade','UF','Endereço','Bairro','Sigla','Nomenclatura','Tipo de POP','Propriedade','POP','Apelido','Latitude','Longitude','Tier','Bateria','AR','Quantidade AR','Modelo AR'];
   const lines=[header.join(';')].concat(rows.map(p=>{
     const ann=popAcAnn[p.nome]||{};
     const ar=ann.ar!==undefined?ann.ar:popNormalizeAr(p.ar);
-    return[p.cidade,p.uf,p.endereco,p.bairro,p.sigla,p.nome,POP_REGIME_LABEL[p.regime]||p.regime,p.pop,p.apelido,p.lat,p.lon,p.tier,p.bateria,ar?popFmtBtu(ar):'',ann.qtd||'',ann.modelo||''].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';');
+    const tipo=ann.tipo!==undefined?ann.tipo:(p.regime||'');
+    return[p.cidade,p.uf,p.endereco,p.bairro,p.sigla,p.nome,POP_REGIME_LABEL[tipo]||tipo,ann.propriedade||'',p.pop,p.apelido,p.lat,p.lon,p.tier,p.bateria,ar?popFmtBtu(ar):'',ann.qtd||'',ann.modelo||''].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';');
   }));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='jarvis_pop_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href);
@@ -18519,7 +18564,7 @@ function rdeToggleExpurgoAtenuacao(i){
   renderRede();
   saveState();
 }
-loadAbAnnotations();loadSiAnnotations();loadPopAcAnnotations();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
+loadAbAnnotations();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
