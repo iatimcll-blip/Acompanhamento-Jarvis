@@ -12288,6 +12288,7 @@ function updateSubstatus(rowKey,value){
     if(wasPaused&&!willPause&&item.pauseStart){item.pausedBusinessH=Number(item.pausedBusinessH||0)+businessHoursBetween(item.pauseStart,now);item.pauseStart=null}
   }
   item.substatus=next;
+  item.substatusUpdatedAt=now.toISOString();
   _saveManualSub(item.id||item.ticketId);
   if(willPause)item.pauseStart=now;
   item.slaH=computeSlaHours(item,now);item.faixa=cf(item.slaH);item.statusSla=statusSla(item.slaH,item.mop,item.slaLimitH);
@@ -12465,6 +12466,7 @@ async function loadAtrixUpdates(){
       }
       if(!up.substatus)return;
       const next=fmtSubstatus(up.substatus);
+      if(up.updatedAt)ticket.substatusUpdatedAt=up.updatedAt;
       if(next!==ticket.substatus){
         /* Mesma lógica de pausa/retomada de SLA de updateSubstatus() — sem isso,
            chamados atualizados pelo agente não respeitariam a pausa por substatus. */
@@ -12487,11 +12489,16 @@ async function loadAtrixUpdates(){
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);return'';}
 }
 
-/* Indicador por chamado (pedido do usuário): mostra quando o Agente Atrix sincronizou
-   ESTE chamado especificamente, não só o horário do último ciclo em geral. Verde =
-   sincronizado há menos de 35min, sem cor = 35min-2h, laranja = mais de 2h (desatualizado). */
-function _atrixTsBadge(ticketId){
-  const iso=atrixUpdateMap[ticketId];
+/* Indicador por chamado (pedido do usuário): mostra a última atualização do substatus
+   deste chamado especificamente, seja ela via Agente Atrix (atrixUpdateMap) ou edição
+   manual pelo dropdown (item.substatusUpdatedAt) — usa a mais recente das duas. Verde =
+   atualizado há menos de 35min, sem cor = 35min-2h, laranja = mais de 2h (desatualizado). */
+function _atrixTsBadge(item){
+  const ticketId=item.id||item.ticketId||'';
+  const atrixIso=atrixUpdateMap[ticketId]||'';
+  const manualIso=item.substatusUpdatedAt||'';
+  const viaManual=manualIso>atrixIso;
+  const iso=viaManual?manualIso:atrixIso;
   if(!iso)return'';
   try{
     const d=new Date(iso);if(isNaN(d.getTime()))return'';
@@ -12502,7 +12509,9 @@ function _atrixTsBadge(ticketId){
     if(ageMin<35)cls='atrix-card-ts fresh';
     else if(ageMin<=120)cls='atrix-card-ts';
     else cls='atrix-card-ts stale';
-    return`<span class="${cls}" title="Substatus sincronizado pelo Agente Atrix"><i class="ti ti-robot"></i>Atualizado em ${ts}</span>`;
+    const icon=viaManual?'ti-edit':'ti-robot';
+    const title=viaManual?'Substatus atualizado manualmente':'Substatus sincronizado pelo Agente Atrix';
+    return`<span class="${cls}" title="${title}"><i class="ti ${icon}"></i>Atualizado em ${ts}</span>`;
   }catch(_){return'';}
 }
 
@@ -12554,7 +12563,7 @@ function renderTAb(){
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.assunto)}</span><span class="abc-cliente-final">${eh(d.cliente)}</span>`:eh(d.cliente);
     const profCell=canEdit()?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit()?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}${_atrixTsBadge(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
@@ -12727,7 +12736,7 @@ function renderTSwap(){
       ?`<input class="finput swap-uf-input" style="width:38px;padding:2px 4px;font-size:11px" value="${eh(d.uf)}" maxlength="2" onclick="event.stopPropagation()" onblur="swapEditarLocal(${d.rowKey},'uf',this.value)" title="Editar UF">
          <input class="finput swap-cidade-input" style="width:110px;padding:2px 4px;font-size:11px" value="${eh(d.cidade)}" onclick="event.stopPropagation()" onblur="swapEditarLocal(${d.rowKey},'cidade',this.value)" title="Editar Cidade">`
       :`${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}`;
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idCellHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d.id||d.ticketId||'')}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idCellHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-swap .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
   renderSwapResumo();
