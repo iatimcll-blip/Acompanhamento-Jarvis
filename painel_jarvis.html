@@ -12353,8 +12353,13 @@ async function _atrixReadGhError(res){
 function _atrixFriendlyGhError(err){
   const msg=String(err&&err.message||'');
   if(err&&err.status===401)return'Token GitHub inválido ou expirado. Gere/atualize o token nas configurações de sincronização.';
-  if(err&&(err.status===403||err.status===404))return'Token GitHub sem permissão para iniciar Actions, ou o workflow ainda não existe em main. Edite o token e marque Actions: Read and write.';
-  if(err&&err.status===422)return'GitHub recusou o dispatch do workflow. Confirme se a branch main está ativa e tente novamente.';
+  /* 403/404/422 nesse dispatch, na prática, quase sempre significam a mesma coisa:
+     .github/workflows/atrix-sync.yml ainda não foi publicado em main. O 422 é o mais
+     enganoso dos três — este repo já teve um workflow com esse MESMO nome de arquivo
+     antes (removido em 2026-07-25), então o GitHub reconhece o nome internamente e
+     devolve um erro de validação (422) em vez do 404 limpo que se esperaria pra um
+     workflow que nunca existiu. */
+  if(err&&[403,404,422].includes(err.status))return'O workflow .github/workflows/atrix-sync.yml provavelmente ainda não foi publicado em main (ou o token não tem permissão de Actions). Publique o arquivo do workflow e tente de novo.';
   return msg||'Falha ao chamar a API do GitHub.';
 }
 /* Cancela execuções presas em fila (ex.: runner self-hosted offline) de tentativas
