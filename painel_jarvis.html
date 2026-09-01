@@ -2316,6 +2316,9 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
   font-size: 12px;
   color: var(--green);
 }
+#atrix-timer-badge.stale { border-color: rgba(249,115,22,.4); color: var(--orange); }
+#atrix-timer-badge.stale i { color: var(--orange); }
+#atrix-timer-badge.fresh i { color: var(--green); }
 #panel-abertos .mop-ref-btn , #panel-swap .mop-ref-btn {
   margin-bottom: 0;
   min-height: 34px;
@@ -6851,6 +6854,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="mop-ref-btn" onclick="abrirModalRegrasSla()" title="Como o relógio de SLA é calculado"><i class="ti ti-clock-hour-4"></i> Regras de SLA</button>
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')"><i class="ti ti-database"></i> Atualizar base</button>
           <button class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos"><i class="ti ti-refresh"></i> Atualizar substatus (Atrix)</button>
+          <span class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
         </div>
       </div>
       <div class="quick-mop" id="quick-mop-ab" aria-label="Filtros rápidos por MOP/EPS"></div>
@@ -12324,6 +12328,25 @@ const ATRIX_UPDATES_FILE='data/atrix_updates.json';
 let atrixUpdateMap={};
 let _atrixRunningNow=false;
 let _atrixPickupTimer=null;
+let atrixLastSyncAt='';
+
+/* Timer ao lado do botão (pedido do usuário): mostra ao vivo há quanto tempo foi a
+   última sincronização real de substatus via Atrix, atualizando a cada 30s. */
+function _atrixRenderTimerBadge(){
+  const el=document.getElementById('atrix-timer-txt'),badge=document.getElementById('atrix-timer-badge');
+  if(!el||!badge)return;
+  if(!atrixLastSyncAt){el.textContent='Nunca sincronizado';badge.classList.remove('fresh','stale');return;}
+  const ms=Date.now()-new Date(atrixLastSyncAt).getTime();
+  const min=Math.floor(ms/60000);
+  let txt;
+  if(min<1)txt='Sincronizado agora';
+  else if(min<60)txt=`Última sincronização: há ${min} min`;
+  else{const h=Math.floor(min/60),m=min%60;txt=`Última sincronização: há ${h}h${m>0?m+'min':''}`;}
+  el.textContent=txt;
+  badge.classList.toggle('fresh',min<35);
+  badge.classList.toggle('stale',min>120);
+}
+setInterval(_atrixRenderTimerBadge,30000);
 
 async function pushAtrixTicketsJson(){
   const token=getGhToken();
@@ -12485,6 +12508,7 @@ async function loadAtrixUpdates(){
       fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();saveState();
       console.log(`[Atrix Agent] ${count} atualização(ões) aplicada(s) do agente.`);
     }
+    if(latestAt){atrixLastSyncAt=latestAt;_atrixRenderTimerBadge();}
     return latestAt;
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);return'';}
 }
@@ -18831,6 +18855,7 @@ function rdeToggleExpurgoAtenuacao(i){
   saveState();
 }
 loadAbAnnotations();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
+_atrixRenderTimerBadge();
 setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},3000);
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
