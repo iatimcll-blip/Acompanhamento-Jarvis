@@ -12388,8 +12388,22 @@ async function _dispatchAtrixWorkflow(){
   if(!res.ok)throw new Error(_atrixFriendlyGhError(await _atrixReadGhError(res)));
 }
 
+const ATRIX_MIN_INTERVAL_MIN=30;
+function _atrixCheckMinInterval(){
+  let lastAt=0;
+  try{lastAt=Number(localStorage.getItem('jarvis:atrix:lastTriggerAt')||0);}catch(_){}
+  if(!lastAt)return true;
+  const minsAgo=(Date.now()-lastAt)/60000;
+  if(minsAgo>=ATRIX_MIN_INTERVAL_MIN)return true;
+  const lastStr=new Date(lastAt).toLocaleString('pt-BR');
+  const faltam=Math.ceil(ATRIX_MIN_INTERVAL_MIN-minsAgo);
+  return confirm(`A última atualização via Atrix foi solicitada há ${Math.floor(minsAgo)} min (${lastStr}), menos de ${ATRIX_MIN_INTERVAL_MIN} min atrás.\n\nDisparar de novo agora mesmo assim? (Faltam ~${faltam} min pro intervalo recomendado — solicitações muito próximas sobrecarregam o Atrix sem necessidade.)`);
+}
+
 async function triggerAtrixUpdateNow(btn){
   if(!canEdit())return;
+  if(!_atrixCheckMinInterval())return;
+  try{localStorage.setItem('jarvis:atrix:lastTriggerAt',String(Date.now()));}catch(_){}
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
     btn.classList.remove('atrix-start-ok','atrix-start-err');
