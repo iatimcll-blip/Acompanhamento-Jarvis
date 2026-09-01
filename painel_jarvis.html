@@ -1485,6 +1485,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 /* MOP ref btn */
 .mop-ref-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer; border:.5px solid var(--bd); background:var(--surface2); color:var(--tx2); font-family:inherit; transition:all .13s; margin-bottom:14px; }
 .mop-ref-btn:hover { background:var(--surface3); color:var(--tx); }
+.mop-ref-btn.atrix-start-ok { background:var(--green-bg); color:var(--green-dk); border-color:var(--green); }
+.mop-ref-btn.atrix-start-err { background:var(--red-bg); color:var(--red); border-color:var(--red); }
 /* Global footer */
 .pfooter-global { text-align:center; font-size:10px; color:var(--tx3); padding:10px 0 14px; }
 /* ─── REDE v2 ─── */
@@ -6841,6 +6843,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
           <button class="mop-ref-btn" onclick="abrirModalRegrasSla()" title="Como o relógio de SLA é calculado"><i class="ti ti-clock-hour-4"></i> Regras de SLA</button>
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')"><i class="ti ti-database"></i> Atualizar base</button>
+          <button class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos"><i class="ti ti-refresh"></i> Atualizar substatus (Atrix)</button>
         </div>
       </div>
       <div class="quick-mop" id="quick-mop-ab" aria-label="Filtros rápidos por MOP/EPS"></div>
@@ -12297,6 +12300,167 @@ function abAbrirELocalizarSubstatus(e,link,rowKey){
   const sel=document.querySelector('.ab-card[data-rowkey="'+rowKey+'"] .substatus-select');
   if(sel){sel.focus();if(typeof sel.showPicker==='function'){try{sel.showPicker()}catch(_){}}}
 }
+
+/* ═══ Agente Atrix — atualização em massa de substatus (B2B Abertos + SWAP) ═══
+   Restaurado a pedido do usuário (revertendo a remoção deliberada de 2026-07-26 —
+   ver memória do projeto). Único botão, no cabeçalho do Painel B2B Abertos: exporta
+   os chamados com link pro GitHub, dispara o workflow_dispatch do runner self-hosted
+   (scraper/atrix_agent.js faz login no Atrix e lê o substatus real de cada chamado),
+   e o resultado (data/atrix_updates.json) é mesclado de volta em dAb — reflete nos
+   dois painéis porque os dois leem do mesmo array. Versão enxuta da anterior: sem
+   dock público, sem contador regressivo, sem ciclo separado de Ativações B2B — só
+   o que foi pedido desta vez (um botão, atualiza tudo, só quando clicado). */
+const ATRIX_WORKFLOW_FILE='atrix-sync.yml';
+const ATRIX_TICKETS_FILE='data/atrix_tickets.json';
+const ATRIX_UPDATES_FILE='data/atrix_updates.json';
+let atrixUpdateMap={};
+let _atrixRunningNow=false;
+let _atrixPickupTimer=null;
+
+async function pushAtrixTicketsJson(){
+  const token=getGhToken();
+  if(!token||!dAb.length)return false;
+  const tickets=dAb.map(d=>({rowKey:d.rowKey,id:d.id,ticketId:d.ticketId||'',cliente:d.cliente||'',link:d.link||'',substatus:d.substatus||'',uf:d.uf||'',cidade:d.cidade||''})).filter(t=>t.link);
+  if(!tickets.length)return false;
+  const apiUrl=`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/contents/${ATRIX_TICKETS_FILE}`;
+  const hdrs=ghHeaders({'Content-Type':'application/json'});
+  try{
+    let sha='';
+    const info=await fetch(apiUrl,{headers:hdrs,cache:'no-store'});
+    if(info.ok){const j=await info.json();sha=j.sha||'';}
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(tickets,null,2))));
+    const res=await fetch(apiUrl,{method:'PUT',headers:hdrs,body:JSON.stringify({message:`chore: exportar chamados B2B (${tickets.length})`,content,...(sha?{sha}:{})})});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    console.log(`[Atrix Agent] ${tickets.length} chamado(s) exportados para GitHub.`);
+    return true;
+  }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados:',e);return false;}
+}
+
+async function _atrixReadGhError(res){
+  const txt=await res.text().catch(()=>'');
+  let body={};
+  try{body=txt?JSON.parse(txt):{};}catch(_){body={message:txt};}
+  return{status:res.status,message:body.message||txt||('HTTP '+res.status)};
+}
+function _atrixFriendlyGhError(err){
+  const msg=String(err&&err.message||'');
+  if(err&&err.status===401)return'Token GitHub inválido ou expirado. Gere/atualize o token nas configurações de sincronização.';
+  if(err&&(err.status===403||err.status===404))return'Token GitHub sem permissão para iniciar Actions, ou o workflow ainda não existe em main. Edite o token e marque Actions: Read and write.';
+  if(err&&err.status===422)return'GitHub recusou o dispatch do workflow. Confirme se a branch main está ativa e tente novamente.';
+  return msg||'Falha ao chamar a API do GitHub.';
+}
+/* Cancela execuções presas em fila (ex.: runner self-hosted offline) de tentativas
+   anteriores antes de disparar uma nova — sem isso, cada clique só empilhava mais
+   uma execução que nunca chegava a rodar. */
+async function _cancelarExecucoesPresasAtrix(token){
+  try{
+    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/runs?status=queued&per_page=20`,{headers:ghHeaders({},token)});
+    if(!res.ok)return;
+    const data=await res.json();
+    const runs=data.workflow_runs||[];
+    for(const run of runs){
+      await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:ghHeaders({},token)}).catch(()=>{});
+    }
+    if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) em fila cancelada(s).`);
+  }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas:',e);}
+}
+async function _dispatchAtrixWorkflow(){
+  const token=String(getGhToken()||'').trim();
+  if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
+  await _cancelarExecucoesPresasAtrix(token);
+  const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/dispatches`,{
+    method:'POST',
+    headers:ghHeaders({'Content-Type':'application/json'},token),
+    body:JSON.stringify({ref:'main'})
+  });
+  if(!res.ok)throw new Error(_atrixFriendlyGhError(await _atrixReadGhError(res)));
+}
+
+async function triggerAtrixUpdateNow(btn){
+  if(!canEdit())return;
+  const orig=btn.innerHTML;
+  const done=(cls,html)=>{
+    btn.classList.remove('atrix-start-ok','atrix-start-err');
+    btn.classList.add(cls);btn.innerHTML=html;btn.disabled=false;
+    setTimeout(()=>{btn.classList.remove('atrix-start-ok','atrix-start-err');btn.innerHTML=orig;},3000);
+  };
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Iniciando…';
+  try{
+    await pushAtrixTicketsJson();
+    await _dispatchAtrixWorkflow();
+    _atrixRunningNow=true;
+    done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
+    _ghToast('Atualização de substatus via Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
+    /* Polling periódico até o ciclo remoto terminar (checkout + npm install + Playwright
+       + varrer os chamados um a um no Atrix mede, na prática, ~15 min pra bases grandes). */
+    const triggeredAt=new Date().toISOString();
+    clearInterval(_atrixPickupTimer);
+    let tries=0;
+    _atrixPickupTimer=setInterval(async()=>{
+      tries++;
+      const lastUpdate=await loadAtrixUpdates();
+      if((lastUpdate&&lastUpdate>triggeredAt)||tries>=18){
+        clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
+        _atrixRunningNow=false;
+      }
+    },60000);
+  }catch(e){
+    done('atrix-start-err','<i class="ti ti-x"></i> Erro');
+    _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
+  }
+}
+
+/* Busca data/atrix_updates.json (publicado pelo runner self-hosted) e mescla o
+   substatus (e UF/Cidade quando vierem em branco) de volta em dAb — reflete nos
+   dois painéis (Abertos e SWAP) porque os dois leem do mesmo array. Retorna o
+   updatedAt mais recente encontrado, ou '' se nada mudou/falhou. */
+async function loadAtrixUpdates(){
+  const rawUrl=`https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/${ATRIX_UPDATES_FILE}`;
+  try{
+    const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return'';
+    const updates=await r.json();
+    let latestAt='';
+    atrixUpdateMap={};
+    Object.entries(updates).forEach(([tid,up])=>{
+      if(up.updatedAt){atrixUpdateMap[tid]=up.updatedAt;if(up.updatedAt>latestAt)latestAt=up.updatedAt;}
+    });
+    let count=0;
+    dAb.forEach(ticket=>{
+      const up=updates[ticket.id]||updates[ticket.ticketId]||null;
+      if(!up)return;
+      if((up.uf&&!ticket.uf)||(up.cidade&&!ticket.cidade)){
+        if(up.uf&&!ticket.uf)ticket.uf=String(up.uf).trim().toUpperCase();
+        if(up.cidade&&!ticket.cidade)ticket.cidade=repairPtBR(String(up.cidade).trim());
+        const newMop=normMopByCity(ticket.uf,ticket.cidade);
+        if(newMop)ticket.mop=newMop;
+        ticket.statusSla=statusSla(ticket.slaH,ticket.mop,ticket.slaLimitH);
+        count++;
+      }
+      if(!up.substatus)return;
+      const next=fmtSubstatus(up.substatus);
+      if(next!==ticket.substatus){
+        /* Mesma lógica de pausa/retomada de SLA de updateSubstatus() — sem isso,
+           chamados atualizados pelo agente não respeitariam a pausa por substatus. */
+        const now=new Date(),wasPaused=isPausedSubstatus(ticket.substatus),willPause=isPausedSubstatus(next);
+        if(ticket.dynamicSheetSla){ticket.slaH=computeSlaHours(ticket,now);ticket.sheetSlaH=ticket.slaH;ticket.slaBaseAt=now.toISOString();ticket.pauseStart=null;ticket.pausedBusinessH=0;}
+        else if(wasPaused&&!willPause&&ticket.pauseStart){ticket.pausedBusinessH=Number(ticket.pausedBusinessH||0)+businessHoursBetween(ticket.pauseStart,now);ticket.pauseStart=null;}
+        ticket.substatus=next;
+        if(willPause)ticket.pauseStart=now;
+        ticket.slaH=computeSlaHours(ticket,now);ticket.faixa=cf(ticket.slaH);ticket.statusSla=statusSla(ticket.slaH,ticket.mop,ticket.slaLimitH);
+        _clearManualSub(ticket.id||ticket.ticketId);
+        count++;
+      }
+    });
+    if(count>0&&!abInteractionLock){
+      abLastUpd=now2();updateUploadTimes();
+      fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();saveState();
+      console.log(`[Atrix Agent] ${count} atualização(ões) aplicada(s) do agente.`);
+    }
+    return latestAt;
+  }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);return'';}
+}
+
 function gFAb(){
   const srch=(document.getElementById('f-srch-ab').value||'').toLowerCase();
   let f=slnAb();
@@ -18613,6 +18777,7 @@ function rdeToggleExpurgoAtenuacao(i){
   saveState();
 }
 loadAbAnnotations();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
+setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},3000);
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
