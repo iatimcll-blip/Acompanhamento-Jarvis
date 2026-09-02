@@ -16013,6 +16013,22 @@ function ofsWasManuallyCleared(){return !!(ofsMeta&&(ofsMeta.cleared||ofsMeta.cl
 let abAnnotations={};
 const AB_ANN_KEY='atrix:ab:annotations:v1';
 const AB_RESPONSAVEIS_FIXOS=['Adriano Da Silva Braga','Anderson Ravelly Da Silva Santos','Arllon Souza','Balbino Silva Rosa','Clemilton Mendes Da Silva','Derick Willam Alcantara Silva','Gefferson De Lima Belisario','Igor Leonardo Duarte Basola','Jeandersson Dos Santos Campos','Joardson Foreliza De Assis Castro','Marcos Yuri Bulhao Silva','Moisés Amorim Viana','Renato Augusto Rodrigues Dias','Rodrigo Piaui De Carvalho','Thaylson Pereira Rial','Vagner Gonçalves Das Neves','Valdez Coelho Ferreira Filho','William Alves Santos','Atendido por Parceiro','Carajanet','Claro','Garra Telecom','MasterNet','Online','SEA','SOS Telecom','ST1','TIM','Vivo'];
+/* Cadastro manual de responsáveis extras (pedido do usuário): a lista fixa acima não
+   cobre todo mundo — mesmo padrão de POP_PARCEIROS_CUSTOM (sentinela "+ Adicionar…"
+   no select, prompt() simples, persistido em localStorage, deduplicado via nk()). */
+const AB_RESPONSAVEL_ADD_SENTINEL='__add_ab_resp__';
+let abResponsaveisCustom=[];
+const AB_RESPONSAVEIS_CUSTOM_KEY='atrix:ab:responsaveis-custom:v1';
+function loadAbResponsaveisCustom(){try{abResponsaveisCustom=JSON.parse(localStorage.getItem(AB_RESPONSAVEIS_CUSTOM_KEY)||'[]')||[];}catch{abResponsaveisCustom=[];}}
+function addAbResponsavelCustom(nome){
+  const v=String(nome||'').trim();
+  if(!v)return null;
+  if(!getAbResponsavelList().some(p=>nk(p)===nk(v))){
+    abResponsaveisCustom.push(v);
+    try{localStorage.setItem(AB_RESPONSAVEIS_CUSTOM_KEY,JSON.stringify(abResponsaveisCustom));}catch(e){console.warn('ab responsavel custom save',e);}
+  }
+  return v;
+}
 function loadAbAnnotations(){try{abAnnotations=JSON.parse(localStorage.getItem(AB_ANN_KEY)||'{}')||{};}catch{abAnnotations={};}}
 function saveAbAnnotation(id,field,value){if(!id)return;if(!abAnnotations[id])abAnnotations[id]={};abAnnotations[id][field]=value;try{localStorage.setItem(AB_ANN_KEY,JSON.stringify(abAnnotations));}catch(e){console.warn('ann save',e);}}
 /* Poda: remove anotações de tickets que não estão mais na base ativa */
@@ -16023,13 +16039,28 @@ function podaAbAnnotations(){
 }
 function getOfsProfList(){return ofsRegisteredTecRecords().map(t=>t.nome).sort((a,b)=>a.localeCompare(b,'pt-BR'));}
 function getAbResponsavelList(){
-  return [...AB_RESPONSAVEIS_FIXOS].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const extras=abResponsaveisCustom.filter(p=>!AB_RESPONSAVEIS_FIXOS.some(d=>nk(d)===nk(p)));
+  return [...AB_RESPONSAVEIS_FIXOS,...extras].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 }
 function abAnnProfSelect(id){
   const saved=(abAnnotations[id]||{}).prof||'';
   const profs=getAbResponsavelList();
-  const opts=['<option value="">— atribuir profissional —',...profs.map(p=>`<option value="${eh(p)}"${p===saved?' selected':''}>${eh(p)}`)].join('</option>');
-  return `<select class="ann-sel" title="Atribuir profissional" onclick="event.stopPropagation()" onchange="abAnnAssignProf('${eh(id)}',this.value)">${opts}</select>`;
+  const opts=['<option value="">— atribuir profissional —',...profs.map(p=>`<option value="${eh(p)}"${p===saved?' selected':''}>${eh(p)}`),`<option value="${AB_RESPONSAVEL_ADD_SENTINEL}">+ Adicionar responsável…</option>`].join('</option>');
+  return `<select class="ann-sel" title="Atribuir profissional" onclick="event.stopPropagation()" onchange="onAbAnnProfChange('${eh(id)}',this)">${opts}</select>`;
+}
+/* onchange do select de profissional: se escolheu "+ Adicionar responsável…", pede o
+   nome, cadastra no catálogo global (persistido, disponível em Abertos e SWAP dali em
+   diante, já que os dois leem do mesmo dAb/abAnnotations) e já atribui pro chamado
+   atual — mesmo padrão de onPopPropriedadeChange(). */
+function onAbAnnProfChange(id,selectEl){
+  if(selectEl.value===AB_RESPONSAVEL_ADD_SENTINEL){
+    const novo=prompt('Nome do novo responsável:');
+    const added=novo&&novo.trim()?addAbResponsavelCustom(novo):null;
+    if(added)abAnnAssignProf(id,added);
+    else{renderAllAb();renderAllSwap();}
+    return;
+  }
+  abAnnAssignProf(id,selectEl.value);
 }
 function abAnnAssignProf(id,value){
   saveAbAnnotation(id,'prof',value);
@@ -18982,7 +19013,7 @@ function rdeToggleExpurgoAtenuacao(i){
   renderRede();
   saveState();
 }
-loadAbAnnotations();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
+loadAbAnnotations();loadAbResponsaveisCustom();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 _atrixRenderTimerBadge();
 setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},3000);
 /* boot via URL params */
