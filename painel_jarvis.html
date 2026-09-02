@@ -10686,7 +10686,7 @@ function procAbBaseGeral(raw,fname){
     const isSwapRow=isSwapDep({depAtual});
     let uf=(isSwapRow?String(Object.values(r)[21]??''):String(abCol(r,21,['UF','uf','ufservico','Uf Serviço','Uf Servico'])||'')).trim().toUpperCase();
     let cidade=repairPtBR((isSwapRow?String(Object.values(r)[22]??''):String(abCol(r,22,['Cidade','CIDADE','cidadeservico','Cidade Serviço','Cidade Servico'])||'')).trim());
-    if(!uf&&!isSwapRow){
+    if(!uf){
       const inf=_abInferirUfCidadeDoTitulo(titulo);
       if(inf){uf=inf.uf;cidade=inf.cidade;}
     }
@@ -10700,7 +10700,10 @@ function procAbBaseGeral(raw,fname){
     const originalSlaH=typeof slaRaw==='number'?slaRaw:ph(slaRaw);
     const tempoClienteH=ph(abCol(r,30,['tempo_cliente','TEMPO_CLIENTE','Tempo Cliente']));
     const tempoSuporteH=ph(abCol(r,33,['tempo_suporte','TEMPO_SUPORTE','Tempo Suporte']));
-    const assunto=repairPtBR(String(gv(r,['Assunto','ASSUNTO','Complemento','Complement','COMPLEMENTO'])||depAtual||titulo||'').trim());
+    /* Assunto exibido em negrito no card: nunca usa depAtual como fallback (senão
+       "CMO - Reparo Swap"/"CMO - Reparo" apareceria ali) — usa o Título real do
+       chamado quando não há coluna "Assunto" própria na planilha (pedido do usuário). */
+    const assunto=repairPtBR(String(gv(r,['Assunto','ASSUNTO','Complemento','Complement','COMPLEMENTO'])||titulo||'').trim());
     let mop=normMopByCity(uf,cidade);
     if(!mop)mop=fmtMop(gv(r,['MOP/EPS (Regra)','MOP/EPS','MOP_EPS']))||iMop(uf,regiao);
     const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao,substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,slaBaseAt:new Date().toISOString(),tempoClienteH,tempoSuporteH,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH,pausedBusinessH:0,pauseStart:null,mop};
@@ -10710,7 +10713,10 @@ function procAbBaseGeral(raw,fname){
     item.faixa=SLA_ORDER.find(f=>nk(faixaRaw).includes(nk(f)))||cf(item.slaH);
     item.statusSla=statusSla(item.slaH,mop,slaLimitH);
     return item;
-  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  /* Mesma regra de separação de UF do B2B Abertos vale para o SWAP também (pedido do
+     usuário) — sem bypass: um chamado SWAP de fora de PI/MA/PA/AM/AP é descartado
+     igual a qualquer outro, tendo já passado pela inferência de UF/Cidade acima. */
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
   finishAbUpload(fname);
 }
 function procAb(raw,fname){
