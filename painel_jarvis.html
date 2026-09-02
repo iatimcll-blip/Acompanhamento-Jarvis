@@ -10731,8 +10731,15 @@ function procAb(raw,fname){
        vazio se a célula realmente estiver vazia, em vez de pegar de outra coluna
        homônima. Chamados normais de Abertos continuam com a lógica por nome. */
     const isSwapRow=isSwapDep({depAtual});
-    const uf=(isSwapRow?String(Object.values(r)[21]??''):String(abCol(r,21,['UF','uf','ufservico','Uf Serviço','Uf Servico'])||'')).trim().toUpperCase();
-    const cidade=repairPtBR((isSwapRow?String(Object.values(r)[22]??''):String(abCol(r,22,['Cidade','CIDADE','cidadeservico','Cidade Serviço','Cidade Servico'])||'')).trim());
+    let uf=(isSwapRow?String(Object.values(r)[21]??''):String(abCol(r,21,['UF','uf','ufservico','Uf Serviço','Uf Servico'])||'')).trim().toUpperCase();
+    let cidade=repairPtBR((isSwapRow?String(Object.values(r)[22]??''):String(abCol(r,22,['Cidade','CIDADE','cidadeservico','Cidade Serviço','Cidade Servico'])||'')).trim());
+    /* UF/Cidade em branco (comum em SWAP): tenta inferir pela coluna Título antes de
+       cair no filtro final — mesma regra de separação por UF do B2B Abertos vale para
+       o SWAP também (pedido do usuário), sem bypass por isSwapDep(). */
+    if(!uf){
+      const inf=_abInferirUfCidadeDoTitulo(String(abCol(r,2,['Titulo','TITULO','Título'])||''));
+      if(inf){uf=inf.uf;cidade=inf.cidade;}
+    }
     const regiao=repairPtBR(String(gv(r,['REGIAO','Região','Regiao'])||'').trim());
     const substatus=fmtSubstatus(repairPtBR(String(abCol(r,15,['Substatus','SUBSTATUS'])||'')));
     const link=bestLink(gv(r,['Link Atrix','LINK','Link','Ticket Bdesk']),atrixTicketLink(ticketId),id);
@@ -10753,7 +10760,7 @@ function procAb(raw,fname){
     item.faixa=SLA_ORDER.find(f=>nk(faixaRaw).includes(nk(f)))||cf(item.slaH);
     item.statusSla=statusSla(item.slaH,mop,slaLimitH);
     return item;
-  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
   finishAbUpload(fname);
 }
 /* Etapa final compartilhada por qualquer parser de upload de B2B Abertos (procAb,
@@ -10779,8 +10786,9 @@ function finishAbUpload(fname){
    só usa as colunas A (UF), B (Cidade), D (Ticket ID), E (Protocolo), F (Título do Chamado),
    G (Cliente), J (SLA (h)), K (Substatus) e L (Depto. Atual), pedidas explicitamente. A partir daí
    segue a MESMA regra já usada em procAb(): SWAP é todo chamado cujo Depto. Atual bate com
-   isSwapDep() (col L → "CMO - REPARO SWAP"), faixa/status SLA vêm das mesmas funções (cf/statusSla)
-   e o filtro final por UF_PERMITIDAS+isSwapDep é idêntico — só a extração das colunas muda. */
+   isSwapDep() (col L → "CMO - REPARO SWAP"), faixa/status SLA vêm das mesmas funções (cf/statusSla).
+   UF/Cidade em branco tentam inferência pelo Título do Chamado, e o filtro final por
+   AB_UF_PERMITIDAS vale igual para SWAP e não-SWAP (sem bypass) — só a extração das colunas muda. */
 function procAbChamadosUF(rows,fname){
   dAb=rows.filter(r=>String(r['Protocolo']||'').trim()!==''||String(r['Ticket ID']||'').trim()!=='').map((r,rowKey)=>{
     const ticketId=cleanTicketId(r['Ticket ID']);
@@ -10793,15 +10801,22 @@ function procAbChamadosUF(rows,fname){
        vez que o Cliente batia com um dos apelidos municipais genéricos da lista. */
     const cliente=String(r['Cliente']||'').trim();
     const depAtual=repairPtBR(String(r['Depto. Atual']||'').trim());
-    const uf=String(r['UF']||'').trim().toUpperCase();
-    const cidade=repairPtBR(String(r['Cidade']||'').trim());
+    let uf=String(r['UF']||'').trim().toUpperCase();
+    let cidade=repairPtBR(String(r['Cidade']||'').trim());
+    const assunto=repairPtBR(String(r['Título do Chamado']||depAtual||'').trim());
+    /* UF/Cidade em branco (comum em SWAP): tenta inferir pelo Título do Chamado antes
+       de cair no filtro final — mesma regra de separação por UF do B2B Abertos vale
+       para o SWAP também (pedido do usuário), sem bypass por isSwapDep(). */
+    if(!uf){
+      const inf=_abInferirUfCidadeDoTitulo(String(r['Título do Chamado']||''));
+      if(inf){uf=inf.uf;cidade=inf.cidade;}
+    }
     const substatus=fmtSubstatus(repairPtBR(String(r['Substatus']||'')));
     const link=bestLink(atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(r['Data de Abertura']);
     const slaRaw=r['SLA (h)'];
     const hasSheetSla=slaRaw!==undefined&&slaRaw!==null&&String(slaRaw).trim()!=='';
     const originalSlaH=typeof slaRaw==='number'?slaRaw:ph(slaRaw);
-    const assunto=repairPtBR(String(r['Título do Chamado']||depAtual||'').trim());
     const mop=normMopByCity(uf,cidade);
     const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao:'',substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,slaBaseAt:new Date().toISOString(),tempoClienteH:0,tempoSuporteH:0,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH:0,pausedBusinessH:0,pauseStart:null,mop};
     if(isPausedSubstatus(substatus))item.pauseStart=new Date();
@@ -10809,7 +10824,7 @@ function procAbChamadosUF(rows,fname){
     item.faixa=cf(item.slaH);
     item.statusSla=statusSla(item.slaH,mop,0);
     return item;
-  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
   finishAbUpload(fname);
 }
 /* Modelo alternativo de base "BASE ABERTA" (D:\Acompanhamento Jarvis\BASE ABERTA\BASE ABERTA.xlsx),
@@ -10827,9 +10842,9 @@ function procAbChamadosUF(rows,fname){
    comercial/relógio corrido que já valiam pro resto do painel (computeSlaHours()) — é exatamente
    o "SLA em dias → transformar em horas, horário comercial pra CMO-Reparo e relógio corrido pra
    CMO-Reparo Swap" pedido: não se traduz o texto "N dia(s)", se recalcula certo com as duas
-   regras. Chamados SWAP costumam vir sem Cidade/UF preenchidos na planilha de origem — mesmo
-   comportamento já aceito em procAb() para o layout antigo, por isso o filtro final também
-   aceita isSwapDep(item) independente da UF.
+   regras. Chamados SWAP costumam vir sem Cidade/UF preenchidos na planilha de origem — nesse
+   caso tenta inferir pelo Assunto (_abInferirUfCidadeDoTitulo) antes de cair no filtro final,
+   que exige AB_UF_PERMITIDAS igual para SWAP e não-SWAP (sem bypass, pedido do usuário).
    Espera receber `rows` já passado por applyTicketLinks(rows,ws) (feito no dispatch de
    file-ab, igual já era feito pro formato Export) — o texto do " ID Ticket" desta base
    ("DDMMYYYY-XXXXX") é um identificador da própria planilha, não o ID interno do Atrix, então
@@ -10842,8 +10857,15 @@ function procAbBaseAberta(rows,fname){
     const id=ticketId;
     const cliente=String(gv(r,['Cliente'])||'').trim();
     const depAtual=repairPtBR(String(gv(r,['Departamento'])||'').trim());
-    const uf=String(gv(r,['UF'])||'').trim().toUpperCase();
-    const cidade=repairPtBR(String(gv(r,['Cidade'])||'').trim());
+    let uf=String(gv(r,['UF'])||'').trim().toUpperCase();
+    let cidade=repairPtBR(String(gv(r,['Cidade'])||'').trim());
+    /* UF/Cidade em branco (comum em SWAP): tenta inferir pelo Assunto antes de cair no
+       filtro final — mesma regra de separação por UF do B2B Abertos vale para o SWAP
+       também (pedido do usuário), sem bypass por isSwapDep(). */
+    if(!uf){
+      const inf=_abInferirUfCidadeDoTitulo(String(gv(r,['Assunto'])||''));
+      if(inf){uf=inf.uf;cidade=inf.cidade;}
+    }
     const substatus=fmtSubstatus(repairPtBR(String(gv(r,['Substatus'])||'')));
     /* O ID Ticket desta base ("DDMMYYYY-XXXXX") é um identificador PRÓPRIO da planilha, não
        o ID interno do Atrix — um link montado a partir dele (atrixTicketLink) aponta pra um
@@ -10862,7 +10884,7 @@ function procAbBaseAberta(rows,fname){
     item.faixa=cf(item.slaH);
     item.statusSla=statusSla(item.slaH,mop,0);
     return item;
-  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf)||isSwapDep(item));
+  }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
   finishAbUpload(fname);
 }
 
