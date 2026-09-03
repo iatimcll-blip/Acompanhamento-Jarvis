@@ -9419,6 +9419,19 @@ function fmtSubstatus(v){
   if(k.includes('FECHADO'))return'Fechado';
   return s.replace(/\uFFFD+/g,'').toLocaleLowerCase('pt-BR').replace(/(^|[\s/-])([a-z0-9\u00c0-\u024f])/gi,(m,p,c)=>p+c.toLocaleUpperCase('pt-BR')).replace(/\bSla\b/g,'SLA').replace(/\bB2b\b/g,'B2B')
 }
+/* Regra de neg\u00F3cio de Status/Substatus (mesma j\u00E1 usada pelo Agente Atrix em
+   scraper/atrix_agent.js, extractSubstatus()): 1. Substatus preenchido -> usa o
+   Substatus sempre, sem exce\u00E7\u00E3o. 2. Sem Substatus, mas com Status -> usa o Status.
+   3. Sem Status e sem Substatus -> classifica como "Fechado". Aplicada aqui nos
+   parsers de upload manual (planilhas de B2B Abertos/SWAP) pra ficar consistente
+   com o que a leitura autom\u00E1tica do Atrix j\u00E1 faz. */
+function resolveAbSubstatus(statusRaw,substatusRaw){
+  const sub=fmtSubstatus(repairPtBR(String(substatusRaw||'')));
+  if(sub)return sub;
+  const st=fmtSubstatus(repairPtBR(String(statusRaw||'')));
+  if(st)return st;
+  return'Fechado';
+}
 function fmtCausaRaiz(v){
   const s=String(v||'').trim().replace(/\s+/g,' ');
   if(!s)return'';
@@ -10691,7 +10704,7 @@ function procAbBaseGeral(raw,fname){
       if(inf){uf=inf.uf;cidade=inf.cidade;}
     }
     const regiao=repairPtBR(String(gv(r,['REGIAO','Região','Regiao'])||'').trim());
-    const substatus=fmtSubstatus(repairPtBR(String(abCol(r,15,['Substatus','SUBSTATUS'])||'')));
+    const substatus=resolveAbSubstatus(gv(r,['Status','STATUS']),abCol(r,15,['Substatus','SUBSTATUS']));
     const link=bestLink(gv(r,['Link Atrix','LINK','Link','Ticket Bdesk']),atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(gv(r,['Abertura do Ticket','Abertura','Data Abertura','Data de Abertura','Data/Hora Abertura']));
     const slaLimitH=slaBaseLimit(r);
@@ -10741,7 +10754,7 @@ function procAb(raw,fname){
       if(inf){uf=inf.uf;cidade=inf.cidade;}
     }
     const regiao=repairPtBR(String(gv(r,['REGIAO','Região','Regiao'])||'').trim());
-    const substatus=fmtSubstatus(repairPtBR(String(abCol(r,15,['Substatus','SUBSTATUS'])||'')));
+    const substatus=resolveAbSubstatus(gv(r,['Status','STATUS']),abCol(r,15,['Substatus','SUBSTATUS']));
     const link=bestLink(gv(r,['Link Atrix','LINK','Link','Ticket Bdesk']),atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(gv(r,['Abertura do Ticket','Abertura','Data Abertura','Data de Abertura','Data/Hora Abertura']));
     const slaLimitH=slaBaseLimit(r);
@@ -10811,7 +10824,7 @@ function procAbChamadosUF(rows,fname){
       const inf=_abInferirUfCidadeDoTitulo(String(r['Título do Chamado']||''));
       if(inf){uf=inf.uf;cidade=inf.cidade;}
     }
-    const substatus=fmtSubstatus(repairPtBR(String(r['Substatus']||'')));
+    const substatus=resolveAbSubstatus(r['Status'],r['Substatus']);
     const link=bestLink(atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(r['Data de Abertura']);
     const slaRaw=r['SLA (h)'];
@@ -10866,7 +10879,7 @@ function procAbBaseAberta(rows,fname){
       const inf=_abInferirUfCidadeDoTitulo(String(gv(r,['Assunto'])||''));
       if(inf){uf=inf.uf;cidade=inf.cidade;}
     }
-    const substatus=fmtSubstatus(repairPtBR(String(gv(r,['Substatus'])||'')));
+    const substatus=resolveAbSubstatus(gv(r,['Status']),gv(r,['Substatus']));
     /* O ID Ticket desta base ("DDMMYYYY-XXXXX") é um identificador PRÓPRIO da planilha, não
        o ID interno do Atrix — um link montado a partir dele (atrixTicketLink) aponta pra um
        ticket errado/inexistente. A célula da coluna ID Ticket, porém, já vem com um hiperlink
