@@ -10756,13 +10756,14 @@ function procAb(raw,fname){
        vazio se a célula realmente estiver vazia, em vez de pegar de outra coluna
        homônima. Chamados normais de Abertos continuam com a lógica por nome. */
     const isSwapRow=isSwapDep({depAtual});
+    const titulo=String(abCol(r,2,['Titulo','TITULO','Título'])||'').trim();
     let uf=(isSwapRow?String(Object.values(r)[21]??''):String(abCol(r,21,['UF','uf','ufservico','Uf Serviço','Uf Servico'])||'')).trim().toUpperCase();
     let cidade=repairPtBR((isSwapRow?String(Object.values(r)[22]??''):String(abCol(r,22,['Cidade','CIDADE','cidadeservico','Cidade Serviço','Cidade Servico'])||'')).trim());
     /* UF/Cidade em branco (comum em SWAP): tenta inferir pela coluna Título antes de
        cair no filtro final — mesma regra de separação por UF do B2B Abertos vale para
        o SWAP também (pedido do usuário), sem bypass por isSwapDep(). */
     if(!uf){
-      const inf=_abInferirUfCidadeDoTitulo(String(abCol(r,2,['Titulo','TITULO','Título'])||''));
+      const inf=_abInferirUfCidadeDoTitulo(titulo);
       if(inf){uf=inf.uf;cidade=inf.cidade;}
     }
     const regiao=repairPtBR(String(gv(r,['REGIAO','Região','Regiao'])||'').trim());
@@ -10775,7 +10776,11 @@ function procAb(raw,fname){
     const originalSlaH=typeof slaRaw==='number'?slaRaw:ph(slaRaw);
     const tempoClienteH=ph(abCol(r,30,['tempo_cliente','TEMPO_CLIENTE','Tempo Cliente']));
     const tempoSuporteH=ph(abCol(r,33,['tempo_suporte','TEMPO_SUPORTE','Tempo Suporte']));
-    const assunto=repairPtBR(String(gv(r,['Assunto','ASSUNTO','Complemento','Complement','COMPLEMENTO'])||depAtual||Object.values(r)[4]||'').trim());
+    /* Assunto exibido em negrito no card: nunca usa depAtual como fallback (senão
+       "CMO - Reparo Swap"/"CMO - Reparo" apareceria em todo chamado sem coluna
+       "Assunto" própria — é exatamente o caso desta base "Export", que não tem essa
+       coluna) — usa o Título real do chamado, igual já corrigido em procAbBaseGeral(). */
+    const assunto=repairPtBR(String(gv(r,['Assunto','ASSUNTO','Complemento','Complement','COMPLEMENTO'])||titulo||'').trim());
     let mop=normMopByCity(uf,cidade);
     if(!mop)mop=fmtMop(gv(r,['MOP/EPS (Regra)','MOP/EPS','MOP_EPS']))||iMop(uf,regiao);
     const item={rowKey,id,ticketId,protocolo,cliente,assunto,depAtual,uf,cidade,regiao,substatus,link,openedAt,originalSlaH,sheetSlaH:originalSlaH,slaBaseAt:new Date().toISOString(),tempoClienteH,tempoSuporteH,dynamicSheetSla:!!(hasSheetSla&&openedAt),slaLimitH,pausedBusinessH:0,pauseStart:null,mop};
@@ -10828,7 +10833,11 @@ function procAbChamadosUF(rows,fname){
     const depAtual=repairPtBR(String(r['Depto. Atual']||'').trim());
     let uf=String(r['UF']||'').trim().toUpperCase();
     let cidade=repairPtBR(String(r['Cidade']||'').trim());
-    const assunto=repairPtBR(String(r['Título do Chamado']||depAtual||'').trim());
+    /* Assunto exibido em negrito no card: nunca usa depAtual como fallback (senão
+       "CMO - Reparo Swap"/"CMO - Reparo" apareceria ali, igual já corrigido em
+       procAbBaseGeral()) — "Título do Chamado" é coluna obrigatória deste layout,
+       então isso só entra em jogo numa linha com essa célula vazia por engano. */
+    const assunto=repairPtBR(String(r['Título do Chamado']||'').trim());
     /* UF/Cidade em branco (comum em SWAP): tenta inferir pelo Título do Chamado antes
        de cair no filtro final — mesma regra de separação por UF do B2B Abertos vale
        para o SWAP também (pedido do usuário), sem bypass por isSwapDep(). */
@@ -10901,7 +10910,11 @@ function procAbBaseAberta(rows,fname){
        célula não tiver hiperlink embutido. */
     const link=bestLink(gv(r,['Link Atrix']),atrixTicketLink(ticketId),id);
     const openedAt=parseOpeningDate(gv(r,['Abertura do Ticket',' Abertura do Ticket']));
-    const assunto=repairPtBR(String(gv(r,['Assunto'])||depAtual||'').trim());
+    /* Assunto exibido em negrito no card: nunca usa depAtual como fallback (senão
+       "CMO - Reparo Swap"/"CMO - Reparo" apareceria ali, igual já corrigido em
+       procAbBaseGeral()) — "Assunto" é coluna obrigatória deste layout, então isso
+       só entra em jogo numa linha com essa célula vazia por engano. */
+    const assunto=repairPtBR(String(gv(r,['Assunto'])||'').trim());
     const mop=normMopByCity(uf,cidade);
     const item={rowKey,id,ticketId,protocolo:id,cliente,assunto,depAtual,uf,cidade,regiao:'',substatus,link,openedAt,originalSlaH:0,sheetSlaH:0,slaBaseAt:new Date().toISOString(),tempoClienteH:0,tempoSuporteH:0,dynamicSheetSla:false,slaLimitH:0,pausedBusinessH:0,pauseStart:null,mop};
     if(isPausedSubstatus(substatus))item.pauseStart=new Date();
