@@ -10672,13 +10672,25 @@ function _abMunicipiosIdx(){
    Testa TODOS os municípios conhecidos (não para no primeiro match) e escolhe o de
    menor posição no texto — empate de posição resolvido pelo nome mais longo/específico
    (ex.: "Santa Luzia do Paruá" vence "Santa Luzia", que é prefixo dele). */
+/* Conectores de nome composto em português — se logo depois do município candidato
+   vier um destes, o texto provavelmente continua nomeando uma cidade DIFERENTE e mais
+   específica que não está na nossa lista de PI/MA/PA/AM/AP (ex.: "São Luís do Curu",
+   município do Ceará, colide com "São Luís" do Maranhão). Descarta esse candidato pra
+   não classificar uma cidade de fora como se fosse de uma das 5 UFs atendidas — se a
+   continuação for um município nosso mesmo (ex.: "São Luís do Piauí", "São Luís Gonzaga
+   do Maranhão"), ele já casa como entrada própria e mais longa na mesma posição, vencendo
+   o desempate por tamanho normalmente. */
+const AB_CONECTORES_NOME_COMPOSTO=[' DO ',' DA ',' DOS ',' DAS ',' DE '];
 function _abInferirUfCidadeDoTitulo(titulo){
   const norm=' '+_abNormTxt(titulo)+' ';
   if(norm.trim()==='')return null;
   let best=null;
   for(const m of _abMunicipiosIdx()){
-    const pos=norm.indexOf(' '+m.norm+' ');
+    const needle=' '+m.norm+' ';
+    const pos=norm.indexOf(needle);
     if(pos===-1)continue;
+    const restante=norm.slice(pos+needle.length-1);
+    if(AB_CONECTORES_NOME_COMPOSTO.some(c=>restante.startsWith(c)))continue;
     if(!best||pos<best.pos||(pos===best.pos&&m.norm.length>best.norm.length))best={pos,cidade:m.cidade,uf:m.uf,norm:m.norm};
   }
   return best?{cidade:best.cidade,uf:best.uf}:null;
