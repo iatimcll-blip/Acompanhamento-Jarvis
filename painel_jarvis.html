@@ -10802,6 +10802,15 @@ function procAb(raw,fname){
    procAbChamadosUF, ...) — roda depois que dAb já foi montado, independente do
    layout de colunas da planilha de origem. */
 function finishAbUpload(fname){
+  /* Reset de escopo ao carregar uma base NOVA (mesmo bug/fix do B2B Encerrados, ver procEnc):
+     antes, os filtros de MOP/Faixa SLA/Substatus/UF de Abertos e SWAP só eram podados contra
+     os valores ainda válidos (fillFiltersAb/fillFiltersSwap), então um valor que por
+     coincidência ainda existisse na base nova ficava preso de um upload anterior, escondendo
+     chamados sem o usuário perceber. Agora todo upload novo volta pro estado "sem filtro". */
+  selAbMop=[];selAbFaixa=[];selAbSub=[];selAbUf=[];
+  selSwapMop=[];selSwapFaixa=[];selSwapSub=[];selSwapUf=[];
+  const srchAb0=document.getElementById('f-srch-ab');if(srchAb0)srchAb0.value='';
+  const srchSwap0=document.getElementById('f-srch-swap');if(srchSwap0)srchSwap0.value='';
   refreshAbBadge();
   lastAbFile=fname||'';
   lastAbAt=now2();abLastUpd=lastAbAt;updateUploadTimes();
@@ -11058,29 +11067,15 @@ function procAtiv(raw,fname){
   }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
   lastAtivFile=fname||'';
   lastAtivAt=now2();
-  const _ufs=[...new Set(dAtiv.map(d=>d.uf).filter(Boolean))];
-  const _cids=[...new Set(dAtiv.map(d=>d.cid).filter(Boolean))];
-  const _deps=[...new Set(dAtiv.map(d=>d.dep).filter(Boolean))];
-  const _statusAtuais=[...new Set(dAtiv.map(d=>d.statusAtual).filter(Boolean))];
-  const _segs=[...new Set(dAtiv.map(d=>d.seg).filter(Boolean))];
-  const _fcs=[...new Set(dAtiv.map(d=>ATIV_FC_LABEL(d.fc)))];
-  const _subs=[...new Set(dAtiv.map(d=>ATIV_SUBSTATUS_LABEL(d.substatus)))];
-  const _prods=[...new Set(dAtiv.map(d=>d.prod).filter(Boolean))];
-  const _tecs=[...new Set(dAtiv.map(d=>d.tecnologia).filter(Boolean))];
-  const _clusters=[...new Set(dAtiv.map(d=>d.cluster).filter(Boolean))];
-  const _years=[...new Set(dAtiv.map(d=>d.ano).filter(Boolean))];
-  selAtivUf=selAtivUf.filter(v=>_ufs.includes(v));
-  selAtivCidade=selAtivCidade.filter(v=>_cids.includes(v));
-  selAtivDep=selAtivDep.filter(v=>_deps.includes(v));
-  selAtivStatusAtual=selAtivStatusAtual.filter(v=>_statusAtuais.includes(v));
-  selAtivCluster=selAtivCluster.filter(v=>_clusters.includes(v));
-  selAtivYear=selAtivYear.filter(v=>_years.includes(v));
-  selAtivAging=selAtivAging.filter(v=>ATIV_AGING_ORDER.includes(v));
-  selAtivSeg=selAtivSeg.filter(v=>_segs.includes(v));
-  selAtivFc=selAtivFc.filter(v=>_fcs.includes(v));
-  selAtivSubstatus=selAtivSubstatus.filter(v=>_subs.includes(v));
-  selAtivProd=selAtivProd.filter(v=>_prods.includes(v));
-  selAtivTec=selAtivTec.filter(v=>_tecs.includes(v));
+  /* Reset de escopo ao carregar uma base NOVA (mesmo bug/fix do B2B Encerrados) — antes só se
+     podava contra os valores válidos da base nova, o que deixa um filtro preso sempre que o
+     valor antigo (UF/cidade/depto/etc.) coincide com algo que também existe na base nova. Pior
+     ainda, ativGran/ativPeriod (granularidade e período do subbar) nem eram tocados aqui —
+     ficavam presos de uma sessão anterior via localStorage mesmo sem nenhuma poda. Agora um
+     upload novo sempre volta pro estado "sem filtro nenhum", igual limparFiltrosAtiv(). */
+  selAtivUf=[];selAtivCidade=[];selAtivDep=[];selAtivStatusAtual=[];selAtivAging=[];selAtivSeg=[];selAtivFc=[];selAtivSubstatus=[];selAtivProd=[];selAtivTec=[];selAtivSrch='';
+  selAtivCluster=[];selAtivYear=[];ativGran='all';ativPeriod=[];
+  const srchAtiv0=document.getElementById('ativ-srch');if(srchAtiv0)srchAtiv0.value='';
   renderPanelAtivacoes();
   document.getElementById('empty-ativ').style.display='none';
   document.getElementById('dash-ativ').style.display='block';
@@ -11486,6 +11481,11 @@ function popExtractBairroFromEndereco(endereco){
   return titleCasePT(repairPtBR(parts[parts.length-4]));
 }
 function procPop(matrix,fname){
+  /* Reset de escopo ao carregar uma base NOVA (mesmo bug/fix do B2B Encerrados) — os filtros
+     de UF/Cidade/Regime/Tier só eram podados contra os valores válidos (fillFiltersPop),
+     podendo ficar presos de um upload anterior sem o usuário perceber. */
+  selPopUf=[];selPopCidade=[];selPopRegime=[];selPopTier=[];
+  const srchPop0=document.getElementById('f-srch-pop');if(srchPop0)srchPop0.value='';
   dPop=(matrix||[]).slice(1).map((row,i)=>{
     const endereco=String(row[14]||'').trim();
     const bairroBase=titleCasePT(repairPtBR(String(row[13]||'').trim()));
