@@ -8906,6 +8906,11 @@ let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAgi
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
 let activeTab='dashboard';
 let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='',abLastUpd='';
+/* Timestamp ISO (sortável) da última base de Encerrados anexada — lastEncAt é só pt-BR
+   ("DD/MM/AAAA HH:MM") pra exibição, não dá pra comparar com `>` de forma confiável entre
+   meses/anos diferentes. Usado por saveGhState() pra decidir, entre o dispositivo local e o
+   GitHub, qual tem a base mais recente — ver comentário em saveGhState(). */
+let lastEncBaseAt='';
 let lastAtivAt='',lastAtivFile='';
 let wppUnreadCount=0,wppInitialized=false;
 const STORAGE_KEY='atrix:painel:bases:v1';
@@ -9168,7 +9173,25 @@ async function saveGhState(manual=false){
     const lastKnown=_getLastKnownRemoteSavedAt();
     if(remoteSt&&remoteSt.savedAt&&(!lastKnown||remoteSt.savedAt>lastKnown)){
       dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
-      dEnc=_mergeArraysByKey(dEnc,normalizeEncState(remoteSt.dEnc),x=>x.protocolo||x.os);
+      /* B2B Encerrados/S-Intervenção/Prefeitura: ao contrário de Abertos/Fuel/OFS (onde cada
+         chamado é uma entidade de vida longa que faz sentido mesclar por chave ao longo do
+         tempo), cada upload de Encerrados é um EXPORT COMPLETO e autoritativo de um período —
+         a exigência é que o painel mostre sempre os dados da ÚLTIMA base inserida, nunca uma
+         mescla acumulando chamados antigos que já não fazem parte do arquivo mais recente.
+         O merge por chave (`_mergeArraysByKey`) fazia exatamente isso: um dispositivo que
+         acabava de anexar uma base nova, ao sincronizar, trazia de volta chamados antigos que só
+         existiam no sync-state.json remoto (de um upload anterior, potencialmente de outro
+         dispositivo), fazendo o painel "voltar" a mostrar dados antigos misturados logo depois
+         de uma atualização. Agora, igual ao que já é feito pra Rede logo abaixo: só troca
+         dEnc por INTEIRO quando a base remota for comprovadamente mais recente
+         (lastEncBaseAt, timestamp ISO) que a base já carregada neste dispositivo — nunca mescla
+         linha a linha. */
+      if(remoteSt.lastEncBaseAt&&remoteSt.lastEncBaseAt>(lastEncBaseAt||'')){
+        dEnc=normalizeEncState(remoteSt.dEnc);
+        lastEncBaseAt=remoteSt.lastEncBaseAt;
+        lastEncAt=remoteSt.lastEncAt||lastEncAt;
+        lastEncFile=remoteSt.lastEncFile||lastEncFile;
+      }
       dFuelVehicles=_mergeArraysByKey(dFuelVehicles,(fuelVeiculosCleared&&(!Array.isArray(remoteSt.dFuelVehicles)||!remoteSt.dFuelVehicles.length))?[]:normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
       dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
       dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
@@ -9905,7 +9928,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10058,6 +10081,7 @@ function applyState(st,label){
       document.getElementById('nb-enc').textContent=slnEnc().length;
       if(Object.prototype.hasOwnProperty.call(st,'lastEncAt'))lastEncAt=st.lastEncAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastEncFile'))lastEncFile=st.lastEncFile||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastEncBaseAt'))lastEncBaseAt=st.lastEncBaseAt||'';
       /* restaura filtros de tabela do Encerrados (fe-*) antes de popular, para que
          fillFiltersEnc() já renderize os checkboxes com a seleção correta */
       const _encClusters=CLUSTER_ORDER.filter(c=>dEnc.some(d=>d.cluster===c));
@@ -10483,7 +10507,7 @@ async function clearAb(){
 async function clearEnc(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Encerrados? Isso também limpará B2B Repetidos, B2B S/Intervenção e B2B Prefeitura.'))return;
-  dEnc=[];lastEncAt='';lastEncFile='';encChartBucket='';siChartBucket='';prefChartBucket='';updateUploadTimes();
+  dEnc=[];lastEncAt='';lastEncFile='';lastEncBaseAt='';encChartBucket='';siChartBucket='';prefChartBucket='';updateUploadTimes();
   const nbEnc=document.getElementById('nb-enc');if(nbEnc)nbEnc.textContent='0';
   const nbRep=document.getElementById('nb-rep');if(nbRep)nbRep.textContent='0';
   const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent='0';
@@ -11002,7 +11026,7 @@ function procEnc(raw,fname){
   const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent=slnSi().length;
   const nbPref=document.getElementById('nb-pref');if(nbPref)nbPref.textContent=slnPref().length;
   lastEncFile=fname||'';
-  lastEncAt=now2();updateUploadTimes();
+  lastEncAt=now2();lastEncBaseAt=new Date().toISOString();updateUploadTimes();
   fillFiltersEnc();fillFiltersSi();fillFiltersPref();fillWeekSelector();fillClusterSelector();fillMesSelector();
   renderAllEnc();
   renderAllSi();
