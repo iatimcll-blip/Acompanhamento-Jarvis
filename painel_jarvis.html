@@ -10233,6 +10233,15 @@ function saveLocalState(st){
   idbSet(STORAGE_KEY,state).catch(e=>console.warn('Não foi possível salvar as bases no IndexedDB:',e));
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}
   catch(e){
+    /* Causa raiz de "os dados voltam para o passado" mesmo anexando a base mais recente:
+       quando a base cresce (ex.: Encerrados 7180 + Rede 5000+ linhas juntos passam da cota
+       do localStorage, ~5-10MB), este setItem lança QuotaExceededError — mas o localStorage
+       KEY continuava com o valor ANTIGO (da última vez que coube), nunca era limpo. Como
+       restoreState() confia cegamente em localStorage[STORAGE_KEY] se ele existir (só cai
+       pro IndexedDB se a chave estiver ausente), um F5 lia de volta essa cópia antiga —
+       mesmo com a cópia de verdade, atualizada, já salva no IndexedDB (linha acima). Agora
+       a chave antiga é removida nesse caso, forçando restoreState() a cair pro IndexedDB. */
+    try{localStorage.removeItem(STORAGE_KEY)}catch(_){}
     try{localStorage.setItem(STORAGE_META_KEY,JSON.stringify(stateMeta(state)))}catch(_){}
     console.warn('Base grande demais para localStorage; cópia completa mantida no IndexedDB:',e);
   }
