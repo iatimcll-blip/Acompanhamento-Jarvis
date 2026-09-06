@@ -18195,7 +18195,21 @@ function rdeCompactDetail(r,kind,cl,mi,wi,prazo,out,tempo,label,impacto){
 function rdeColVal(r,col){const v=r['__'+col];return(v!==undefined&&v!=='')?v:null;}
 function rdeRowToRede(r,sheet){
   const tipo=String(rdeGv(r,['tipo','rede','categoria','grupo'])||sheet||'').toLowerCase();
-  const isAC=tipo.includes('acesso');
+  /* Detecção Backbone x Acesso não pode depender só do nome da aba/coluna "tipo": uma base
+     real de Acesso ("acesso (1).xlsx") veio numa aba chamada "Export" (nome genérico do
+     export, sem "acesso" nem "tipo" nenhum), então toda ela caía no ramo Backbone por
+     engano — TME/TMR ficavam zerados (colunas erradas) e a base de Acesso nunca era
+     atualizada de verdade, dando a impressão de "gráficos não refletindo a base nova".
+     TME e CLIENTES AFETADOS só existem no layout de Acesso; TMR só existe no de Backbone —
+     usa isso como sinal estrutural, mais confiável que o nome da aba, quando disponível.
+     Checa a EXISTÊNCIA da coluna no cabeçalho (Object.keys), não o valor da célula desta
+     linha — sheet_to_json({defval:''}) garante a chave em toda linha mesmo com célula em
+     branco, então checar só o valor faria uma linha com TME vazio (célula não preenchida,
+     mas coluna existe) cair de volta no fallback por nome de aba e ser mal classificada. */
+  const cols=new Set(Object.keys(r).map(rdeNk));
+  const hasTmr=cols.has('TMR');
+  const hasAcessoCols=cols.has('TME')||cols.has('CLIENTESAFETADOS');
+  const isAC=hasTmr?false:hasAcessoCols?true:tipo.includes('acesso');
   const openedAt=rdeParseDateBR(rdeGv(r,['DATA_ABERTURA','data abertura','abertura','data']));
   const mes=rdeGv(r,['mes','mês','competencia','competência','periodo','período']);
   const ano=rdeGv(r,['ano']);
