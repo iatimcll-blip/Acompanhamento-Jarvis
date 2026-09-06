@@ -9459,7 +9459,12 @@ function cnt(arr,key){const r={};arr.forEach(d=>{if(d[key])r[d[key]]=(r[d[key]]|
 function se(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1])}
 function now2(){const n=new Date();return n.toLocaleDateString('pt-BR')+' '+n.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
 function normCluster(c){return(c==='AM INT'||c==='AP'||c==='AP / AM'||c==='AP/AM')?'AM/AP':c}
-function calcSemana(d){if(!d||isNaN(d))return'';const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));dt.setUTCDate(dt.getUTCDate()+4-(dt.getUTCDay()||7));const y0=new Date(Date.UTC(dt.getUTCFullYear(),0,1));return'S'+String(Math.ceil((((dt-y0)/86400000)+1)/7)).padStart(2,'0')}
+/* Inclui o ano ISO no rótulo (ex.: "2026-S10") — sem isso, bases que acumulam mais de um
+   ano civil (comum num painel de acompanhamento contínuo) juntavam semanas de anos
+   diferentes com o mesmo número ISO (S10/2025 e S10/2026) num único rótulo "S10", inflando
+   contagens e distorcendo os gráficos de WoW/meta semanal. Mesma fórmula ISO de rdeIsoWeek()
+   (Painel Rede), pra tratar corretamente o ano de virada (semana de dez/jan). */
+function calcSemana(d){if(!d||isNaN(d))return'';const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));dt.setUTCDate(dt.getUTCDate()+4-(dt.getUTCDay()||7));const y0=new Date(Date.UTC(dt.getUTCFullYear(),0,1));return dt.getUTCFullYear()+'-S'+String(Math.ceil((((dt-y0)/86400000)+1)/7)).padStart(2,'0')}
 function normSemana(s){return s?s.replace(/^[Ss](\d+)$/,(_,n)=>'S'+String(n).padStart(2,'0')):s}
 function normClusterByCity(uf,cidade){
   const u=String(uf||'').toUpperCase().trim(),c=nk(cidade);
@@ -10928,7 +10933,20 @@ function procAbBaseAberta(rows,fname){
 
 /* ─── PROCESS ENCERRADOS ─── */
 function procEnc(raw,fname){
-  encChartBucket='';
+  /* Reset de escopo ao carregar uma base NOVA: antes, Mês/Semana/Cluster do subbar e os
+     filtros de tabela de Encerrados/S-Intervenção/Prefeitura só eram podados contra os
+     valores ainda válidos (fillMesSelector/fillWeekSelector/fillClusterSelector), então uma
+     seleção antiga que por coincidência ainda existisse na base nova (ex.: um mês específico)
+     ficava presa, e o total exibido parecia "faltar" chamados quando na verdade era um
+     recorte de sessão anterior sobre um arquivo maior. Agora todo upload novo sempre volta
+     pro estado "sem filtro nenhum", igual a clearEncSubbarFilters(). */
+  selMes=[];selWeek=[];selCluster=[];
+  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
+  selSiCluster=[];selSiAging=[];selSiCausa=[];selSiUf=[];selSiSemana=[];selSiSeg=[];siChartBucket='';
+  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];prefChartBucket='';
+  const srchEnc0=document.getElementById('f-srch-enc');if(srchEnc0)srchEnc0.value='';
+  const srchSi0=document.getElementById('f-srch-si');if(srchSi0)srchSi0.value='';
+  const srchPref0=document.getElementById('f-srch-pref');if(srchPref0)srchPref0.value='';
   dEnc=raw.filter(r=>r['ticket_id']||r['protocolo']).map(r=>{
     const protocolo=String(r['protocolo']||r['ticket_id']||'').trim();
     const ticketId=String(r['ticket_id']||'').trim();
@@ -17664,22 +17682,32 @@ function encPptxDecisionTxt(info){
 /* Semana Contra Semana (WoW) — a pedido do usuário: "Realizar as análises de todos os
    painéis SEMANA contra SEMANA" (inspirado no gráfico "Variação Semana Contra Semana" do
    modelo Relatórios/3Ps_MaranhaoPiaui_Executivo_S35_2026.pptx). Escopo: respeita TODOS os
-   filtros do painel, inclusive Mês/Semana do subbar (encWeek() já aplica selMes+selWeek) —
-   antes ignorava Mês/Semana de propósito pra sempre sobrar mais de 1 semana pra comparar;
-   a pedido do usuário, agora o WoW reflete só o período selecionado (se restar 1 semana ou
-   nenhuma anterior, encWoWInsightTxt() já trata isso). O "streak" (quantas altas/quedas
-   seguidas terminando na última semana) é puramente aritmético, sem hipótese de causa —
-   só a contagem de sinais consecutivos, igual ao "queda pela 2ª semana seguida" do modelo. */
+   filtros do painel — Mês/Semana do subbar (encWeek() já aplica selMes+selWeek), Cluster,
+   Faixa SLA, Causa Raiz, UF, Semana da tabela, Segmento, busca livre e o drill-down por
+   clique no gráfico de SLA (encChartBucket) — mesmo conjunto de filtros de gFEnc(), pra
+   nunca divergir do card/tabela/relatório PPT que usam esse outro escopo (bug corrigido:
+   antes faltavam Faixa SLA, Semana e o drill-down, então filtrar por outlier na tabela não
+   refletia no card WoW nem no slide 2 do PPT executivo). Antes o WoW também ignorava
+   Mês/Semana de propósito pra sempre sobrar mais de 1 semana pra comparar; a pedido do
+   usuário, agora reflete só o período selecionado (se restar 1 semana ou nenhuma anterior,
+   encWoWInsightTxt() já trata isso). O "streak" (quantas altas/quedas seguidas terminando na
+   última semana) é puramente aritmético, sem hipótese de causa — só a contagem de sinais
+   consecutivos, igual ao "queda pela 2ª semana seguida" do modelo. */
 function encWoWSeries(){
   let base=encWeek();
   const clusterFiltro=selEncCluster.length?selEncCluster:selCluster;
   if(clusterFiltro.length)base=base.filter(x=>clusterFiltro.includes(x.cluster));
+  if(selEncAging.length)base=base.filter(x=>selEncAging.includes(x.faixa));
   if(selEncCausa.length)base=base.filter(x=>selEncCausa.includes(fmtCausaRaiz(x.causaRaiz)));
   if(selEncUf.length)base=base.filter(x=>selEncUf.includes(x.uf));
+  if(selEncSemana.length)base=base.filter(x=>selEncSemana.includes(x.semana));
   if(selEncSeg.length)base=base.filter(x=>selEncSeg.includes(repairPtBR(x.segmento)));
   const srchEl=document.getElementById('f-srch-enc');
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   if(srch)base=base.filter(x=>x.cliente.toLowerCase().includes(srch)||x.protocolo.toLowerCase().includes(srch)||(x.titulo||'').toLowerCase().includes(srch));
+  if(encChartBucket==='prazo')base=base.filter(x=>x.dentro8h);
+  else if(encChartBucket==='inter')base=base.filter(x=>!x.dentro8h&&!x.outlier24h);
+  else if(encChartBucket==='outlier')base=base.filter(x=>x.outlier24h);
   const porSemana={};
   base.forEach(x=>{if(!x.semana)return;(porSemana[x.semana]=porSemana[x.semana]||[]).push(x)});
   const labels=Object.keys(porSemana).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
