@@ -19084,9 +19084,32 @@ function renderRede(){
           topCause&&(topCause.fp+topCause.ou)>0?`recorrência da causa <b>${eh(topCause.k)}</b> (${topCause.fp+topCause.ou} casos, ${causePct}% do total)`:''
         ].filter(Boolean);
         const causaTxt=causaPartes.length?causaPartes.join('; ')+'.':'Não se aplica — indicadores dentro do esperado, sem causa crítica concentrada.';
+        /* Ações específicas pra Prazo e MTTR, a pedido do usuário — cada uma só aparece
+           quando aquele indicador específico está fora da meta, e cita o cluster crítico
+           (worstCl) e a causa dominante (topCause) já identificados acima quando disponíveis,
+           em vez de texto genérico. Se só Outlier estiver fora da meta (Prazo e MTTR OK), cai
+           no texto genérico de antes — não há ação de Prazo/MTTR pra sugerir nesse caso. */
+        const clCritico=worstCl&&worstCl.a.prazo<RDE_M89?(clNames[worstCl.cl]||worstCl.cl):'';
+        const causaCritica=topCause&&(topCause.fp+topCause.ou)>0?topCause.k:'';
+        const acoesPrazo=prazoStatus!=='ok'?[
+          clCritico?`Priorizar atendimento por SLA no cluster <b>${eh(clCritico)}</b>, com fila dedicada para chamados a menos de 2h do vencimento do prazo.`
+                   :'Priorizar atendimento por SLA nos clusters com maior volume de chamados fora do prazo, com fila dedicada para chamados próximos do vencimento.',
+          clCritico?`Reforçar o dimensionamento de equipe técnica de campo no cluster <b>${eh(clCritico)}</b> (prazo atual de ${worstCl.a.prazo.toFixed(1)}%, ${worstCl.a.n} chamados) para reduzir a fila de espera.`
+                   :'Revisar o dimensionamento de equipe técnica de campo nos clusters mais impactados para reduzir a fila de espera.'
+        ]:[];
+        const acoesMttr=tmeStatus!=='ok'?[
+          causaCritica?`Padronizar checklist/procedimento de campo para a causa recorrente <b>${eh(causaCritica)}</b> (${topCause.fp+topCause.ou} casos), reduzindo o tempo de diagnóstico.`
+                      :'Padronizar checklist/procedimento de campo para as causas mais recorrentes, reduzindo o tempo de diagnóstico.',
+          causaCritica?`Aproximar estoque de peças/kits de reparo específicos para <b>${eh(causaCritica)}</b> das bases nos clusters mais impactados, reduzindo tempo de deslocamento/reposição.`
+                      :'Revisar a disponibilidade de peças/kits de reparo nas bases dos clusters mais impactados, reduzindo tempo de deslocamento/reposição.'
+        ]:[];
+        const acoesList=[
+          acoesPrazo.length?`<b>Prazo:</b> ${acoesPrazo.join(' ')}`:'',
+          acoesMttr.length?`<b>MTTR:</b> ${acoesMttr.join(' ')}`:''
+        ].filter(Boolean);
         const acaoTxt=metasOk
           ?'Manter monitoramento de rotina; nenhuma ação corretiva necessária neste recorte.'
-          :`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`;
+          :(acoesList.length?acoesList.join('<br>'):`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`);
         return`<div class="rr-para"><b>Leitura executiva:</b> ${execTxt}</div>`+
           `<div class="rr-para" style="margin-top:8px"><b>FCA Executivo</b></div>`+
           `<div class="rr-para">&nbsp;&nbsp;<b>Fato:</b> ${fatoTxt}</div>`+
