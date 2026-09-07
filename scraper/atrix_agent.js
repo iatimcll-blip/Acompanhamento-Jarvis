@@ -114,6 +114,16 @@ async function ghPutFile(filePath, contentStr, sha, message) {
   await ghRequest('PUT', `/repos/${GH_REPO}/contents/${filePath}`, body);
 }
 
+// Mesma coisa que ghPutFile, mas pra conteúdo BINÁRIO (ex.: screenshot PNG) — não passa
+// pelo Buffer.from(str,'utf8') que corromperia bytes binários; recebe o Buffer já pronto.
+async function ghPutBinaryFile(filePath, buffer, message) {
+  let sha = null;
+  try { sha = (await ghGetFile(filePath)).sha; } catch (_) {}
+  const body = { message, content: buffer.toString('base64'), branch: GH_BRANCH };
+  if (sha) body.sha = sha;
+  await ghRequest('PUT', `/repos/${GH_REPO}/contents/${filePath}`, body);
+}
+
 // ── Gate público ──────────────────────────────────────────────────────────────
 // Registra o último clique no botão "Iniciar" e serve como auditoria pública para
 // qualquer dispositivo. O workflow só roda por workflow_dispatch.
@@ -215,17 +225,37 @@ async function saveUpdates(updates, sha, attempt = 1) {
 }
 
 // ── Login automático ──────────────────────────────────────────────────────────
+// Antes só devolvia true/false — o painel só sabia "Login Atrix falhou ou sessao
+// expirou", genérico demais pra diagnosticar à distância (o runner é self-hosted, sem
+// acesso remoto). Agora devolve {ok, reason} com o motivo específico e, numa falha,
+// publica um screenshot da página em data/atrix-login-failure.png (sobrescrito a cada
+// falha nova) — dá pra inspecionar sem estar na máquina do runner.
+async function _publishLoginFailureScreenshot(page, tag) {
+  try {
+    const buf = await page.screenshot({ fullPage: true });
+    await ghPutBinaryFile('data/atrix-login-failure.png', buf, `chore: screenshot falha de login Atrix (${tag})`);
+    info('Screenshot da falha de login publicado em data/atrix-login-failure.png');
+  } catch (e) {
+    warn('Nao foi possivel publicar screenshot da falha de login:', e.message);
+  }
+}
 async function ensureLoggedIn(page) {
   info('Verificando sessao Atrix...');
-  await page.goto(ATRIX_BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  try {
+    await page.goto(ATRIX_BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  } catch (e) {
+    error('Erro ao abrir Atrix:', e.message);
+    await _publishLoginFailureScreenshot(page, 'goto-falhou');
+    return { ok: false, reason: `Não consegui abrir ${ATRIX_BASE} (timeout/erro de rede): ${e.message}` };
+  }
   await page.waitForTimeout(1500);
 
   const needsLogin = !!(await page.$('input[type="password"]'));
-  if (!needsLogin) { info('Sessao ativa — login nao necessario.'); return true; }
+  if (!needsLogin) { info('Sessao ativa — login nao necessario.'); return { ok: true, reason: '' }; }
 
   if (!ATRIX_USER || !ATRIX_PASS) {
     error('Sessao expirada e credenciais nao configuradas. Execute run.bat para reconfigurar.');
-    return false;
+    return { ok: false, reason: 'Sessão expirada e ATRIX_USER/ATRIX_PASS não configurados no .env do runner.' };
   }
 
   info('Fazendo login automatico...');
@@ -239,13 +269,15 @@ async function ensureLoggedIn(page) {
     await page.waitForTimeout(1500);
     if (!(await page.$('input[type="password"]'))) {
       info('Login realizado com sucesso.');
-      return true;
+      return { ok: true, reason: '' };
     }
     error('Login falhou. Verifique ATRIX_USER e ATRIX_PASS no .env');
-    return false;
+    await _publishLoginFailureScreenshot(page, 'credenciais-rejeitadas');
+    return { ok: false, reason: 'Formulário de login enviado mas a página continua pedindo senha — credenciais provavelmente rejeitadas (senha trocada, conta bloqueada, CAPTCHA/2FA novo).' };
   } catch (e) {
     error('Erro no login:', e.message);
-    return false;
+    await _publishLoginFailureScreenshot(page, 'excecao-' + e.name);
+    return { ok: false, reason: `Erro ao preencher/enviar o formulário de login (${e.name}): ${e.message} — provável mudança no layout da página de login.` };
   }
 }
 
@@ -562,10 +594,11 @@ async function runCycle() {
   const page = await ctx.newPage();
 
   try {
-    if (!await ensureLoggedIn(page)) {
+    const login = await ensureLoggedIn(page);
+    if (!login.ok) {
       await publishRunnerStatus({
         state: 'error',
-        lastError: 'Login Atrix falhou ou sessao expirou',
+        lastError: login.reason || 'Login Atrix falhou ou sessao expirou',
         lastRunCompletedAt: new Date().toISOString(),
         lastRunConclusion: 'failure'
       });
