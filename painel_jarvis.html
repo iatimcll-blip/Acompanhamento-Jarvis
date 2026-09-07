@@ -10850,6 +10850,13 @@ function finishAbUpload(fname){
   podaAbAnnotations(); // apaga anotações de tickets que saíram da base
   refreshSwapBadge();
   fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();
+  /* Reaplica o último substatus conhecido pelo Atrix por cima da base recém-anexada — a
+     pedido do usuário ("usar sempre o Substatus da atualização no Atrix"). Sem isto, um
+     upload de planilha no meio da sessão sobrescrevia o substatus (potencialmente
+     desatualizado, já que a planilha é só um retrato periódico) sem ser corrigido de volta
+     até o próximo ciclo do Atrix (só rodava 3s após o carregamento da página, ou a cada
+     disparo manual/periódico — não a cada upload). */
+  if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();
   document.getElementById('empty-ab').style.display='none';
   document.getElementById('dash-ab').style.display='block';
   const emptySwap=document.getElementById('empty-swap'),dashSwap=document.getElementById('dash-swap');
@@ -12704,8 +12711,14 @@ async function loadAtrixUpdates(){
         ticket.statusSla=statusSla(ticket.slaH,ticket.mop,ticket.slaLimitH);
         count++;
       }
-      if(!up.substatus)return;
-      const next=fmtSubstatus(up.substatus);
+      /* Regra do agente Atrix (scraper/atrix_agent.js): 1) Substatus encontrado -> usa
+         sempre; 2) sem Substatus mas com Status -> usa o Status; 3) sem Status e sem
+         Substatus -> classifica como "Fechado". O scraper já escreve o literal "Fechado"
+         nesse caso 3, mas o painel reforça a mesma regra aqui (em vez de silenciosamente
+         ignorar a atualização quando up.substatus vier vazio por qualquer motivo) — pedido
+         explícito do usuário: usar sempre o substatus da atualização do Atrix, e reportar
+         como Fechado quando ele não tiver nem Status nem Substatus. */
+      const next=fmtSubstatus(up.substatus||'Fechado');
       if(up.updatedAt)ticket.substatusUpdatedAt=up.updatedAt;
       if(next!==ticket.substatus){
         /* Mesma lógica de pausa/retomada de SLA de updateSubstatus() — sem isso,
