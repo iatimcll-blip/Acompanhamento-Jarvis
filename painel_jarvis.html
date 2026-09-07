@@ -19053,10 +19053,12 @@ function renderRede(){
       (worstCl&&worstCl.a.prazo<RDE_M89?`<div class="rr-para"><b>Cluster crítico:</b> ${clNames[worstCl.cl]||worstCl.cl} com prazo de <span class="rr-bd">${worstCl.a.prazo.toFixed(1)}%</span> (${worstCl.a.n} chamados).</div>`:'')+
       (topCity&&topCity.score>0?`<div class="rr-para"><b>Cidade mais ofensora:</b> ${eh(topCity.k)} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.</div>`:'')+
       (topCause&&topCause.fp+topCause.ou>0?`<div class="rr-para"><b>Causa dominante:</b> ${eh(topCause.k)} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.</div>`:'')+
-      /* Linha final voltada pra diretoria, a pedido do usuário: mantém toda a estrutura
-         (título + parágrafos factuais) e acrescenta só esta síntese/recomendação, reaproveitando
-         os mesmos dados já calculados acima (prazoStatus/outlierStatus/tmeStatus, worstCl,
-         topCause) — sem introduzir nenhum cálculo novo. */
+      /* Linha final + bloco FCA voltados pra diretoria, a pedido do usuário: mantém toda a
+         estrutura já existente (título + parágrafos factuais acima) e só ACRESCENTA isto no
+         fim, reaproveitando os mesmos dados já calculados (prazoStatus/outlierStatus/
+         tmeStatus, worstCl, topCause, a.*) — nenhum cálculo novo, só nova leitura em cima do
+         que já existe. FCA = Fato/Causa/Ação, formato padrão de relatório operacional já
+         usado neste projeto (ver Relatório Executivo B2B Aging). */
       (()=>{
         const metasOk=prazoStatus==='ok'&&outlierStatus==='ok'&&tmeStatus==='ok';
         const focoPartes=[
@@ -19066,7 +19068,30 @@ function renderRede(){
         const execTxt=metasOk
           ?'Operação dentro das metas neste recorte — sem pontos críticos que exijam ação imediata da diretoria.'
           :`Recomenda-se atenção prioritária ${focoPartes||'aos indicadores fora da meta'}, com plano de ação para reverter o quadro até o fechamento do período.`;
-        return`<div class="rr-para"><b>Leitura executiva:</b> ${execTxt}</div>`;
+        const fatoPartes=[
+          prazoStatus!=='ok'?`Prazo em <b>${a.prazo.toFixed(1)}%</b> (${(RDE_M89-a.prazo).toFixed(1)} p.p. abaixo da meta de ${RDE_M89}%)`:'',
+          outlierStatus!=='ok'?`Outlier em <b>${a.outlier.toFixed(1)}%</b> (${(a.outlier-RDE_MOUT).toFixed(1)} p.p. acima do limite de ${RDE_MOUT}%)`:'',
+          tmeStatus!=='ok'?`${tl} médio em <b>${a.tAvg.toFixed(2)}h</b> (${(a.tAvg-RDE_MTME).toFixed(2)}h acima da meta de ${RDE_MTME}h)`:''
+        ].filter(Boolean);
+        const fatoTxt=fatoPartes.length?fatoPartes.join('; ')+'.':`Todos os indicadores (Prazo, Outlier e ${tl}) dentro da meta neste recorte.`;
+        /* Causa só cita cluster/causa como problema quando o indicador geral (metasOk) já
+           está fora da meta — senão o FCA fica contraditório: um subcluster pode ficar abaixo
+           do alvo mesmo com a média geral dentro da meta (ex.: MA INT abaixo enquanto o
+           agregado do mês está OK), e citar isso em "Causa" junto de um "Fato" que diz que
+           está tudo certo confundiria quem só lê o FCA. */
+        const causaPartes=metasOk?[]:[
+          worstCl&&worstCl.a.prazo<RDE_M89?`concentração de não-conformidade no cluster <b>${eh(clNames[worstCl.cl]||worstCl.cl)}</b> (prazo de ${worstCl.a.prazo.toFixed(1)}% em ${worstCl.a.n} chamados)`:'',
+          topCause&&(topCause.fp+topCause.ou)>0?`recorrência da causa <b>${eh(topCause.k)}</b> (${topCause.fp+topCause.ou} casos, ${causePct}% do total)`:''
+        ].filter(Boolean);
+        const causaTxt=causaPartes.length?causaPartes.join('; ')+'.':'Não se aplica — indicadores dentro do esperado, sem causa crítica concentrada.';
+        const acaoTxt=metasOk
+          ?'Manter monitoramento de rotina; nenhuma ação corretiva necessária neste recorte.'
+          :`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`;
+        return`<div class="rr-para"><b>Leitura executiva:</b> ${execTxt}</div>`+
+          `<div class="rr-para" style="margin-top:8px"><b>FCA Executivo</b></div>`+
+          `<div class="rr-para">&nbsp;&nbsp;<b>Fato:</b> ${fatoTxt}</div>`+
+          `<div class="rr-para">&nbsp;&nbsp;<b>Causa:</b> ${causaTxt}</div>`+
+          `<div class="rr-para">&nbsp;&nbsp;<b>Ação:</b> ${acaoTxt}</div>`;
       })();
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados para o período selecionado.</span>';}
   rdeRenderAtenuacao(recs);
