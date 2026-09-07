@@ -9732,6 +9732,27 @@ function encRuleStats(d){
   const pPrazo=pct(prazo),pInter=pct(intermediario),pOut=pct(outlier),pFora8=pct(fora8);
   return{total,prazo,intermediario,outlier,fora8,pPrazo,pInter,pOut,pFora8,gapPrazo:Math.max(0,85-pPrazo),excessoOutlier:Math.max(0,pOut-1.98)};
 }
+/* "Análise de prazo e outlier" (pedido do usuário): as % exibidas nesse card devem ser a
+   MÉDIA entre os clusters presentes no recorte filtrado (Ano/Mês/Semana/Cluster), não o
+   percentual agregado por chamado — senão o cluster com mais volume (ex.: MA INT) domina o
+   número e mascara o desempenho dos clusters menores (ex.: NORTE). Cada cluster pesa igual
+   na média, independente de quantos chamados tiver. As contagens absolutas (total/prazo/
+   intermediário/outlier) continuam sendo a soma real dos chamados — só as % mudam. Com um
+   único cluster no recorte (ou nenhum cluster identificado nos dados), a média de 1 valor
+   é o próprio valor, então fica idêntica ao cálculo agregado — não há divergência nesse
+   caso. */
+function encStatsClusterAvg(d){
+  const pooled=encRuleStats(d);
+  const byCluster={};
+  d.forEach(x=>{if(!x.cluster)return;(byCluster[x.cluster]=byCluster[x.cluster]||[]).push(x)});
+  const clusters=Object.keys(byCluster);
+  if(!clusters.length)return pooled;
+  let sumPrazo=0,sumInter=0,sumOut=0;
+  clusters.forEach(cl=>{const s=encRuleStats(byCluster[cl]);sumPrazo+=s.pPrazo;sumInter+=s.pInter;sumOut+=s.pOut;});
+  const n=clusters.length;
+  const pPrazo=sumPrazo/n,pInter=sumInter/n,pOut=sumOut/n,pFora8=pInter+pOut;
+  return{...pooled,pPrazo,pInter,pOut,pFora8,gapPrazo:Math.max(0,85-pPrazo),excessoOutlier:Math.max(0,pOut-1.98)};
+}
 function parseOpeningDate(v){if(v===undefined||v===null||v==='')return null;if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v).trim();if(!raw)return null;const iso=new Date(raw);if(!isNaN(iso))return iso;const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const y=Number(m[3].length===2?'20'+m[3]:m[3]);const d=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(d)?null:d}
 function fmtReportDate(v){const d=parseOpeningDate(v);if(!d)return String(v||'').trim()||'-';const hasTime=d.getHours()||d.getMinutes()||d.getSeconds();return hasTime?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}
 function hoursSince(d){return d?Math.max(0,(Date.now()-d.getTime())/3600000):0}
@@ -13405,7 +13426,7 @@ function rCausaEnc(d){
 }
 
 function rMeta8(d){
-  const s=encRuleStats(d);
+  const s=encStatsClusterAvg(d);
   const pct=s.pPrazo;
   const met=pct>=85;
   const r=36,circ=2*Math.PI*r;
@@ -13735,7 +13756,7 @@ function rSlaSi(d){
 }
 
 function rMeta8Si(d){
-  const s=encRuleStats(d);
+  const s=encStatsClusterAvg(d);
   const pct=s.pPrazo;
   const met=pct>=85;
   const r=36,circ=2*Math.PI*r;
@@ -14043,7 +14064,7 @@ function rSlaPref(d){
 }
 
 function rMeta8Pref(d){
-  const s=encRuleStats(d);
+  const s=encStatsClusterAvg(d);
   const pct=s.pPrazo;
   const met=pct>=85;
   const r=36,circ=2*Math.PI*r;
