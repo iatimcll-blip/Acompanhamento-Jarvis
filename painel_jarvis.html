@@ -19052,7 +19052,22 @@ function renderRede(){
       (clReport?`<div class="rr-para"><b>Por cluster:</b> ${clReport}.</div>`:'')+
       (worstCl&&worstCl.a.prazo<RDE_M89?`<div class="rr-para"><b>Cluster crítico:</b> ${clNames[worstCl.cl]||worstCl.cl} com prazo de <span class="rr-bd">${worstCl.a.prazo.toFixed(1)}%</span> (${worstCl.a.n} chamados).</div>`:'')+
       (topCity&&topCity.score>0?`<div class="rr-para"><b>Cidade mais ofensora:</b> ${eh(topCity.k)} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.</div>`:'')+
-      (topCause&&topCause.fp+topCause.ou>0?`<div class="rr-para"><b>Causa dominante:</b> ${eh(topCause.k)} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.</div>`:'');
+      (topCause&&topCause.fp+topCause.ou>0?`<div class="rr-para"><b>Causa dominante:</b> ${eh(topCause.k)} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.</div>`:'')+
+      /* Linha final voltada pra diretoria, a pedido do usuário: mantém toda a estrutura
+         (título + parágrafos factuais) e acrescenta só esta síntese/recomendação, reaproveitando
+         os mesmos dados já calculados acima (prazoStatus/outlierStatus/tmeStatus, worstCl,
+         topCause) — sem introduzir nenhum cálculo novo. */
+      (()=>{
+        const metasOk=prazoStatus==='ok'&&outlierStatus==='ok'&&tmeStatus==='ok';
+        const focoPartes=[
+          worstCl&&worstCl.a.prazo<RDE_M89?`ao cluster <b>${eh(clNames[worstCl.cl]||worstCl.cl)}</b>`:'',
+          topCause&&(topCause.fp+topCause.ou)>0?`à causa <b>${eh(topCause.k)}</b>`:''
+        ].filter(Boolean).join(' e ');
+        const execTxt=metasOk
+          ?'Operação dentro das metas neste recorte — sem pontos críticos que exijam ação imediata da diretoria.'
+          :`Recomenda-se atenção prioritária ${focoPartes||'aos indicadores fora da meta'}, com plano de ação para reverter o quadro até o fechamento do período.`;
+        return`<div class="rr-para"><b>Leitura executiva:</b> ${execTxt}</div>`;
+      })();
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados para o período selecionado.</span>';}
   rdeRenderAtenuacao(recs);
   // Calls panel: sempre visível enquanto houver cluster e/ou período selecionado
