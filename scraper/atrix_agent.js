@@ -265,7 +265,32 @@ const BLANK_VALUES = new Set(['selecione','seleccione','select','nenhum','none',
 // Regra de negócio de classificação (nesta ordem de prioridade):
 //   1. Substatus encontrado na página -> usa o Substatus sempre, sem exceção.
 //   2. Sem Substatus, mas com Status  -> usa o Status.
-//   3. Sem Status e sem Substatus     -> classifica como "Fechado".
+//   3. Sem Status e sem Substatus, MAS com confirmação positiva de fechamento na página
+//      (pageIndicatesClosed) -> classifica como "Fechado".
+//   4. Sem Status e sem Substatus, sem nenhuma confirmação de fechamento -> não dá pra
+//      afirmar que o chamado foi encerrado (pode ser só a página não ter carregado a
+//      tempo, sessão expirada no meio do lote, layout diferente do esperado, etc.) ->
+//      retorna null (erro de extração) e o painel mantém o substatus anterior, em vez de
+//      marcar como Fechado sem confirmação. Achado real em produção: 118 de 157 chamados
+//      apareceram marcados "Fechado" pelo runner — taxa implausível para uma fila de
+//      chamados ABERTOS, sinal de que a Regra 3 antiga (Status/Substatus ausentes =
+//      Fechado, sem checar mais nada) estava disparando por falha de leitura da página
+//      (timeout, sessão expirada no meio do lote, layout diferente do esperado), não por
+//      fechamento real do chamado.
+async function pageIndicatesClosed(page) {
+  return page.evaluate(() => {
+    const txt = (document.body.innerText || '').toLowerCase();
+    // Termos que só fazem sentido como confirmação explícita de encerramento do chamado —
+    // não usa "fechado"/"encerrado" soltos (aparecem em menus/rótulos de filtro também),
+    // exige o termo emparelhado com "chamado"/"ticket"/"status" nas proximidades.
+    const patterns = [
+      /chamado\s+(encerrado|fechado|finalizado|cancelado|conclu[ií]do)/,
+      /(status|situa[cç][aã]o)\s*:?\s*(encerrado|fechado|finalizado|cancelado|conclu[ií]do)/,
+      /ticket\s+(closed|resolved|cancelled|canceled)/,
+    ];
+    return patterns.some(p => p.test(txt));
+  });
+}
 
 async function selText(page, selector) {
   const el = await page.$(selector);
@@ -347,8 +372,16 @@ async function extractSubstatus(page, ticket) {
       // Sem nenhum select: usar o Status encontrado na página, se houver
       const st = await extractPageStatus();
       if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return st; }
-      info(`[${tid}] Sem Status e sem Substatus na pagina — classificando como Fechado.`);
-      return 'Fechado';
+      // Nenhum select apareceu a tempo — isso por si só não confirma que o chamado foi
+      // fechado (pode ser timeout, sessão caindo no meio do lote, etc.). Só classifica
+      // como Fechado com confirmação positiva na página; senão trata como erro de leitura
+      // (mantém o substatus anterior em vez de arriscar um falso "Fechado").
+      if (await pageIndicatesClosed(page)) {
+        info(`[${tid}] Sem Status e sem Substatus, com confirmação de encerramento — classificando como Fechado.`);
+        return 'Fechado';
+      }
+      warn(`[${tid}] Nenhum select carregou e nao ha confirmacao de fechamento — tratando como erro de leitura (substatus anterior mantido).`);
+      return null;
     }
 
     // ── Coleta o Substatus por todas as estratégias, sem retornar ainda ──────────
@@ -417,14 +450,22 @@ async function extractSubstatus(page, ticket) {
     const pageStatus = await extractPageStatus();
     if (pageStatus) { info(`[${tid}] Substatus nao encontrado — usando Status: ${pageStatus}`); return pageStatus; }
 
-    // Regra 1: nem Status nem Substatus encontrados — classificar como Fechado.
+    // Regra 1: nem Status nem Substatus encontrados. Selects existem na página (chegamos
+    // aqui depois do waitForSelector acima ter funcionado), então a página carregou — mas
+    // isso ainda não confirma fechamento por si só (os selects encontrados podem ser só de
+    // navegação/filtro, sem nenhum ligado a status/substatus deste chamado específico). Só
+    // classifica como Fechado com confirmação positiva na página; senão erro de leitura.
     if (DEBUG) {
       const shot = path.join(__dirname, `debug_${tid}.png`);
       await page.screenshot({ path: shot, fullPage: true });
       dbg(`[${tid}] Sem Status e sem Substatus — screenshot salvo: ${shot}`);
     }
-    info(`[${tid}] Sem Status e sem Substatus na pagina — classificando como Fechado.`);
-    return 'Fechado';
+    if (await pageIndicatesClosed(page)) {
+      info(`[${tid}] Sem Status e sem Substatus, com confirmação de encerramento — classificando como Fechado.`);
+      return 'Fechado';
+    }
+    warn(`[${tid}] Sem Status e sem Substatus e sem confirmacao de fechamento — tratando como erro de leitura (substatus anterior mantido).`);
+    return null;
   } catch (e) {
     if (e.name === 'TimeoutError') warn(`[${tid}] Timeout ao carregar ticket.`);
     else error(`[${tid}] Erro: ${e.message}`);
