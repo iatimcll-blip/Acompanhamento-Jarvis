@@ -371,14 +371,14 @@ async function extractSubstatus(page, ticket) {
     } catch {
       // Sem nenhum select: usar o Status encontrado na página, se houver
       const st = await extractPageStatus();
-      if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return st; }
+      if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return { value: st, source: 'status' }; }
       // Nenhum select apareceu a tempo — isso por si só não confirma que o chamado foi
       // fechado (pode ser timeout, sessão caindo no meio do lote, etc.). Só classifica
       // como Fechado com confirmação positiva na página; senão trata como erro de leitura
       // (mantém o substatus anterior em vez de arriscar um falso "Fechado").
       if (await pageIndicatesClosed(page)) {
         info(`[${tid}] Sem Status e sem Substatus, com confirmação de encerramento — classificando como Fechado.`);
-        return 'Fechado';
+        return { value: 'Fechado', source: 'fechado' };
       }
       warn(`[${tid}] Nenhum select carregou e nao ha confirmacao de fechamento — tratando como erro de leitura (substatus anterior mantido).`);
       return null;
@@ -444,11 +444,11 @@ async function extractSubstatus(page, ticket) {
 
     // Regra 3: o Substatus, quando encontrado, sempre prevalece — nenhuma outra
     // informação (Status incluído) o sobrescreve.
-    if (sub) return sub;
+    if (sub) return { value: sub, source: 'substatus' };
 
     // Regra 2: sem Substatus, usar o Status da página.
     const pageStatus = await extractPageStatus();
-    if (pageStatus) { info(`[${tid}] Substatus nao encontrado — usando Status: ${pageStatus}`); return pageStatus; }
+    if (pageStatus) { info(`[${tid}] Substatus nao encontrado — usando Status: ${pageStatus}`); return { value: pageStatus, source: 'status' }; }
 
     // Regra 1: nem Status nem Substatus encontrados. Selects existem na página (chegamos
     // aqui depois do waitForSelector acima ter funcionado), então a página carregou — mas
@@ -462,7 +462,7 @@ async function extractSubstatus(page, ticket) {
     }
     if (await pageIndicatesClosed(page)) {
       info(`[${tid}] Sem Status e sem Substatus, com confirmação de encerramento — classificando como Fechado.`);
-      return 'Fechado';
+      return { value: 'Fechado', source: 'fechado' };
     }
     warn(`[${tid}] Sem Status e sem Substatus e sem confirmacao de fechamento — tratando como erro de leitura (substatus anterior mantido).`);
     return null;
@@ -578,16 +578,21 @@ async function runCycle() {
       info(`[${i + 1}/${tickets.length}] ${tid}`);
 
       const old = (updates[tid] || {}).substatus || '';
-      const sub = await extractSubstatus(page, ticket);
+      const result = await extractSubstatus(page, ticket);
 
-      if (sub) {
+      if (result) {
+        const { value: sub, source } = result;
         const loc = await extractLocation(page, ticket);
-        updates[tid] = { substatus: sub, cliente: ticket.cliente || '', uf: loc.uf, cidade: loc.cidade, updatedAt: new Date().toISOString() };
+        /* `source` ('substatus'|'status'|'fechado') registra QUAL regra encontrou o valor —
+           permite auditar depois (ex.: um chamado sempre aparecendo com o Status genérico em
+           vez de um Substatus mais específico apontaria pra um seletor de Substatus que não
+           está batendo com o layout real da página daquele tipo de chamado). */
+        updates[tid] = { substatus: sub, source, cliente: ticket.cliente || '', uf: loc.uf, cidade: loc.cidade, updatedAt: new Date().toISOString() };
         if (sub !== old) {
-          info(`  ✓ "${old}" → "${sub}"`);
+          info(`  ✓ "${old}" → "${sub}" (via ${source})`);
           changed++;
         } else {
-          dbg(`  – sem mudanca (${sub})`);
+          dbg(`  – sem mudanca (${sub}, via ${source})`);
         }
       } else {
         errors++;
