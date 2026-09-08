@@ -8879,7 +8879,7 @@ const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/A
 
 let dAb=[],dEnc=[],dAtiv=[],dAbCleared=false,dAbClearedAt='';
 let aleloCardImage=null,aleloCardImageAt='';
-let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false;
+let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false,fuelVeiculosClearedAt='';
 /* Timestamp ISO da última mudança em fuelCardBalance (saldo do cartão Alelo) — mesmo motivo
    de lastEncBaseAt: sem isso, saveGhState() sobrescrevia esse valor incondicionalmente com
    o que estivesse na memória local, mesmo quando o remoto tivesse uma atualização mais
@@ -9272,11 +9272,51 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         lastEncAt=remoteSt.lastEncAt||lastEncAt;
         lastEncFile=remoteSt.lastEncFile||lastEncFile;
       }
-      dFuelVehicles=_mergeArraysByKey(dFuelVehicles,(fuelVeiculosCleared&&(!Array.isArray(remoteSt.dFuelVehicles)||!remoteSt.dFuelVehicles.length))?[]:normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+      /* Fuel Vehicles: a condição antiga (fuelVeiculosCleared && remoto TAMBÉM vazio) só
+         evitava mesclar quando o remoto já tinha convergido pra vazio — ou seja, não
+         protegia nada no caso real (remoto ainda com a base antiga, não-vazia, logo
+         depois da limpeza local): a condição virava falsa e caía no merge normal, que
+         trazia a base antiga de volta — mesmo bug de fundo já corrigido em dAb/dEnc/Rede/
+         Ativações. Mesma correção aqui: enquanto fuelVeiculosCleared estiver ativo,
+         ignora o remoto — EXCETO quando ele foi comprovadamente atualizado DEPOIS da
+         limpeza local (remoteSt.savedAt > fuelVeiculosClearedAt) com uma base nova
+         genuína anexada em outro dispositivo. */
+      {
+        const _remoteFvCleared=!!(remoteSt.fuelVeiculosCleared);
+        const _remoteFvNewerThanClear=!!(fuelVeiculosClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>fuelVeiculosClearedAt);
+        if(fuelVeiculosCleared&&!_remoteFvCleared&&_remoteFvNewerThanClear&&Array.isArray(remoteSt.dFuelVehicles)&&remoteSt.dFuelVehicles.length){
+          dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+          fuelVeiculosCleared=false;fuelVeiculosClearedAt='';
+        }else if(fuelVeiculosCleared){
+          dFuelVehicles=[];
+        }else{
+          dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+        }
+      }
       dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
       dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
       dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
-      if(Array.isArray(remoteSt.ofsRows))ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
+      /* OFS: mesma família de bug — ofsMeta.cleared/clearedAt já existiam no modelo de
+         dados (clearOfs() já os populava), mas o merge abaixo nunca os consultava, então
+         limpar a base OFS e sincronizar trazia de volta as linhas antigas do remoto na
+         sincronização seguinte, do mesmo jeito que dAb/dEnc/Rede/Ativações/Fuel Veículos.
+         ofsRowKey já é uma identidade real (id/OS/composto), não posicional — só faltava
+         a proteção do "cleared", não a chave de mesclagem em si. */
+      {
+        const _localOfsCleared=!!(ofsMeta&&ofsMeta.cleared);
+        const _localOfsClearedAt=(ofsMeta&&ofsMeta.clearedAt)||'';
+        const _remoteOfsMeta=remoteSt.ofsMeta||{};
+        const _remoteOfsCleared=!!_remoteOfsMeta.cleared;
+        const _remoteOfsNewerThanClear=!!(_localOfsClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>_localOfsClearedAt);
+        if(_localOfsCleared&&!_remoteOfsCleared&&_remoteOfsNewerThanClear&&Array.isArray(remoteSt.ofsRows)&&remoteSt.ofsRows.length){
+          ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
+          ofsMeta={..._remoteOfsMeta};
+        }else if(_localOfsCleared){
+          ofsRows=[];
+        }else if(Array.isArray(remoteSt.ofsRows)){
+          ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
+        }
+      }
       /* Rede: BD/AD são arrays posicionais (não objetos com chave natural), então
          em vez de mesclar linha a linha (arriscado — os índices de mês/semana em
          rdeM só fazem sentido dentro do mesmo arquivo), preserva a base de Rede
@@ -10142,7 +10182,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10398,6 +10438,7 @@ function applyState(st,label){
     const hasFuelState=Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.dFuelWithdrawals)||Array.isArray(st.dFuelAportes)||st.fuelBaseAt!==undefined||st.fuelBaseFile!==undefined||st.fuelCardBalance!==undefined;
     if(hasFuelState){
       if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosCleared'))fuelVeiculosCleared=!!st.fuelVeiculosCleared;
+      if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosClearedAt'))fuelVeiculosClearedAt=st.fuelVeiculosClearedAt||'';
       dFuelVehicles=(fuelVeiculosCleared&&(!Array.isArray(st.dFuelVehicles)||!st.dFuelVehicles.length))?[]:normalizeFuelVehicles(st.dFuelVehicles);
       dFuelRequests=clearLegacyFuelRequests?[]:normalizeFuelRequests(st.dFuelRequests);
       dFuelWithdrawals=normalizeFuelWithdrawals(st.dFuelWithdrawals);
@@ -10737,7 +10778,14 @@ async function clearAb(){
 async function clearEnc(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Encerrados? Isso também limpará B2B Repetidos, B2B S/Intervenção e B2B Prefeitura.'))return;
-  dEnc=[];lastEncAt='';lastEncFile='';lastEncBaseAt='';encChartBucket='';siChartBucket='';prefChartBucket='';updateUploadTimes();
+  /* lastEncBaseAt precisa virar um timestamp NOVO (não ''), senão o merge de
+     _mergeGhRemoteIntoLocal (remoteSt.lastEncBaseAt > lastEncBaseAt) trata ''
+     como "mais antigo que qualquer coisa" e traz de volta o dEnc antigo do
+     remoto na sincronização seguinte — mesmo bug real já corrigido em dAb,
+     aqui na variante "wholesale replace por recência": tratar a limpeza como
+     um "upload" novo (vazio) resolve com a MESMA lógica de recência já usada
+     para uploads normais, sem precisar de um flag extra. */
+  dEnc=[];lastEncAt='';lastEncFile='';lastEncBaseAt=new Date().toISOString();encChartBucket='';siChartBucket='';prefChartBucket='';updateUploadTimes();
   const nbEnc=document.getElementById('nb-enc');if(nbEnc)nbEnc.textContent='0';
   const nbRep=document.getElementById('nb-rep');if(nbRep)nbRep.textContent='0';
   const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent='0';
@@ -10759,7 +10807,10 @@ async function clearRede(){
   if(!confirm('Limpar base de rede? Os dados serão removidos.'))return;
   try{localStorage.removeItem(REDE_STORAGE);localStorage.removeItem(REDE_UI_KEY);}catch(e){}
   idbSet(REDE_STORAGE,null).catch(()=>{});
-  rdeBD=[];rdeAD=[];rdeBaseFile='';rdeBaseAt='';
+  /* rdeBaseAt vira timestamp novo (não ''), mesmo motivo de lastEncBaseAt em clearEnc:
+     '' é tratado como "mais antigo que qualquer coisa" pelo merge de recência em
+     _mergeGhRemoteIntoLocal, trazendo de volta a base antiga na sincronização seguinte. */
+  rdeBD=[];rdeAD=[];rdeBaseFile='';rdeBaseAt=new Date().toISOString();
   ['mes','ml','sem','sl','ca','mo'].forEach(k=>rdeM[k].length=0);
   rdeSelMonth='';rdeSelWeek='';rdeModo='m';rdeActiveView='bb';rdeTab='ACESSO';rdeGran='all';rdePeriod=[];rdeCluster=[];
   Object.values(rdeCharts).forEach(ch=>{try{ch.destroy();}catch(e){}});rdeCharts={};
@@ -10769,7 +10820,8 @@ async function clearRede(){
 async function clearAtiv(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de Ativações B2B? Essa ação não pode ser desfeita.'))return;
-  dAtiv=[];lastAtivAt='';lastAtivFile='';lastAtivBaseAt='';updateUploadTimes();
+  /* lastAtivBaseAt vira timestamp novo (não ''), mesmo motivo de lastEncBaseAt em clearEnc. */
+  dAtiv=[];lastAtivAt='';lastAtivFile='';lastAtivBaseAt=new Date().toISOString();updateUploadTimes();
   const empty=document.getElementById('empty-ativ');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ativ');if(dash)dash.style.display='none';
   const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
@@ -14513,7 +14565,7 @@ function addFuelVehicle(){
   if(idx>=0&&(!editingFuelPlate||placa!==editingFuelPlate)){alert('Placa já cadastrada. Edite o registro existente para evitar duplicidade.');return}
   if(editingFuelPlate){const editIdx=dFuelVehicles.findIndex(v=>v.placa===editingFuelPlate);if(editIdx>=0)dFuelVehicles[editIdx]={...dFuelVehicles[editIdx],...item};dFuelRequests=dFuelRequests.map(r=>r.placa===editingFuelPlate?{...r,placa:item.placa,condutor:item.condutor||r.condutor}:r)}else dFuelVehicles.push(item);
   dFuelVehicles=normalizeFuelVehicles(dFuelVehicles);
-  fuelVeiculosCleared=false;
+  fuelVeiculosCleared=false;fuelVeiculosClearedAt='';
   clearFuelVehicleForm();
   renderFuel();saveState();
 }
@@ -14549,7 +14601,7 @@ function procFuelVeiculos(raw,fname){
     map.set(v.placa,{...map.get(v.placa),...v});
   });
   dFuelVehicles=normalizeFuelVehicles([...map.values()]);
-  fuelVeiculosCleared=false;
+  fuelVeiculosCleared=false;fuelVeiculosClearedAt='';
   fuelVeiculosBaseAt=now2();fuelVeiculosBaseFile=fname||'';
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
   renderFuel();saveState();
@@ -14584,7 +14636,7 @@ function exportFuelVeiculosXlsx(){
 async function clearFuelVeiculos(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de Veículos e condutores? Essa ação não pode ser desfeita.'))return;
-  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosBaseAt='';fuelVeiculosBaseFile='';
+  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosClearedAt=new Date().toISOString();fuelVeiculosBaseAt='';fuelVeiculosBaseFile='';
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent='';
   renderFuel();
   await persistClearedBase('Veículos e condutores');
