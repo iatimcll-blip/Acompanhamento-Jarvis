@@ -8925,6 +8925,11 @@ let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBase
    GitHub, qual tem a base mais recente — ver comentário em saveGhState(). */
 let lastEncBaseAt='';
 let lastAtivAt='',lastAtivFile='';
+/* Mesmo motivo de lastEncBaseAt acima: lastAtivAt/lastPopAt são pt-BR (não sortáveis) —
+   estes dois campos ISO são o que saveGhState() usa pra decidir, entre local e remoto,
+   qual base de Ativações/POP é mais recente antes de sincronizar. */
+let lastAtivBaseAt='';
+let lastPopBaseAt='';
 let wppUnreadCount=0,wppInitialized=false;
 const STORAGE_KEY='atrix:painel:bases:v1';
 const STORAGE_META_KEY='atrix:painel:bases:meta:v1';
@@ -9222,7 +9227,34 @@ async function saveGhState(manual=false){
         rdeBaseAt=remoteRde.at;
         rdeRestoreM(remoteRde.M);
       }
+      /* Ativações B2B e POP: mesmo caso de Encerrados — cada upload é um export completo
+         e autoritativo (não uma entidade de vida longa como um chamado de Abertos), então
+         troca por INTEIRO quando a base remota for comprovadamente mais recente, nunca
+         mescla linha a linha. Faltavam aqui antes desta correção — um dispositivo que
+         subisse uma base de Ativações/POP nova, ao sincronizar, podia sobrescrever no
+         GitHub uma base mais recente que outro dispositivo já tivesse publicado, porque
+         esta função nunca considerava esses dois campos antes de decidir o que enviar. */
+      if(remoteSt.lastAtivBaseAt&&remoteSt.lastAtivBaseAt>(lastAtivBaseAt||'')){
+        dAtiv=Array.isArray(remoteSt.dAtiv)?remoteSt.dAtiv:dAtiv;
+        lastAtivBaseAt=remoteSt.lastAtivBaseAt;
+        lastAtivAt=remoteSt.lastAtivAt||lastAtivAt;
+        lastAtivFile=remoteSt.lastAtivFile||lastAtivFile;
+      }
+      if(remoteSt.lastPopBaseAt&&remoteSt.lastPopBaseAt>(lastPopBaseAt||'')){
+        dPop=Array.isArray(remoteSt.dPop)?remoteSt.dPop:dPop;
+        lastPopBaseAt=remoteSt.lastPopBaseAt;
+        lastPopAt=remoteSt.lastPopAt||lastPopAt;
+        lastPopFile=remoteSt.lastPopFile||lastPopFile;
+      }
+      /* Preventivas: ao contrário de Ativações/POP, cada item é adicionado/editado um a um
+         pela própria interface (sem upload de planilha) — mesma natureza de dFuelRequests
+         etc., então mescla por chave em vez de substituir, senão o agendamento que um
+         dispositivo acabou de criar desaparecia se outro dispositivo sincronizasse por
+         cima logo depois. Também faltava aqui antes desta correção. */
+      dPrevent=_mergeArraysByKey(dPrevent,Array.isArray(remoteSt.dPrevent)?remoteSt.dPrevent:[],x=>x.id);
+      dPrevTecnicos=_mergeArraysByKey(dPrevTecnicos,Array.isArray(remoteSt.dPrevTecnicos)?remoteSt.dPrevTecnicos:[],x=>x.id);
       renderAllAb();renderAllEnc();renderPanelRepetidos();renderFuel();renderRede();
+      renderPanelAtivacoes();renderAllPop();renderPreventAll();
     }
     const builtState=buildState();
     const content=await _ghStateToB64(builtState);
@@ -9934,10 +9966,17 @@ function stateSignature(st){
     len(st.dFuelVehicles),len(st.dFuelRequests),len(st.dFuelWithdrawals),len(st.dFuelAportes),st.fuelBaseAt||'',st.fuelBaseFile||'',
     st.monitorAudio&&st.monitorAudio.at||'',st.monitorAudio&&st.monitorAudio.url||'',st.monitorAudio&&st.monitorAudio.name||'',
     len(st.ofsRows),(st.ofsMeta&&st.ofsMeta.uploadedAt)||'',(st.ofsMeta&&st.ofsMeta.fname)||'',
-    len(rede.BD),len(rede.AD),rede.at||'',rede.fileName||''
+    len(rede.BD),len(rede.AD),rede.at||'',rede.fileName||'',
+    /* Ativações/POP/Preventivas ficavam de fora da assinatura — uma mudança só nesses
+       campos (sem alterar Ab/Enc/Fuel/OFS/Rede) não era detectada como "diferente" no
+       critério de desempate de shouldApplyRemoteState(), podendo deixar de puxar uma
+       atualização legítima de outro dispositivo. */
+    len(st.dAtiv),st.lastAtivAt||'',st.lastAtivFile||'',
+    len(st.dPop),st.lastPopAt||'',st.lastPopFile||'',
+    len(st.dPrevent),len(st.dPrevTecnicos)
   ].join('|');
 }
-function stateHasBaseData(st){const rede=st&&st.rdeState;return !!(st&&typeof st==='object'&&(Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.ofsRows)||(rede&&(Array.isArray(rede.BD)||Array.isArray(rede.AD)))));}
+function stateHasBaseData(st){const rede=st&&st.rdeState;return !!(st&&typeof st==='object'&&(Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.ofsRows)||Array.isArray(st.dAtiv)||Array.isArray(st.dPop)||Array.isArray(st.dPrevent)||(rede&&(Array.isArray(rede.BD)||Array.isArray(rede.AD)))));}
 function getLocalStateForSync(){
   let raw=null;
   try{raw=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(STORAGE_META_KEY)}catch(_){}
@@ -9962,7 +10001,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10045,6 +10084,7 @@ function applyState(st,label){
         return{...d,link:atrixTicketLink(d.id),cluster:d.cluster||rdeClusterFromRow({UF:d.uf,CIDADE:d.cid}),mes,semana,ano:d.ano||(mes?mes.slice(0,4):'')};
       });
       if(Object.prototype.hasOwnProperty.call(st,'lastAtivAt'))lastAtivAt=st.lastAtivAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastAtivBaseAt'))lastAtivBaseAt=st.lastAtivBaseAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastAtivFile'))lastAtivFile=st.lastAtivFile||'';
       const _ativUfs=[...new Set(dAtiv.map(d=>d.uf).filter(Boolean))];
       const _ativCids=[...new Set(dAtiv.map(d=>d.cid).filter(Boolean))];
@@ -10091,6 +10131,7 @@ function applyState(st,label){
     if(Array.isArray(st.dPop)){
       dPop=st.dPop;
       if(Object.prototype.hasOwnProperty.call(st,'lastPopAt'))lastPopAt=st.lastPopAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastPopBaseAt'))lastPopBaseAt=st.lastPopBaseAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastPopFile'))lastPopFile=st.lastPopFile||'';
       renderPreventCidadeDatalist();
       renderPreventPopDatalist();
@@ -10584,7 +10625,7 @@ async function clearRede(){
 async function clearAtiv(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de Ativações B2B? Essa ação não pode ser desfeita.'))return;
-  dAtiv=[];lastAtivAt='';lastAtivFile='';updateUploadTimes();
+  dAtiv=[];lastAtivAt='';lastAtivFile='';lastAtivBaseAt='';updateUploadTimes();
   const empty=document.getElementById('empty-ativ');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ativ');if(dash)dash.style.display='none';
   const srch=document.getElementById('ativ-srch');if(srch)srch.value='';
@@ -11142,7 +11183,7 @@ function procAtiv(raw,fname){
     };
   }).filter(item=>AB_UF_PERMITIDAS.includes(item.uf));
   lastAtivFile=fname||'';
-  lastAtivAt=now2();
+  lastAtivAt=now2();lastAtivBaseAt=new Date().toISOString();
   /* Reset de escopo ao carregar uma base NOVA (mesmo bug/fix do B2B Encerrados) — antes só se
      podava contra os valores válidos da base nova, o que deixa um filtro preso sempre que o
      valor antigo (UF/cidade/depto/etc.) coincide com algo que também existe na base nova. Pior
@@ -11588,7 +11629,7 @@ function procPop(matrix,fname){
     };
   }).filter(p=>p.nome);
   lastPopFile=fname||'';
-  lastPopAt=now2();
+  lastPopAt=now2();lastPopBaseAt=new Date().toISOString();
   podaPopAcAnnotations();
   renderPreventCidadeDatalist();
   renderPreventPopDatalist();
