@@ -8872,6 +8872,13 @@ const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/A
 let dAb=[],dEnc=[],dAtiv=[];
 let aleloCardImage=null,aleloCardImageAt='';
 let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false;
+/* Timestamp ISO da última mudança em fuelCardBalance (saldo do cartão Alelo) — mesmo motivo
+   de lastEncBaseAt: sem isso, saveGhState() sobrescrevia esse valor incondicionalmente com
+   o que estivesse na memória local, mesmo quando o remoto tivesse uma atualização mais
+   recente de outro dispositivo. Não resolve 100% (é um saldo decrementado por lançamentos
+   concorrentes, um problema de reconciliação distribuída de verdade), mas troca "sempre
+   sobrescreve" por "só troca quando comprovadamente mais recente" — estritamente melhor. */
+let fuelCardBalanceAt='';
 let editingFuelPlate='',editingFuelRequestId='',editingFuelWithdrawalId='',selectedFuelDriver='';
 /* Estado de colapso das zonas do Painel Combustíveis (reduz rolagem) — persistido em
    localStorage pra manter a preferência entre sessões. "gestao" (Cadastro, Aportes,
@@ -9226,6 +9233,29 @@ async function saveGhState(manual=false){
         rdeBaseFile=remoteRde.fileName||rdeBaseFile;
         rdeBaseAt=remoteRde.at;
         rdeRestoreM(remoteRde.M);
+      }
+      /* rdeExpurgo (marcações de "excluir do MTTR" por chamado): diferente de BD/AD acima,
+         não é trocado por inteiro condicionado a uma base mais nova — é editado chamado a
+         chamado (rdeToggleExpurgo), então sempre mescla por união independente de
+         rdeBaseAt. Sem chave temporal por marcação individual, prioriza NÃO PERDER uma
+         marcação: se qualquer um dos dois lados marcou um chamado, o merge mantém marcado
+         (o oposto — perder uma marcação de expurgo que alguém fez de propósito — é o erro
+         mais caro dos dois). Faltava por completo antes desta correção: o expurgo nunca
+         era considerado aqui, então era sempre sobrescrito pelo que este dispositivo tinha
+         na memória, apagando marcações feitas em outros dispositivos. */
+      if(remoteRde&&remoteRde.expurgo&&typeof remoteRde.expurgo==='object'){
+        rdeExpurgo={...remoteRde.expurgo,...rdeExpurgo};
+      }
+      /* Saldo do cartão Alelo (fuelCardBalance): valor único, não uma lista com chave
+         natural — troca por inteiro só quando o remoto for comprovadamente mais recente
+         (fuelCardBalanceAt). Não resolve decrementos concorrentes de lançamentos feitos em
+         dois dispositivos ao mesmo tempo (problema de reconciliação distribuída de verdade),
+         mas troca "sempre sobrescreve com o que está na memória local" por "só troca quando
+         comprovadamente mais recente" — estritamente melhor que o comportamento anterior,
+         que nunca considerava esse campo aqui. */
+      if(remoteSt.fuelCardBalanceAt&&remoteSt.fuelCardBalanceAt>(fuelCardBalanceAt||'')){
+        fuelCardBalance=remoteSt.fuelCardBalance===null||remoteSt.fuelCardBalance===undefined?null:Number(remoteSt.fuelCardBalance||0);
+        fuelCardBalanceAt=remoteSt.fuelCardBalanceAt;
       }
       /* Ativações B2B e POP: mesmo caso de Encerrados — cada upload é um export completo
          e autoritativo (não uma entidade de vida longa como um chamado de Abertos), então
@@ -9973,7 +10003,10 @@ function stateSignature(st){
        atualização legítima de outro dispositivo. */
     len(st.dAtiv),st.lastAtivAt||'',st.lastAtivFile||'',
     len(st.dPop),st.lastPopAt||'',st.lastPopFile||'',
-    len(st.dPrevent),len(st.dPrevTecnicos)
+    len(st.dPrevent),len(st.dPrevTecnicos),
+    /* fuelCardBalance e rdeExpurgo também ficavam fora — mesmo problema de desempate. */
+    st.fuelCardBalance??'',st.fuelCardBalanceAt||'',
+    Object.keys(rede.expurgo||{}).length
   ].join('|');
 }
 function stateHasBaseData(st){const rede=st&&st.rdeState;return !!(st&&typeof st==='object'&&(Array.isArray(st.dAb)||Array.isArray(st.dEnc)||Array.isArray(st.dFuelVehicles)||Array.isArray(st.dFuelRequests)||Array.isArray(st.ofsRows)||Array.isArray(st.dAtiv)||Array.isArray(st.dPop)||Array.isArray(st.dPrevent)||(rede&&(Array.isArray(rede.BD)||Array.isArray(rede.AD)))));}
@@ -10001,7 +10034,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10263,6 +10296,7 @@ function applyState(st,label){
         dFuelAportes=[{id:'APT0',data:new Date().toISOString().slice(0,10),valor:Number(st.fuelBalanceTotal||st.fuelBalance||0),desc:'Aporte migrado'}];
       fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
       fuelCardBalance=st.fuelCardBalance===null||st.fuelCardBalance===undefined?null:Number(st.fuelCardBalance||0);
+      if(Object.prototype.hasOwnProperty.call(st,'fuelCardBalanceAt'))fuelCardBalanceAt=st.fuelCardBalanceAt||'';
       fuelCycleStartDay=Math.min(28,Math.max(1,Number(st.fuelCycleStartDay||16)));
       fuelCycleEndDay=Math.min(28,Math.max(1,Number(st.fuelCycleEndDay||15)));
       fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
@@ -14354,8 +14388,8 @@ function fuelDebitRequests(){return fuelPeriodRequests().filter(r=>fuelTxKind(r)
 function fuelSpent(){return fuelPurchaseRequests().reduce((s,r)=>s+Math.abs(Number(r.valor||0)),0)}
 function fuelWithdrawn(){return dFuelWithdrawals.reduce((s,r)=>s+Number(r.valor||0),0)}
 function fuelBalance(){const total=fuelAportesDoCiclo().reduce((s,a)=>s+Number(a.valor||0),0);fuelBalanceTotal=total;const spent=fuelSpent(),withdrawn=fuelWithdrawn(),moved=withdrawn-spent,computed=Math.max(0,total-spent-withdrawn),available=fuelCardBalance===null||fuelCardBalance===undefined?computed:Math.max(0,Number(fuelCardBalance||0)),saldoGeral=Math.max(0,total-withdrawn);return{total,spent,withdrawn,moved,available,computed,saldoGeral,manual:fuelCardBalance!==null&&fuelCardBalance!==undefined}}
-function reduceFuelCardBalance(valor){if(fuelCardBalance!==null&&fuelCardBalance!==undefined)fuelCardBalance=Math.max(0,Number(fuelCardBalance||0)-Number(valor||0))}
-function restoreFuelCardBalance(valor){if(fuelCardBalance!==null&&fuelCardBalance!==undefined)fuelCardBalance=Number(fuelCardBalance||0)+Number(valor||0)}
+function reduceFuelCardBalance(valor){if(fuelCardBalance!==null&&fuelCardBalance!==undefined){fuelCardBalance=Math.max(0,Number(fuelCardBalance||0)-Number(valor||0));fuelCardBalanceAt=new Date().toISOString();}}
+function restoreFuelCardBalance(valor){if(fuelCardBalance!==null&&fuelCardBalance!==undefined){fuelCardBalance=Number(fuelCardBalance||0)+Number(valor||0);fuelCardBalanceAt=new Date().toISOString();}}
 function clearFuelVehicleForm(){editingFuelPlate='';['fuel-placa','fuel-modelo','fuel-ano','fuel-condutor','fuel-setor','fuel-superior','fuel-orcamento'].forEach(id=>document.getElementById(id).value='');document.getElementById('fuel-status-new').value='Ativo';document.getElementById('fuel-tipo').value='Gasolina';document.getElementById('fuel-tipo-cartao').value='Próprio';document.getElementById('fuel-placa').disabled=false;document.getElementById('fuel-vehicle-action').textContent='Adicionar';document.getElementById('fuel-delete-action').style.display='none'}
 function editFuelVehicle(placa){if(!canEdit())return;const v=fuelVehicleByPlate(placa);if(!v.placa)return;editingFuelPlate=v.placa;document.getElementById('fuel-placa').value=v.placa;document.getElementById('fuel-placa').disabled=false;document.getElementById('fuel-modelo').value=v.modelo||'';document.getElementById('fuel-ano').value=v.ano||'';document.getElementById('fuel-condutor').value=v.condutor||'';document.getElementById('fuel-setor').value=v.setor||'';document.getElementById('fuel-superior').value=v.superior||'';document.getElementById('fuel-orcamento').value=v.orcamento||'';document.getElementById('fuel-tipo').value=v.tipo||'Gasolina';document.getElementById('fuel-tipo-cartao').value=v.tipoCartao||'Próprio';document.getElementById('fuel-status-new').value=v.status||'Ativo';document.getElementById('fuel-obs-status').value=v.obsStatus||'';onFuelStatusChange(v.status||'Ativo');document.getElementById('fuel-vehicle-action').textContent='Salvar edição';document.getElementById('fuel-delete-action').style.display='inline-flex';document.getElementById('fuel-placa').scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>document.getElementById('fuel-placa').focus(),250)}
 function addFuelVehicle(){
@@ -14495,7 +14529,7 @@ function deleteFuelAporte(id){
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   renderFuel();saveState();
 }
-function setFuelCardBalanceFrom(inputId){if(!canEdit())return;const el=document.getElementById(inputId);fuelCardBalance=Number(el&&el.value||0);if(el)el.value='';renderFuel();saveState()}
+function setFuelCardBalanceFrom(inputId){if(!canEdit())return;const el=document.getElementById(inputId);fuelCardBalance=Number(el&&el.value||0);fuelCardBalanceAt=new Date().toISOString();if(el)el.value='';renderFuel();saveState()}
 function setFuelCardBalance(){setFuelCardBalanceFrom('fuel-card-balance')}
 function setFuelCardBalanceQuick(){setFuelCardBalanceFrom('fuel-card-balance-quick')}
 function clearFuelWithdrawalForm(){editingFuelWithdrawalId='';document.getElementById('fuel-withdraw-date').value='';document.getElementById('fuel-withdraw-value').value='';document.getElementById('fuel-withdraw-reason').value='';const act=document.getElementById('fuel-withdraw-action');if(act)act.textContent='Registrar retirada';const can=document.getElementById('fuel-withdraw-cancel');if(can)can.style.display='none'}
@@ -14858,7 +14892,7 @@ function loadAleloCardImage(){try{const d=JSON.parse(localStorage.getItem(ALELO_
 function saveAleloCardImage(){try{if(aleloCardImage)localStorage.setItem(ALELO_IMG_KEY,JSON.stringify({img:aleloCardImage,at:aleloCardImageAt}));else localStorage.removeItem(ALELO_IMG_KEY);}catch(e){console.warn('alelo img',e);}}
 function aleloAnexarImagem(input){const file=input&&input.files&&input.files[0];if(!file)return;input.value='';const reader=new FileReader();reader.onload=e=>{aleloCardImage=e.target.result;aleloCardImageAt=new Date().toISOString();saveAleloCardImage();renderAleloPanel();renderFuelAleloBalance();};reader.readAsDataURL(file);}
 function aleloRemoverImagem(){if(!confirm('Remover imagem do cartão?'))return;aleloCardImage=null;aleloCardImageAt='';saveAleloCardImage();renderAleloPanel();renderFuelAleloBalance();}
-function aleloAtualizarSaldoCartao(val){if(!canEdit())return;fuelCardBalance=Math.max(0,Number(val||0));renderFuel();saveState();}
+function aleloAtualizarSaldoCartao(val){if(!canEdit())return;fuelCardBalance=Math.max(0,Number(val||0));fuelCardBalanceAt=new Date().toISOString();renderFuel();saveState();}
 function copyAleloRemanejo(placa,condutor,sugg,diff){
   const acao=diff>=0?'INCLUIR SALDO':'VERIFICAR CONSUMO';
   const fmtBRL=v=>'R$ '+Math.abs(Number(v)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
