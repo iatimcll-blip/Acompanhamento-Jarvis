@@ -9175,28 +9175,17 @@ async function fetchGhRawState(){
   return await _ghB64ToState(j.content);
 }
 
-async function saveGhState(manual=false){
-  const token=getGhToken();
-  if(!token){if(manual)alert('Configure o Token GitHub nas configurações de sincronização.');return false}
-  const el=document.getElementById('sync-status');
-  try{
-    if(el){el.textContent='Salvando no GitHub…';el.style.color='var(--blue)'}
-    /* Antes de enviar: mescla (por chave — placa/rowKey/id/protocolo) os dados
-       remotos com os nossos, em vez de simplesmente substituir. Isso preserva
-       tanto uma base anexada em outro PC quanto a edição enviada agora daqui —
-       um applyState() puro (replace) apagaria uma das duas.
-       IMPORTANTE: a mescla precisa rodar mesmo quando este dispositivo/navegador
-       NUNCA sincronizou antes (lastKnown vazio) — por exemplo, a primeira vez que
-       alguém anexa uma base num PC novo. Antes, a condição exigia lastKnown
-       truthy, então esse primeiro envio pulava a mescla e sobrescrevia cegamente
-       as bases que outros dispositivos já tinham anexado no GitHub. */
-    let remoteSt=null;
-    try{remoteSt=await fetchGhRawState();}
-    catch(e){
-      throw new Error('Não foi possível verificar o estado remoto antes de sincronizar (rede instável). Tente novamente para evitar sobrescrever dados de outro dispositivo.');
-    }
-    const lastKnown=_getLastKnownRemoteSavedAt();
-    if(remoteSt&&remoteSt.savedAt&&(!lastKnown||remoteSt.savedAt>lastKnown)){
+/* Mescla o estado remoto (recém-buscado) no estado local em memória, campo a campo — ver
+   comentários de cada bloco abaixo pra critério (substituir por inteiro vs. mesclar por
+   chave/união). Extraída de saveGhState() pra poder ser chamada de novo a cada tentativa
+   do retry em caso de conflito de concorrência (ver saveGhState) — sem isso, tentar de novo
+   só com um sha atualizado arriscaria sobrescrever uma escrita concorrente sem nunca
+   mesclar o que ela trouxe. */
+function _mergeGhRemoteIntoLocal(remoteSt){
+  if(!(remoteSt&&remoteSt.savedAt))return;
+  const lastKnown=_getLastKnownRemoteSavedAt();
+  if(!(!lastKnown||remoteSt.savedAt>lastKnown))return;
+  {
       dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
       /* B2B Encerrados/S-Intervenção/Prefeitura: ao contrário de Abertos/Fuel/OFS (onde cada
          chamado é uma entidade de vida longa que faz sentido mesclar por chave ao longo do
@@ -9283,25 +9272,77 @@ async function saveGhState(manual=false){
          cima logo depois. Também faltava aqui antes desta correção. */
       dPrevent=_mergeArraysByKey(dPrevent,Array.isArray(remoteSt.dPrevent)?remoteSt.dPrevent:[],x=>x.id);
       dPrevTecnicos=_mergeArraysByKey(dPrevTecnicos,Array.isArray(remoteSt.dPrevTecnicos)?remoteSt.dPrevTecnicos:[],x=>x.id);
+  }
+}
+function _isGhShaConflict(err){
+  const msg=String(err&&err.message||err||'');
+  return err&&err.status===409||/does not match|sha.*(mismatch|stale)|409/i.test(msg);
+}
+/* Envia o estado local pro GitHub, mesclando com o remoto antes (ver
+   _mergeGhRemoteIntoLocal). IMPORTANTE: entre o momento em que este dispositivo buscou o sha
+   do arquivo e o momento do PUT, QUALQUER OUTRA escrita concorrente (outro dispositivo/aba
+   chamando saveGhState ao mesmo tempo) invalida esse sha — o GitHub recusa o PUT com 409
+   "data/sync-state.json does not match <sha>". Antes, esse erro só era exibido cru pro
+   usuário (alert "Erro GitHub: ... does not match ...") e a sincronização inteira era
+   perdida — o problema reportado pelo usuário. Agora, em vez de desistir na primeira
+   colisão, tenta de novo até 4 vezes: a cada tentativa, busca o remoto mais fresco de novo
+   e roda a mesclagem contra ELE (não reenvia o mesmo conteúdo com só um sha novo, o que
+   arriscaria descartar silenciosamente o que a escrita concorrente acabou de trazer). */
+async function saveGhState(manual=false){
+  const token=getGhToken();
+  if(!token){if(manual)alert('Configure o Token GitHub nas configurações de sincronização.');return false}
+  const el=document.getElementById('sync-status');
+  const MAX_ATTEMPTS=4;
+  try{
+    if(el){el.textContent='Salvando no GitHub…';el.style.color='var(--blue)'}
+    for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
+      /* Antes de enviar: mescla (por chave — placa/rowKey/id/protocolo) os dados
+         remotos com os nossos, em vez de simplesmente substituir. Isso preserva
+         tanto uma base anexada em outro PC quanto a edição enviada agora daqui —
+         um applyState() puro (replace) apagaria uma das duas.
+         IMPORTANTE: a mescla precisa rodar mesmo quando este dispositivo/navegador
+         NUNCA sincronizou antes (lastKnown vazio) — por exemplo, a primeira vez que
+         alguém anexa uma base num PC novo. Antes, a condição exigia lastKnown
+         truthy, então esse primeiro envio pulava a mescla e sobrescrevia cegamente
+         as bases que outros dispositivos já tinham anexado no GitHub. */
+      let remoteSt=null,sha='';
+      try{
+        const info=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers:ghHeaders({},token),cache:'no-store'});
+        if(info.ok){
+          const j=await info.json();
+          sha=j.sha||'';
+          if(j.content)remoteSt=await _ghB64ToState(j.content);
+        }
+      }catch(e){
+        if(attempt===1)throw new Error('Não foi possível verificar o estado remoto antes de sincronizar (rede instável). Tente novamente para evitar sobrescrever dados de outro dispositivo.');
+        throw e;
+      }
+      _mergeGhRemoteIntoLocal(remoteSt);
       renderAllAb();renderAllEnc();renderPanelRepetidos();renderFuel();renderRede();
       renderPanelAtivacoes();renderAllPop();renderPreventAll();
+      const builtState=buildState();
+      const content=await _ghStateToB64(builtState);
+      const body=JSON.stringify({message:'sync: painel '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
+      const res=await fetch(GH_SYNC_API,{method:'PUT',headers:ghHeaders({'Content-Type':'application/json'},token),body});
+      if(res.ok){
+        _setLastKnownRemoteSavedAt(builtState.savedAt);
+        const msg='Sincronizado com GitHub em '+now2();
+        if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
+        _ghToast('Sync GitHub ✓ '+now2(),'var(--green-dk)');
+        if(manual)alert(msg);
+        return true;
+      }
+      const err=await res.json().catch(()=>({status:res.status}));
+      err.status=res.status;
+      if(_isGhShaConflict(err)&&attempt<MAX_ATTEMPTS){
+        console.warn(`[sync] Conflito de concorrência (tentativa ${attempt}/${MAX_ATTEMPTS}) — buscando estado mais recente e tentando de novo.`);
+        if(el){el.textContent=`Outro dispositivo sincronizou ao mesmo tempo — tentando de novo (${attempt}/${MAX_ATTEMPTS})…`;el.style.color='var(--blue)'}
+        await new Promise(r=>setTimeout(r,400*attempt));
+        continue;
+      }
+      throw new Error(err.message||'HTTP '+res.status);
     }
-    const builtState=buildState();
-    const content=await _ghStateToB64(builtState);
-    let sha='';
-    try{
-      const info=await fetch(GH_SYNC_API,{headers:ghHeaders({},token),cache:'no-store'});
-      if(info.ok){const j=await info.json();sha=j.sha||'';}
-    }catch{}
-    const body=JSON.stringify({message:'sync: painel '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
-    const res=await fetch(GH_SYNC_API,{method:'PUT',headers:ghHeaders({'Content-Type':'application/json'},token),body});
-    if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'HTTP '+res.status)}
-    _setLastKnownRemoteSavedAt(builtState.savedAt);
-    const msg='Sincronizado com GitHub em '+now2();
-    if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
-    _ghToast('Sync GitHub ✓ '+now2(),'var(--green-dk)');
-    if(manual)alert(msg);
-    return true;
+    throw new Error('Não foi possível sincronizar após várias tentativas — outro dispositivo está sincronizando com muita frequência. Tente novamente em instantes.');
   }catch(e){
     console.warn('Erro ao salvar no GitHub:',e);
     const msg='Erro GitHub: '+e.message;
