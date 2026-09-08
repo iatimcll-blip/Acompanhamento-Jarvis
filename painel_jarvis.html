@@ -8877,7 +8877,7 @@ const CLUSTER_INFO={
 };
 const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/AP'];
 
-let dAb=[],dEnc=[],dAtiv=[];
+let dAb=[],dEnc=[],dAtiv=[],dAbCleared=false,dAbClearedAt='';
 let aleloCardImage=null,aleloCardImageAt='';
 let dFuelVehicles=[],dFuelRequests=[],dFuelWithdrawals=[],dFuelAportes=[],fuelBalanceTotal=0,fuelCardBalance=null,fuelCycleStartDay=16,fuelCycleEndDay=15,fuelCycleStartDate='',fuelCycleEndDate='',fuelCalendarEditing=false,fuelVeiculosCleared=false;
 /* Timestamp ISO da última mudança em fuelCardBalance (saldo do cartão Alelo) — mesmo motivo
@@ -9213,7 +9213,30 @@ function _mergeGhRemoteIntoLocal(remoteSt){
   const lastKnown=_getLastKnownRemoteSavedAt();
   if(!(!lastKnown||remoteSt.savedAt>lastKnown))return;
   {
-      dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+      /* B2B Abertos/SWAP: "Limpar base" (clearAb) precisa se manter limpo mesmo depois
+         de sincronizar/atualizar a página — sem isto, o merge por chave abaixo trazia
+         de volta os chamados antigos ainda presentes no remoto (upload anterior, de
+         qualquer dispositivo — inclusive quando este É o próprio primeiro sync deste
+         navegador, com lastKnown vazio, caso em que o gate acima nem bloqueia a mescla)
+         por cima da limpeza local recém-feita, e esse resultado mesclado (não-vazio)
+         acabava sendo republicado no GitHub, desfazendo a limpeza também remotamente —
+         bug real reportado pelo usuário. Enquanto dAbCleared estiver ativo neste
+         dispositivo, ignora o dAb remoto — EXCETO quando o remoto foi comprovadamente
+         atualizado DEPOIS da limpeza local (remoteSt.savedAt > dAbClearedAt) com uma
+         base nova genuína (dAbCleared remoto false + dAb remoto não-vazio), caso em que
+         a limpeza local, agora obsoleta, cede lugar ao upload mais recente feito em
+         outro dispositivo. Comparar só "remoto não-vazio" sem o timestamp reintroduziria
+         o mesmo bug (dado antigo ainda não sincronizado passaria por "upload novo"). */
+      const _remoteDAbCleared=Object.prototype.hasOwnProperty.call(remoteSt,'dAbCleared')?!!remoteSt.dAbCleared:false;
+      const _remoteDAbNewerThanClear=!!(dAbClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>dAbClearedAt);
+      if(dAbCleared&&!_remoteDAbCleared&&_remoteDAbNewerThanClear&&Array.isArray(remoteSt.dAb)&&remoteSt.dAb.length){
+        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+        dAbCleared=false;dAbClearedAt='';
+      }else if(dAbCleared){
+        dAb=[];
+      }else{
+        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+      }
       /* B2B Encerrados/S-Intervenção/Prefeitura: ao contrário de Abertos/Fuel/OFS (onde cada
          chamado é uma entidade de vida longa que faz sentido mesclar por chave ao longo do
          tempo), cada upload de Encerrados é um EXPORT COMPLETO e autoritativo de um período —
@@ -10103,7 +10126,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10146,6 +10169,8 @@ function applyState(st,label){
   try{
     if(Array.isArray(st.dAb)){
       dAb=normalizeAbState(st.dAb);
+      if(Object.prototype.hasOwnProperty.call(st,'dAbCleared'))dAbCleared=!!st.dAbCleared;
+      if(Object.prototype.hasOwnProperty.call(st,'dAbClearedAt'))dAbClearedAt=st.dAbClearedAt||'';
       refreshAbBadge();refreshSwapBadge();
       if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
@@ -10686,7 +10711,7 @@ function clienteAbertoNome(r){
 async function clearAb(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Abertos? Essa ação não pode ser desfeita.'))return;
-  dAb=[];lastAbAt='';lastAbFile='';abLastUpd='';updateUploadTimes();
+  dAb=[];dAbCleared=true;dAbClearedAt=new Date().toISOString();lastAbAt='';lastAbFile='';abLastUpd='';updateUploadTimes();
   const nb=document.getElementById('nb-ab');if(nb)nb.textContent='0';
   const empty=document.getElementById('empty-ab');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ab');if(dash)dash.style.display='none';
@@ -11020,6 +11045,7 @@ function finishAbUpload(fname){
      os valores ainda válidos (fillFiltersAb/fillFiltersSwap), então um valor que por
      coincidência ainda existisse na base nova ficava preso de um upload anterior, escondendo
      chamados sem o usuário perceber. Agora todo upload novo volta pro estado "sem filtro". */
+  dAbCleared=false;dAbClearedAt='';
   selAbMop=[];selAbFaixa=[];selAbSub=[];selAbUf=[];
   selSwapMop=[];selSwapFaixa=[];selSwapSub=[];selSwapUf=[];
   const srchAb0=document.getElementById('f-srch-ab');if(srchAb0)srchAb0.value='';
