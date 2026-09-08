@@ -9226,16 +9226,32 @@ function _mergeGhRemoteIntoLocal(remoteSt){
          base nova genuína (dAbCleared remoto false + dAb remoto não-vazio), caso em que
          a limpeza local, agora obsoleta, cede lugar ao upload mais recente feito em
          outro dispositivo. Comparar só "remoto não-vazio" sem o timestamp reintroduziria
-         o mesmo bug (dado antigo ainda não sincronizado passaria por "upload novo"). */
+         o mesmo bug (dado antigo ainda não sincronizado passaria por "upload novo").
+
+         CHAVE DA MESCLA — bug real de produção encontrado logo depois de publicar o
+         fix acima (dado real de data/sync-state.json, 08/09): a chave usada era
+         x.rowKey, mas rowKey é só a posição do item DENTRO do array de UM upload
+         específico (reatribuído do zero a cada novo upload — 0,1,2... ou Date.now()
+         pra item adicionado manualmente), não uma identidade estável do chamado entre
+         uploads diferentes. Resultado observado: um dispositivo com uma aba antiga
+         aberta (dAb desatualizado em memória, de ANTES de alguém anexar uma base nova
+         em outro dispositivo) disparava qualquer sincronização (edição de outro painel,
+         auto-sync periódico) com lastKnown desatualizado; o merge então cruzava
+         rowKey 0..N do array antigo (53 chamados) contra rowKey 0..M do array novo
+         (44 chamados) como se fossem os MESMOS chamados por ocuparem a mesma posição
+         — local (o array antigo) "ganhava" a colisão de posição e a base recém-anexada
+         era corrompida de volta pra mistura com chamados antigos e não relacionados.
+         x.id (protocolo||ticketId) é a identidade real do chamado, preservada entre
+         uploads diferentes — mesmo padrão já usado para Fuel (placa/id)/OFS. */
       const _remoteDAbCleared=Object.prototype.hasOwnProperty.call(remoteSt,'dAbCleared')?!!remoteSt.dAbCleared:false;
       const _remoteDAbNewerThanClear=!!(dAbClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>dAbClearedAt);
       if(dAbCleared&&!_remoteDAbCleared&&_remoteDAbNewerThanClear&&Array.isArray(remoteSt.dAb)&&remoteSt.dAb.length){
-        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.id);
         dAbCleared=false;dAbClearedAt='';
       }else if(dAbCleared){
         dAb=[];
       }else{
-        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.rowKey);
+        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.id);
       }
       /* B2B Encerrados/S-Intervenção/Prefeitura: ao contrário de Abertos/Fuel/OFS (onde cada
          chamado é uma entidade de vida longa que faz sentido mesclar por chave ao longo do
