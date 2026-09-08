@@ -2319,6 +2319,9 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #atrix-timer-badge.stale { border-color: rgba(249,115,22,.4); color: var(--orange); }
 #atrix-timer-badge.stale i { color: var(--orange); }
 #atrix-timer-badge.fresh i { color: var(--green); }
+#gh-lastsync-badge.stale { border-color: rgba(249,115,22,.4); color: var(--orange); }
+#gh-lastsync-badge.stale i { color: var(--orange); }
+#gh-lastsync-badge.fresh i { color: var(--green); }
 /* Cronômetro ao vivo desde o clique em "Atualizar substatus (Atrix)" — distinto do badge
    acima (que mostra o tempo desde a ÚLTIMA sincronização concluída). Só fica visível
    enquanto _atrixRunningNow for true. Precisa da mesma especificidade (ID do painel + ID
@@ -6514,6 +6517,11 @@ body.is-admin #panel-combustivel .fuel-management-row { display: grid; }
     </div>
     <!-- STATUS GERAL -->
     <div id="sync-status" style="font-size:12px;color:var(--tx3);margin-bottom:14px;min-height:16px;padding:6px 10px;border-radius:8px;background:var(--surface2)"></div>
+    <!-- REGISTRO DA ÚLTIMA SINCRONIZAÇÃO (pedido do usuário) — diferente do #sync-status
+         acima (mensagem passageira só da última AÇÃO desta aba), este é persistente: mostra
+         a última vez que este dispositivo confirmou estar em dia com o GitHub, sobrevive a
+         reabrir o modal/recarregar a página, e atualiza ao vivo a cada 30s. -->
+    <div id="gh-lastsync-badge" style="font-size:11px;color:var(--tx3);margin:-8px 0 14px;padding:6px 10px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;gap:6px"><i class="ti ti-history" style="font-size:12px"></i><span id="gh-lastsync-txt">—</span></div>
 
     <!-- ── OPÇÃO 1: GITHUB (RECOMENDADO) ── -->
     <div style="border:.5px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:14px">
@@ -8961,7 +8969,26 @@ const SESSION_KEY='atrix:sessao:v1';
    novo nesse meio-tempo (evita apagar bases anexadas em outro PC). */
 const GH_LAST_KNOWN_KEY='atrix:gh-last-known-savedAt:v1';
 function _getLastKnownRemoteSavedAt(){try{return localStorage.getItem(GH_LAST_KNOWN_KEY)||''}catch(_){return''}}
-function _setLastKnownRemoteSavedAt(v){try{if(v)localStorage.setItem(GH_LAST_KNOWN_KEY,v)}catch(_){}}
+function _setLastKnownRemoteSavedAt(v){try{if(v)localStorage.setItem(GH_LAST_KNOWN_KEY,v)}catch(_){}_renderGhLastSyncBadge();}
+/* Registro persistente da última sincronização da base (pedido do usuário) — mesmo padrão
+   de _atrixRenderTimerBadge, mas pro sync geral (todos os painéis), não só substatus Atrix.
+   GH_LAST_KNOWN_KEY já é atualizado tanto ao enviar (saveGhState) quanto ao receber
+   (restoreGhState) — então serve como fonte única pra "quando este dispositivo confirmou
+   pela última vez que está em dia com o GitHub", nas duas direções. */
+function _renderGhLastSyncBadge(){
+  const el=document.getElementById('gh-lastsync-txt'),badge=document.getElementById('gh-lastsync-badge');
+  if(!el||!badge)return;
+  const savedAt=_getLastKnownRemoteSavedAt();
+  if(!savedAt){el.textContent='Nunca sincronizado neste dispositivo';badge.classList.remove('fresh','stale');return;}
+  const d=new Date(savedAt);
+  const dataHora=isNaN(d)?savedAt:d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const min=isNaN(d)?null:Math.floor((Date.now()-d.getTime())/60000);
+  const relTxt=min===null?'':min<1?' (agora)':min<60?` (há ${min} min)`:(()=>{const h=Math.floor(min/60),m=min%60;return` (há ${h}h${m>0?m+'min':''})`})();
+  el.textContent='Última sincronização: '+dataHora+relTxt;
+  badge.classList.toggle('fresh',min!==null&&min<35);
+  badge.classList.toggle('stale',min!==null&&min>120);
+}
+setInterval(_renderGhLastSyncBadge,30000);
 /* Mescla um array remoto com o local por chave única — local prevalece em caso de
    conflito na MESMA chave (edição feita agora, ainda não enviada), mas registros
    que só existem de um dos lados (ex.: base anexada em outro PC, ou item recém
@@ -9397,6 +9424,7 @@ function openSyncSettings(){
   const inp=document.getElementById('sheets-url');if(inp)inp.value=getSheetsUrl();
   const cb=document.getElementById('sheets-auto');if(cb)cb.checked=localStorage.getItem(SHEETS_AUTO_KEY)==='1';
   const st=document.getElementById('sync-status');if(st)st.textContent='';
+  _renderGhLastSyncBadge();
   document.getElementById('sheets-panel').style.display='flex';
 }
 
