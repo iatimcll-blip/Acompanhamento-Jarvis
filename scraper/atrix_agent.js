@@ -474,6 +474,46 @@ async function extractSubstatus(page, ticket) {
       if (sub) dbg(`[${tid}] via estrutura Substatus: ${sub}`);
     }
 
+    // Estratégia 5: célula/label "Substatus" SEM select adjacente — chamados fechados/
+    // somente-leitura no Atrix normalmente perdem o <select> editável de Substatus e
+    // passam a mostrar o valor como texto simples no mesmo lugar. As estratégias acima só
+    // procuram <select>, então todo chamado fechado caía direto no fallback de Status
+    // (Regra 2), mesmo quando a página tinha um Substatus mais específico (ex.: "Fechado -
+    // Resolvido") como texto puro — reportado pelo usuário: "em alguns casos só devolve o
+    // Status". Mesma busca por rótulo da Estratégia 4, mas lendo o texto da célula/linha
+    // irmã em vez de exigir um select.
+    if (!sub) {
+      sub = await page.evaluate((blanks) => {
+        const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
+        for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
+          if (normLabel(cell.textContent) !== 'substatus') continue;
+          const next = cell.nextElementSibling;
+          if (next && next.tagName !== 'SELECT' && !next.querySelector('select')) {
+            const t = next.textContent.trim();
+            if (t && !blanks.includes(t.toLowerCase()) && !t.includes('{{')) return t;
+          }
+        }
+        return null;
+      }, [...BLANK_VALUES]);
+      if (sub) dbg(`[${tid}] via texto (somente leitura): ${sub}`);
+    }
+
+    // Estratégia 6: texto solto "Substatus : <valor>" em qualquer lugar da página — mesmo
+    // padrão já usado pro Status (extractPageStatus, estratégia 3), último recurso antes
+    // de cair pro fallback de Status.
+    if (!sub) {
+      sub = await page.evaluate((blanks) => {
+        const txt = document.body.innerText || '';
+        const m = txt.match(/Substatus\s*:\s*([^\n\r]{1,40}?)(?:\s{2,}|$)/i);
+        if (m) {
+          const v = m[1].trim();
+          if (v && !blanks.includes(v.toLowerCase())) return v;
+        }
+        return null;
+      }, [...BLANK_VALUES]);
+      if (sub) dbg(`[${tid}] via texto solto "Substatus:": ${sub}`);
+    }
+
     // Regra 3: o Substatus, quando encontrado, sempre prevalece — nenhuma outra
     // informação (Status incluído) o sobrescreve.
     if (sub) return { value: sub, source: 'substatus' };
