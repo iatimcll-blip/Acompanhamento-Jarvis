@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Jarvis MCLL — Painel de Operações</title>
+<script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
+  por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
+window.APP_BUILD_ID='2026-09-08T21:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -2322,6 +2325,34 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #gh-lastsync-badge.stale { border-color: rgba(249,115,22,.4); color: var(--orange); }
 #gh-lastsync-badge.stale i { color: var(--orange); }
 #gh-lastsync-badge.fresh i { color: var(--green); }
+#stale-build-banner {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 99999;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--red);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0,0,0,.2);
+}
+#stale-build-banner span { max-width: 900px; }
+#stale-build-banner button {
+  border: 1px solid rgba(255,255,255,.6);
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#stale-build-banner button:hover { background: rgba(255,255,255,.3); }
 /* Cronômetro ao vivo desde o clique em "Atualizar substatus (Atrix)" — distinto do badge
    acima (que mostra o tempo desde a ÚLTIMA sincronização concluída). Só fica visível
    enquanto _atrixRunningNow for true. Precisa da mesma especificidade (ID do painel + ID
@@ -8961,6 +8992,35 @@ const GH_SYNC_FILE='data/sync-state.json';
 const GH_SYNC_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_SYNC_FILE;
 const GH_OFS_MASTER_FILE='Fonte/Relatorio_OFS_MOP-EPS.xlsx';
 const GH_OFS_MASTER_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_OFS_MASTER_FILE;
+/* Detecção de aba desatualizada (ver comentário grande em saveGhState): busca só os
+   primeiros ~600 bytes do HTML publicado (Range request — não baixa o arquivo
+   inteiro) e compara o APP_BUILD_ID embutido ali com o desta aba. raw.githubusercontent
+   ignora parâmetro de cache-busting em alguns casos, então soma no=cache também. */
+const APP_BUILD_CHECK_URL='https://raw.githubusercontent.com/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/main/painel_jarvis.html';
+let _remoteBuildStale=false;
+async function _checkAppBuildFreshness(){
+  try{
+    const r=await fetch(APP_BUILD_CHECK_URL+'?t='+Date.now(),{cache:'no-store',headers:{Range:'bytes=0-600'}});
+    if(!r.ok&&r.status!==206)return;
+    const text=await r.text();
+    const m=text.match(/APP_BUILD_ID\s*=\s*['"]([^'"]+)['"]/);
+    if(!m)return;
+    const liveId=m[1];
+    _remoteBuildStale=!!(liveId&&window.APP_BUILD_ID&&liveId!==window.APP_BUILD_ID);
+    _renderStaleBuildBanner();
+  }catch(e){/* falha de rede (offline, CORS pontual) não deve travar nada — só não avisa desta vez */}
+}
+function _renderStaleBuildBanner(){
+  let el=document.getElementById('stale-build-banner');
+  if(!_remoteBuildStale){if(el)el.style.display='none';return;}
+  if(!el){
+    el=document.createElement('div');
+    el.id='stale-build-banner';
+    el.innerHTML='<i class="ti ti-refresh"></i> <span>Uma nova versão deste painel foi publicada nesta URL. Atualize a página antes de anexar ou limpar bases — uma aba desatualizada pode sobrescrever dados mais recentes sincronizados por outros dispositivos.</span> <button type="button" onclick="location.reload()">Atualizar agora</button>';
+    document.body.appendChild(el);
+  }
+  el.style.display='flex';
+}
 const GH_TOKEN_KEY='atrix:gh-sync-token:v1';
 const USERS_KEY='atrix:usuarios:v1';
 const SESSION_KEY='atrix:sessao:v1';
@@ -8989,6 +9049,8 @@ function _renderGhLastSyncBadge(){
   badge.classList.toggle('stale',min!==null&&min>120);
 }
 setInterval(_renderGhLastSyncBadge,30000);
+setTimeout(_checkAppBuildFreshness,4000);
+setInterval(_checkAppBuildFreshness,300000);
 /* Mescla um array remoto com o local por chave única — local prevalece em caso de
    conflito na MESMA chave (edição feita agora, ainda não enviada), mas registros
    que só existem de um dos lados (ex.: base anexada em outro PC, ou item recém
@@ -9397,6 +9459,21 @@ function _isGhShaConflict(err){
 async function saveGhState(manual=false){
   const token=getGhToken();
   if(!token){if(manual)alert('Configure o Token GitHub nas configurações de sincronização.');return false}
+  /* Aba desatualizada = maior risco real de perda de dados deste app (sem backend,
+     cada aba só tem a lógica de merge que baixou no load): uma aba aberta há dias,
+     rodando um saveGhState() de uma versão anterior sem essa proteção (ou sem uma
+     futura), pode empurrar por cima um snapshot antigo em memória, sobrescrevendo
+     uploads recentes de outros dispositivos — foi exatamente isso que aconteceu em
+     produção (Rede/Encerrados/Abertos revertendo pra dados de semanas atrás). Checa
+     a versão publicada agora, antes de qualquer envio, e bloqueia se estiver
+     desatualizada — mais seguro que arriscar sobrescrever dado alheio. */
+  await _checkAppBuildFreshness();
+  if(_remoteBuildStale){
+    _renderStaleBuildBanner();
+    if(manual)alert('Esta aba está com uma versão desatualizada do painel. Atualize a página (F5) antes de sincronizar — enviar dados de uma aba antiga pode apagar atualizações mais recentes feitas em outros dispositivos.');
+    _ghToast('Sincronização bloqueada: aba desatualizada — atualize a página (F5).','var(--red)',8000);
+    return false;
+  }
   const el=document.getElementById('sync-status');
   const MAX_ATTEMPTS=4;
   try{
