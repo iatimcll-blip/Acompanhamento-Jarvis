@@ -8990,6 +8990,7 @@ const GH_SYNC_OWNER='iatimcll-blip';
 const GH_SYNC_REPO='Acompanhamento-Jarvis';
 const GH_SYNC_FILE='data/sync-state.json';
 const GH_SYNC_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_SYNC_FILE;
+const GH_SYNC_RAW_URL='https://raw.githubusercontent.com/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/main/'+GH_SYNC_FILE;
 const GH_OFS_MASTER_FILE='Fonte/Relatorio_OFS_MOP-EPS.xlsx';
 const GH_OFS_MASTER_API='https://api.github.com/repos/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/contents/'+GH_OFS_MASTER_FILE;
 /* Detecção de aba desatualizada (ver comentário grande em saveGhState): busca só os
@@ -9232,12 +9233,10 @@ async function _ghStateToB64(st){
   return btoa(unescape(encodeURIComponent(JSON.stringify({z:0,d:btoa(unescape(encodeURIComponent(json)))}))));
 }
 
-async function _ghB64ToState(b64Content){
-  const raw=b64Content.replace(/\n/g,'');
-  let decoded;
-  try{decoded=JSON.parse(decodeURIComponent(escape(atob(raw))));}
-  catch(e){throw new Error('Conteúdo sync-state inválido');}
-  /* Formato novo: wrapper {z:0|1, d:'...'} */
+/* Formato novo: wrapper {z:0|1, d:'...'} já decodificado de JSON — usado tanto pela
+   leitura via api.github.com (que vem embrulhada em base64 de novo, ver _ghB64ToState)
+   quanto pela leitura via raw.githubusercontent.com (que já entrega esse objeto direto). */
+async function _ghDecodeWrapper(decoded){
   if(decoded&&typeof decoded.z!=='undefined'&&decoded.d){
     if(decoded.z===1&&window.DecompressionStream){
       try{
@@ -9255,13 +9254,39 @@ async function _ghB64ToState(b64Content){
   /* Formato direto: JSON de estado (placeholder ou legado) */
   return decoded;
 }
+async function _ghB64ToState(b64Content){
+  const raw=b64Content.replace(/\n/g,'');
+  let decoded;
+  try{decoded=JSON.parse(decodeURIComponent(escape(atob(raw))));}
+  catch(e){throw new Error('Conteúdo sync-state inválido');}
+  return await _ghDecodeWrapper(decoded);
+}
 
 async function fetchGhRawState(){
-  const res=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers:ghHeaders(),cache:'no-store'});
-  if(!res.ok)return null;
-  const j=await res.json();
-  if(!j.content)return null;
-  return await _ghB64ToState(j.content);
+  /* Lê primeiro via raw.githubusercontent.com (CDN público) em vez de
+     api.github.com/contents — bug real de produção: dispositivos SEM Token do
+     GitHub configurado (a maioria; só quem precisa EDITAR configura um) liam
+     SEMPRE via api.github.com, cujo limite não-autenticado (60 requisições/hora)
+     é POR IP — numa rede/escritório com vários dispositivos abrindo/atualizando o
+     painel ao longo do dia, esse limite estourava, e a leitura falhava calada
+     (fetchGhRawState só retornava null, sem lançar erro) deixando o painel
+     mostrando dado de horas atrás sem nenhum aviso visível. raw.githubusercontent.com
+     não compartilha esse limite. api.github.com/contents fica como fallback (só
+     deve ser necessário se o CDN atrasar uma publicação muito recente). */
+  try{
+    const r=await fetch(GH_SYNC_RAW_URL+'?t='+Date.now(),{cache:'no-store'});
+    if(r.ok){
+      const decoded=JSON.parse(await r.text());
+      return await _ghDecodeWrapper(decoded);
+    }
+  }catch(e){console.warn('Falha ao ler sync-state via raw.githubusercontent.com, tentando api.github.com:',e);}
+  try{
+    const res=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers:ghHeaders(),cache:'no-store'});
+    if(!res.ok)return null;
+    const j=await res.json();
+    if(!j.content)return null;
+    return await _ghB64ToState(j.content);
+  }catch(e){console.warn('Falha ao ler sync-state via api.github.com:',e);return null;}
 }
 
 /* Mescla o estado remoto (recém-buscado) no estado local em memória, campo a campo — ver
