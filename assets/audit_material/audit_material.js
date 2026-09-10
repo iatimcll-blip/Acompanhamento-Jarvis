@@ -19,7 +19,12 @@ function saveCatalogLS(){
     TICKETS.length = 0;
     restored.forEach(t=>TICKETS.push(t));
   }
-  TICKETS.forEach((t,i)=>{ t._id = i; if(!Array.isArray(t.mats)) t.mats = []; });
+  TICKETS.forEach((t,i)=>{
+    t._id = i;
+    if(!Array.isArray(t.mats)) t.mats = [];
+    if(typeof t.classificacao !== 'string') t.classificacao = '';
+    if(typeof t.obs !== 'string') t.obs = '';
+  });
   if(!restored) saveTicketsLS();
 })();
 
@@ -57,6 +62,12 @@ function ticketMatches(t){
   return true;
 }
 
+const CLASSIFICACOES = ['INFRA','REDE','FIELD','B2B','SWAP','B2C'];
+
+function escapeAttr(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function renderTable(){
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
@@ -68,6 +79,11 @@ function renderTable(){
         + '<br><button class="btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
       : '<span class="pill-empty">Nenhum material lançado</span>'
         + '<button class="btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
+    const clsHtml = '<select class="cls-select" data-id="'+t._id+'">'
+      + '<option value=""'+(t.classificacao?'':' selected')+'>— Selecionar —</option>'
+      + CLASSIFICACOES.map(c=>'<option value="'+c+'"'+(t.classificacao===c?' selected':'')+'>'+c+'</option>').join('')
+      + '</select>';
+    const obsHtml = '<input type="text" class="obs-input" data-id="'+t._id+'" value="'+escapeAttr(t.obs)+'" placeholder="Observações...">';
     tr.innerHTML =
       '<td>'+t.data+'</td>'+
       '<td>'+t.os+'</td>'+
@@ -75,11 +91,25 @@ function renderTable(){
       '<td>'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
       '<td>'+t.tecnico+'</td>'+
       '<td>'+t.tipo+'</td>'+
+      '<td>'+clsHtml+'</td>'+
+      '<td>'+obsHtml+'</td>'+
       '<td>'+matHtml+'</td>';
     tbody.appendChild(tr);
   });
   document.querySelectorAll('.btn-add-mat').forEach(b=>{
     b.addEventListener('click', ()=>openModal(parseInt(b.dataset.id)));
+  });
+  document.querySelectorAll('.cls-select').forEach(sel=>{
+    sel.addEventListener('change', (e)=>{
+      TICKETS[parseInt(sel.dataset.id)].classificacao = e.target.value;
+      saveTicketsLS();
+    });
+  });
+  document.querySelectorAll('.obs-input').forEach(inp=>{
+    inp.addEventListener('change', (e)=>{
+      TICKETS[parseInt(inp.dataset.id)].obs = e.target.value;
+      saveTicketsLS();
+    });
   });
   document.getElementById('countInfo').textContent =
     'Exibindo '+visible.length+' de '+TICKETS.length+' chamados concluídos.';
@@ -376,7 +406,7 @@ document.getElementById('ticketsFile').addEventListener('change', (e)=>{
             allRows.push({
               data:get('data'), os, idOs, cliente:get('cliente'),
               cidade:get('cidade'), uf:get('uf'), tecnico:get('tecnico'),
-              tipo:get('tipo'), area:get('area'), mats:[]
+              tipo:get('tipo'), area:get('area'), mats:[], classificacao:'', obs:''
             });
           }
         }
@@ -396,19 +426,19 @@ document.getElementById('ticketsFile').addEventListener('change', (e)=>{
 });
 
 document.getElementById('btnExport').addEventListener('click', ()=>{
-  const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Código SAP','Descrição do Material','Quantidade','Manual'];
+  const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Classificação','Observações','Código SAP','Descrição do Material','Quantidade','Manual'];
   const rows = [];
   TICKETS.forEach(t=>{
     if(t.mats.length===0){
-      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,'','','','']);
+      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,t.classificacao||'',t.obs||'','','','','']);
       return;
     }
     t.mats.forEach(m=>{
-      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,m.cod||'',m.desc,m.qtd,m.manual?'Sim':'Não']);
+      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,t.classificacao||'',t.obs||'',m.cod||'',m.desc,m.qtd,m.manual?'Sim':'Não']);
     });
   });
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{wch:10},{wch:20},{wch:18},{wch:32},{wch:18},{wch:6},{wch:26},{wch:22},{wch:24},{wch:14},{wch:50},{wch:10},{wch:8}];
+  ws['!cols'] = [{wch:10},{wch:20},{wch:18},{wch:32},{wch:18},{wch:6},{wch:26},{wch:22},{wch:24},{wch:14},{wch:30},{wch:14},{wch:50},{wch:10},{wch:8}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Chamados e Materiais');
   XLSX.writeFile(wb, 'Chamados_Concluidos_SLN_Materiais.xlsx');
