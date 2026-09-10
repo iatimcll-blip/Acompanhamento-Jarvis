@@ -20006,6 +20006,8 @@ let amChartGrupo = null;
 
 function amRenderAnalytics(){
   if(typeof Chart === 'undefined') return;
+  const amDL = typeof ChartDataLabels !== 'undefined' ? ChartDataLabels : null;
+  const amDk = document.body.dataset.theme === 'dark';
 
   const clsCounts = {};
   AM_TICKETS.forEach(t=>{
@@ -20025,15 +20027,17 @@ function amRenderAnalytics(){
     }else{
       amChartClass = new Chart(clsCanvas, {
         type:'bar',
+        plugins: amDL ? [amDL] : [],
         data:{labels:clsLabels, datasets:[{label:'Chamados', data:clsData, backgroundColor:clsColors}]},
         options:{
           responsive:true, maintainAspectRatio:false,
+          layout:{padding:{top:18}},
           onClick:(evt, elements)=>{
             if(!elements.length) return;
             amSetClassFilter(amChartClass.data.labels[elements[0].index]);
           },
           onHover:(evt, elements)=>{ evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
-          plugins:{legend:{display:false}, datalabels:{display:false}},
+          plugins:{legend:{display:false}, datalabels: amDL ? {anchor:'end', align:'top', formatter:v=>v>0?v:'', font:{size:10,weight:'bold'}, color: amDk?'#ccc':'#333', clip:false} : {display:false}},
           scales:{y:{beginAtZero:true, ticks:{precision:0}}}
         }
       });
@@ -20057,11 +20061,13 @@ function amRenderAnalytics(){
     }else{
       amChartTopMat = new Chart(matCanvas, {
         type:'bar',
+        plugins: amDL ? [amDL] : [],
         data:{labels:matLabels, datasets:[{label:'Quantidade', data:matData, backgroundColor:'#42C34B'}]},
         options:{
           indexAxis:'y',
           responsive:true, maintainAspectRatio:false,
-          plugins:{legend:{display:false}, datalabels:{display:false}},
+          layout:{padding:{right:24}},
+          plugins:{legend:{display:false}, datalabels: amDL ? {anchor:'end', align:'right', formatter:v=>v>0?v:'', font:{size:10,weight:'bold'}, color: amDk?'#ccc':'#333', clip:false} : {display:false}},
           scales:{x:{beginAtZero:true, ticks:{precision:0}}}
         }
       });
@@ -20085,10 +20091,11 @@ function amRenderAnalytics(){
     }else{
       amChartGrupo = new Chart(grupoCanvas, {
         type:'doughnut',
+        plugins: amDL ? [amDL] : [],
         data:{labels:grupoLabels, datasets:[{data:grupoData, backgroundColor:grupoColors}]},
         options:{
           responsive:true, maintainAspectRatio:false,
-          plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}, datalabels:{display:false}}
+          plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:9}}}, datalabels: amDL ? {formatter:v=>v>0?v:'', font:{size:10,weight:'bold'}, color:'#fff'} : {display:false}}
         }
       });
     }
@@ -20219,6 +20226,8 @@ function amRenderMatLines(){
       t.mats.splice(parseInt(btn.dataset.idx),1);
       amSaveTicketsLS();
       amRenderMatLines();
+      amUpdateKpis();
+      amRenderAnalytics();
     });
   });
 }
@@ -20326,6 +20335,8 @@ document.getElementById('am-btnAddItem').addEventListener('click', ()=>{
   document.getElementById('am-codBox').value = '';
   document.getElementById('am-qtdInput').value = 1;
   amRenderMatLines();
+  amUpdateKpis();
+  amRenderAnalytics();
   document.getElementById('am-matLines').scrollIntoView({behavior:'smooth', block:'start'});
 });
 
