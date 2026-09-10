@@ -74,6 +74,7 @@ function renderTable(){
   const visible = TICKETS.filter(ticketMatches);
   visible.forEach(t=>{
     const tr = document.createElement('tr');
+    if(t.mats.length>0) tr.classList.add('row-has-mat');
     const matHtml = t.mats.length
       ? t.mats.map(m=>'<span class="badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+'</span>').join('')
         + '<br><button class="btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
