@@ -8506,7 +8506,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-audit-material .am-table-scroll{flex:1 1 auto;min-height:220px;overflow:auto;border-radius:var(--rl);box-shadow:var(--shadow-sm);}
   #panel-audit-material thead th{position:sticky;top:0;z-index:1;}
   #panel-audit-material .am-badge{display:inline-block;background:var(--green-bg);color:var(--green-dk);border:.5px solid var(--am-border);border-radius:6px;padding:2px 8px;font-size:11px;margin:2px 4px 2px 0;}
-  #panel-audit-material .am-qty-pill{display:inline-block;background:var(--am-blue);color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-left:5px;letter-spacing:.01em;}
+  #panel-audit-material .am-qty-pill{display:inline-block;background:var(--am-blue);color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;letter-spacing:.01em;}
+  #panel-audit-material .am-qty-col{text-align:center;}
   #panel-audit-material .am-btn-add-mat{font-size:11px;font-weight:500;padding:3px 10px;height:24px;border-radius:6px;border:.5px solid var(--blue-lt);color:var(--am-blue);background:var(--blue-bg);cursor:pointer;transition:background .13s;}
   #panel-audit-material .am-btn-add-mat:hover{background:var(--blue-lt);}
   #panel-audit-material .am-pill-empty{color:var(--am-text-muted);font-size:11px;margin-right:6px;}
@@ -8597,6 +8598,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <th style="min-width:110px;">Classificação</th>
           <th style="min-width:160px;">Observações</th>
           <th style="min-width:220px;">Materiais aplicados</th>
+          <th style="min-width:70px;">Quantidade</th>
         </tr>
       </thead>
       <tbody id="am-tbody"></tbody>
@@ -20140,7 +20142,8 @@ function amRenderTable(){
       + AM_CLASSIFICACOES.map(c=>'<option value="'+c+'"'+(t.classificacao===c?' selected':'')+'>'+c+'</option>').join('')
       + '</select>';
     const obsHtml = '<input type="text" class="am-obs-input" data-id="'+t._id+'" value="'+amEscapeAttr(t.obs)+'" placeholder="Observações...">';
-    const matBadge = m => '<span class="am-badge">'+(m.cod||'—')+' — '+m.desc+' <span class="am-qty-pill">Qtd: '+m.qtd+'</span>'+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>';
+    const matBadge = m => '<span class="am-badge">'+(m.cod||'—')+' — '+m.desc+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>';
+    const qtyCell = m => '<span class="am-qty-pill">'+m.qtd+'</span>';
     const n = t.mats.length;
 
     if(n<=1){
@@ -20150,6 +20153,7 @@ function amRenderTable(){
         ? matBadge(t.mats[0]) + '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
         : '<span class="am-pill-empty">Nenhum material lançado</span>'
           + '<button class="am-btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
+      const qtyHtml = n===1 ? qtyCell(t.mats[0]) : '';
       tr.innerHTML =
         '<td>'+t.data+'</td>'+
         '<td>'+t.os+'</td>'+
@@ -20159,7 +20163,8 @@ function amRenderTable(){
         '<td>'+t.tipo+'</td>'+
         '<td>'+clsHtml+'</td>'+
         '<td>'+obsHtml+'</td>'+
-        '<td>'+matHtml+'</td>';
+        '<td>'+matHtml+'</td>'+
+        '<td class="am-qty-col">'+qtyHtml+'</td>';
       tbody.appendChild(tr);
     }else{
       t.mats.forEach((m,idx)=>{
@@ -20181,7 +20186,7 @@ function amRenderTable(){
         }
         let matCell = matBadge(m);
         if(idx===n-1) matCell += '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>';
-        rowHtml += '<td>'+matCell+'</td>';
+        rowHtml += '<td>'+matCell+'</td>'+'<td class="am-qty-col">'+qtyCell(m)+'</td>';
         tr.innerHTML = rowHtml;
         tbody.appendChild(tr);
       });
@@ -20563,20 +20568,24 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
   const semMat = total - comMat;
 
   const linhas = AM_TICKETS.map(t=>{
-    const matHtml = t.mats.length
-      ? '<div class="am-rep-mats">' + t.mats.map(m=>
-          '<div class="am-rep-mat-line"><b>' + amEscapeAttr(m.cod||'—') + '</b> — ' + amEscapeAttr(m.desc) + (m.manual ? ' <em>(manual)</em>' : '') + ' <span class="am-rep-qtd-pill">Qtd: ' + m.qtd + '</span></div>'
-        ).join('') + '</div>'
-      : '<span class="am-rep-empty">Nenhum material lançado</span>';
-    return '<tr>'
-      + '<td>' + amEscapeAttr(t.data) + '</td>'
-      + '<td>' + amEscapeAttr(t.os) + '</td>'
-      + '<td>' + amEscapeAttr(t.cliente) + '</td>'
-      + '<td>' + amEscapeAttr(t.cidade) + (t.uf ? ('/' + amEscapeAttr(t.uf)) : '') + '</td>'
-      + '<td>' + amEscapeAttr(t.tecnico) + '</td>'
-      + '<td>' + amEscapeAttr(t.classificacao || '—') + '</td>'
-      + '<td>' + matHtml + '</td>'
-      + '</tr>';
+    const n = t.mats.length;
+    const ticketCells = rs => '<td'+rs+'>' + amEscapeAttr(t.data) + '</td>'
+      + '<td'+rs+'>' + amEscapeAttr(t.os) + '</td>'
+      + '<td'+rs+'>' + amEscapeAttr(t.cliente) + '</td>'
+      + '<td'+rs+'>' + amEscapeAttr(t.cidade) + (t.uf ? ('/' + amEscapeAttr(t.uf)) : '') + '</td>'
+      + '<td'+rs+'>' + amEscapeAttr(t.tecnico) + '</td>'
+      + '<td'+rs+'>' + amEscapeAttr(t.classificacao || '—') + '</td>';
+
+    if(n===0){
+      return '<tr class="am-rep-last-mat">' + ticketCells('') + '<td colspan="2"><span class="am-rep-empty">Nenhum material lançado</span></td></tr>';
+    }
+    return t.mats.map((m,idx)=>
+      '<tr'+(idx===n-1?' class="am-rep-last-mat"':'')+'>'
+        + (idx===0 ? ticketCells(' rowspan="'+n+'"') : '')
+        + '<td><b>' + amEscapeAttr(m.cod||'—') + '</b> — ' + amEscapeAttr(m.desc) + (m.manual ? ' <em>(manual)</em>' : '') + '</td>'
+        + '<td class="am-rep-qtd-cell">' + m.qtd + '</td>'
+        + '</tr>'
+    ).join('');
   }).join('');
 
   const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
@@ -20593,11 +20602,9 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     + '.am-rep-kpi .lbl{font-size:10.5px;font-weight:500;color:#8e8e93;} .am-rep-kpi .val{font-size:22px;font-weight:700;margin-top:3px;letter-spacing:-.01em;}'
     + 'table{width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);}'
     + 'thead th{text-align:left;background:#f2f2f7;color:#8e8e93;padding:8px 9px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid rgba(0,0,0,.07);}'
-    + 'tbody td{padding:8px 9px;border-bottom:.5px solid rgba(0,0,0,.07);vertical-align:middle;}'
-    + 'tbody td:last-child{vertical-align:top;}'
-    + 'tbody tr:nth-child(even){background:#fafafa;}'
-    + '.am-rep-mats{display:flex;flex-direction:column;gap:4px;} .am-rep-mat-line{white-space:normal;}'
-    + '.am-rep-qtd-pill{display:inline-block;background:#007aff;color:#fff;border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;margin-left:3px;}'
+    + 'tbody td{padding:7px 9px;border-bottom:.25px solid rgba(0,0,0,.05);vertical-align:middle;}'
+    + 'tbody tr.am-rep-last-mat td{border-bottom:.5px solid rgba(0,0,0,.1);}'
+    + '.am-rep-qtd-cell{text-align:center;font-weight:700;color:#007aff;}'
     + '.am-rep-empty{color:#8e8e93;font-style:italic;}'
     + 'footer{margin-top:20px;font-size:10px;color:#8e8e93;text-align:center;}'
     + '@media print{ .am-rep-actions{display:none;} body{padding:0 12px;background:#fff;} table,.am-rep-kpi{box-shadow:none;} }'
@@ -20609,7 +20616,7 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     + '<div class="am-rep-kpi"><div class="lbl">Com materiais lançados</div><div class="val" style="color:#34c759;">' + comMat + '</div></div>'
     + '<div class="am-rep-kpi"><div class="lbl">Faltam lançar</div><div class="val" style="color:#ff9500;">' + semMat + '</div></div>'
     + '</div>'
-    + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Materiais aplicados</th></tr></thead>'
+    + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Materiais aplicados</th><th>Quantidade</th></tr></thead>'
     + '<tbody>' + linhas + '</tbody></table>'
     + '<footer>Jarvis MCLL · alloha FIBRA</footer>'
     + '</body></html>';
