@@ -20556,90 +20556,72 @@ document.getElementById('am-btnExport').addEventListener('click', ()=>{
 });
 
 document.getElementById('am-btnReport').addEventListener('click', ()=>{
-  if(typeof PptxGenJS==='undefined'){ alert('Biblioteca de geração de PPTX não carregada.'); return; }
-  const NAVY=PPTX_NAVY,BLUE=PPTX_BLUE,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE,BGCARD=PPTX_BGCARD;
   const now = new Date();
-  const dateStr = now.toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'});
+  const dataGeracao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
   const total = AM_TICKETS.length;
   const comMat = AM_TICKETS.filter(t=>t.mats.length>0).length;
   const semMat = total - comMat;
 
-  const clsCounts = {};
-  AM_TICKETS.forEach(t=>{ const c = t.classificacao || 'Não classificado'; clsCounts[c] = (clsCounts[c]||0)+1; });
-  const clsLabels = Object.keys(clsCounts).sort((a,b)=>clsCounts[b]-clsCounts[a]);
-  const clsData = clsLabels.map(k=>clsCounts[k]);
+  const ticketCellsHtml = t => '<td>' + amEscapeAttr(t.data) + '</td>'
+      + '<td>' + amEscapeAttr(t.os) + '</td>'
+      + '<td>' + amEscapeAttr(t.cliente) + '</td>'
+      + '<td>' + amEscapeAttr(t.cidade) + (t.uf ? ('/' + amEscapeAttr(t.uf)) : '') + '</td>'
+      + '<td>' + amEscapeAttr(t.tecnico) + '</td>'
+      + '<td>' + amEscapeAttr(t.classificacao || '—') + '</td>';
 
-  const grupoCounts = {};
-  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{ const g = m.grupo || 'Sem grupo / manual'; grupoCounts[g] = (grupoCounts[g]||0)+1; }));
-  const grupoLabels = Object.keys(grupoCounts);
-  const grupoData = grupoLabels.map(k=>grupoCounts[k]);
-
-  const matTotals = {};
-  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{ const key=(m.cod||'—')+' — '+m.desc; matTotals[key]=(matTotals[key]||0)+(parseInt(m.qtd)||0); }));
-  const topMat = Object.entries(matTotals).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const matLabels = topMat.map(x=>x[0].length>34?x[0].slice(0,31)+'...':x[0]);
-  const matData = topMat.map(x=>x[1]);
-
-  const detailRows = [];
-  AM_TICKETS.forEach(t=>{
-    t.mats.forEach(m=>{
-      detailRows.push([t.os, t.cliente, t.tecnico, t.classificacao||'—', m.cod||'—', m.desc, String(m.qtd)]);
-    });
-  });
-  const PER_PAGE = 12;
-  const totalDetailPages = Math.max(1, Math.ceil(detailRows.length / PER_PAGE));
-  const totalSlides = 2 + totalDetailPages;
-
-  const pptx = pptxNewDeck();
-  const header = pptxHeader;
-
-  const s1 = pptx.addSlide();
-  header(s1, 'PAINEL AUDIT MATERIAL · MATERIAIS APLICADOS POR CHAMADO', 'Resumo Geral', '1 / '+totalSlides);
-  const kpis = [
-    {label:'Chamados concluídos', value:String(total), color:NAVY},
-    {label:'Com materiais lançados', value:String(comMat), color:GREEN},
-    {label:'Faltam lançar', value:String(semMat), color:ORANGE},
-  ];
-  let kx = 0.4;
-  const kw = 4.0;
-  kpis.forEach(k=>{
-    s1.addShape('rect',{x:kx,y:2.0,w:kw,h:1.15,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
-    s1.addText(k.label,{x:kx+0.25,y:2.12,w:kw-0.5,h:0.35,fontSize:10,color:GREY});
-    s1.addText(k.value,{x:kx+0.25,y:2.45,w:kw-0.5,h:0.6,fontSize:26,bold:true,color:k.color});
-    kx += kw + 0.15;
-  });
-  s1.addText('Chamados por Classificação',{x:0.4,y:3.5,w:6,h:0.4,fontSize:13,bold:true,color:NAVY});
-  s1.addChart(pptx.ChartType.bar,[{name:'Chamados', labels:clsLabels, values:clsData}],{x:0.4,y:3.95,w:12.5,h:3.0,barDir:'col',showValue:true,chartColors:[BLUE],showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,dataLabelFontSize:9});
-
-  const s2 = pptx.addSlide();
-  header(s2, 'Distribuição de materiais aplicados', 'Materiais por Grupo SAP e Top Aplicados', '2 / '+totalSlides);
-  s2.addText('Distribuição por Grupo SAP',{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
-  if(grupoLabels.length){
-    s2.addChart(pptx.ChartType.doughnut,[{name:'Materiais', labels:grupoLabels, values:grupoData}],{x:0.4,y:2.45,w:5.8,h:3.7,chartColors:[BLUE,GREEN,ORANGE,RED,'AF52DE','5AC8FA',GREY,'FFCC00'],showLegend:true,legendPos:'b',legendFontSize:9,showValue:true,dataLabelFontSize:9});
-  }else{
-    s2.addText('Sem materiais lançados ainda.',{x:0.4,y:2.55,w:5.6,h:0.5,fontSize:12,color:GREY});
-  }
-  s2.addText('Top 10 Materiais Mais Aplicados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
-  if(matLabels.length){
-    s2.addChart(pptx.ChartType.bar,[{name:'Quantidade', labels:matLabels, values:matData}],{x:6.6,y:2.45,w:6.2,h:3.7,barDir:'bar',showValue:true,chartColors:[GREEN],showLegend:false,catAxisLabelFontSize:8,valAxisLabelFontSize:9,dataLabelFontSize:9});
-  }else{
-    s2.addText('Sem materiais lançados ainda.',{x:6.6,y:2.55,w:6,h:0.5,fontSize:12,color:GREY});
-  }
-
-  const detailHead = ['Ordem de Serviço','Cliente','Técnico','Classificação','Código SAP','Descrição do Material','Qtd'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:10}}));
-  for(let p=0; p<totalDetailPages; p++){
-    const chunk = detailRows.slice(p*PER_PAGE, (p+1)*PER_PAGE);
-    const sD = pptx.addSlide();
-    header(sD, 'Detalhamento de materiais aplicados por chamado', 'Materiais Aplicados', (3+p)+' / '+totalSlides);
-    if(chunk.length){
-      const bodyRows = chunk.map(r=>r.map((v,i)=>({text:v,options:{fontSize:9,bold:i===0||i===4}})));
-      sD.addTable([detailHead,...bodyRows],{x:0.4,y:2.0,w:12.5,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,rowH:0.4,valign:'middle'});
-    }else{
-      sD.addText('Nenhum material lançado até o momento.',{x:0.4,y:2.2,w:12,h:0.6,fontSize:14,color:GREY});
+  const linhas = AM_TICKETS.map(t=>{
+    if(t.mats.length===0){
+      return '<tr>' + ticketCellsHtml(t)
+        + '<td colspan="2"><span class="am-rep-empty">Nenhum material lançado</span></td>'
+        + '<td></td>'
+        + '</tr>';
     }
-  }
+    return t.mats.map(m=>
+      '<tr>' + ticketCellsHtml(t)
+        + '<td><b>' + amEscapeAttr(m.cod||'—') + '</b></td>'
+        + '<td>' + amEscapeAttr(m.desc) + (m.manual ? ' <em>(manual)</em>' : '') + '</td>'
+        + '<td class="am-rep-qtd-cell">' + m.qtd + '</td>'
+        + '</tr>'
+    ).join('');
+  }).join('');
 
-  pptx.writeFile({fileName:'Relatorio_Audit_Material_'+now.toISOString().slice(0,10)+'.pptx'});
+  const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+    + '<title>Relatório de Materiais Aplicados</title>'
+    + '<style>'
+    + '*{box-sizing:border-box;} body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;margin:0;padding:28px 32px;color:#1c1c1e;background:#f2f2f7;-webkit-font-smoothing:antialiased;}'
+    + 'header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;}'
+    + 'header h1{font-size:19px;font-weight:700;margin:0;letter-spacing:-.01em;} header p{margin:2px 0 0;font-size:11.5px;color:#8e8e93;}'
+    + 'header .am-rep-date{font-size:11.5px;color:#8e8e93;}'
+    + '.am-rep-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;}'
+    + '.am-rep-actions button{height:32px;border-radius:10px;border:.5px solid rgba(0,0,0,.14);background:#fff;color:#1c1c1e;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;padding:0 14px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);}'
+    + '.am-rep-summary{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}'
+    + '.am-rep-kpi{background:#fff;border:.5px solid rgba(0,0,0,.07);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);padding:12px 18px;min-width:130px;}'
+    + '.am-rep-kpi .lbl{font-size:10.5px;font-weight:500;color:#8e8e93;} .am-rep-kpi .val{font-size:22px;font-weight:700;margin-top:3px;letter-spacing:-.01em;}'
+    + 'table{width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);}'
+    + 'thead th{text-align:left;background:#f2f2f7;color:#8e8e93;padding:8px 9px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid rgba(0,0,0,.07);}'
+    + 'tbody td{padding:8px 9px;border-bottom:.5px solid rgba(0,0,0,.07);vertical-align:top;}'
+    + 'tbody tr:nth-child(even){background:#fafafa;}'
+    + '.am-rep-qtd-cell{text-align:center;font-weight:700;color:#007aff;} .am-rep-empty{color:#8e8e93;font-style:italic;}'
+    + 'footer{margin-top:20px;font-size:10px;color:#8e8e93;text-align:center;}'
+    + '@media print{ .am-rep-actions{display:none;} body{padding:0 12px;background:#fff;} table,.am-rep-kpi{box-shadow:none;} }'
+    + '</style></head><body>'
+    + '<div class="am-rep-actions"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'
+    + '<header><div><h1>Relatório de Materiais Aplicados — Chamados B2B</h1><p>Jarvis MCLL · Operações integradas</p></div><p class="am-rep-date">Gerado em ' + dataGeracao + '</p></header>'
+    + '<div class="am-rep-summary">'
+    + '<div class="am-rep-kpi"><div class="lbl">Chamados concluídos</div><div class="val">' + total + '</div></div>'
+    + '<div class="am-rep-kpi"><div class="lbl">Com materiais lançados</div><div class="val" style="color:#34c759;">' + comMat + '</div></div>'
+    + '<div class="am-rep-kpi"><div class="lbl">Faltam lançar</div><div class="val" style="color:#ff9500;">' + semMat + '</div></div>'
+    + '</div>'
+    + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Código SAP</th><th>Descrição do Material</th><th>Quantidade</th></tr></thead>'
+    + '<tbody>' + linhas + '</tbody></table>'
+    + '<footer>Jarvis MCLL · alloha FIBRA</footer>'
+    + '</body></html>';
+
+  const w = window.open('', '_blank');
+  if(!w){ alert('Permita pop-ups neste site para gerar o relatório.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 });
 </script>
 </body>
