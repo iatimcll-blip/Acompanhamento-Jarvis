@@ -68,6 +68,34 @@ function escapeAttr(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function majorityGroup(mats){
+  const counts = {};
+  const order = [];
+  mats.forEach(m=>{
+    if(!m.grupo) return;
+    if(!(m.grupo in counts)){ counts[m.grupo] = 0; order.push(m.grupo); }
+    counts[m.grupo]++;
+  });
+  if(order.length===0) return null;
+  let best = order[0];
+  order.forEach(g=>{ if(counts[g]>counts[best]) best = g; });
+  return best;
+}
+
+function isDivergentMat(mats, m){
+  if(!m.grupo) return false;
+  const distinctGroups = new Set(mats.map(x=>x.grupo).filter(Boolean));
+  if(distinctGroups.size<=1) return false;
+  const majority = majorityGroup(mats);
+  return !!majority && m.grupo !== majority;
+}
+
+function matWarnIcon(mats, m){
+  return isDivergentMat(mats, m)
+    ? ' <span class="mat-warn-icon" title="Grupo \''+escapeAttr(m.grupo)+'\' diferente dos demais materiais deste chamado">⚠️</span>'
+    : '';
+}
+
 function renderTable(){
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
@@ -77,7 +105,7 @@ function renderTable(){
     if(t.mats.length>0) tr.classList.add('row-has-mat');
     else if((t.obs||'').trim()) tr.classList.add('row-has-obs');
     const matHtml = t.mats.length
-      ? t.mats.map(m=>'<span class="badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+'</span>').join('')
+      ? t.mats.map(m=>'<span class="badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+matWarnIcon(t.mats,m)+'</span>').join('')
         + '<br><button class="btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
       : '<span class="pill-empty">Nenhum material lançado</span>'
         + '<button class="btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
@@ -133,7 +161,6 @@ function openModal(id){
   document.getElementById('codAcList').classList.remove('open');
   document.getElementById('qtdInput').value = 1;
   document.getElementById('modalErr').style.display = 'none';
-  document.getElementById('matConsistencyWarn').style.display = 'none';
   document.getElementById('manualMode').checked = false;
   setManualMode(false);
   selectedItem = null;
@@ -173,7 +200,7 @@ function renderMatLines(){
   t.mats.forEach((m,idx)=>{
     const line = document.createElement('div');
     line.className = 'mat-line';
-    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em style="color:var(--text-muted);font-style:normal;">(manual)</em>':'')+'</span>'+
+    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em style="color:var(--text-muted);font-style:normal;">(manual)</em>':'')+matWarnIcon(t.mats,m)+'</span>'+
       '<button class="rm" data-idx="'+idx+'">remover</button>';
     box.appendChild(line);
   });
@@ -182,26 +209,8 @@ function renderMatLines(){
       t.mats.splice(parseInt(btn.dataset.idx),1);
       saveTicketsLS();
       renderMatLines();
-      updateMatConsistencyWarn();
     });
   });
-}
-
-function updateMatConsistencyWarn(){
-  const warnEl = document.getElementById('matConsistencyWarn');
-  if(!warnEl) return;
-  const t = TICKETS[currentTicketId];
-  if(!selectedItem || !selectedItem.grupo || !t || t.mats.length===0){
-    warnEl.style.display = 'none';
-    return;
-  }
-  const existingGroups = [...new Set(t.mats.map(m=>m.grupo).filter(Boolean))];
-  if(existingGroups.length===0 || existingGroups.includes(selectedItem.grupo)){
-    warnEl.style.display = 'none';
-    return;
-  }
-  warnEl.textContent = '⚠️ Atenção: este material é do grupo "'+selectedItem.grupo+'", diferente do(s) já lançado(s) neste chamado ('+existingGroups.join(', ')+'). Confira se está correto antes de adicionar.';
-  warnEl.style.display = 'block';
 }
 
 function renderAcList(q, list){
@@ -221,7 +230,6 @@ function renderAcList(q, list){
       document.getElementById('codBox').value = selectedItem.cod;
       document.getElementById('acList').classList.remove('open');
       document.getElementById('codAcList').classList.remove('open');
-      updateMatConsistencyWarn();
     });
   });
 }
@@ -250,7 +258,6 @@ document.getElementById('acInput').addEventListener('input', (e)=>{
   document.getElementById('codBox').value = '';
   document.getElementById('codAcList').classList.remove('open');
   renderAcList(e.target.value, document.getElementById('acList'));
-  updateMatConsistencyWarn();
 });
 
 document.getElementById('codBox').addEventListener('input', (e)=>{
@@ -262,12 +269,10 @@ document.getElementById('codBox').addEventListener('input', (e)=>{
     document.getElementById('acInput').value = exact.desc;
     document.getElementById('codAcList').classList.remove('open');
     document.getElementById('codAcList').innerHTML = '';
-    updateMatConsistencyWarn();
     return;
   }
   selectedItem = null;
   renderAcList(val, document.getElementById('codAcList'));
-  updateMatConsistencyWarn();
 });
 
 document.getElementById('manualMode').addEventListener('change', (e)=>{
@@ -279,7 +284,6 @@ document.getElementById('manualMode').addEventListener('change', (e)=>{
   document.getElementById('codAcList').classList.remove('open');
   document.getElementById('modalErr').style.display = 'none';
   setManualMode(on);
-  updateMatConsistencyWarn();
 });
 
 document.getElementById('btnAddItem').addEventListener('click', ()=>{
@@ -312,7 +316,6 @@ document.getElementById('btnAddItem').addEventListener('click', ()=>{
   document.getElementById('codBox').value = '';
   document.getElementById('qtdInput').value = 1;
   renderMatLines();
-  updateMatConsistencyWarn();
   document.getElementById('matLines').scrollIntoView({behavior:'smooth', block:'start'});
 });
 
