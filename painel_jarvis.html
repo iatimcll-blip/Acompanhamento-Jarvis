@@ -6,12 +6,13 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-08T21:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-10T12:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
 <script src="assets/vendor/chartjs-plugin-datalabels/chartjs-plugin-datalabels.min.js"></script>
 <script src="assets/vendor/pptxgenjs/pptxgen.bundle.js"></script>
+<script src="assets/audit_material/tickets_catalog.js"></script>
 <style>
 :root {
   --os: rgba(0,0,0,.04);
@@ -6743,7 +6744,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-ampli" onclick="window.location.href='painel_ampli.html'">
         <i class="ti ti-school"></i><span class="ntab-label"> Ampli</span>
       </button>
-      <button class="ntab" id="ntab-audit-material" onclick="window.location.href='painel_audit_material.html'">
+      <button class="ntab" id="ntab-audit-material" onclick="switchTab('auditMaterial')">
         <i class="ti ti-clipboard-list"></i><span class="ntab-label"> Audit Material</span>
       </button>
       </div>
@@ -6882,7 +6883,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-sobreaviso" onclick="window.location.href='painel_sobreaviso.html'"><i class="ti ti-headset"></i><strong>Sobreaviso</strong><span>Escala de sobreaviso por rodízio, cálculo de horas e auditoria CLT (art. 244).</span></button>
       <button class="dash-module" id="dash-mod-ip-acomp" onclick="window.location.href='painel_acompanhamento_ip.html'"><i class="ti ti-shield-lock"></i><strong>Investigação de IPs</strong><span>Acompanhamento de CPEs invadidos/down/acessíveis cruzados com o inventário B2B.</span></button>
       <button class="dash-module" id="dash-mod-ampli" onclick="window.location.href='painel_ampli.html'"><i class="ti ti-school"></i><strong>Ampli</strong><span>Painel de estudo com busca sobre questões corrigidas, com OCR para novos anexos.</span></button>
-      <button class="dash-module" id="dash-mod-audit-material" onclick="window.location.href='painel_audit_material.html'"><i class="ti ti-clipboard-list"></i><strong>Audit Material</strong><span>Chamados B2B concluídos com lançamento de materiais aplicados via catálogo SAP.</span></button>
+      <button class="dash-module" id="dash-mod-audit-material" onclick="switchTab('auditMaterial')"><i class="ti ti-clipboard-list"></i><strong>Audit Material</strong><span>Chamados B2B concluídos com lançamento de materiais aplicados via catálogo SAP.</span></button>
       <button class="dash-module" onclick="openCentral()"><i class="ti ti-database"></i><strong>Central de Dados</strong><span>Controle de importação, status, validação e limpeza de bases.</span></button>
     </div>
   </div>
@@ -8431,6 +8432,187 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
     </div>
   </div>
+  <!-- ── PAINEL AUDIT MATERIAL ── -->
+  <style id="am-style">
+  #panel-audit-material{
+    --am-navy:#182238;
+    --am-green:#42C34B;
+    --am-blue:#1476C9;
+    --am-bg:#F4F6F9;
+    --am-card:#FFFFFF;
+    --am-border:#E1E5EC;
+    --am-text:#1E2431;
+    --am-text-muted:#6B7280;
+    font-family:Calibri,"Segoe UI",Arial,sans-serif;
+    color:var(--am-text);
+  }
+  #panel-audit-material *{box-sizing:border-box;}
+  #panel-audit-material .am-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  #panel-audit-material .am-kpi{background:var(--am-card);border:1px solid var(--am-border);border-radius:12px;padding:16px 18px;}
+  #panel-audit-material .am-kpi .am-label{font-size:12.5px;color:var(--am-text-muted);}
+  #panel-audit-material .am-kpi .am-value{font-size:26px;font-weight:600;margin-top:4px;color:var(--am-navy);}
+  #panel-audit-material .am-analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+  #panel-audit-material .am-chart-card{background:var(--am-card);border:1px solid var(--am-border);border-radius:12px;padding:14px 16px;}
+  #panel-audit-material .am-chart-card h4{margin:0 0 10px;font-size:13px;color:var(--am-navy);font-weight:600;}
+  #panel-audit-material .am-chart-card{position:relative;height:260px;}
+  #panel-audit-material .am-chart-card canvas{max-width:100%;}
+  #panel-audit-material .am-chart-card.am-wide{grid-column:1/-1;}
+  #panel-audit-material .am-chart-card.am-wide#am-divergentCard{height:auto;max-height:260px;overflow-y:auto;}
+  #panel-audit-material .am-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:var(--am-card);border:1px solid var(--am-border);border-radius:12px;padding:12px 16px;margin-bottom:16px;}
+  #panel-audit-material .am-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  #panel-audit-material input[type=text], #panel-audit-material input[type=number], #panel-audit-material select{height:34px;border:1px solid var(--am-border);border-radius:8px;padding:0 10px;font-family:inherit;font-size:13px;background:#fff;}
+  #panel-audit-material #am-searchBox{width:260px;}
+  #panel-audit-material .am-btn{height:34px;border-radius:8px;border:1px solid var(--am-border);background:#fff;padding:0 14px;font-size:13px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+  #panel-audit-material .am-btn:hover{background:#F0F2F6;}
+  #panel-audit-material .am-btn-primary{background:var(--am-blue);color:#fff;border-color:var(--am-blue);}
+  #panel-audit-material .am-btn-primary:hover{background:#1264ad;}
+  #panel-audit-material .am-btn-green{background:var(--am-green);color:#fff;border-color:var(--am-green);}
+  #panel-audit-material .am-btn-green:hover{background:#38ab41;}
+  #panel-audit-material label.am-file-btn{height:34px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--am-border);border-radius:8px;padding:0 14px;font-size:13px;cursor:pointer;background:#fff;}
+  #panel-audit-material label.am-file-btn:hover{background:#F0F2F6;}
+  #panel-audit-material .am-db-status{font-size:12.5px;color:var(--am-text-muted);}
+  #panel-audit-material table{width:100%;border-collapse:collapse;background:var(--am-card);border:1px solid var(--am-border);border-radius:12px;overflow:hidden;font-size:13px;}
+  #panel-audit-material thead th{text-align:left;background:#EEF1F6;color:var(--am-navy);padding:10px 10px;font-weight:600;border-bottom:1px solid var(--am-border);white-space:nowrap;}
+  #panel-audit-material tbody td{padding:9px 10px;border-bottom:1px solid var(--am-border);vertical-align:top;}
+  #panel-audit-material tbody tr:hover{background:#FAFBFD;}
+  #panel-audit-material tbody tr.am-row-has-mat{background:#E7F7E8;}
+  #panel-audit-material tbody tr.am-row-has-mat:hover{background:#DAF0DC;}
+  #panel-audit-material tbody tr.am-row-has-obs{background:#FFF6D8;}
+  #panel-audit-material tbody tr.am-row-has-obs:hover{background:#FFEFB8;}
+  #panel-audit-material .am-cls-select{width:100%;min-width:100px;height:30px;font-size:12.5px;padding:0 6px;}
+  #panel-audit-material .am-obs-input{width:100%;min-width:140px;height:30px;font-size:12.5px;padding:0 6px;}
+  #panel-audit-material .am-table-scroll{overflow-x:auto;}
+  #panel-audit-material .am-badge{display:inline-block;background:#E7F7E8;color:#1F7A28;border:1px solid #C3EAC6;border-radius:6px;padding:2px 8px;font-size:12px;margin:2px 4px 2px 0;}
+  #panel-audit-material .am-btn-add-mat{font-size:12px;padding:3px 10px;height:26px;border-radius:6px;border:1px solid var(--am-blue);color:var(--am-blue);background:#fff;cursor:pointer;}
+  #panel-audit-material .am-btn-add-mat:hover{background:#EAF3FB;}
+  #panel-audit-material .am-pill-empty{color:var(--am-text-muted);font-size:12.5px;margin-right:6px;}
+  #panel-audit-material .am-modal-overlay{display:none;position:fixed;inset:0;background:rgba(24,34,56,0.55);align-items:center;justify-content:center;z-index:10000;}
+  #panel-audit-material .am-modal-overlay.am-open{display:flex;}
+  #panel-audit-material .am-modal{background:#fff;border-radius:14px;width:420px;max-width:92vw;padding:20px 22px;max-height:85vh;overflow-y:auto;color:var(--am-text);}
+  #panel-audit-material .am-modal h3{margin:0 0 2px;font-size:16px;color:var(--am-navy);}
+  #panel-audit-material .am-modal .am-sub{font-size:12.5px;color:var(--am-text-muted);margin-bottom:14px;}
+  #panel-audit-material .am-modal label{font-size:12.5px;color:var(--am-text-muted);display:block;margin:10px 0 4px;}
+  #panel-audit-material .am-ac-wrap{position:relative;}
+  #panel-audit-material .am-ac-list{position:absolute;top:36px;left:0;right:0;background:#fff;border:1px solid var(--am-border);border-radius:8px;max-height:200px;overflow-y:auto;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,0.12);display:none;}
+  #panel-audit-material .am-ac-list.am-open{display:block;}
+  #panel-audit-material .am-ac-item{padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #F0F2F6;}
+  #panel-audit-material .am-ac-item:hover{background:#EAF3FB;}
+  #panel-audit-material .am-ac-item .am-cod{color:var(--am-blue);font-weight:600;margin-right:6px;}
+  #panel-audit-material .am-cod-wrap{display:flex;gap:8px;}
+  #panel-audit-material .am-cod-wrap input{flex:1;background:#F4F6F9;color:var(--am-navy);font-weight:600;letter-spacing:0.3px;}
+  #panel-audit-material .am-btn-copy{height:34px;border-radius:8px;border:1px solid var(--am-blue);color:var(--am-blue);background:#fff;font-size:12.5px;padding:0 12px;cursor:pointer;white-space:nowrap;}
+  #panel-audit-material .am-btn-copy:hover{background:#EAF3FB;}
+  #panel-audit-material .am-btn-copy.am-copied{border-color:var(--am-green);color:#1F7A28;}
+  #panel-audit-material .am-mat-line{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--am-border);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12.5px;}
+  #panel-audit-material .am-mat-line .am-rm{color:#C0392B;cursor:pointer;font-size:12px;border:none;background:none;}
+  #panel-audit-material .am-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  #panel-audit-material .am-err{color:#C0392B;font-size:12px;margin-top:4px;display:none;}
+  #panel-audit-material .am-mat-warn-icon{color:#B8860B;cursor:help;margin-left:3px;}
+  #panel-audit-material .am-muted-small{font-size:11.5px;color:var(--am-text-muted);}
+  @media (max-width:900px){
+    #panel-audit-material .am-kpis{grid-template-columns:repeat(2,1fr);}
+    #panel-audit-material .am-analytics-grid{grid-template-columns:1fr;}
+  }
+  </style>
+  <div class="panel" id="panel-audit-material">
+    <div class="am-kpis">
+      <div class="am-kpi"><div class="am-label">Chamados concluídos</div><div class="am-value" id="am-kpiTotal">0</div></div>
+      <div class="am-kpi"><div class="am-label">Técnicos únicos</div><div class="am-value" id="am-kpiTec">0</div></div>
+      <div class="am-kpi"><div class="am-label">Cidades atendidas</div><div class="am-value" id="am-kpiCid">0</div></div>
+      <div class="am-kpi"><div class="am-label">Com materiais lançados</div><div class="am-value" id="am-kpiMat">0 / 0</div></div>
+    </div>
+
+    <div class="am-analytics-grid">
+      <div class="am-chart-card"><h4>Chamados por Classificação</h4><canvas id="am-chartClass"></canvas></div>
+      <div class="am-chart-card"><h4>Distribuição por Grupo SAP</h4><canvas id="am-chartGrupo"></canvas></div>
+      <div class="am-chart-card am-wide"><h4>Top 10 Materiais Mais Aplicados (por quantidade)</h4><canvas id="am-chartTopMat"></canvas></div>
+      <div class="am-chart-card am-wide" id="am-divergentCard"><h4>Chamados com material fora do padrão</h4><div id="am-divergentList"></div></div>
+    </div>
+
+    <div class="am-toolbar">
+      <div class="am-toolbar-left">
+        <input type="text" id="am-searchBox" placeholder="Buscar por OS, cliente, técnico ou cidade...">
+        <select id="am-filterMat">
+          <option value="todos">Todos os chamados</option>
+          <option value="com">Com materiais lançados</option>
+          <option value="sem">Sem materiais lançados</option>
+        </select>
+      </div>
+      <div class="am-toolbar-left">
+        <span class="am-db-status" id="am-ticketsStatus"></span>
+        <label class="am-file-btn">Anexar base de chamados (CSV)
+          <input type="file" id="am-ticketsFile" accept=".csv" multiple style="display:none;">
+        </label>
+        <span class="am-db-status" id="am-dbStatus">Catálogo SAP carregado</span>
+        <label class="am-file-btn">Anexar banco de dados
+          <input type="file" id="am-dbFile" accept=".xlsx,.xls,.csv" style="display:none;">
+        </label>
+      </div>
+      <div class="am-toolbar-left">
+        <button class="am-btn am-btn-green" id="am-btnExport">Exportar planilha (.xlsx)</button>
+      </div>
+    </div>
+
+    <div class="am-table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Ordem de Serviço</th>
+          <th>Cliente</th>
+          <th>Cidade/UF</th>
+          <th>Técnico</th>
+          <th>Tipo de Atividade</th>
+          <th style="min-width:110px;">Classificação</th>
+          <th style="min-width:160px;">Observações</th>
+          <th style="min-width:220px;">Materiais aplicados</th>
+        </tr>
+      </thead>
+      <tbody id="am-tbody"></tbody>
+    </table>
+    </div>
+    <p class="am-muted-small" id="am-countInfo" style="margin-top:8px;"></p>
+
+    <div class="am-modal-overlay" id="am-modalOverlay">
+      <div class="am-modal">
+        <h3>Materiais aplicados</h3>
+        <div class="am-sub" id="am-modalSub"></div>
+
+        <div id="am-matLines"></div>
+
+        <label class="am-manual-toggle" style="display:flex;align-items:center;gap:7px;margin:14px 0 0;cursor:pointer;">
+          <input type="checkbox" id="am-manualMode" style="width:auto;height:auto;margin:0;">
+          <span style="font-size:12.5px;color:var(--am-text-muted);">Material não está no catálogo (incluir manualmente)</span>
+        </label>
+
+        <label id="am-labelDesc">Descrição do material</label>
+        <div class="am-ac-wrap">
+          <input type="text" id="am-acInput" placeholder="Digite para buscar: splitter, conector, CABO OPTICO...">
+          <div class="am-ac-list" id="am-acList"></div>
+        </div>
+        <label id="am-labelCod">Código SAP</label>
+        <div class="am-cod-wrap">
+          <div class="am-ac-wrap" style="flex:1;">
+            <input type="text" id="am-codBox" placeholder="Digite ou selecione o código SAP...">
+            <div class="am-ac-list" id="am-codAcList"></div>
+          </div>
+          <button class="am-btn-copy" id="am-btnCopyCod" type="button" title="Copiar código">Copiar</button>
+        </div>
+        <label>Quantidade</label>
+        <input type="number" id="am-qtdInput" min="1" value="1" style="width:100%;">
+        <div class="am-err" id="am-modalErr">Selecione um material do catálogo antes de adicionar.</div>
+        <div style="margin-top:10px;">
+          <button class="am-btn" id="am-btnAddItem">+ Adicionar item à lista</button>
+        </div>
+
+        <div class="am-modal-actions">
+          <button class="am-btn" id="am-btnCancel">Cancelar</button>
+          <button class="am-btn am-btn-primary" id="am-btnSave">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- ── PAINEL B2B REPETIDOS ── -->
   <div class="panel" id="panel-repetidos">
@@ -9103,8 +9285,8 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop'];
-const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs'];
+const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial'];
+const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -9152,6 +9334,7 @@ const PANEL_NAV_MAP={
   ativacoes:['ntab-ativacoes','dash-mod-ativacoes'],
   preventivas:['ntab-preventivas','dash-mod-preventivas'],
   pop:['ntab-pop','dash-mod-pop'],
+  auditMaterial:['ntab-audit-material','dash-mod-audit-material'],
 };
 function applyPanelVisibility(){
   ALL_PANEL_KEYS.forEach(tab=>{
@@ -17676,13 +17859,13 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop'].includes(tab))tab='dashboard';
+  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop';
+  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':'rep');
+  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
@@ -17699,6 +17882,7 @@ function switchTab(tab,persist=true){
   document.getElementById('panel-ofs').classList.toggle('active',isOfs);
   document.getElementById('panel-ativacoes').classList.toggle('active',isAtiv);
   document.getElementById('panel-preventivas').classList.toggle('active',isPrevent);
+  document.getElementById('panel-audit-material').classList.toggle('active',isAuditMaterial);
   const showEncControls=(isEnc||isSi||isPref)&&dEnc.length>0;
   const encSubbar=document.getElementById('enc-subbar');
   if(encSubbar)encSubbar.classList.toggle('visible',showEncControls);
@@ -17720,6 +17904,7 @@ function switchTab(tab,persist=true){
   if(isAtiv)renderPanelAtivacoes();
   if(isPrevent)renderPreventAll();
   if(isPop)renderAllPop();
+  if(isAuditMaterial)amRenderTable();
   if(isSwap&&dAb.length)renderAllSwap();
   if(isDash)renderExecutiveDashboard();
   updateShellTitle(tab);
@@ -19675,6 +19860,586 @@ updateCentralStatus();
 </script>
 <!-- deploy retry: audio upload validation -->
 <div id="msel-portal"></div>
+<script>
+/* ══════════ PAINEL AUDIT MATERIAL (lógica) ══════════ */
+const AM_LS_TICKETS_KEY = 'auditMaterial.tickets.v1';
+const AM_LS_CATALOG_KEY = 'auditMaterial.catalog.v1';
+
+function amSaveTicketsLS(){
+  try{ localStorage.setItem(AM_LS_TICKETS_KEY, JSON.stringify(AM_TICKETS)); }catch(e){}
+}
+function amSaveCatalogLS(){
+  try{ localStorage.setItem(AM_LS_CATALOG_KEY, JSON.stringify(AM_CATALOG)); }catch(e){}
+}
+
+(function amInitTickets(){
+  let restored = null;
+  try{
+    const raw = localStorage.getItem(AM_LS_TICKETS_KEY);
+    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr) && arr.length) restored = arr; }
+  }catch(e){}
+  if(restored){
+    AM_TICKETS.length = 0;
+    restored.forEach(t=>AM_TICKETS.push(t));
+  }
+  AM_TICKETS.forEach((t,i)=>{
+    t._id = i;
+    if(!Array.isArray(t.mats)) t.mats = [];
+    if(typeof t.classificacao !== 'string') t.classificacao = '';
+    if(typeof t.obs !== 'string') t.obs = '';
+  });
+  if(!restored) amSaveTicketsLS();
+})();
+
+(function amInitCatalog(){
+  try{
+    const raw = localStorage.getItem(AM_LS_CATALOG_KEY);
+    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr) && arr.length) AM_CATALOG = arr; }
+  }catch(e){}
+})();
+
+let amSelectedItem = null;
+let amCurrentTicketId = null;
+let amFilterText = '';
+let amFilterMat = 'todos';
+
+function amNormalize(s){
+  return (s||'').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+
+function amUpdateKpis(){
+  document.getElementById('am-kpiTotal').textContent = AM_TICKETS.length;
+  document.getElementById('am-kpiTec').textContent = new Set(AM_TICKETS.map(t=>t.tecnico).filter(Boolean)).size;
+  document.getElementById('am-kpiCid').textContent = new Set(AM_TICKETS.map(t=>t.cidade).filter(Boolean)).size;
+  const comMat = AM_TICKETS.filter(t=>t.mats.length>0).length;
+  document.getElementById('am-kpiMat').textContent = comMat + ' / ' + AM_TICKETS.length;
+}
+
+function amTicketMatches(t){
+  const q = amNormalize(amFilterText);
+  const hit = !q || [t.os, t.cliente, t.tecnico, t.cidade, t.idOs].some(v=>amNormalize(v).includes(q));
+  if(!hit) return false;
+  if(amFilterMat === 'com') return t.mats.length>0;
+  if(amFilterMat === 'sem') return t.mats.length===0;
+  return true;
+}
+
+const AM_CLASSIFICACOES = ['INFRA','REDE','FIELD','B2B','SWAP','B2C','CHAM. PREVENTIVO'];
+
+function amEscapeAttr(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function amMajorityGroup(mats){
+  const counts = {};
+  const order = [];
+  mats.forEach(m=>{
+    if(!m.grupo) return;
+    if(!(m.grupo in counts)){ counts[m.grupo] = 0; order.push(m.grupo); }
+    counts[m.grupo]++;
+  });
+  if(order.length===0) return null;
+  let best = order[0];
+  order.forEach(g=>{ if(counts[g]>counts[best]) best = g; });
+  return best;
+}
+
+function amIsDivergentMat(mats, m){
+  if(!m.grupo) return false;
+  const distinctGroups = new Set(mats.map(x=>x.grupo).filter(Boolean));
+  if(distinctGroups.size<=1) return false;
+  const majority = amMajorityGroup(mats);
+  return !!majority && m.grupo !== majority;
+}
+
+function amMatWarnIcon(mats, m){
+  return amIsDivergentMat(mats, m)
+    ? ' <span class="am-mat-warn-icon" title="Grupo \''+amEscapeAttr(m.grupo)+'\' diferente dos demais materiais deste chamado">⚠️</span>'
+    : '';
+}
+
+let amChartClass = null;
+let amChartTopMat = null;
+let amChartGrupo = null;
+
+function amRenderAnalytics(){
+  if(typeof Chart === 'undefined') return;
+
+  const clsCounts = {};
+  AM_TICKETS.forEach(t=>{
+    const c = t.classificacao || 'Não classificado';
+    clsCounts[c] = (clsCounts[c]||0) + 1;
+  });
+  const clsLabels = Object.keys(clsCounts).sort((a,b)=>clsCounts[b]-clsCounts[a]);
+  const clsData = clsLabels.map(k=>clsCounts[k]);
+  const clsCanvas = document.getElementById('am-chartClass');
+  if(clsCanvas){
+    if(amChartClass){
+      amChartClass.data.labels = clsLabels;
+      amChartClass.data.datasets[0].data = clsData;
+      amChartClass.update();
+    }else{
+      amChartClass = new Chart(clsCanvas, {
+        type:'bar',
+        data:{labels:clsLabels, datasets:[{label:'Chamados', data:clsData, backgroundColor:'#1476C9'}]},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{legend:{display:false}, datalabels:{display:false}},
+          scales:{y:{beginAtZero:true, ticks:{precision:0}}}
+        }
+      });
+    }
+  }
+
+  const matTotals = {};
+  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{
+    const key = (m.cod||'—')+' — '+m.desc;
+    matTotals[key] = (matTotals[key]||0) + (parseInt(m.qtd)||0);
+  }));
+  const topMat = Object.entries(matTotals).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const matLabels = topMat.map(x=>x[0].length>36?x[0].slice(0,33)+'...':x[0]);
+  const matData = topMat.map(x=>x[1]);
+  const matCanvas = document.getElementById('am-chartTopMat');
+  if(matCanvas){
+    if(amChartTopMat){
+      amChartTopMat.data.labels = matLabels;
+      amChartTopMat.data.datasets[0].data = matData;
+      amChartTopMat.update();
+    }else{
+      amChartTopMat = new Chart(matCanvas, {
+        type:'bar',
+        data:{labels:matLabels, datasets:[{label:'Quantidade', data:matData, backgroundColor:'#42C34B'}]},
+        options:{
+          indexAxis:'y',
+          responsive:true, maintainAspectRatio:false,
+          plugins:{legend:{display:false}, datalabels:{display:false}},
+          scales:{x:{beginAtZero:true, ticks:{precision:0}}}
+        }
+      });
+    }
+  }
+
+  const grupoCounts = {};
+  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{
+    const g = m.grupo || 'Sem grupo / manual';
+    grupoCounts[g] = (grupoCounts[g]||0) + 1;
+  }));
+  const grupoLabels = Object.keys(grupoCounts);
+  const grupoData = grupoLabels.map(k=>grupoCounts[k]);
+  const grupoColors = ['#1476C9','#42C34B','#F1B44C','#C0392B','#8E44AD','#16A2B8','#6B7280','#E67E22'];
+  const grupoCanvas = document.getElementById('am-chartGrupo');
+  if(grupoCanvas){
+    if(amChartGrupo){
+      amChartGrupo.data.labels = grupoLabels;
+      amChartGrupo.data.datasets[0].data = grupoData;
+      amChartGrupo.update();
+    }else{
+      amChartGrupo = new Chart(grupoCanvas, {
+        type:'doughnut',
+        data:{labels:grupoLabels, datasets:[{data:grupoData, backgroundColor:grupoColors}]},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}, datalabels:{display:false}}
+        }
+      });
+    }
+  }
+
+  const divergentEl = document.getElementById('am-divergentList');
+  if(divergentEl){
+    const flagged = AM_TICKETS.filter(t=>t.mats.some(m=>amIsDivergentMat(t.mats,m)));
+    divergentEl.innerHTML = flagged.length
+      ? flagged.map(t=>'<div class="am-mat-line"><span>⚠️ '+t.os+' — '+t.cliente+'</span></div>').join('')
+      : '<p class="am-muted-small" style="margin:0;">Nenhum chamado com material fora do padrão no momento.</p>';
+  }
+}
+
+function amRenderTable(){
+  const tbody = document.getElementById('am-tbody');
+  tbody.innerHTML = '';
+  const visible = AM_TICKETS.filter(amTicketMatches);
+  visible.forEach(t=>{
+    const tr = document.createElement('tr');
+    if(t.mats.length>0) tr.classList.add('am-row-has-mat');
+    else if((t.obs||'').trim()) tr.classList.add('am-row-has-obs');
+    const matHtml = t.mats.length
+      ? t.mats.map(m=>'<span class="am-badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>').join('')
+        + '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
+      : '<span class="am-pill-empty">Nenhum material lançado</span>'
+        + '<button class="am-btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
+    const clsHtml = '<select class="am-cls-select" data-id="'+t._id+'">'
+      + '<option value=""'+(t.classificacao?'':' selected')+'>— Selecionar —</option>'
+      + AM_CLASSIFICACOES.map(c=>'<option value="'+c+'"'+(t.classificacao===c?' selected':'')+'>'+c+'</option>').join('')
+      + '</select>';
+    const obsHtml = '<input type="text" class="am-obs-input" data-id="'+t._id+'" value="'+amEscapeAttr(t.obs)+'" placeholder="Observações...">';
+    tr.innerHTML =
+      '<td>'+t.data+'</td>'+
+      '<td>'+t.os+'</td>'+
+      '<td>'+t.cliente+'</td>'+
+      '<td>'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
+      '<td>'+t.tecnico+'</td>'+
+      '<td>'+t.tipo+'</td>'+
+      '<td>'+clsHtml+'</td>'+
+      '<td>'+obsHtml+'</td>'+
+      '<td>'+matHtml+'</td>';
+    tbody.appendChild(tr);
+  });
+  document.querySelectorAll('.am-btn-add-mat').forEach(b=>{
+    b.addEventListener('click', ()=>amOpenModal(parseInt(b.dataset.id)));
+  });
+  document.querySelectorAll('.am-cls-select').forEach(sel=>{
+    sel.addEventListener('change', (e)=>{
+      AM_TICKETS[parseInt(sel.dataset.id)].classificacao = e.target.value;
+      amSaveTicketsLS();
+      amRenderAnalytics();
+    });
+  });
+  document.querySelectorAll('.am-obs-input').forEach(inp=>{
+    inp.addEventListener('change', (e)=>{
+      const t = AM_TICKETS[parseInt(inp.dataset.id)];
+      t.obs = e.target.value;
+      amSaveTicketsLS();
+      const tr = inp.closest('tr');
+      if(tr && t.mats.length===0){
+        tr.classList.toggle('am-row-has-obs', !!t.obs.trim());
+      }
+    });
+  });
+  document.getElementById('am-countInfo').textContent =
+    'Exibindo '+visible.length+' de '+AM_TICKETS.length+' chamados concluídos.';
+  amUpdateKpis();
+  amRenderAnalytics();
+}
+
+function amOpenModal(id){
+  amCurrentTicketId = id;
+  const t = AM_TICKETS[id];
+  document.getElementById('am-modalSub').textContent = t.os + ' — ' + t.cliente;
+  document.getElementById('am-acInput').value = '';
+  document.getElementById('am-codBox').value = '';
+  document.getElementById('am-acList').classList.remove('am-open');
+  document.getElementById('am-codAcList').classList.remove('am-open');
+  document.getElementById('am-qtdInput').value = 1;
+  document.getElementById('am-modalErr').style.display = 'none';
+  document.getElementById('am-manualMode').checked = false;
+  amSetManualMode(false);
+  amSelectedItem = null;
+  amRenderMatLines();
+  document.getElementById('am-modalOverlay').classList.add('am-open');
+}
+
+function amSetManualMode(on){
+  document.getElementById('am-labelDesc').textContent = on ? 'Descrição do material (manual)' : 'Descrição do material';
+  document.getElementById('am-acInput').placeholder = on
+    ? 'Digite a descrição do material não catalogado...'
+    : 'Digite para buscar: splitter, conector, CABO OPTICO...';
+  document.getElementById('am-labelCod').textContent = on ? 'Código SAP (opcional)' : 'Código SAP';
+  document.getElementById('am-codBox').placeholder = on
+    ? 'Deixe em branco se não houver código'
+    : 'Digite ou selecione o código SAP...';
+}
+
+function amCloseModal(){
+  document.getElementById('am-modalOverlay').classList.remove('am-open');
+  amCurrentTicketId = null;
+}
+
+function amRenderMatLines(){
+  const t = AM_TICKETS[amCurrentTicketId];
+  const box = document.getElementById('am-matLines');
+  box.innerHTML = '';
+  if(t.mats.length===0){
+    box.innerHTML = '<p class="am-pill-empty" style="margin:0 0 4px;">Nenhum material adicionado ainda.</p>';
+    return;
+  }
+  const title = document.createElement('p');
+  title.className = 'am-muted-small';
+  title.style.margin = '0 0 2px';
+  title.textContent = 'Materiais adicionados (' + t.mats.length + '):';
+  box.appendChild(title);
+  t.mats.forEach((m,idx)=>{
+    const line = document.createElement('div');
+    line.className = 'am-mat-line';
+    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em style="color:var(--am-text-muted);font-style:normal;">(manual)</em>':'')+amMatWarnIcon(t.mats,m)+'</span>'+
+      '<button class="am-rm" data-idx="'+idx+'">remover</button>';
+    box.appendChild(line);
+  });
+  box.querySelectorAll('.am-rm').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      t.mats.splice(parseInt(btn.dataset.idx),1);
+      amSaveTicketsLS();
+      amRenderMatLines();
+    });
+  });
+}
+
+function amRenderAcList(q, list){
+  if(!q || q.length<2){ list.classList.remove('am-open'); list.innerHTML=''; return; }
+  const nq = amNormalize(q);
+  const matches = AM_CATALOG.filter(c=> amNormalize(c.cod).includes(nq) || amNormalize(c.desc).includes(nq) ).slice(0,30);
+  if(matches.length===0){ list.classList.remove('am-open'); list.innerHTML=''; return; }
+  list.innerHTML = matches.map(c=>
+    '<div class="am-ac-item" data-cod="'+c.cod+'"><span class="am-cod">'+c.cod+'</span>'+c.desc+'</div>'
+  ).join('');
+  list.classList.add('am-open');
+  list.querySelectorAll('.am-ac-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const cod = el.dataset.cod;
+      amSelectedItem = AM_CATALOG.find(c=>c.cod===cod);
+      document.getElementById('am-acInput').value = amSelectedItem.desc;
+      document.getElementById('am-codBox').value = amSelectedItem.cod;
+      document.getElementById('am-acList').classList.remove('am-open');
+      document.getElementById('am-codAcList').classList.remove('am-open');
+    });
+  });
+}
+
+document.getElementById('am-btnCopyCod').addEventListener('click', ()=>{
+  const box = document.getElementById('am-codBox');
+  if(!box.value) return;
+  const btn = document.getElementById('am-btnCopyCod');
+  const done = ()=>{
+    const prevLabel = btn.textContent;
+    btn.textContent = 'Copiado!';
+    btn.classList.add('am-copied');
+    setTimeout(()=>{ btn.textContent = prevLabel; btn.classList.remove('am-copied'); }, 1500);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(box.value).then(done).catch(()=>{
+      box.select(); document.execCommand('copy'); done();
+    });
+  }else{
+    box.select(); document.execCommand('copy'); done();
+  }
+});
+
+document.getElementById('am-acInput').addEventListener('input', (e)=>{
+  amSelectedItem = null;
+  document.getElementById('am-codBox').value = '';
+  document.getElementById('am-codAcList').classList.remove('am-open');
+  amRenderAcList(e.target.value, document.getElementById('am-acList'));
+});
+
+document.getElementById('am-codBox').addEventListener('input', (e)=>{
+  const val = e.target.value.trim();
+  const exact = AM_CATALOG.find(c=> c.cod.toLowerCase() === val.toLowerCase());
+  document.getElementById('am-acList').classList.remove('am-open');
+  if(exact){
+    amSelectedItem = exact;
+    document.getElementById('am-acInput').value = exact.desc;
+    document.getElementById('am-codAcList').classList.remove('am-open');
+    document.getElementById('am-codAcList').innerHTML = '';
+    return;
+  }
+  amSelectedItem = null;
+  amRenderAcList(val, document.getElementById('am-codAcList'));
+});
+
+document.getElementById('am-manualMode').addEventListener('change', (e)=>{
+  const on = e.target.checked;
+  amSelectedItem = null;
+  document.getElementById('am-acInput').value = '';
+  document.getElementById('am-codBox').value = '';
+  document.getElementById('am-acList').classList.remove('am-open');
+  document.getElementById('am-codAcList').classList.remove('am-open');
+  document.getElementById('am-modalErr').style.display = 'none';
+  amSetManualMode(on);
+});
+
+document.getElementById('am-btnAddItem').addEventListener('click', ()=>{
+  const errEl = document.getElementById('am-modalErr');
+  const qtd = parseInt(document.getElementById('am-qtdInput').value) || 0;
+  const manual = document.getElementById('am-manualMode').checked;
+  let item;
+  if(manual){
+    const desc = document.getElementById('am-acInput').value.trim();
+    const cod = document.getElementById('am-codBox').value.trim();
+    if(!desc || qtd<1){
+      errEl.textContent = !desc ? 'Informe a descrição do material.' : 'Informe uma quantidade válida.';
+      errEl.style.display = 'block';
+      return;
+    }
+    item = {cod:cod, desc:desc, qtd:qtd, manual:true};
+  }else{
+    if(!amSelectedItem || qtd<1){
+      errEl.textContent = !amSelectedItem ? 'Selecione um material do catálogo antes de adicionar.' : 'Informe uma quantidade válida.';
+      errEl.style.display = 'block';
+      return;
+    }
+    item = {cod:amSelectedItem.cod, desc:amSelectedItem.desc, qtd:qtd, grupo:amSelectedItem.grupo||''};
+  }
+  errEl.style.display = 'none';
+  AM_TICKETS[amCurrentTicketId].mats.push(item);
+  amSaveTicketsLS();
+  amSelectedItem = null;
+  document.getElementById('am-acInput').value = '';
+  document.getElementById('am-codBox').value = '';
+  document.getElementById('am-qtdInput').value = 1;
+  amRenderMatLines();
+  document.getElementById('am-matLines').scrollIntoView({behavior:'smooth', block:'start'});
+});
+
+document.getElementById('am-btnCancel').addEventListener('click', amCloseModal);
+document.getElementById('am-btnSave').addEventListener('click', ()=>{
+  amCloseModal();
+  amRenderTable();
+});
+
+document.getElementById('am-searchBox').addEventListener('input', (e)=>{
+  amFilterText = e.target.value;
+  amRenderTable();
+});
+document.getElementById('am-filterMat').addEventListener('change', (e)=>{
+  amFilterMat = e.target.value;
+  amRenderTable();
+});
+
+document.getElementById('am-dbFile').addEventListener('change', (e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+      const newCatalog = [];
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        if(!r || !r[0]) continue;
+        newCatalog.push({cod:String(r[0]), desc:String(r[1]||''), grupo:String(r[2]||'')});
+      }
+      if(newCatalog.length===0){
+        document.getElementById('am-dbStatus').textContent = 'Não foi possível ler itens do arquivo. Verifique o formato (col. A = código, col. B = descrição).';
+        return;
+      }
+      AM_CATALOG = newCatalog;
+      amSaveCatalogLS();
+      document.getElementById('am-dbStatus').textContent = 'Catálogo carregado: '+f.name+' ('+AM_CATALOG.length+' itens)';
+    }catch(err){
+      document.getElementById('am-dbStatus').textContent = 'Erro ao ler o arquivo anexado.';
+    }
+  };
+  reader.readAsArrayBuffer(f);
+});
+
+function amNormHeader(s){
+  return amNormalize(s).replace(/[^a-z0-9]/g,'');
+}
+
+document.getElementById('am-ticketsFile').addEventListener('change', (e)=>{
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  const statusEl = document.getElementById('am-ticketsStatus');
+  statusEl.textContent = 'Lendo '+files.length+' arquivo(s)...';
+  let pending = files.length;
+  let hadError = false;
+  const allRows = [];
+
+  const AM_COL_ALIASES = {
+    data: ['data'],
+    os: ['os','ordemdeservico','numeroos','ordemservico'],
+    idOs: ['idos','idordemdeservico','idordemservico','iddaordemdeservico','iddaordemservico'],
+    cliente: ['cliente','nomedocliente'],
+    cidade: ['cidade'],
+    uf: ['uf','estado'],
+    tecnico: ['tecnico','tecnicoresponsavel'],
+    tipo: ['tipo','tipodeatividade','tipoatividade'],
+    area: ['area','areadetrabalho'],
+  };
+
+  function finishImport(){
+    if(allRows.length===0){
+      statusEl.textContent = hadError
+        ? 'Não foi possível ler chamados dos arquivos selecionados.'
+        : 'Nenhum chamado encontrado nos arquivos selecionados.';
+      return;
+    }
+    const seen = new Set();
+    const deduped = [];
+    allRows.forEach(r=>{
+      const key = r.os || r.idOs;
+      if(!key || seen.has(key)) return;
+      seen.add(key);
+      deduped.push(r);
+    });
+    AM_TICKETS.length = 0;
+    deduped.forEach((t,i)=>{ t._id = i; AM_TICKETS.push(t); });
+    amSaveTicketsLS();
+    statusEl.textContent = 'Base de chamados atualizada: '+files.length+' arquivo(s), '+AM_TICKETS.length+' chamados.'+(hadError?' (algum arquivo com erro foi ignorado)':'');
+    amSelectedItem = null;
+    amCurrentTicketId = null;
+    amRenderTable();
+  }
+
+  files.forEach(f=>{
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      try{
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+        if(rows.length>1){
+          const headerRow = rows[0].map(h=>amNormHeader(String(h||'')));
+          const idx = {};
+          Object.keys(AM_COL_ALIASES).forEach(key=>{
+            idx[key] = -1;
+            for(const alias of AM_COL_ALIASES[key]){
+              const found = headerRow.indexOf(alias);
+              if(found!==-1){ idx[key] = found; break; }
+            }
+          });
+          for(let i=1;i<rows.length;i++){
+            const r = rows[i];
+            if(!r || r.every(c=>c===undefined||c===null||c==='')) continue;
+            const get = (key)=> idx[key]>=0 ? String(r[idx[key]] ?? '').trim() : '';
+            const os = get('os');
+            const idOs = get('idOs');
+            if(!os && !idOs) continue;
+            allRows.push({
+              data:get('data'), os, idOs, cliente:get('cliente'),
+              cidade:get('cidade'), uf:get('uf'), tecnico:get('tecnico'),
+              tipo:get('tipo'), area:get('area'), mats:[], classificacao:'', obs:''
+            });
+          }
+        }
+      }catch(err){
+        hadError = true;
+      }
+      pending--;
+      if(pending===0) finishImport();
+    };
+    reader.onerror = function(){
+      hadError = true;
+      pending--;
+      if(pending===0) finishImport();
+    };
+    reader.readAsArrayBuffer(f);
+  });
+});
+
+document.getElementById('am-btnExport').addEventListener('click', ()=>{
+  const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Classificação','Observações','Código SAP','Descrição do Material','Quantidade','Manual'];
+  const rows = [];
+  AM_TICKETS.forEach(t=>{
+    if(t.mats.length===0){
+      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,t.classificacao||'',t.obs||'','','','','']);
+      return;
+    }
+    t.mats.forEach(m=>{
+      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,t.classificacao||'',t.obs||'',m.cod||'',m.desc,m.qtd,m.manual?'Sim':'Não']);
+    });
+  });
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:10},{wch:20},{wch:18},{wch:32},{wch:18},{wch:6},{wch:26},{wch:22},{wch:24},{wch:14},{wch:30},{wch:14},{wch:50},{wch:10},{wch:8}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Chamados e Materiais');
+  XLSX.writeFile(wb, 'Chamados_Concluidos_SLN_Materiais.xlsx');
+});
+</script>
 </body>
 </html>
 
