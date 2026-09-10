@@ -63,6 +63,8 @@ function openModal(id){
   document.getElementById('modalSub').textContent = t.os + ' — ' + t.cliente;
   document.getElementById('acInput').value = '';
   document.getElementById('codBox').value = '';
+  document.getElementById('acList').classList.remove('open');
+  document.getElementById('codAcList').classList.remove('open');
   document.getElementById('qtdInput').value = 1;
   document.getElementById('modalErr').style.display = 'none';
   selectedItem = null;
@@ -94,14 +96,13 @@ function renderMatLines(){
   });
 }
 
-function renderAcList(q){
-  const list = document.getElementById('acList');
+function renderAcList(q, list){
   if(!q || q.length<2){ list.classList.remove('open'); list.innerHTML=''; return; }
   const nq = normalize(q);
   const matches = CATALOG.filter(c=> normalize(c.cod).includes(nq) || normalize(c.desc).includes(nq) ).slice(0,30);
   if(matches.length===0){ list.classList.remove('open'); list.innerHTML=''; return; }
   list.innerHTML = matches.map(c=>
-    '<div class="ac-item" data-cod="'+c.cod+'">'+c.desc+'</div>'
+    '<div class="ac-item" data-cod="'+c.cod+'"><span class="cod">'+c.cod+'</span>'+c.desc+'</div>'
   ).join('');
   list.classList.add('open');
   list.querySelectorAll('.ac-item').forEach(el=>{
@@ -110,7 +111,8 @@ function renderAcList(q){
       selectedItem = CATALOG.find(c=>c.cod===cod);
       document.getElementById('acInput').value = selectedItem.desc;
       document.getElementById('codBox').value = selectedItem.cod;
-      list.classList.remove('open');
+      document.getElementById('acList').classList.remove('open');
+      document.getElementById('codAcList').classList.remove('open');
     });
   });
 }
@@ -137,7 +139,23 @@ document.getElementById('btnCopyCod').addEventListener('click', ()=>{
 document.getElementById('acInput').addEventListener('input', (e)=>{
   selectedItem = null;
   document.getElementById('codBox').value = '';
-  renderAcList(e.target.value);
+  document.getElementById('codAcList').classList.remove('open');
+  renderAcList(e.target.value, document.getElementById('acList'));
+});
+
+document.getElementById('codBox').addEventListener('input', (e)=>{
+  const val = e.target.value.trim();
+  const exact = CATALOG.find(c=> c.cod.toLowerCase() === val.toLowerCase());
+  document.getElementById('acList').classList.remove('open');
+  if(exact){
+    selectedItem = exact;
+    document.getElementById('acInput').value = exact.desc;
+    document.getElementById('codAcList').classList.remove('open');
+    document.getElementById('codAcList').innerHTML = '';
+    return;
+  }
+  selectedItem = null;
+  renderAcList(val, document.getElementById('codAcList'));
 });
 
 document.getElementById('btnAddItem').addEventListener('click', ()=>{
