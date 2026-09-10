@@ -35,7 +35,7 @@ function renderTable(){
   visible.forEach(t=>{
     const tr = document.createElement('tr');
     const matHtml = t.mats.length
-      ? t.mats.map(m=>'<span class="badge">'+m.cod+' — '+m.desc+' ('+m.qtd+')</span>').join('')
+      ? t.mats.map(m=>'<span class="badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+'</span>').join('')
         + '<br><button class="btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
       : '<span class="pill-empty">Nenhum material lançado</span>'
         + '<button class="btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
@@ -67,9 +67,22 @@ function openModal(id){
   document.getElementById('codAcList').classList.remove('open');
   document.getElementById('qtdInput').value = 1;
   document.getElementById('modalErr').style.display = 'none';
+  document.getElementById('manualMode').checked = false;
+  setManualMode(false);
   selectedItem = null;
   renderMatLines();
   document.getElementById('modalOverlay').classList.add('open');
+}
+
+function setManualMode(on){
+  document.getElementById('labelDesc').textContent = on ? 'Descrição do material (manual)' : 'Descrição do material';
+  document.getElementById('acInput').placeholder = on
+    ? 'Digite a descrição do material não catalogado...'
+    : 'Digite para buscar: splitter, conector, CABO OPTICO...';
+  document.getElementById('labelCod').textContent = on ? 'Código SAP (opcional)' : 'Código SAP';
+  document.getElementById('codBox').placeholder = on
+    ? 'Deixe em branco se não houver código'
+    : 'Digite ou selecione o código SAP...';
 }
 
 function closeModal(){
@@ -93,7 +106,7 @@ function renderMatLines(){
   t.mats.forEach((m,idx)=>{
     const line = document.createElement('div');
     line.className = 'mat-line';
-    line.innerHTML = '<span>'+m.cod+' — '+m.desc+' ('+m.qtd+')</span>'+
+    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em style="color:var(--text-muted);font-style:normal;">(manual)</em>':'')+'</span>'+
       '<button class="rm" data-idx="'+idx+'">remover</button>';
     box.appendChild(line);
   });
@@ -167,16 +180,41 @@ document.getElementById('codBox').addEventListener('input', (e)=>{
   renderAcList(val, document.getElementById('codAcList'));
 });
 
+document.getElementById('manualMode').addEventListener('change', (e)=>{
+  const on = e.target.checked;
+  selectedItem = null;
+  document.getElementById('acInput').value = '';
+  document.getElementById('codBox').value = '';
+  document.getElementById('acList').classList.remove('open');
+  document.getElementById('codAcList').classList.remove('open');
+  document.getElementById('modalErr').style.display = 'none';
+  setManualMode(on);
+});
+
 document.getElementById('btnAddItem').addEventListener('click', ()=>{
   const errEl = document.getElementById('modalErr');
   const qtd = parseInt(document.getElementById('qtdInput').value) || 0;
-  if(!selectedItem || qtd<1){
-    errEl.textContent = !selectedItem ? 'Selecione um material do catálogo antes de adicionar.' : 'Informe uma quantidade válida.';
-    errEl.style.display = 'block';
-    return;
+  const manual = document.getElementById('manualMode').checked;
+  let item;
+  if(manual){
+    const desc = document.getElementById('acInput').value.trim();
+    const cod = document.getElementById('codBox').value.trim();
+    if(!desc || qtd<1){
+      errEl.textContent = !desc ? 'Informe a descrição do material.' : 'Informe uma quantidade válida.';
+      errEl.style.display = 'block';
+      return;
+    }
+    item = {cod:cod, desc:desc, qtd:qtd, manual:true};
+  }else{
+    if(!selectedItem || qtd<1){
+      errEl.textContent = !selectedItem ? 'Selecione um material do catálogo antes de adicionar.' : 'Informe uma quantidade válida.';
+      errEl.style.display = 'block';
+      return;
+    }
+    item = {cod:selectedItem.cod, desc:selectedItem.desc, qtd:qtd};
   }
   errEl.style.display = 'none';
-  TICKETS[currentTicketId].mats.push({cod:selectedItem.cod, desc:selectedItem.desc, qtd:qtd});
+  TICKETS[currentTicketId].mats.push(item);
   selectedItem = null;
   document.getElementById('acInput').value = '';
   document.getElementById('codBox').value = '';
@@ -232,7 +270,7 @@ document.getElementById('dbFile').addEventListener('change', (e)=>{
 document.getElementById('btnExport').addEventListener('click', ()=>{
   const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Materiais Aplicados'];
   const rows = TICKETS.map(t=>{
-    const matsStr = t.mats.map(m=> m.cod+' - '+m.desc+' (qtd: '+m.qtd+')').join('; ');
+    const matsStr = t.mats.map(m=> (m.cod||'—')+' - '+m.desc+' (qtd: '+m.qtd+')'+(m.manual?' [manual]':'')).join('; ');
     return [t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,matsStr];
   });
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
