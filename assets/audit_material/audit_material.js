@@ -1,5 +1,34 @@
 
-TICKETS.forEach((t,i)=>{ t._id = i; t.mats = []; });
+const LS_TICKETS_KEY = 'auditMaterial.tickets.v1';
+const LS_CATALOG_KEY = 'auditMaterial.catalog.v1';
+
+function saveTicketsLS(){
+  try{ localStorage.setItem(LS_TICKETS_KEY, JSON.stringify(TICKETS)); }catch(e){}
+}
+function saveCatalogLS(){
+  try{ localStorage.setItem(LS_CATALOG_KEY, JSON.stringify(CATALOG)); }catch(e){}
+}
+
+(function initTickets(){
+  let restored = null;
+  try{
+    const raw = localStorage.getItem(LS_TICKETS_KEY);
+    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr) && arr.length) restored = arr; }
+  }catch(e){}
+  if(restored){
+    TICKETS.length = 0;
+    restored.forEach(t=>TICKETS.push(t));
+  }
+  TICKETS.forEach((t,i)=>{ t._id = i; if(!Array.isArray(t.mats)) t.mats = []; });
+  if(!restored) saveTicketsLS();
+})();
+
+(function initCatalog(){
+  try{
+    const raw = localStorage.getItem(LS_CATALOG_KEY);
+    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr) && arr.length) CATALOG = arr; }
+  }catch(e){}
+})();
 
 let selectedItem = null;
 let currentTicketId = null;
@@ -113,6 +142,7 @@ function renderMatLines(){
   box.querySelectorAll('.rm').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       t.mats.splice(parseInt(btn.dataset.idx),1);
+      saveTicketsLS();
       renderMatLines();
     });
   });
@@ -215,6 +245,7 @@ document.getElementById('btnAddItem').addEventListener('click', ()=>{
   }
   errEl.style.display = 'none';
   TICKETS[currentTicketId].mats.push(item);
+  saveTicketsLS();
   selectedItem = null;
   document.getElementById('acInput').value = '';
   document.getElementById('codBox').value = '';
@@ -259,12 +290,124 @@ document.getElementById('dbFile').addEventListener('change', (e)=>{
         return;
       }
       CATALOG = newCatalog;
+      saveCatalogLS();
       document.getElementById('dbStatus').textContent = 'Catálogo carregado: '+f.name+' ('+CATALOG.length+' itens)';
     }catch(err){
       document.getElementById('dbStatus').textContent = 'Erro ao ler o arquivo anexado.';
     }
   };
   reader.readAsArrayBuffer(f);
+});
+
+function normHeader(s){
+  return normalize(s).replace(/[^a-z0-9]/g,'');
+}
+
+document.getElementById('ticketsFile').addEventListener('change', (e)=>{
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  const statusEl = document.getElementById('ticketsStatus');
+  statusEl.textContent = 'Lendo '+files.length+' arquivo(s)...';
+  let pending = files.length;
+  let hadError = false;
+  const allRows = [];
+
+  const COL_ALIASES = {
+    data: ['data'],
+    os: ['os','ordemdeservico','numeroos','ordemservico'],
+    idOs: ['idos','idordemdeservico','idordemservico','iddaordemdeservico','iddaordemservico'],
+    cliente: ['cliente','nomedocliente'],
+    cidade: ['cidade'],
+    uf: ['uf','estado'],
+    tecnico: ['tecnico','tecnicoresponsavel'],
+    tipo: ['tipo','tipodeatividade','tipoatividade'],
+    area: ['area','areadetrabalho'],
+  };
+
+  function finishImport(){
+    if(allRows.length===0){
+      statusEl.textContent = hadError
+        ? 'Não foi possível ler chamados dos arquivos selecionados.'
+        : 'Nenhum chamado encontrado nos arquivos selecionados.';
+      return;
+    }
+    const seen = new Set();
+    const deduped = [];
+    allRows.forEach(r=>{
+      const key = r.os || r.idOs;
+      if(!key || seen.has(key)) return;
+      seen.add(key);
+      deduped.push(r);
+    });
+    TICKETS.length = 0;
+    deduped.forEach((t,i)=>{ t._id = i; TICKETS.push(t); });
+    saveTicketsLS();
+    statusEl.textContent = 'Base de chamados atualizada: '+files.length+' arquivo(s), '+TICKETS.length+' chamados.'+(hadError?' (algum arquivo com erro foi ignorado)':'');
+    selectedItem = null;
+    currentTicketId = null;
+    renderTable();
+  }
+
+  files.forEach(f=>{
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      try{
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+        if(rows.length>1){
+          const headerRow = rows[0].map(h=>normHeader(String(h||'')));
+          const idx = {};
+          Object.keys(COL_ALIASES).forEach(key=>{
+            idx[key] = -1;
+            for(const alias of COL_ALIASES[key]){
+              const found = headerRow.indexOf(alias);
+              if(found!==-1){ idx[key] = found; break; }
+            }
+          });
+          for(let i=1;i<rows.length;i++){
+            const r = rows[i];
+            if(!r || r.every(c=>c===undefined||c===null||c==='')) continue;
+            const get = (key)=> idx[key]>=0 ? String(r[idx[key]] ?? '').trim() : '';
+            const os = get('os');
+            const idOs = get('idOs');
+            if(!os && !idOs) continue;
+            allRows.push({
+              data:get('data'), os, idOs, cliente:get('cliente'),
+              cidade:get('cidade'), uf:get('uf'), tecnico:get('tecnico'),
+              tipo:get('tipo'), area:get('area'), mats:[]
+            });
+          }
+        }
+      }catch(err){
+        hadError = true;
+      }
+      pending--;
+      if(pending===0) finishImport();
+    };
+    reader.onerror = function(){
+      hadError = true;
+      pending--;
+      if(pending===0) finishImport();
+    };
+    reader.readAsArrayBuffer(f);
+  });
+});
+
+document.getElementById('btnExportMats').addEventListener('click', ()=>{
+  const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Código SAP','Descrição do Material','Quantidade','Manual'];
+  const rows = [];
+  TICKETS.forEach(t=>{
+    t.mats.forEach(m=>{
+      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,m.cod||'',m.desc,m.qtd,m.manual?'Sim':'Não']);
+    });
+  });
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:10},{wch:20},{wch:18},{wch:32},{wch:18},{wch:6},{wch:26},{wch:22},{wch:24},{wch:14},{wch:50},{wch:10},{wch:8}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Materiais Aplicados');
+  XLSX.writeFile(wb, 'Materiais_Aplicados_SAP.xlsx');
 });
 
 document.getElementById('btnExport').addEventListener('click', ()=>{
