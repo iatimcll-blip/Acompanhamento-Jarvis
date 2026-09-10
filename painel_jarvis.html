@@ -6747,6 +6747,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-audit-material" onclick="switchTab('auditMaterial')">
         <i class="ti ti-clipboard-list"></i><span class="ntab-label"> Audit Material</span>
       </button>
+      <button class="ntab" id="ntab-saldo-sap" onclick="switchTab('saldoSap')">
+        <i class="ti ti-building-warehouse"></i><span class="ntab-label"> Saldo SAP</span>
+      </button>
       </div>
       <button type="button" class="tabbar-arrow tabbar-arrow-r" id="tabbar-arrow-r" onclick="scrollTabbar(1)" title="Ver mais painéis"><i class="ti ti-chevron-right"></i></button>
     </div>
@@ -6884,6 +6887,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-ip-acomp" onclick="window.location.href='painel_acompanhamento_ip.html'"><i class="ti ti-shield-lock"></i><strong>Investigação de IPs</strong><span>Acompanhamento de CPEs invadidos/down/acessíveis cruzados com o inventário B2B.</span></button>
       <button class="dash-module" id="dash-mod-ampli" onclick="window.location.href='painel_ampli.html'"><i class="ti ti-school"></i><strong>Ampli</strong><span>Painel de estudo com busca sobre questões corrigidas, com OCR para novos anexos.</span></button>
       <button class="dash-module" id="dash-mod-audit-material" onclick="switchTab('auditMaterial')"><i class="ti ti-clipboard-list"></i><strong>Audit Material</strong><span>Chamados B2B concluídos com lançamento de materiais aplicados via catálogo SAP.</span></button>
+      <button class="dash-module" id="dash-mod-saldo-sap" onclick="switchTab('saldoSap')"><i class="ti ti-building-warehouse"></i><strong>Saldo SAP</strong><span>Estoque anexado do SAP menos o consumo lançado no Audit Material — saldo por código.</span></button>
       <button class="dash-module" onclick="openCentral()"><i class="ti ti-database"></i><strong>Central de Dados</strong><span>Controle de importação, status, validação e limpeza de bases.</span></button>
     </div>
   </div>
@@ -8646,6 +8650,103 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
   </div>
 
+  <!-- ── PAINEL SALDO SAP ── -->
+  <style id="sb-style">
+  #panel-saldo-sap{
+    --sb-navy:var(--tx);
+    --sb-blue:var(--blue);
+    --sb-border:var(--bd);
+    --sb-card:var(--surface);
+    --sb-text:var(--tx);
+    --sb-text-muted:var(--tx3);
+    font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
+    color:var(--sb-text);
+    flex-direction:column;
+    overflow-y:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #panel-saldo-sap.active{display:flex;flex:1;min-height:0;}
+  #panel-saldo-sap *{box-sizing:border-box;}
+  #panel-saldo-sap .sb-kpis,
+  #panel-saldo-sap .sb-toolbar,
+  #panel-saldo-sap > #sb-countInfo{flex:0 0 auto;}
+  #panel-saldo-sap .sb-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  #panel-saldo-sap .sb-kpi{background:var(--sb-card);border:.5px solid var(--sb-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:16px 18px;}
+  #panel-saldo-sap .sb-kpi .sb-label{font-size:11px;font-weight:500;color:var(--sb-text-muted);letter-spacing:-.005em;}
+  #panel-saldo-sap .sb-kpi .sb-value{font-size:26px;font-weight:700;margin-top:4px;color:var(--sb-navy);letter-spacing:-.01em;}
+  #panel-saldo-sap .sb-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:var(--sb-card);border:.5px solid var(--sb-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:10px 14px;margin-bottom:16px;}
+  #panel-saldo-sap .sb-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  #panel-saldo-sap input[type=text]{
+    height:30px;border:.5px solid var(--bd2);border-radius:var(--r);padding:0 10px;font-family:inherit;
+    font-size:11.5px;color:var(--sb-text);background:var(--sb-card);box-shadow:var(--shadow-sm);
+    transition:border-color .13s;outline:none;
+  }
+  #panel-saldo-sap input[type=text]:focus{border-color:var(--blue);}
+  #panel-saldo-sap #sb-searchBox{width:260px;}
+  #panel-saldo-sap .sb-btn{height:30px;border-radius:var(--r);border:.5px solid var(--sb-border);background:var(--surface2);color:var(--sb-text);box-shadow:var(--shadow-sm);padding:0 14px;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .13s;}
+  #panel-saldo-sap .sb-btn:hover{background:var(--surface3);}
+  #panel-saldo-sap .sb-btn-green{background:var(--green);color:#fff;border-color:var(--green);}
+  #panel-saldo-sap .sb-btn-green:hover{background:var(--green);opacity:.85;}
+  #panel-saldo-sap label.sb-file-btn{height:30px;display:inline-flex;align-items:center;gap:6px;border:.5px solid var(--sb-border);border-radius:var(--r);box-shadow:var(--shadow-sm);padding:0 14px;font-size:11.5px;font-weight:500;color:var(--sb-text);cursor:pointer;background:var(--surface2);transition:background .13s;}
+  #panel-saldo-sap label.sb-file-btn:hover{background:var(--surface3);}
+  #panel-saldo-sap .sb-db-status{font-size:11px;color:var(--sb-text-muted);}
+  #panel-saldo-sap table{width:100%;border-collapse:collapse;background:var(--sb-card);border:.5px solid var(--sb-border);border-radius:var(--rl);font-size:12.5px;}
+  #panel-saldo-sap thead th{text-align:left;background:var(--surface2);color:var(--sb-text-muted);padding:9px 10px;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid var(--sb-border);white-space:nowrap;position:sticky;top:0;z-index:1;}
+  #panel-saldo-sap tbody td{padding:9px 10px;border-bottom:.5px solid var(--sb-border);vertical-align:middle;}
+  #panel-saldo-sap tbody tr:hover{background:var(--surface2);}
+  #panel-saldo-sap tbody tr.sb-row-neg{background:var(--red-bg);}
+  #panel-saldo-sap tbody tr.sb-row-neg:hover{background:var(--red-bg);filter:brightness(.96);}
+  #panel-saldo-sap .sb-num{text-align:right;font-variant-numeric:tabular-nums;}
+  #panel-saldo-sap .sb-saldo{font-weight:700;}
+  #panel-saldo-sap .sb-saldo-neg{color:var(--red-dk);}
+  #panel-saldo-sap .sb-table-scroll{flex:1 1 auto;min-height:220px;overflow:auto;border-radius:var(--rl);box-shadow:var(--shadow-sm);}
+  #panel-saldo-sap .sb-muted-small{font-size:11px;color:var(--sb-text-muted);}
+  @media (max-width:900px){
+    #panel-saldo-sap .sb-kpis{grid-template-columns:repeat(2,1fr);}
+  }
+  </style>
+  <div class="panel" id="panel-saldo-sap">
+    <div class="sb-kpis">
+      <div class="sb-kpi"><div class="sb-label">Itens no estoque</div><div class="sb-value" id="sb-kpiItens">0</div></div>
+      <div class="sb-kpi"><div class="sb-label">Estoque total (disponível)</div><div class="sb-value" id="sb-kpiEstoque">0</div></div>
+      <div class="sb-kpi"><div class="sb-label">Consumido (Audit Material)</div><div class="sb-value" id="sb-kpiConsumido">0</div></div>
+      <div class="sb-kpi"><div class="sb-label">Itens com saldo negativo</div><div class="sb-value" id="sb-kpiNegativos" style="color:var(--red-dk);">0</div></div>
+    </div>
+
+    <div class="sb-toolbar">
+      <div class="sb-toolbar-left">
+        <input type="text" id="sb-searchBox" placeholder="Buscar por código, descrição ou grupo...">
+      </div>
+      <div class="sb-toolbar-left">
+        <span class="sb-db-status" id="sb-stockStatus">Nenhuma base anexada</span>
+        <label class="sb-file-btn">Anexar base de materiais (SAP)
+          <input type="file" id="sb-stockFile" accept=".xlsx,.xls,.csv" style="display:none;">
+        </label>
+      </div>
+      <div class="sb-toolbar-left">
+        <button class="sb-btn sb-btn-green" id="sb-btnExport">Exportar planilha (.xlsx)</button>
+      </div>
+    </div>
+
+    <div class="sb-table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Código SAP</th>
+          <th>Descrição</th>
+          <th>Grupo</th>
+          <th>Unidade</th>
+          <th>Estoque</th>
+          <th>Consumido</th>
+          <th>Saldo</th>
+        </tr>
+      </thead>
+      <tbody id="sb-tbody"></tbody>
+    </table>
+    </div>
+    <p class="sb-muted-small" id="sb-countInfo" style="margin-top:8px;"></p>
+  </div>
+
 
   <!-- ── PAINEL B2B REPETIDOS ── -->
   <div class="panel" id="panel-repetidos">
@@ -9318,8 +9419,8 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial'];
-const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial'];
+const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
+const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -9368,6 +9469,7 @@ const PANEL_NAV_MAP={
   preventivas:['ntab-preventivas','dash-mod-preventivas'],
   pop:['ntab-pop','dash-mod-pop'],
   auditMaterial:['ntab-audit-material','dash-mod-audit-material'],
+  saldoSap:['ntab-saldo-sap','dash-mod-saldo-sap'],
 };
 function applyPanelVisibility(){
   ALL_PANEL_KEYS.forEach(tab=>{
@@ -17892,13 +17994,13 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial'].includes(tab))tab='dashboard';
+  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial';
+  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':'rep');
+  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
@@ -17916,6 +18018,7 @@ function switchTab(tab,persist=true){
   document.getElementById('panel-ativacoes').classList.toggle('active',isAtiv);
   document.getElementById('panel-preventivas').classList.toggle('active',isPrevent);
   document.getElementById('panel-audit-material').classList.toggle('active',isAuditMaterial);
+  document.getElementById('panel-saldo-sap').classList.toggle('active',isSaldoSap);
   const showEncControls=(isEnc||isSi||isPref)&&dEnc.length>0;
   const encSubbar=document.getElementById('enc-subbar');
   if(encSubbar)encSubbar.classList.toggle('visible',showEncControls);
@@ -17938,6 +18041,7 @@ function switchTab(tab,persist=true){
   if(isPrevent)renderPreventAll();
   if(isPop)renderAllPop();
   if(isAuditMaterial)amRenderTable();
+  if(isSaldoSap)sbRenderTable();
   if(isSwap&&dAb.length)renderAllSwap();
   if(isDash)renderExecutiveDashboard();
   updateShellTitle(tab);
@@ -20626,6 +20730,175 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
   w.document.open();
   w.document.write(html);
   w.document.close();
+});
+</script>
+<script>
+/* ══════════ PAINEL SALDO SAP (lógica) ══════════
+   Estoque (Disponível, somado por Código do Item no SAP) da base anexada
+   MENOS o consumo lançado no Painel Audit Material (soma de m.qtd por m.cod
+   em todos os AM_TICKETS) = Saldo. Não depende de nenhum upload próprio de
+   "consumo": lê direto de AM_TICKETS, que já é a fonte única de lançamentos. */
+const SB_LS_KEY = 'auditMaterial.sapStock.v1';
+let SB_STOCK = [];
+
+(function sbInitStock(){
+  try{
+    const raw = localStorage.getItem(SB_LS_KEY);
+    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr)) SB_STOCK = arr; }
+  }catch(e){}
+})();
+function sbSaveStockLS(){
+  try{ localStorage.setItem(SB_LS_KEY, JSON.stringify(SB_STOCK)); }catch(e){}
+}
+
+function sbNormHeader(s){
+  return amNormalize(s).replace(/[^a-z0-9]/g,'');
+}
+
+let sbFilterText = '';
+
+function sbComputeConsumido(){
+  const map = {};
+  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{
+    if(!m.cod) return;
+    map[m.cod] = (map[m.cod]||0) + (parseInt(m.qtd)||0);
+  }));
+  return map;
+}
+
+function sbRowMatches(r){
+  const q = amNormalize(sbFilterText);
+  if(!q) return true;
+  return [r.cod, r.desc, r.grupo].some(v=>amNormalize(v||'').includes(q));
+}
+
+function sbRenderTable(){
+  const tbody = document.getElementById('sb-tbody');
+  tbody.innerHTML = '';
+  const consumidoMap = sbComputeConsumido();
+  const stockCodes = new Set(SB_STOCK.map(s=>s.cod));
+  const rows = SB_STOCK.map(s=>{
+    const consumido = consumidoMap[s.cod] || 0;
+    return {cod:s.cod, desc:s.desc, grupo:(s.grupo||'').replace(/^#\s*/,''), unidade:s.unidade, estoque:s.disponivel, consumido, saldo:s.disponivel - consumido};
+  });
+  Object.keys(consumidoMap).forEach(cod=>{
+    if(!stockCodes.has(cod)){
+      rows.push({cod, desc:'(não encontrado na base SAP anexada)', grupo:'', unidade:'', estoque:0, consumido:consumidoMap[cod], saldo:-consumidoMap[cod]});
+    }
+  });
+  rows.sort((a,b)=> a.saldo - b.saldo || String(a.cod).localeCompare(String(b.cod)));
+  const visible = rows.filter(sbRowMatches);
+  visible.forEach(r=>{
+    const tr = document.createElement('tr');
+    if(r.saldo<0) tr.classList.add('sb-row-neg');
+    tr.innerHTML =
+      '<td>'+(r.cod||'—')+'</td>'+
+      '<td>'+r.desc+'</td>'+
+      '<td>'+r.grupo+'</td>'+
+      '<td>'+r.unidade+'</td>'+
+      '<td class="sb-num">'+r.estoque+'</td>'+
+      '<td class="sb-num">'+r.consumido+'</td>'+
+      '<td class="sb-num sb-saldo'+(r.saldo<0?' sb-saldo-neg':'')+'">'+r.saldo+'</td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('sb-countInfo').textContent =
+    'Exibindo '+visible.length+' de '+rows.length+' itens.';
+  document.getElementById('sb-kpiItens').textContent = rows.length;
+  document.getElementById('sb-kpiEstoque').textContent = SB_STOCK.reduce((s,x)=>s+x.disponivel,0);
+  document.getElementById('sb-kpiConsumido').textContent = Object.values(consumidoMap).reduce((s,v)=>s+v,0);
+  document.getElementById('sb-kpiNegativos').textContent = rows.filter(r=>r.saldo<0).length;
+}
+
+document.getElementById('sb-searchBox').addEventListener('input', (e)=>{
+  sbFilterText = e.target.value;
+  sbRenderTable();
+});
+
+document.getElementById('sb-stockFile').addEventListener('change', (e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const statusEl = document.getElementById('sb-stockStatus');
+  const SB_COL_ALIASES = {
+    cod: ['codigodoitemnosap','codigosap','codigodoitem'],
+    desc: ['descricao'],
+    unidade: ['unidadedemedidadecompra','unidade','unidadedemedida'],
+    grupo: ['grupodoitem','grupo','grupodematerial','grupodemateriais'],
+    disponivel: ['disponivel','saldodisponivel'],
+  };
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+      if(rows.length<2) throw new Error('vazio');
+      const headerRow = rows[0].map(h=>sbNormHeader(String(h||'')));
+      const idx = {};
+      Object.keys(SB_COL_ALIASES).forEach(key=>{
+        idx[key] = -1;
+        for(const alias of SB_COL_ALIASES[key]){
+          const found = headerRow.indexOf(alias);
+          if(found!==-1){ idx[key] = found; break; }
+        }
+      });
+      if(idx.cod<0 || idx.disponivel<0){
+        statusEl.textContent = 'Não foi possível identificar as colunas "Código do Item no SAP" e "Disponível" no arquivo.';
+        return;
+      }
+      const agg = {};
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        if(!r) continue;
+        const cod = String(r[idx.cod] ?? '').trim();
+        if(!cod) continue;
+        const disp = parseFloat(r[idx.disponivel]) || 0;
+        if(!agg[cod]){
+          agg[cod] = {
+            cod,
+            desc: idx.desc>=0 ? String(r[idx.desc] ?? '').trim() : '',
+            unidade: idx.unidade>=0 ? String(r[idx.unidade] ?? '').trim() : '',
+            grupo: idx.grupo>=0 ? String(r[idx.grupo] ?? '').trim() : '',
+            disponivel: 0,
+          };
+        }
+        agg[cod].disponivel += disp;
+      }
+      const newStock = Object.values(agg);
+      if(newStock.length===0){
+        statusEl.textContent = 'Nenhum item válido encontrado no arquivo.';
+        return;
+      }
+      SB_STOCK = newStock;
+      sbSaveStockLS();
+      statusEl.textContent = 'Base carregada: '+f.name+' ('+SB_STOCK.length+' itens)';
+      sbRenderTable();
+    }catch(err){
+      statusEl.textContent = 'Erro ao ler o arquivo anexado.';
+    }
+  };
+  reader.readAsArrayBuffer(f);
+});
+
+document.getElementById('sb-btnExport').addEventListener('click', ()=>{
+  const consumidoMap = sbComputeConsumido();
+  const stockCodes = new Set(SB_STOCK.map(s=>s.cod));
+  const rows = SB_STOCK.map(s=>{
+    const consumido = consumidoMap[s.cod] || 0;
+    return [s.cod, s.desc, (s.grupo||'').replace(/^#\s*/,''), s.unidade, s.disponivel, consumido, s.disponivel-consumido];
+  });
+  Object.keys(consumidoMap).forEach(cod=>{
+    if(!stockCodes.has(cod)){
+      rows.push([cod, '(não encontrado na base SAP anexada)', '', '', 0, consumidoMap[cod], -consumidoMap[cod]]);
+    }
+  });
+  rows.sort((a,b)=> a[6]-b[6] || String(a[0]).localeCompare(String(b[0])));
+  const header = ['Código SAP','Descrição','Grupo','Unidade','Estoque (Disponível)','Consumido','Saldo'];
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:14},{wch:45},{wch:26},{wch:10},{wch:12},{wch:12},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Saldo SAP');
+  XLSX.writeFile(wb, 'Saldo_SAP_'+new Date().toISOString().slice(0,10)+'.xlsx');
 });
 </script>
 </body>
