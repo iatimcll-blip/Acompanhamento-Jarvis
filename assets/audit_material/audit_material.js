@@ -133,6 +133,7 @@ function openModal(id){
   document.getElementById('codAcList').classList.remove('open');
   document.getElementById('qtdInput').value = 1;
   document.getElementById('modalErr').style.display = 'none';
+  document.getElementById('matConsistencyWarn').style.display = 'none';
   document.getElementById('manualMode').checked = false;
   setManualMode(false);
   selectedItem = null;
@@ -181,8 +182,26 @@ function renderMatLines(){
       t.mats.splice(parseInt(btn.dataset.idx),1);
       saveTicketsLS();
       renderMatLines();
+      updateMatConsistencyWarn();
     });
   });
+}
+
+function updateMatConsistencyWarn(){
+  const warnEl = document.getElementById('matConsistencyWarn');
+  if(!warnEl) return;
+  const t = TICKETS[currentTicketId];
+  if(!selectedItem || !selectedItem.grupo || !t || t.mats.length===0){
+    warnEl.style.display = 'none';
+    return;
+  }
+  const existingGroups = [...new Set(t.mats.map(m=>m.grupo).filter(Boolean))];
+  if(existingGroups.length===0 || existingGroups.includes(selectedItem.grupo)){
+    warnEl.style.display = 'none';
+    return;
+  }
+  warnEl.textContent = '⚠️ Atenção: este material é do grupo "'+selectedItem.grupo+'", diferente do(s) já lançado(s) neste chamado ('+existingGroups.join(', ')+'). Confira se está correto antes de adicionar.';
+  warnEl.style.display = 'block';
 }
 
 function renderAcList(q, list){
@@ -202,6 +221,7 @@ function renderAcList(q, list){
       document.getElementById('codBox').value = selectedItem.cod;
       document.getElementById('acList').classList.remove('open');
       document.getElementById('codAcList').classList.remove('open');
+      updateMatConsistencyWarn();
     });
   });
 }
@@ -230,6 +250,7 @@ document.getElementById('acInput').addEventListener('input', (e)=>{
   document.getElementById('codBox').value = '';
   document.getElementById('codAcList').classList.remove('open');
   renderAcList(e.target.value, document.getElementById('acList'));
+  updateMatConsistencyWarn();
 });
 
 document.getElementById('codBox').addEventListener('input', (e)=>{
@@ -241,10 +262,12 @@ document.getElementById('codBox').addEventListener('input', (e)=>{
     document.getElementById('acInput').value = exact.desc;
     document.getElementById('codAcList').classList.remove('open');
     document.getElementById('codAcList').innerHTML = '';
+    updateMatConsistencyWarn();
     return;
   }
   selectedItem = null;
   renderAcList(val, document.getElementById('codAcList'));
+  updateMatConsistencyWarn();
 });
 
 document.getElementById('manualMode').addEventListener('change', (e)=>{
@@ -256,6 +279,7 @@ document.getElementById('manualMode').addEventListener('change', (e)=>{
   document.getElementById('codAcList').classList.remove('open');
   document.getElementById('modalErr').style.display = 'none';
   setManualMode(on);
+  updateMatConsistencyWarn();
 });
 
 document.getElementById('btnAddItem').addEventListener('click', ()=>{
@@ -278,7 +302,7 @@ document.getElementById('btnAddItem').addEventListener('click', ()=>{
       errEl.style.display = 'block';
       return;
     }
-    item = {cod:selectedItem.cod, desc:selectedItem.desc, qtd:qtd};
+    item = {cod:selectedItem.cod, desc:selectedItem.desc, qtd:qtd, grupo:selectedItem.grupo||''};
   }
   errEl.style.display = 'none';
   TICKETS[currentTicketId].mats.push(item);
@@ -288,6 +312,7 @@ document.getElementById('btnAddItem').addEventListener('click', ()=>{
   document.getElementById('codBox').value = '';
   document.getElementById('qtdInput').value = 1;
   renderMatLines();
+  updateMatConsistencyWarn();
   document.getElementById('matLines').scrollIntoView({behavior:'smooth', block:'start'});
 });
 
