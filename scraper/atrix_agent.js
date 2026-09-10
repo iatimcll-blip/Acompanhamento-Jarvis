@@ -339,9 +339,13 @@ async function extractSubstatus(page, ticket) {
         const t = opt ? opt.text.trim() : '';
         return t && !blanks.includes(t.toLowerCase()) ? t : null;
       };
-      // Normaliza rótulo removendo hífen e pontuação de campo obrigatório (":", "*")
-      // no final — "Status *", "Status:" e "Status" devem casar igual.
-      const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
+      // Normaliza rótulo removendo hífen, espaço (inclusive interno) e pontuação de campo
+      // obrigatório (":", "*") em qualquer posição — "Status *", "Status:", "Status" e
+      // "Sub Status" (com espaço) devem casar igual. Bug real reportado: alguns chamados
+      // mostravam só o Status no painel mesmo tendo Substatus na página — rótulo com
+      // espaço interno ("Sub Status") não batia contra o alvo "substatus" antes desta
+      // correção, já que só espaços/pontuação no FINAL do texto eram removidos.
+      const normLabel = t => t.toLowerCase().replace(/[-\s:*]/g, '');
 
       // 1. Rótulo/célula "Status" com select adjacente (mesma estrutura do Substatus)
       for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
@@ -427,9 +431,9 @@ async function extractSubstatus(page, ticket) {
           return t && !blanks.includes(t.toLowerCase()) ? t : null;
         };
 
-        // Normaliza rótulo removendo hífen e pontuação de campo obrigatório (":", "*")
-        // no final — "Substatus *", "Sub-Status:" e "Substatus" devem casar igual.
-        const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
+        // Normaliza removendo hífen/espaço (inclusive interno)/pontuação em qualquer
+        // posição — "Substatus *", "Sub-Status:", "Sub Status" e "Substatus" casam igual.
+        const normLabel = t => t.toLowerCase().replace(/[-\s:*]/g, '');
 
         // Percorrer td, th, span, div, label, dt que contenham somente "Substatus"
         for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
@@ -465,7 +469,7 @@ async function extractSubstatus(page, ticket) {
     // irmã em vez de exigir um select.
     if (!sub) {
       sub = await page.evaluate((blanks) => {
-        const normLabel = t => t.toLowerCase().replace(/-/g, '').replace(/[\s:*]+$/, '').trim();
+        const normLabel = t => t.toLowerCase().replace(/[-\s:*]/g, '');
         for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
           if (normLabel(cell.textContent) !== 'substatus') continue;
           const next = cell.nextElementSibling;
