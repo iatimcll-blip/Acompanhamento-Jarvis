@@ -395,10 +395,14 @@ document.getElementById('ticketsFile').addEventListener('change', (e)=>{
   });
 });
 
-document.getElementById('btnExportMats').addEventListener('click', ()=>{
+document.getElementById('btnExport').addEventListener('click', ()=>{
   const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Código SAP','Descrição do Material','Quantidade','Manual'];
   const rows = [];
   TICKETS.forEach(t=>{
+    if(t.mats.length===0){
+      rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,'','','','']);
+      return;
+    }
     t.mats.forEach(m=>{
       rows.push([t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,m.cod||'',m.desc,m.qtd,m.manual?'Sim':'Não']);
     });
@@ -406,20 +410,7 @@ document.getElementById('btnExportMats').addEventListener('click', ()=>{
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
   ws['!cols'] = [{wch:10},{wch:20},{wch:18},{wch:32},{wch:18},{wch:6},{wch:26},{wch:22},{wch:24},{wch:14},{wch:50},{wch:10},{wch:8}];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Materiais Aplicados');
-  XLSX.writeFile(wb, 'Materiais_Aplicados_SAP.xlsx');
-});
-
-document.getElementById('btnExport').addEventListener('click', ()=>{
-  const header = ['Data','Ordem de Serviço','ID da Ordem de Serviço','Cliente','Cidade','Estado','Técnico','Tipo de Atividade','Área de Trabalho','Materiais Aplicados'];
-  const rows = TICKETS.map(t=>{
-    const matsStr = t.mats.map(m=> (m.cod||'—')+' - '+m.desc+' (qtd: '+m.qtd+')'+(m.manual?' [manual]':'')).join('; ');
-    return [t.data,t.os,t.idOs,t.cliente,t.cidade,t.uf,t.tecnico,t.tipo,t.area,matsStr];
-  });
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{wch:10},{wch:20},{wch:18},{wch:32},{wch:18},{wch:6},{wch:26},{wch:22},{wch:24},{wch:50}];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Concluidos');
+  XLSX.utils.book_append_sheet(wb, ws, 'Chamados e Materiais');
   XLSX.writeFile(wb, 'Chamados_Concluidos_SLN_Materiais.xlsx');
 });
 
