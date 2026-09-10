@@ -8499,11 +8499,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-audit-material tbody tr.am-row-has-mat:hover{background:var(--green-bg);filter:brightness(.96);}
   #panel-audit-material tbody tr.am-row-has-obs{background:var(--yellow-bg);}
   #panel-audit-material tbody tr.am-row-has-obs:hover{background:var(--yellow-bg);filter:brightness(.96);}
+  #panel-audit-material tbody tr.am-subrow td{padding-top:5px;padding-bottom:5px;}
+  #panel-audit-material tbody tr.am-subrow-last td{border-bottom:1.5px solid var(--bd2);}
   #panel-audit-material .am-cls-select{width:100%;min-width:100px;height:28px;font-size:11.5px;padding:0 22px 0 8px;}
   #panel-audit-material .am-obs-input{width:100%;min-width:140px;height:28px;font-size:11.5px;padding:0 8px;}
   #panel-audit-material .am-table-scroll{flex:1 1 auto;min-height:220px;overflow:auto;border-radius:var(--rl);box-shadow:var(--shadow-sm);}
   #panel-audit-material thead th{position:sticky;top:0;z-index:1;}
   #panel-audit-material .am-badge{display:inline-block;background:var(--green-bg);color:var(--green-dk);border:.5px solid var(--am-border);border-radius:6px;padding:2px 8px;font-size:11px;margin:2px 4px 2px 0;}
+  #panel-audit-material .am-qty-pill{display:inline-block;background:var(--am-blue);color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-left:5px;letter-spacing:.01em;}
   #panel-audit-material .am-btn-add-mat{font-size:11px;font-weight:500;padding:3px 10px;height:24px;border-radius:6px;border:.5px solid var(--blue-lt);color:var(--am-blue);background:var(--blue-bg);cursor:pointer;transition:background .13s;}
   #panel-audit-material .am-btn-add-mat:hover{background:var(--blue-lt);}
   #panel-audit-material .am-pill-empty{color:var(--am-text-muted);font-size:11px;margin-right:6px;}
@@ -20131,30 +20134,58 @@ function amRenderTable(){
   tbody.innerHTML = '';
   const visible = AM_TICKETS.filter(amTicketMatches);
   visible.forEach(t=>{
-    const tr = document.createElement('tr');
-    if(t.mats.length>0) tr.classList.add('am-row-has-mat');
-    else if((t.obs||'').trim()) tr.classList.add('am-row-has-obs');
-    const matHtml = t.mats.length
-      ? t.mats.map(m=>'<span class="am-badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>').join('')
-        + '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
-      : '<span class="am-pill-empty">Nenhum material lançado</span>'
-        + '<button class="am-btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
+    const rowClass = t.mats.length>0 ? 'am-row-has-mat' : ((t.obs||'').trim() ? 'am-row-has-obs' : '');
     const clsHtml = '<select class="am-cls-select" data-id="'+t._id+'">'
       + '<option value=""'+(t.classificacao?'':' selected')+'>— Selecionar —</option>'
       + AM_CLASSIFICACOES.map(c=>'<option value="'+c+'"'+(t.classificacao===c?' selected':'')+'>'+c+'</option>').join('')
       + '</select>';
     const obsHtml = '<input type="text" class="am-obs-input" data-id="'+t._id+'" value="'+amEscapeAttr(t.obs)+'" placeholder="Observações...">';
-    tr.innerHTML =
-      '<td>'+t.data+'</td>'+
-      '<td>'+t.os+'</td>'+
-      '<td>'+t.cliente+'</td>'+
-      '<td>'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
-      '<td>'+t.tecnico+'</td>'+
-      '<td>'+t.tipo+'</td>'+
-      '<td>'+clsHtml+'</td>'+
-      '<td>'+obsHtml+'</td>'+
-      '<td>'+matHtml+'</td>';
-    tbody.appendChild(tr);
+    const matBadge = m => '<span class="am-badge">'+(m.cod||'—')+' — '+m.desc+' <span class="am-qty-pill">Qtd: '+m.qtd+'</span>'+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>';
+    const n = t.mats.length;
+
+    if(n<=1){
+      const tr = document.createElement('tr');
+      if(rowClass) tr.classList.add(rowClass);
+      const matHtml = n===1
+        ? matBadge(t.mats[0]) + '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
+        : '<span class="am-pill-empty">Nenhum material lançado</span>'
+          + '<button class="am-btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
+      tr.innerHTML =
+        '<td>'+t.data+'</td>'+
+        '<td>'+t.os+'</td>'+
+        '<td>'+t.cliente+'</td>'+
+        '<td>'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
+        '<td>'+t.tecnico+'</td>'+
+        '<td>'+t.tipo+'</td>'+
+        '<td>'+clsHtml+'</td>'+
+        '<td>'+obsHtml+'</td>'+
+        '<td>'+matHtml+'</td>';
+      tbody.appendChild(tr);
+    }else{
+      t.mats.forEach((m,idx)=>{
+        const tr = document.createElement('tr');
+        if(rowClass) tr.classList.add(rowClass);
+        tr.classList.add('am-subrow');
+        if(idx===n-1) tr.classList.add('am-subrow-last');
+        let rowHtml = '';
+        if(idx===0){
+          rowHtml +=
+            '<td rowspan="'+n+'">'+t.data+'</td>'+
+            '<td rowspan="'+n+'">'+t.os+'</td>'+
+            '<td rowspan="'+n+'">'+t.cliente+'</td>'+
+            '<td rowspan="'+n+'">'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
+            '<td rowspan="'+n+'">'+t.tecnico+'</td>'+
+            '<td rowspan="'+n+'">'+t.tipo+'</td>'+
+            '<td rowspan="'+n+'">'+clsHtml+'</td>'+
+            '<td rowspan="'+n+'">'+obsHtml+'</td>';
+        }
+        let matCell = matBadge(m);
+        if(idx===n-1) matCell += '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>';
+        rowHtml += '<td>'+matCell+'</td>';
+        tr.innerHTML = rowHtml;
+        tbody.appendChild(tr);
+      });
+    }
   });
   document.querySelectorAll('.am-btn-add-mat').forEach(b=>{
     b.addEventListener('click', ()=>amOpenModal(parseInt(b.dataset.id)));
@@ -20233,7 +20264,7 @@ function amRenderMatLines(){
   t.mats.forEach((m,idx)=>{
     const line = document.createElement('div');
     line.className = 'am-mat-line';
-    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em style="color:var(--am-text-muted);font-style:normal;">(manual)</em>':'')+amMatWarnIcon(t.mats,m)+'</span>'+
+    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' <span class="am-qty-pill">Qtd: '+m.qtd+'</span>'+(m.manual?' <em style="color:var(--am-text-muted);font-style:normal;">(manual)</em>':'')+amMatWarnIcon(t.mats,m)+'</span>'+
       '<button class="am-rm" data-idx="'+idx+'">remover</button>';
     box.appendChild(line);
   });
