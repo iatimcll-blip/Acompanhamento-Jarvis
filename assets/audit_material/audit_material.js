@@ -81,6 +81,15 @@ function renderMatLines(){
   const t = TICKETS[currentTicketId];
   const box = document.getElementById('matLines');
   box.innerHTML = '';
+  if(t.mats.length===0){
+    box.innerHTML = '<p class="pill-empty" style="margin:0 0 4px;">Nenhum material adicionado ainda.</p>';
+    return;
+  }
+  const title = document.createElement('p');
+  title.className = 'muted-small';
+  title.style.margin = '0 0 2px';
+  title.textContent = 'Materiais adicionados (' + t.mats.length + '):';
+  box.appendChild(title);
   t.mats.forEach((m,idx)=>{
     const line = document.createElement('div');
     line.className = 'mat-line';
