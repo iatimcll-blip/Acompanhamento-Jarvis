@@ -75,6 +75,7 @@ function renderTable(){
   visible.forEach(t=>{
     const tr = document.createElement('tr');
     if(t.mats.length>0) tr.classList.add('row-has-mat');
+    else if((t.obs||'').trim()) tr.classList.add('row-has-obs');
     const matHtml = t.mats.length
       ? t.mats.map(m=>'<span class="badge">'+(m.cod||'—')+' — '+m.desc+' ('+m.qtd+')'+(m.manual?' <em>manual</em>':'')+'</span>').join('')
         + '<br><button class="btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
@@ -108,8 +109,13 @@ function renderTable(){
   });
   document.querySelectorAll('.obs-input').forEach(inp=>{
     inp.addEventListener('change', (e)=>{
-      TICKETS[parseInt(inp.dataset.id)].obs = e.target.value;
+      const t = TICKETS[parseInt(inp.dataset.id)];
+      t.obs = e.target.value;
       saveTicketsLS();
+      const tr = inp.closest('tr');
+      if(tr && t.mats.length===0){
+        tr.classList.toggle('row-has-obs', !!t.obs.trim());
+      }
     });
   });
   document.getElementById('countInfo').textContent =
