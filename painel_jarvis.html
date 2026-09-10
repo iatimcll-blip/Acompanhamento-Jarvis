@@ -8455,7 +8455,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-audit-material .am-analytics-grid,
   #panel-audit-material .am-toolbar,
   #panel-audit-material > #am-countInfo{flex:0 0 auto;}
-  #panel-audit-material .am-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  #panel-audit-material .am-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px;}
+  #panel-audit-material .am-kpi-clickable{cursor:pointer;transition:box-shadow .15s;}
+  #panel-audit-material .am-kpi-clickable:hover{box-shadow:var(--shadow);}
   #panel-audit-material .am-kpi{background:var(--am-card);border:.5px solid var(--am-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:16px 18px;}
   #panel-audit-material .am-kpi .am-label{font-size:11px;font-weight:500;color:var(--am-text-muted);letter-spacing:-.005em;}
   #panel-audit-material .am-kpi .am-value{font-size:26px;font-weight:700;margin-top:4px;color:var(--am-navy);letter-spacing:-.01em;}
@@ -8540,6 +8542,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="am-kpi"><div class="am-label">Técnicos únicos</div><div class="am-value" id="am-kpiTec">0</div></div>
       <div class="am-kpi"><div class="am-label">Cidades atendidas</div><div class="am-value" id="am-kpiCid">0</div></div>
       <div class="am-kpi"><div class="am-label">Com materiais lançados</div><div class="am-value" id="am-kpiMat">0 / 0</div></div>
+      <div class="am-kpi am-kpi-clickable" id="am-kpiFaltamCard" title="Clique para filtrar os chamados sem material lançado"><div class="am-label">Faltam lançar</div><div class="am-value" id="am-kpiFaltam" style="color:var(--orange);">0</div></div>
     </div>
 
     <div class="am-analytics-grid">
@@ -19965,6 +19968,7 @@ function amUpdateKpis(){
   document.getElementById('am-kpiCid').textContent = new Set(AM_TICKETS.map(t=>t.cidade).filter(Boolean)).size;
   const comMat = AM_TICKETS.filter(t=>t.mats.length>0).length;
   document.getElementById('am-kpiMat').textContent = comMat + ' / ' + AM_TICKETS.length;
+  document.getElementById('am-kpiFaltam').textContent = AM_TICKETS.length - comMat;
 }
 
 function amTicketMatches(t){
@@ -20364,6 +20368,14 @@ document.getElementById('am-searchBox').addEventListener('input', (e)=>{
 document.getElementById('am-filterMat').addEventListener('change', (e)=>{
   amFilterMat = e.target.value;
   amRenderTable();
+});
+
+document.getElementById('am-kpiFaltamCard').addEventListener('click', ()=>{
+  document.getElementById('am-filterMat').value = 'sem';
+  amFilterMat = 'sem';
+  amRenderTable();
+  const scrollWrap = document.querySelector('#panel-audit-material .am-table-scroll');
+  if(scrollWrap) scrollWrap.scrollIntoView({behavior:'smooth', block:'nearest'});
 });
 
 document.getElementById('am-dbFile').addEventListener('change', (e)=>{
