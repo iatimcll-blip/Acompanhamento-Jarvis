@@ -182,6 +182,7 @@ document.getElementById('btnAddItem').addEventListener('click', ()=>{
   document.getElementById('codBox').value = '';
   document.getElementById('qtdInput').value = 1;
   renderMatLines();
+  document.getElementById('matLines').scrollIntoView({behavior:'smooth', block:'start'});
 });
 
 document.getElementById('btnCancel').addEventListener('click', closeModal);
