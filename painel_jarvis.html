@@ -8576,6 +8576,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </label>
       </div>
       <div class="am-toolbar-left">
+        <button class="am-btn" id="am-btnReport"><i class="ti ti-file-report"></i> Gerar Relatório</button>
         <button class="am-btn am-btn-green" id="am-btnExport">Exportar planilha (.xlsx)</button>
       </div>
     </div>
@@ -20521,6 +20522,69 @@ document.getElementById('am-btnExport').addEventListener('click', ()=>{
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Chamados e Materiais');
   XLSX.writeFile(wb, 'Chamados_Concluidos_SLN_Materiais.xlsx');
+});
+
+document.getElementById('am-btnReport').addEventListener('click', ()=>{
+  const now = new Date();
+  const dataGeracao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  const total = AM_TICKETS.length;
+  const comMat = AM_TICKETS.filter(t=>t.mats.length>0).length;
+  const semMat = total - comMat;
+
+  const linhas = AM_TICKETS.map(t=>{
+    const matsHtml = t.mats.length
+      ? '<ul class="am-rep-mats">' + t.mats.map(m=>
+          '<li><b>' + amEscapeAttr(m.cod||'—') + '</b> — ' + amEscapeAttr(m.desc) + ' <span class="am-rep-qtd">(qtd: ' + m.qtd + ')</span>' + (m.manual ? ' <em>manual</em>' : '') + '</li>'
+        ).join('') + '</ul>'
+      : '<span class="am-rep-empty">Nenhum material lançado</span>';
+    return '<tr>'
+      + '<td>' + amEscapeAttr(t.data) + '</td>'
+      + '<td>' + amEscapeAttr(t.os) + '</td>'
+      + '<td>' + amEscapeAttr(t.cliente) + '</td>'
+      + '<td>' + amEscapeAttr(t.cidade) + (t.uf ? ('/' + amEscapeAttr(t.uf)) : '') + '</td>'
+      + '<td>' + amEscapeAttr(t.tecnico) + '</td>'
+      + '<td>' + amEscapeAttr(t.classificacao || '—') + '</td>'
+      + '<td>' + matsHtml + '</td>'
+      + '</tr>';
+  }).join('');
+
+  const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+    + '<title>Relatório de Materiais Aplicados</title>'
+    + '<style>'
+    + '*{box-sizing:border-box;} body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;margin:0;padding:28px 32px;color:#1c1c1e;background:#fff;}'
+    + 'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1c1c1e;padding-bottom:12px;margin-bottom:18px;}'
+    + 'header h1{font-size:19px;margin:0;} header p{margin:2px 0 0;font-size:11.5px;color:#6b7280;}'
+    + '.am-rep-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;}'
+    + '.am-rep-actions button{height:32px;border-radius:8px;border:.5px solid #d0d0d5;background:#f2f2f7;color:#1c1c1e;font-size:12px;font-family:inherit;cursor:pointer;padding:0 14px;}'
+    + '.am-rep-summary{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}'
+    + '.am-rep-kpi{border:.5px solid #e1e1e6;border-radius:12px;padding:10px 16px;min-width:120px;}'
+    + '.am-rep-kpi .lbl{font-size:10.5px;color:#6b7280;} .am-rep-kpi .val{font-size:20px;font-weight:700;margin-top:2px;}'
+    + 'table{width:100%;border-collapse:collapse;font-size:11px;}'
+    + 'thead th{text-align:left;background:#f2f2f7;color:#3a3a3c;padding:7px 8px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.02em;border-bottom:1px solid #d0d0d5;}'
+    + 'tbody td{padding:7px 8px;border-bottom:1px solid #ececef;vertical-align:top;}'
+    + 'tbody tr:nth-child(even){background:#fafafa;}'
+    + '.am-rep-mats{margin:0;padding-left:16px;} .am-rep-mats li{margin-bottom:2px;}'
+    + '.am-rep-qtd{color:#6b7280;} .am-rep-empty{color:#9a9aa0;font-style:italic;}'
+    + 'footer{margin-top:20px;font-size:10px;color:#9a9aa0;text-align:center;}'
+    + '@media print{ .am-rep-actions{display:none;} body{padding:0 12px;} }'
+    + '</style></head><body>'
+    + '<div class="am-rep-actions"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'
+    + '<header><div><h1>Relatório de Materiais Aplicados — Chamados B2B</h1><p>Jarvis MCLL · Operações integradas</p></div><p>Gerado em ' + dataGeracao + '</p></header>'
+    + '<div class="am-rep-summary">'
+    + '<div class="am-rep-kpi"><div class="lbl">Chamados concluídos</div><div class="val">' + total + '</div></div>'
+    + '<div class="am-rep-kpi"><div class="lbl">Com materiais lançados</div><div class="val" style="color:#248a3d;">' + comMat + '</div></div>'
+    + '<div class="am-rep-kpi"><div class="lbl">Faltam lançar</div><div class="val" style="color:#c97a00;">' + semMat + '</div></div>'
+    + '</div>'
+    + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Materiais aplicados</th></tr></thead>'
+    + '<tbody>' + linhas + '</tbody></table>'
+    + '<footer>Jarvis MCLL · alloha FIBRA</footer>'
+    + '</body></html>';
+
+  const w = window.open('', '_blank');
+  if(!w){ alert('Permita pop-ups neste site para gerar o relatório.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 });
 </script>
 </body>
