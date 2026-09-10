@@ -62,7 +62,7 @@ function ticketMatches(t){
   return true;
 }
 
-const CLASSIFICACOES = ['INFRA','REDE','FIELD','B2B','SWAP','B2C'];
+const CLASSIFICACOES = ['INFRA','REDE','FIELD','B2B','SWAP','B2C','CHAM. PREVENTIVO'];
 
 function escapeAttr(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
