@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-11T14:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-11T14:45:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -20794,7 +20794,92 @@ document.getElementById('am-btnExport').addEventListener('click', ()=>{
   XLSX.writeFile(wb, 'Chamados_Concluidos_SLN_Materiais.xlsx');
 });
 
-document.getElementById('am-btnReport').addEventListener('click', ()=>{
+/* Gera os 3 gráficos do relatório em canvases fora da tela (não anexados
+   visivelmente à página), sempre com cores de tema claro — o relatório em si
+   é sempre light, então não pode herdar o texto claro/escuro do modo dark do
+   painel (ficaria ilegível). Aguarda um instante pro Chart.js terminar de
+   desenhar antes de capturar toDataURL() (setTimeout, não requestAnimationFrame:
+   a aba original perde o foco assim que o relatório abre numa aba nova, e o
+   Chrome throttla rAF pesadamente em abas em segundo plano). */
+async function amBuildDashboardImages(){
+  if(typeof Chart === 'undefined') return null;
+  const amDL = typeof ChartDataLabels !== 'undefined' ? ChartDataLabels : null;
+
+  const clsCounts = {};
+  AM_TICKETS.forEach(t=>{ const c = t.classificacao || 'Não classificado'; clsCounts[c] = (clsCounts[c]||0) + 1; });
+  const clsLabels = Object.keys(clsCounts).sort((a,b)=>clsCounts[b]-clsCounts[a]);
+  const clsData = clsLabels.map(k=>clsCounts[k]);
+
+  const matTotals = {};
+  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{ const key = (m.cod||'—')+' — '+m.desc; matTotals[key] = (matTotals[key]||0) + (parseInt(m.qtd)||0); }));
+  const topMat = Object.entries(matTotals).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const matLabels = topMat.map(x=>x[0].length>36?x[0].slice(0,33)+'...':x[0]);
+  const matData = topMat.map(x=>x[1]);
+
+  const grupoCounts = {};
+  AM_TICKETS.forEach(t=>t.mats.forEach(m=>{ const g = m.grupo || 'Sem grupo / manual'; grupoCounts[g] = (grupoCounts[g]||0) + 1; }));
+  const grupoLabels = Object.keys(grupoCounts);
+  const grupoData = grupoLabels.map(k=>grupoCounts[k]);
+  const grupoColors = ['#007aff','#34c759','#ff9500','#ff3b30','#af52de','#5ac8fa','#8e8e93','#ffcc00'];
+
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+  document.body.appendChild(container);
+  function makeCanvas(w,h){
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    container.appendChild(c);
+    return c;
+  }
+
+  const charts = [];
+  const clsCanvas = makeCanvas(600,280);
+  charts.push(new Chart(clsCanvas, {
+    type:'bar', plugins: amDL?[amDL]:[],
+    data:{labels:clsLabels, datasets:[{label:'Chamados', data:clsData, backgroundColor:'#007aff'}]},
+    options:{responsive:false, animation:false, layout:{padding:{top:18}},
+      plugins:{legend:{display:false}, datalabels: amDL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:'#444',clip:false}:{display:false}},
+      scales:{y:{beginAtZero:true, ticks:{precision:0}}}}
+  }));
+
+  const matCanvas = makeCanvas(600,280);
+  charts.push(new Chart(matCanvas, {
+    type:'bar', plugins: amDL?[amDL]:[],
+    data:{labels:matLabels, datasets:[{label:'Quantidade', data:matData, backgroundColor:'#34c759'}]},
+    options:{indexAxis:'y', responsive:false, animation:false, layout:{padding:{right:26}},
+      plugins:{legend:{display:false}, datalabels: amDL?{anchor:'end',align:'right',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:'#444',clip:false}:{display:false}},
+      scales:{x:{beginAtZero:true, ticks:{precision:0}}}}
+  }));
+
+  const grupoCanvas = makeCanvas(420,280);
+  charts.push(new Chart(grupoCanvas, {
+    type:'doughnut', plugins: amDL?[amDL]:[],
+    data:{labels:grupoLabels, datasets:[{data:grupoData, backgroundColor:grupoColors}]},
+    options:{responsive:false, animation:false,
+      plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}, datalabels: amDL?{formatter:v=>v>0?v:'',font:{size:10,weight:'bold'},color:'#fff'}:{display:false}}}
+  }));
+
+  /* setTimeout em vez de requestAnimationFrame: ao abrir o relatório numa aba nova,
+     esta aba perde o foco e o Chrome throttla rAF pesadamente em abas em segundo
+     plano — setTimeout sofre bem menos com isso pra um atraso curto e único. */
+  await new Promise(r=>setTimeout(r,120));
+
+  const images = {
+    classificacao: clsCanvas.toDataURL('image/png'),
+    topMateriais: matCanvas.toDataURL('image/png'),
+    grupo: grupoCanvas.toDataURL('image/png'),
+  };
+
+  charts.forEach(c=>c.destroy());
+  document.body.removeChild(container);
+  return images;
+}
+
+document.getElementById('am-btnReport').addEventListener('click', async ()=>{
+  const w = window.open('', '_blank');
+  if(!w){ alert('Permita pop-ups neste site para gerar o relatório.'); return; }
+  w.document.write('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Materiais Aplicados</title></head><body style="font-family:-apple-system,sans-serif;color:#8e8e93;padding:40px;">Gerando relatório…</body></html>');
+
   const now = new Date();
   const dataGeracao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
   const total = AM_TICKETS.length;
@@ -20823,6 +20908,21 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     ).join('');
   }).join('');
 
+  const images = await amBuildDashboardImages();
+  const flagged = AM_TICKETS.filter(t=>t.mats.some(m=>amIsDivergentMat(t.mats,m)));
+  const divergentHtml = flagged.length
+    ? flagged.map(t=>'<div class="am-rep-div-line">⚠️ ' + amEscapeAttr(t.os) + ' — ' + amEscapeAttr(t.cliente) + '</div>').join('')
+    : '<p class="am-rep-div-empty">Nenhum chamado com material fora do padrão no momento.</p>';
+  const dashboardsHtml = !images ? '' :
+    '<div class="am-rep-dashboards">'
+    + '<h2>Dashboards</h2>'
+    + '<div class="am-rep-dash-grid">'
+    + '<div class="am-rep-dash-card"><h4>Chamados por Classificação</h4><img src="' + images.classificacao + '" alt="Chamados por Classificação"></div>'
+    + '<div class="am-rep-dash-card"><h4>Distribuição por Grupo SAP</h4><img src="' + images.grupo + '" alt="Distribuição por Grupo SAP"></div>'
+    + '<div class="am-rep-dash-card am-rep-dash-wide"><h4>Top 10 Materiais Mais Aplicados (por quantidade)</h4><img src="' + images.topMateriais + '" alt="Top 10 Materiais Mais Aplicados"></div>'
+    + '<div class="am-rep-dash-card am-rep-dash-wide"><h4>Chamados com material fora do padrão</h4>' + divergentHtml + '</div>'
+    + '</div></div>';
+
   const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
     + '<title>Relatório de Materiais Aplicados</title>'
     + '<style>'
@@ -20842,8 +20942,18 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     + '.am-rep-qtd-cell{text-align:center;font-weight:700;color:#007aff;}'
     + '.am-rep-un-cell{text-align:center;color:#8e8e93;font-size:10.5px;text-transform:uppercase;}'
     + '.am-rep-empty{color:#8e8e93;font-style:italic;}'
+    + '.am-rep-dashboards{margin-top:28px;page-break-before:always;break-before:page;}'
+    + '.am-rep-dashboards h2{font-size:16px;font-weight:700;margin:0 0 14px;letter-spacing:-.01em;}'
+    + '.am-rep-dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}'
+    + '.am-rep-dash-wide{grid-column:1 / -1;}'
+    + '.am-rep-dash-card{background:#fff;border:.5px solid rgba(0,0,0,.07);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);padding:14px 16px;}'
+    + '.am-rep-dash-card h4{margin:0 0 8px;font-size:11.5px;font-weight:600;color:#1c1c1e;}'
+    + '.am-rep-dash-card img{max-width:100%;display:block;margin:0 auto;}'
+    + '.am-rep-div-line{font-size:11.5px;padding:6px 8px;background:#fff9ec;border:.5px solid rgba(255,149,0,.25);border-radius:8px;margin-top:6px;}'
+    + '.am-rep-div-line:first-child{margin-top:0;}'
+    + '.am-rep-div-empty{color:#8e8e93;font-size:11.5px;margin:0;}'
     + 'footer{margin-top:20px;font-size:10px;color:#8e8e93;text-align:center;}'
-    + '@media print{ .am-rep-actions{display:none;} body{padding:0 12px;background:#fff;} table,.am-rep-kpi{box-shadow:none;} }'
+    + '@media print{ .am-rep-actions{display:none;} body{padding:0 12px;background:#fff;} table,.am-rep-kpi,.am-rep-dash-card{box-shadow:none;} }'
     + '</style></head><body>'
     + '<div class="am-rep-actions"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'
     + '<header><div><h1>Relatório de Materiais Aplicados — Chamados B2B</h1><p>Jarvis MCLL · Operações integradas</p></div><p class="am-rep-date">Gerado em ' + dataGeracao + '</p></header>'
@@ -20854,11 +20964,10 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     + '</div>'
     + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Materiais aplicados</th><th>Quantidade</th><th>Unidade</th></tr></thead>'
     + '<tbody>' + linhas + '</tbody></table>'
+    + dashboardsHtml
     + '<footer>Jarvis MCLL · alloha FIBRA</footer>'
     + '</body></html>';
 
-  const w = window.open('', '_blank');
-  if(!w){ alert('Permita pop-ups neste site para gerar o relatório.'); return; }
   w.document.open();
   w.document.write(html);
   w.document.close();
