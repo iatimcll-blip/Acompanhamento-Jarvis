@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-11T10:15:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-11T14:10:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -20213,6 +20213,15 @@ function amEscapeAttr(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+/* Unidade de medida por código SAP: AM_CATALOG traz "unidade" só pros códigos que já
+   apareceram na base de estoque anexada em Saldo SAP (ex.: TEC29.xlsx) — nem todo
+   material do catálogo tem essa informação, então cai pra "—" quando não encontrado. */
+function amUnitForCod(cod){
+  if(!cod) return '—';
+  const item = AM_CATALOG.find(c=>c.cod===cod);
+  return (item && item.unidade) || '—';
+}
+
 function amMajorityGroup(mats){
   const counts = {};
   const order = [];
@@ -20802,13 +20811,14 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
       + '<td'+rs+'>' + amEscapeAttr(t.classificacao || '—') + '</td>';
 
     if(n===0){
-      return '<tr class="am-rep-last-mat">' + ticketCells('') + '<td colspan="2"><span class="am-rep-empty">Nenhum material lançado</span></td></tr>';
+      return '<tr class="am-rep-last-mat">' + ticketCells('') + '<td colspan="3"><span class="am-rep-empty">Nenhum material lançado</span></td></tr>';
     }
     return t.mats.map((m,idx)=>
       '<tr'+(idx===n-1?' class="am-rep-last-mat"':'')+'>'
         + (idx===0 ? ticketCells(' rowspan="'+n+'"') : '')
         + '<td><b>' + amEscapeAttr(m.cod||'—') + '</b> — ' + amEscapeAttr(m.desc) + (m.manual ? ' <em>(manual)</em>' : '') + '</td>'
         + '<td class="am-rep-qtd-cell">' + m.qtd + '</td>'
+        + '<td class="am-rep-un-cell">' + amEscapeAttr(amUnitForCod(m.cod)) + '</td>'
         + '</tr>'
     ).join('');
   }).join('');
@@ -20830,6 +20840,7 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     + 'tbody td{padding:7px 9px;border-bottom:.25px solid rgba(0,0,0,.05);vertical-align:middle;}'
     + 'tbody tr.am-rep-last-mat td{border-bottom:.5px solid rgba(0,0,0,.1);}'
     + '.am-rep-qtd-cell{text-align:center;font-weight:700;color:#007aff;}'
+    + '.am-rep-un-cell{text-align:center;color:#8e8e93;font-size:10.5px;text-transform:uppercase;}'
     + '.am-rep-empty{color:#8e8e93;font-style:italic;}'
     + 'footer{margin-top:20px;font-size:10px;color:#8e8e93;text-align:center;}'
     + '@media print{ .am-rep-actions{display:none;} body{padding:0 12px;background:#fff;} table,.am-rep-kpi{box-shadow:none;} }'
@@ -20841,7 +20852,7 @@ document.getElementById('am-btnReport').addEventListener('click', ()=>{
     + '<div class="am-rep-kpi"><div class="lbl">Com materiais lançados</div><div class="val" style="color:#34c759;">' + comMat + '</div></div>'
     + '<div class="am-rep-kpi"><div class="lbl">Faltam lançar</div><div class="val" style="color:#ff9500;">' + semMat + '</div></div>'
     + '</div>'
-    + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Materiais aplicados</th><th>Quantidade</th></tr></thead>'
+    + '<table><thead><tr><th>Data</th><th>Ordem de Serviço</th><th>Cliente</th><th>Cidade/UF</th><th>Técnico</th><th>Classificação</th><th>Materiais aplicados</th><th>Quantidade</th><th>Unidade</th></tr></thead>'
     + '<tbody>' + linhas + '</tbody></table>'
     + '<footer>Jarvis MCLL · alloha FIBRA</footer>'
     + '</body></html>';
