@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-10T13:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-11T09:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -9787,6 +9787,39 @@ function _mergeGhRemoteIntoLocal(remoteSt){
          cima logo depois. Também faltava aqui antes desta correção. */
       dPrevent=_mergeArraysByKey(dPrevent,Array.isArray(remoteSt.dPrevent)?remoteSt.dPrevent:[],x=>x.id);
       dPrevTecnicos=_mergeArraysByKey(dPrevTecnicos,Array.isArray(remoteSt.dPrevTecnicos)?remoteSt.dPrevTecnicos:[],x=>x.id);
+      /* Audit Material: cada chamado (AM_TICKETS) é editado um a um (classificação,
+         observação, material aplicado) igual a dAb/Preventivas — sem isto, salvar
+         local-only fazia parecer que "perdeu" o que foi feito em outro dispositivo,
+         que é exatamente o bug relatado pelo usuário. Mescla por amTicketKey(t)
+         (os+data+tecnico) — nunca por posição/_id, que é reatribuído a cada
+         carga/reordenação (mesma classe de bug já documentada acima para dAb, com
+         incidente real de produção), e nunca por os sozinho: testando com os 211
+         chamados reais, achei 2 chamados DISTINTOS (datas/técnicos diferentes)
+         compartilhando a mesma OS genérica — mesclar só por os colapsaria os dois
+         num só. amTicketsClearedAt marca o instante da última importação de CSV
+         (que substitui a lista inteira, ao contrário das edições individuais) —
+         enquanto o remoto não passar desse instante, filtra do remoto qualquer
+         chamado que a importação já removeu daqui, pra um sync-state.json
+         desatualizado não "ressuscitar" chamados descartados de propósito; se o
+         remoto for comprovadamente mais novo, mescla tudo normalmente. */
+      if(Array.isArray(remoteSt.amTickets)){
+        const _remoteAmNewerThanClear=!!(amTicketsClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>amTicketsClearedAt);
+        let _remoteAmTickets=normalizeAmTickets(remoteSt.amTickets);
+        if(amTicketsClearedAt&&!_remoteAmNewerThanClear){
+          const _localKeySet=new Set(AM_TICKETS.map(amTicketKey));
+          _remoteAmTickets=_remoteAmTickets.filter(t=>_localKeySet.has(amTicketKey(t)));
+        }
+        const _mergedAm=_mergeArraysByKey(AM_TICKETS,_remoteAmTickets,amTicketKey);
+        AM_TICKETS.length=0;
+        _mergedAm.forEach(t=>AM_TICKETS.push(t));
+        if(Object.prototype.hasOwnProperty.call(remoteSt,'amTicketsClearedAt')&&remoteSt.amTicketsClearedAt>(amTicketsClearedAt||'')){
+          amTicketsClearedAt=remoteSt.amTicketsClearedAt;
+        }
+        if(typeof activeTab!=='undefined'&&activeTab==='auditMaterial'&&typeof amRenderTable==='function'){
+          amRenderTable();
+          if(typeof amRenderAnalytics==='function')amRenderAnalytics();
+        }
+      }
   }
 }
 function _isGhShaConflict(err){
@@ -10606,7 +10639,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10756,6 +10789,18 @@ function applyState(st,label){
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar catálogo de técnicos/equipes:',e);}
+  try{
+    /* amRenderTable()/amRenderAnalytics() são definidas num <script> mais abaixo no
+       documento, que ainda não rodou neste ponto da execução — só os dados são
+       restaurados aqui; a renderização acontece naturalmente quando o usuário abre
+       a aba (switchTab já chama amRenderTable() nesse momento). */
+    if(Array.isArray(st.amTickets)){
+      AM_TICKETS.length = 0;
+      normalizeAmTickets(st.amTickets).forEach(t=>AM_TICKETS.push(t));
+      if(Object.prototype.hasOwnProperty.call(st,'amTicketsClearedAt'))amTicketsClearedAt=st.amTicketsClearedAt||'';
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Audit Material:',e);}
   try{
     if(Array.isArray(st.dEnc)){
       dEnc=normalizeEncState(st.dEnc);
@@ -19998,35 +20043,66 @@ updateCentralStatus();
 <!-- deploy retry: audio upload validation -->
 <div id="msel-portal"></div>
 <script>
-/* ══════════ PAINEL AUDIT MATERIAL (lógica) ══════════ */
-const AM_LS_TICKETS_KEY = 'auditMaterial.tickets.v1';
+/* ══════════ PAINEL AUDIT MATERIAL (lógica) ══════════
+   AM_TICKETS agora faz parte do buildState()/applyState()/_mergeGhRemoteIntoLocal()
+   principal do app (mesmo pipeline de sincronização entre dispositivos usado por
+   dAb/dEnc/etc) — antes disso, os lançamentos (materiais/classificação/observações)
+   ficavam só em localStorage deste navegador (chave auditMaterial.tickets.v1),
+   nunca sincronizavam entre dispositivos e podiam "sumir" ao abrir em outro lugar
+   ou limpar dados do navegador. amTicketsClearedAt segue o mesmo padrão já usado
+   pra dAb/dFuelVehicles: marca quando uma base nova de chamados foi anexada aqui,
+   pra um merge remoto atrasado não trazer de volta os chamados antigos removidos. */
 const AM_LS_CATALOG_KEY = 'auditMaterial.catalog.v1';
+let amTicketsClearedAt = '';
 
-function amSaveTicketsLS(){
-  try{ localStorage.setItem(AM_LS_TICKETS_KEY, JSON.stringify(AM_TICKETS)); }catch(e){}
+function amNormalizeTicket(t,i){
+  t._id = i;
+  if(!Array.isArray(t.mats)) t.mats = [];
+  if(typeof t.classificacao !== 'string') t.classificacao = '';
+  if(typeof t.obs !== 'string') t.obs = '';
+  return t;
 }
-function amSaveCatalogLS(){
-  try{ localStorage.setItem(AM_LS_CATALOG_KEY, JSON.stringify(AM_CATALOG)); }catch(e){}
+function normalizeAmTickets(arr){
+  return (Array.isArray(arr)?arr:[]).map((t,i)=>amNormalizeTicket({...t},i));
+}
+/* Chave de mescla entre dispositivos: `os` sozinho NÃO é único na base real (achado
+   testando com os 211 chamados reais — 2 chamados distintos, datas e técnicos
+   diferentes, compartilham a mesma OS genérica "REP. - ..."), então mesclar só por
+   os colapsaria os dois em um só, perdendo um chamado de verdade a cada sync. A
+   combinação os+data+tecnico é 100% única nos dados reais e ainda é estável entre
+   sincronizações (não muda com reordenação/edição de material). */
+function amTicketKey(t){
+  return (t.os||'')+'|'+(t.data||'')+'|'+(t.tecnico||'');
 }
 
 (function amInitTickets(){
-  let restored = null;
+  AM_TICKETS.forEach((t,i)=>amNormalizeTicket(t,i));
+
+  /* Migração única dos dados presos no localStorage antigo (pré-sync): dá
+     preferência aos dados migrados por chave (os), já que representam trabalho
+     real do usuário que não pode ser descartado silenciosamente. Roda uma única
+     vez — a chave antiga é removida ao final. */
   try{
-    const raw = localStorage.getItem(AM_LS_TICKETS_KEY);
-    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr) && arr.length) restored = arr; }
+    const raw = localStorage.getItem('auditMaterial.tickets.v1');
+    if(raw){
+      const old = JSON.parse(raw);
+      if(Array.isArray(old) && old.length){
+        const byKey = new Map();
+        AM_TICKETS.forEach(t=>{ if(t.os) byKey.set(amTicketKey(t), t); });
+        old.forEach(t=>{ if(t && t.os) byKey.set(amTicketKey(t), t); });
+        const merged = normalizeAmTickets([...byKey.values()]);
+        AM_TICKETS.length = 0;
+        merged.forEach(t=>AM_TICKETS.push(t));
+        saveState();
+      }
+      localStorage.removeItem('auditMaterial.tickets.v1');
+    }
   }catch(e){}
-  if(restored){
-    AM_TICKETS.length = 0;
-    restored.forEach(t=>AM_TICKETS.push(t));
-  }
-  AM_TICKETS.forEach((t,i)=>{
-    t._id = i;
-    if(!Array.isArray(t.mats)) t.mats = [];
-    if(typeof t.classificacao !== 'string') t.classificacao = '';
-    if(typeof t.obs !== 'string') t.obs = '';
-  });
-  if(!restored) amSaveTicketsLS();
 })();
+
+function amSaveCatalogLS(){
+  try{ localStorage.setItem(AM_LS_CATALOG_KEY, JSON.stringify(AM_CATALOG)); }catch(e){}
+}
 
 (function amInitCatalog(){
   try{
@@ -20302,7 +20378,7 @@ function amRenderTable(){
   document.querySelectorAll('.am-cls-select').forEach(sel=>{
     sel.addEventListener('change', (e)=>{
       AM_TICKETS[parseInt(sel.dataset.id)].classificacao = e.target.value;
-      amSaveTicketsLS();
+      saveState();
       amRenderAnalytics();
     });
   });
@@ -20310,7 +20386,7 @@ function amRenderTable(){
     inp.addEventListener('change', (e)=>{
       const t = AM_TICKETS[parseInt(inp.dataset.id)];
       t.obs = e.target.value;
-      amSaveTicketsLS();
+      saveState();
       const tr = inp.closest('tr');
       if(tr && t.mats.length===0){
         tr.classList.toggle('am-row-has-obs', !!t.obs.trim());
@@ -20380,7 +20456,7 @@ function amRenderMatLines(){
   box.querySelectorAll('.am-rm').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       t.mats.splice(parseInt(btn.dataset.idx),1);
-      amSaveTicketsLS();
+      saveState();
       amRenderMatLines();
       amUpdateKpis();
       amRenderAnalytics();
@@ -20485,7 +20561,7 @@ document.getElementById('am-btnAddItem').addEventListener('click', ()=>{
   }
   errEl.style.display = 'none';
   AM_TICKETS[amCurrentTicketId].mats.push(item);
-  amSaveTicketsLS();
+  saveState();
   amSelectedItem = null;
   document.getElementById('am-acInput').value = '';
   document.getElementById('am-codBox').value = '';
@@ -20591,7 +20667,8 @@ document.getElementById('am-ticketsFile').addEventListener('change', (e)=>{
     });
     AM_TICKETS.length = 0;
     deduped.forEach((t,i)=>{ t._id = i; AM_TICKETS.push(t); });
-    amSaveTicketsLS();
+    amTicketsClearedAt = new Date().toISOString();
+    saveState();
     statusEl.textContent = 'Base de chamados atualizada: '+files.length+' arquivo(s), '+AM_TICKETS.length+' chamados.'+(hadError?' (algum arquivo com erro foi ignorado)':'');
     amSelectedItem = null;
     amCurrentTicketId = null;
