@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T11:15:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T11:50:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -6682,6 +6682,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <i class="ti ti-clipboard-list"></i><span class="ntab-label"> B2B Abertos</span>
         <span class="ntab-badge nb-blue" id="nb-ab">0</span>
       </button>
+      <button class="ntab" id="ntab-b2c" onclick="switchTab('b2c')">
+        <i class="ti ti-users"></i><span class="ntab-label"> B2C</span>
+      </button>
       <button class="ntab" id="ntab-swap" onclick="switchTab('swap')">
         <i class="ti ti-arrows-exchange"></i><span class="ntab-label"> SWAP</span>
         <span class="ntab-badge nb-blue" id="nb-swap">0</span>
@@ -6869,6 +6872,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="dash-modules">
       <button class="dash-module" id="dash-mod-abertos" onclick="switchTab('abertos')"><i class="ti ti-clipboard-list"></i><strong>B2B Abertos</strong><span>SLA, substatus, técnicos, MOP/EPS e tabela operacional.</span></button>
+      <button class="dash-module" id="dash-mod-b2c" onclick="switchTab('b2c')"><i class="ti ti-users"></i><strong>B2C</strong><span>Indicadores B2C (Reparos, IRT, IRR, IFI, IFME, Aging, Efetividade...) e desvios contra a meta.</span></button>
       <button class="dash-module" id="dash-mod-swap" onclick="switchTab('swap')"><i class="ti ti-arrows-exchange"></i><strong>SWAP</strong><span>Chamados do departamento SWAP — mesma base do B2B Abertos.</span></button>
       <button class="dash-module" id="dash-mod-ativacoes" onclick="switchTab('ativacoes')"><i class="ti ti-plug-connected"></i><strong>Ativações B2B</strong><span>MRR contratado aguardando ativação técnica, aging, gargalos e carteira por analista.</span></button>
       <button class="dash-module" id="dash-mod-encerrados" onclick="switchTab('encerrados')"><i class="ti ti-circle-check"></i><strong>B2B Encerrados</strong><span>Período, cluster, causa raiz, semana e indicadores históricos.</span></button>
@@ -6991,6 +6995,95 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ── PAINEL B2C (indicadores B2C: Reparos 24h, IRT, IRR, IFI, IFME, Mudança de
+       Endereço/Cômodo, Upgrade, Aging Altas, Efetividade Altas/Reparos) ── -->
+  <style id="b2c-style">
+  #panel-b2c{
+    --b2c-navy:var(--tx);
+    --b2c-blue:var(--blue);
+    --b2c-green:var(--green);
+    --b2c-border:var(--bd);
+    --b2c-card:var(--surface);
+    --b2c-text:var(--tx);
+    --b2c-text-muted:var(--tx3);
+    font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
+    color:var(--b2c-text);
+    flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+  #panel-b2c.active{display:flex;flex:1;min-height:0;overflow-y:auto;}
+  #panel-b2c *{box-sizing:border-box;}
+  #panel-b2c .b2c-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:10px 14px;margin-bottom:14px;}
+  #panel-b2c .b2c-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  #panel-b2c .b2c-btn{height:30px;border-radius:var(--r);border:.5px solid var(--b2c-border);background:var(--surface2);color:var(--b2c-text);box-shadow:var(--shadow-sm);padding:0 14px;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .13s;}
+  #panel-b2c .b2c-btn:hover{background:var(--surface3);}
+  #panel-b2c label.b2c-file-btn{height:30px;display:inline-flex;align-items:center;gap:6px;border:.5px solid var(--b2c-border);border-radius:var(--r);box-shadow:var(--shadow-sm);padding:0 14px;font-size:11.5px;font-weight:500;color:#fff;cursor:pointer;background:var(--b2c-blue);transition:opacity .13s;}
+  #panel-b2c label.b2c-file-btn:hover{opacity:.85;}
+  #panel-b2c .b2c-db-status{font-size:11px;color:var(--b2c-text-muted);}
+  #panel-b2c .b2c-files-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+  #panel-b2c .b2c-file-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:.5px solid var(--b2c-border);border-radius:20px;padding:4px 10px 4px 12px;font-size:11px;color:var(--b2c-text-muted);}
+  #panel-b2c .b2c-file-chip.b2c-file-ok{color:var(--green-dk);}
+  #panel-b2c .b2c-file-chip.b2c-file-unknown{color:var(--red-dk);border-color:rgba(255,59,48,.3);}
+  #panel-b2c .b2c-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+  #panel-b2c .b2c-kpi{background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:12px 14px;cursor:pointer;transition:box-shadow .15s;}
+  #panel-b2c .b2c-kpi:hover{box-shadow:var(--shadow);}
+  #panel-b2c .b2c-kpi .b2c-label{font-size:10.5px;font-weight:500;color:var(--b2c-text-muted);letter-spacing:-.005em;}
+  #panel-b2c .b2c-kpi .b2c-value{font-size:22px;font-weight:700;margin-top:3px;letter-spacing:-.01em;}
+  #panel-b2c .b2c-kpi .b2c-meta{font-size:10px;color:var(--b2c-text-muted);margin-top:2px;}
+  #panel-b2c .b2c-kpi.b2c-ok .b2c-value{color:var(--green-dk);}
+  #panel-b2c .b2c-kpi.b2c-wn .b2c-value{color:var(--orange);}
+  #panel-b2c .b2c-kpi.b2c-bd .b2c-value{color:var(--red-dk);}
+  #panel-b2c table{width:100%;border-collapse:collapse;background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);font-size:12.5px;}
+  #panel-b2c thead th{text-align:center;background:var(--surface2);color:var(--b2c-text-muted);padding:9px 10px;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid var(--b2c-border);white-space:nowrap;}
+  #panel-b2c thead th:first-child{text-align:left;}
+  #panel-b2c tbody td{padding:9px 10px;border-bottom:.5px solid var(--b2c-border);text-align:center;vertical-align:middle;}
+  #panel-b2c tbody td:first-child{text-align:left;font-weight:600;}
+  #panel-b2c tbody tr.b2c-ind-row{cursor:pointer;}
+  #panel-b2c tbody tr.b2c-ind-row:hover{background:var(--surface2);}
+  #panel-b2c tbody tr.b2c-detail-row td{background:var(--surface2);text-align:left;padding:10px 14px;}
+  #panel-b2c .b2c-status-pill{display:inline-block;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;}
+  #panel-b2c .b2c-status-ok{background:var(--green-bg);color:var(--green-dk);}
+  #panel-b2c .b2c-status-wn{background:var(--orange-bg,rgba(255,149,0,.14));color:var(--orange);}
+  #panel-b2c .b2c-status-bd{background:var(--red-bg);color:var(--red-dk);}
+  #panel-b2c .b2c-cluster-mini{width:100%;border-collapse:collapse;font-size:11.5px;}
+  #panel-b2c .b2c-cluster-mini th{text-align:left;color:var(--b2c-text-muted);font-weight:600;padding:3px 8px;}
+  #panel-b2c .b2c-cluster-mini td{padding:3px 8px;}
+  #panel-b2c .b2c-section-title{font-size:13px;font-weight:700;color:var(--b2c-navy);}
+  #panel-b2c .b2c-report-box{background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:14px 16px;margin-top:8px;}
+  #panel-b2c .b2c-report-box pre{font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0;}
+  @media (max-width:900px){
+    #panel-b2c .b2c-kpis{grid-template-columns:repeat(2,1fr);}
+  }
+  </style>
+  <div class="panel" id="panel-b2c">
+    <div class="b2c-toolbar">
+      <div class="b2c-toolbar-left">
+        <span class="b2c-db-status" id="b2c-status">Nenhuma base anexada</span>
+        <label class="b2c-file-btn"><i class="ti ti-upload" style="font-size:12px"></i> Anexar bases (B2C)
+          <input type="file" id="b2c-filesInput" accept=".xlsx,.xls" multiple style="display:none;">
+        </label>
+      </div>
+      <div class="b2c-toolbar-left">
+        <button class="b2c-btn" id="b2c-btnReport"><i class="ti ti-file-report"></i> Gerar Relatório</button>
+      </div>
+    </div>
+    <div class="b2c-files-list" id="b2c-filesList"></div>
+    <div class="b2c-kpis" id="b2c-kpis"></div>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr><th>Indicador</th><th>Meta</th><th>Resultado</th><th>Desvio</th><th>Status</th><th>Base (denominador)</th></tr>
+      </thead>
+      <tbody id="b2c-tbody"></tbody>
+    </table>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+      <div class="b2c-section-title">Relatório Executivo</div>
+      <span class="card-action" id="b2c-report-copy-btn" onclick="b2cCopiarRelatorio(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+    </div>
+    <div class="b2c-report-box" id="b2c-report"><span style="color:var(--tx3);font-size:11px">Anexe as bases para gerar o relatório automático.</span></div>
   </div>
 
   <!-- ── PAINEL SWAP (mesma base de B2B Abertos, chamados com Dep_Atual = "SWAP") ── -->
@@ -9453,8 +9546,8 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
-const DEFAULT_VIEWER_PANELS=['abertos','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
+const ALL_PANEL_KEYS=['abertos','b2c','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
+const DEFAULT_VIEWER_PANELS=['abertos','b2c','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -9487,6 +9580,7 @@ function slnRdeCount(){
 function initials(name){return String(name||'--').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase()||'--'}
 const PANEL_NAV_MAP={
   abertos:['ntab-ab','dash-mod-abertos'],
+  b2c:['ntab-b2c','dash-mod-b2c'],
   swap:['ntab-swap','dash-mod-swap'],
   encerrados:['ntab-enc','dash-mod-encerrados'],
   semIntervencao:['ntab-si','dash-mod-semintervencao'],
@@ -9853,6 +9947,16 @@ function _mergeGhRemoteIntoLocal(remoteSt){
           amRenderTable();
           if(typeof amRenderAnalytics==='function')amRenderAnalytics();
         }
+      }
+      /* B2C: cada upload recalcula o resumo inteiro (não são registros editados um a
+         um) — mesmo padrão de Ativações/POP acima, troca por inteiro só quando o
+         resumo remoto for comprovadamente mais recente que o calculado neste
+         dispositivo. As bases brutas (B2C_RAW) não fazem parte do estado sincronizado
+         por serem grandes demais — só o resumo (poucas dezenas de números). */
+      if(remoteSt.b2cSummaryAt&&remoteSt.b2cSummaryAt>(typeof b2cSummaryAt!=='undefined'?b2cSummaryAt:'')&&remoteSt.b2cSummary&&Array.isArray(remoteSt.b2cSummary.indicators)){
+        B2C_SUMMARY=remoteSt.b2cSummary;
+        b2cSummaryAt=remoteSt.b2cSummaryAt;
+        if(typeof activeTab!=='undefined'&&activeTab==='b2c'&&typeof b2cRenderAll==='function')b2cRenderAll();
       }
   }
 }
@@ -10673,7 +10777,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10835,6 +10939,16 @@ function applyState(st,label){
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Audit Material:',e);}
+  try{
+    /* B2C: só o resumo agregado por indicador sincroniza (poucas dezenas de
+       números) — as bases brutas (até ~50 mil linhas por arquivo) ficam só no
+       localStorage do navegador que anexou, igual ao catálogo do Audit Material. */
+    if(st.b2cSummary&&Array.isArray(st.b2cSummary.indicators)){
+      B2C_SUMMARY=st.b2cSummary;
+      if(Object.prototype.hasOwnProperty.call(st,'b2cSummaryAt'))b2cSummaryAt=st.b2cSummaryAt||'';
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar resumo B2C:',e);}
   try{
     if(Array.isArray(st.dEnc)){
       dEnc=normalizeEncState(st.dEnc);
@@ -18116,16 +18230,17 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
+  if(!['dashboard','abertos','b2c','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
+  const isDash=tab==='dashboard',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
+  document.getElementById('panel-b2c').classList.toggle('active',isB2c);
   document.getElementById('panel-swap').classList.toggle('active',isSwap);
   document.getElementById('panel-encerrados').classList.toggle('active',isEnc);
   document.getElementById('panel-semintervencao').classList.toggle('active',isSi);
@@ -18164,6 +18279,7 @@ function switchTab(tab,persist=true){
   if(isPop)renderAllPop();
   if(isAuditMaterial)amRenderTable();
   if(isSaldoSap)sbRenderTable();
+  if(isB2c)b2cRenderAll();
   if(isSwap&&dAb.length)renderAllSwap();
   if(isDash)renderExecutiveDashboard();
   updateShellTitle(tab);
@@ -21246,6 +21362,418 @@ document.getElementById('sb-btnExport').addEventListener('click', ()=>{
   XLSX.utils.book_append_sheet(wb, ws, 'Saldo SAP');
   XLSX.writeFile(wb, 'Saldo_SAP_'+new Date().toISOString().slice(0,10)+'.xlsx');
 });
+</script>
+<script>
+/* ══════════ PAINEL B2C (indicadores + desvios) ══════════
+   11 bases-modelo (pasta D:\Acompanhamento Jarvis\B2C\B2C): cada upload é
+   detectado por nome de arquivo (com fallback por coluna característica) e vira
+   um dos 12 "baldes" abaixo. B2C_RAW (linhas cruas, pode chegar a ~50 mil linhas
+   por arquivo) fica só no localStorage deste navegador — pesado demais pra entrar
+   no estado sincronizado com os outros painéis. B2C_SUMMARY (só os agregados por
+   indicador/cluster, poucas dezenas de números) é o que sincroniza entre
+   dispositivos, seguindo o mesmo padrão já usado pra bases de export completo
+   (Encerrados/Ativações/POP): troca a base inteira quando uma mais recente chega,
+   nunca mescla linha a linha. Metas confirmadas com o usuário (fórmulas testadas
+   contra os arquivos reais antes de programar, ver histórico de decisão):
+   - Reparos 24h / Mud Endereço / Mud Cômodo / Upgrade / Aging Altas: % de OS
+     concluídas em até 3 dias corridos (coluna "Aging" já pronta nos 3 primeiros;
+     Reparos 24h usa a coluna "Reparo" já bucketizada; Aging Altas calcula
+     Data Ativação − Data Criação Contrato).
+   - Efetividade Altas / Efetividade Reparos: % de conclusao(_os) = "Realizado".
+   - IRT: contagem de linhas ÷ Planta Média (Media Base Media) por Novo Cluster.
+   - IFI: contagem de linhas ÷ Qtd. Ativações (Aging Altas.xlsx) por Novo Cluster.
+   - IFME / IRR: contagem de linhas ÷ total de Reparos (Reparos Prazo.xlsx) por
+     Novo Cluster. */
+let B2C_RAW={reparosPrazo:[],irt:[],mudEndereco:[],mudComodo:[],upgrade:[],agingAltas:[],efetividadeAltas:[],efetividadeReparos:[],ifi:[],ifme:[],irr:[],plantaMedia:[]};
+let B2C_FILES={};
+let B2C_SUMMARY={indicators:[],updatedAt:''};
+let b2cSummaryAt='';
+
+const B2C_FILE_TYPES=[
+  {key:'reparosPrazo',match:/reparos?\s*prazo/i,sigCols:['Reparo','codigo_os'],label:'Reparos Prazo'},
+  {key:'irt',match:/\birt\b/i,sigCols:['Aging IRT','qtd_Reparos_totais'],label:'IRT'},
+  {key:'mudEndereco',match:/mud.*endere/i,sigCols:['qtd_Mud_Endereco'],label:'Mud Endereço'},
+  {key:'mudComodo',match:/mud.*c[oô]modo/i,sigCols:['qtd_Mud_Comodo'],label:'Mud Cômodo'},
+  {key:'upgrade',match:/upgrade/i,sigCols:['qtd_Mud_Upgrade'],label:'Upgrade'},
+  {key:'agingAltas',match:/aging\s*altas/i,sigCols:['Qtd. Ativações','Data Criação Contrato'],label:'Aging Altas'},
+  {key:'efetividadeAltas',match:/efetividade\s*altas/i,sigCols:['conclusao_os','Qtd. Total'],label:'Efetividade Altas'},
+  {key:'efetividadeReparos',match:/efetividade\s*reparos/i,sigCols:['FILA','data_conclusao'],label:'Efetividade Reparos'},
+  {key:'ifi',match:/\bifi\b/i,sigCols:['Qtd IFI'],label:'IFI'},
+  {key:'ifme',match:/\bifme\b|^data$/i,sigCols:['Qtd. IFME','Aging IFME'],label:'IFME'},
+  {key:'irr',match:/\birr\b/i,sigCols:['Qtd. IRR','Aging IRR'],label:'IRR'},
+  {key:'plantaMedia',match:/planta\s*m[eé]dia/i,sigCols:['Media Base Media'],label:'Planta Média'},
+];
+const B2C_INDICATOR_META={
+  reparos24h:{label:'Reparos 24h',meta:85,dir:'higher'},
+  irt:{label:'IRT',meta:3.7,dir:'lower'},
+  mudEndereco:{label:'Mudança de Endereço',meta:85,dir:'higher'},
+  mudComodo:{label:'Mudança de Cômodo',meta:85,dir:'higher'},
+  upgrade:{label:'Upgrade',meta:85,dir:'higher'},
+  agingAltas:{label:'Aging Altas',meta:85,dir:'higher'},
+  efetividadeAltas:{label:'Efetividade Altas',meta:78,dir:'higher'},
+  efetividadeReparos:{label:'Efetividade Reparos',meta:78,dir:'higher'},
+  ifi:{label:'IFI',meta:3.5,dir:'lower'},
+  ifme:{label:'IFME',meta:3.5,dir:'lower'},
+  irr:{label:'IRR',meta:7,dir:'lower'},
+};
+
+function b2cNk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase();}
+function b2cGv(r,cols){
+  for(const c of cols)if(r[c]!==undefined&&r[c]!=='')return r[c];
+  const m=Object.fromEntries(Object.keys(r).map(k=>[b2cNk(k),k]));
+  for(const c of cols){const k=m[b2cNk(c)];if(k&&r[k]!==undefined&&r[k]!=='')return r[k];}
+  return '';
+}
+function b2cNum(v){if(v===null||v===undefined||v==='')return NaN;if(typeof v==='number')return v;return parseFloat(String(v).replace(',','.'));}
+
+function b2cDetectFileType(fileName,headerKeys){
+  const nameHit=B2C_FILE_TYPES.find(t=>t.match.test(fileName));
+  if(nameHit)return nameHit;
+  const nkKeys=new Set(headerKeys.map(b2cNk));
+  return B2C_FILE_TYPES.find(t=>t.sigCols.some(c=>nkKeys.has(b2cNk(c))))||null;
+}
+function b2cNormalizeRow(row){
+  return{
+    novoCluster:String(b2cGv(row,['Novo Cluster'])||'').trim()||'Não informado',
+    cluster:String(b2cGv(row,['Cluster'])||'').trim(),
+    unidade:String(b2cGv(row,['Unidade'])||'').trim(),
+    cidadeUf:String(b2cGv(row,['Cidade_UF','Cidade/UF'])||'').trim(),
+    raw:row,
+  };
+}
+
+/* B2C_RAW fica só em memória (nunca em localStorage): as 12 bases somadas passam de
+   140 mil linhas — serializar isso pra JSON e gravar via localStorage.setItem() é lento
+   o bastante pra travar a aba por bem mais de 1 minuto e ainda estourar a cota do
+   navegador (~5-10MB por origem, o payload real passa de 40-50MB). O detalhamento por
+   cluster (que precisa das linhas cruas) só funciona enquanto a aba que anexou as
+   bases continuar aberta; o que importa pra outros dispositivos — o resumo por
+   indicador (B2C_SUMMARY, poucas dezenas de números) — sincroniza normalmente pelo
+   estado principal do app (buildState/applyState), sem depender das linhas cruas. */
+
+/* ---------- Cálculo dos indicadores ---------- */
+function b2cShareIndicator(rows,predicate){
+  const byCl={};
+  let numTotal=0,denTotal=0;
+  rows.forEach(r=>{
+    const cl=r.novoCluster;
+    if(!byCl[cl])byCl[cl]={num:0,den:0};
+    byCl[cl].den++;denTotal++;
+    if(predicate(r)){byCl[cl].num++;numTotal++;}
+  });
+  const porCluster={};
+  Object.keys(byCl).forEach(cl=>{porCluster[cl]={...byCl[cl],pct:byCl[cl].den?byCl[cl].num/byCl[cl].den*100:null};});
+  return{geral:{num:numTotal,den:denTotal,pct:denTotal?numTotal/denTotal*100:null},porCluster};
+}
+function b2cRatioIndicator(numRows,denRows){
+  const numByCl={},denByCl={};
+  let numTotal=0,denTotal=0;
+  numRows.forEach(r=>{numByCl[r.novoCluster]=(numByCl[r.novoCluster]||0)+1;numTotal++;});
+  denRows.forEach(r=>{
+    const v=b2cNum(b2cGv(r.raw,['Media Base Media','Qtd. Ativações','Qtd.']));
+    const qty=isNaN(v)?1:v;
+    denByCl[r.novoCluster]=(denByCl[r.novoCluster]||0)+qty;denTotal+=qty;
+  });
+  const clusters=[...new Set([...Object.keys(numByCl),...Object.keys(denByCl)])];
+  const porCluster={};
+  clusters.forEach(cl=>{
+    const num=numByCl[cl]||0,den=denByCl[cl]||0;
+    porCluster[cl]={num,den,pct:den?num/den*100:null};
+  });
+  return{geral:{num:numTotal,den:denTotal,pct:denTotal?numTotal/denTotal*100:null},porCluster};
+}
+/* Motivo dominante entre as linhas "fora do padrão" de um indicador — mesmo
+   espírito da causa raiz já usada em Encerrados/Rede, adaptado pra cada base B2C
+   ter seu próprio nome de coluna de motivo. */
+function b2cDominantMotivo(rows,offPredicate,motivoCols){
+  const cnt={};
+  rows.filter(offPredicate).forEach(r=>{
+    const m=String(b2cGv(r.raw,motivoCols)||'Não informado').trim()||'Não informado';
+    cnt[m]=(cnt[m]||0)+1;
+  });
+  const sorted=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+  return sorted[0]||null;
+}
+function b2cComputeIndicators(){
+  const out=[];
+  const within3=r=>{const v=b2cNum(b2cGv(r.raw,['Aging']));return!isNaN(v)&&v<=3;};
+  const beyond3=r=>{const v=b2cNum(b2cGv(r.raw,['Aging']));return!isNaN(v)&&v>3;};
+
+  if(B2C_RAW.reparosPrazo.length){
+    const res=b2cShareIndicator(B2C_RAW.reparosPrazo,r=>b2cGv(r.raw,['Reparo'])==='Até 24 hrs');
+    const motivo=b2cDominantMotivo(B2C_RAW.reparosPrazo,r=>b2cGv(r.raw,['Reparo'])!=='Até 24 hrs',['Motivo OS']);
+    out.push({key:'reparos24h',...B2C_INDICATOR_META.reparos24h,...res,motivo});
+  }
+  if(B2C_RAW.mudEndereco.length){
+    const res=b2cShareIndicator(B2C_RAW.mudEndereco,within3);
+    const motivo=b2cDominantMotivo(B2C_RAW.mudEndereco,beyond3,['Motivo OS']);
+    out.push({key:'mudEndereco',...B2C_INDICATOR_META.mudEndereco,...res,motivo});
+  }
+  if(B2C_RAW.mudComodo.length){
+    const res=b2cShareIndicator(B2C_RAW.mudComodo,within3);
+    const motivo=b2cDominantMotivo(B2C_RAW.mudComodo,beyond3,['Motivo OS']);
+    out.push({key:'mudComodo',...B2C_INDICATOR_META.mudComodo,...res,motivo});
+  }
+  if(B2C_RAW.upgrade.length){
+    const res=b2cShareIndicator(B2C_RAW.upgrade,within3);
+    const motivo=b2cDominantMotivo(B2C_RAW.upgrade,beyond3,['Motivo OS']);
+    out.push({key:'upgrade',...B2C_INDICATOR_META.upgrade,...res,motivo});
+  }
+  if(B2C_RAW.agingAltas.length){
+    const diasFn=r=>{const a=b2cNum(b2cGv(r.raw,['Data Ativação'])),c=b2cNum(b2cGv(r.raw,['Data Criação Contrato']));return(!isNaN(a)&&!isNaN(c))?a-c:NaN;};
+    const res=b2cShareIndicator(B2C_RAW.agingAltas,r=>{const d=diasFn(r);return!isNaN(d)&&d<=3;});
+    out.push({key:'agingAltas',...B2C_INDICATOR_META.agingAltas,...res,motivo:null});
+  }
+  if(B2C_RAW.efetividadeAltas.length){
+    const res=b2cShareIndicator(B2C_RAW.efetividadeAltas,r=>b2cGv(r.raw,['conclusao_os'])==='Realizado');
+    const motivo=b2cDominantMotivo(B2C_RAW.efetividadeAltas,r=>b2cGv(r.raw,['conclusao_os'])!=='Realizado',['Conclusão OS','Motivo OS']);
+    out.push({key:'efetividadeAltas',...B2C_INDICATOR_META.efetividadeAltas,...res,motivo});
+  }
+  if(B2C_RAW.efetividadeReparos.length){
+    const res=b2cShareIndicator(B2C_RAW.efetividadeReparos,r=>b2cGv(r.raw,['conclusao'])==='Realizado');
+    const motivo=b2cDominantMotivo(B2C_RAW.efetividadeReparos,r=>b2cGv(r.raw,['conclusao'])!=='Realizado',['Motivo Conclusão OS']);
+    out.push({key:'efetividadeReparos',...B2C_INDICATOR_META.efetividadeReparos,...res,motivo});
+  }
+  if(B2C_RAW.irt.length&&B2C_RAW.plantaMedia.length){
+    const res=b2cRatioIndicator(B2C_RAW.irt,B2C_RAW.plantaMedia);
+    out.push({key:'irt',...B2C_INDICATOR_META.irt,...res,motivo:null});
+  }
+  if(B2C_RAW.ifi.length&&B2C_RAW.agingAltas.length){
+    const res=b2cRatioIndicator(B2C_RAW.ifi,B2C_RAW.agingAltas);
+    const motivo=b2cDominantMotivo(B2C_RAW.ifi,()=>true,['Motivo']);
+    out.push({key:'ifi',...B2C_INDICATOR_META.ifi,...res,motivo});
+  }
+  if(B2C_RAW.ifme.length&&B2C_RAW.reparosPrazo.length){
+    const res=b2cRatioIndicator(B2C_RAW.ifme,B2C_RAW.reparosPrazo);
+    const motivo=b2cDominantMotivo(B2C_RAW.ifme,()=>true,['Motivo']);
+    out.push({key:'ifme',...B2C_INDICATOR_META.ifme,...res,motivo});
+  }
+  if(B2C_RAW.irr.length&&B2C_RAW.reparosPrazo.length){
+    const res=b2cRatioIndicator(B2C_RAW.irr,B2C_RAW.reparosPrazo);
+    const motivo=b2cDominantMotivo(B2C_RAW.irr,()=>true,['Motivo OS']);
+    out.push({key:'irr',...B2C_INDICATOR_META.irr,...res,motivo});
+  }
+  return out;
+}
+function b2cIndicatorStatus(ind){
+  if(ind.geral.pct===null)return'na';
+  const {pct}=ind.geral,{meta,dir}=ind;
+  if(dir==='higher')return pct>=meta?'ok':pct>=meta*0.9?'wn':'bd';
+  return pct<=meta?'ok':pct<=meta*1.3?'wn':'bd';
+}
+function b2cRecomputeSummary(){
+  B2C_SUMMARY={indicators:b2cComputeIndicators(),files:{...B2C_FILES},updatedAt:new Date().toISOString()};
+  b2cSummaryAt=B2C_SUMMARY.updatedAt;
+}
+
+/* ---------- Upload (múltiplos arquivos, com detecção automática) ---------- */
+document.getElementById('b2c-filesInput').addEventListener('change',function(e){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
+  const files=Array.from(e.target.files||[]);
+  if(!files.length)return;
+  const statusEl=document.getElementById('b2c-status');
+  statusEl.textContent='Lendo '+files.length+' arquivo(s)...';
+  let pending=files.length;
+  const results=[];
+  files.forEach(f=>{
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:'array'});
+        const sn=wb.SheetNames.find(n=>b2cNk(n)===b2cNk('Export'))||wb.SheetNames[0];
+        const rawRows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
+        /* As 12 bases-modelo sempre trazem 2 linhas de "lixo" coladas no rodapé pelo
+           exportador do Excel: uma linha "Total" (resumo agregado, ex.: "Qtd.
+           Ativações": 7479 — um número desproporcional, não um evento de verdade) e uma
+           linha "Filtros aplicados: ..." (metadado do export, não um registro). As
+           duas sempre vêm com "Novo Cluster" em branco, ao contrário de qualquer linha
+           real — mesmo padrão de bug já achado e corrigido no Painel Rede (linha de
+           rodapé "Filtros aplicados" inflando um mês por engano). Sem este filtro, a
+           linha "Total" era contada como se fosse 1 evento com Qtd. gigante, dobrando
+           denominadores como o de IFI (achado testando com os arquivos reais: contagem
+           batia ~2x o valor esperado). */
+        const rows=rawRows.filter(r=>String(b2cGv(r,['Novo Cluster'])||'').trim()!=='');
+        const headerKeys=rows.length?Object.keys(rows[0]):[];
+        const type=b2cDetectFileType(f.name,headerKeys);
+        if(!type){
+          results.push({name:f.name,ok:false,reason:'Não reconhecido'});
+        }else{
+          B2C_RAW[type.key]=rows.map(b2cNormalizeRow);
+          B2C_FILES[type.key]={fileName:f.name,rowCount:rows.length,uploadedAt:new Date().toISOString()};
+          results.push({name:f.name,ok:true,type:type.label,rows:rows.length});
+        }
+      }catch(err){
+        results.push({name:f.name,ok:false,reason:err.message});
+      }
+      pending--;
+      if(pending===0)b2cFinishUpload(results);
+    };
+    rd.onerror=()=>{results.push({name:f.name,ok:false,reason:'Erro de leitura'});pending--;if(pending===0)b2cFinishUpload(results);};
+    rd.readAsArrayBuffer(f);
+  });
+  this.value='';
+});
+function b2cFinishUpload(results){
+  b2cRecomputeSummary();
+  saveState();
+  b2cRenderAll();
+  const ok=results.filter(r=>r.ok).length;
+  const statusEl=document.getElementById('b2c-status');
+  statusEl.textContent=ok+' de '+results.length+' arquivo(s) reconhecido(s) e carregado(s).';
+  const listEl=document.getElementById('b2c-filesList');
+  if(listEl){
+    listEl.innerHTML=results.map(r=>r.ok
+      ?'<span class="b2c-file-chip b2c-file-ok"><i class="ti ti-check"></i> '+eh(r.name)+' — '+r.type+' ('+r.rows+' linhas)</span>'
+      :'<span class="b2c-file-chip b2c-file-unknown"><i class="ti ti-alert-triangle"></i> '+eh(r.name)+' — '+eh(r.reason)+'</span>'
+    ).join('');
+  }
+}
+
+/* ---------- Render ---------- */
+const B2C_CLUSTER_ORDER=['C.32 - Maranhão','C.31 - Piaui','C.28 - Norte'];
+let b2cExpanded=null;
+function b2cToggleDetail(key){
+  b2cExpanded=b2cExpanded===key?null:key;
+  b2cRenderTable();
+}
+function b2cClusterRows(ind){
+  const keys=Object.keys(ind.porCluster).sort((a,b)=>{
+    const ia=B2C_CLUSTER_ORDER.indexOf(a),ib=B2C_CLUSTER_ORDER.indexOf(b);
+    if(ia>=0&&ib>=0)return ia-ib;
+    if(ia>=0)return-1;if(ib>=0)return 1;
+    return a.localeCompare(b);
+  });
+  return keys.map(cl=>{
+    const c=ind.porCluster[cl];
+    const pctTxt=c.pct===null?'—':pp(c.pct)+'%';
+    return'<tr><td>'+eh(cl)+'</td><td>'+c.num+'</td><td>'+(Number.isInteger(c.den)?c.den:c.den.toFixed(1))+'</td><td>'+pctTxt+'</td></tr>';
+  }).join('');
+}
+function b2cRenderTable(){
+  const tbody=document.getElementById('b2c-tbody');
+  if(!tbody)return;
+  if(!B2C_SUMMARY.indicators.length){
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--tx3)">Anexe as bases pra ver os indicadores.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=B2C_SUMMARY.indicators.map(ind=>{
+    const status=b2cIndicatorStatus(ind);
+    const pillCls='b2c-status-'+(status==='na'?'wn':status);
+    const pillTxt=status==='ok'?'Na meta':status==='wn'?'Atenção':status==='na'?'Sem dado':'Crítico';
+    const pct=ind.geral.pct;
+    const pctTxt=pct===null?'—':pp(pct)+'%';
+    const desvio=pct===null?'—':(ind.dir==='higher'?pct-ind.meta:pct-ind.meta);
+    const desvioTxt=pct===null?'—':((desvio>=0?'+':'')+pp(desvio)+' p.p.');
+    const metaTxt=(ind.dir==='higher'?'≥':'≤')+pp(ind.meta)+'%';
+    const denTxt=Number.isInteger(ind.geral.den)?ind.geral.den.toLocaleString('pt-BR'):ind.geral.den.toLocaleString('pt-BR',{maximumFractionDigits:1});
+    const row='<tr class="b2c-ind-row" onclick="b2cToggleDetail(\''+ind.key+'\')"><td>'+eh(ind.label)+'</td><td>'+metaTxt+'</td><td>'+pctTxt+'</td><td>'+desvioTxt+'</td><td><span class="b2c-status-pill '+pillCls+'">'+pillTxt+'</span></td><td>'+denTxt+'</td></tr>';
+    if(b2cExpanded!==ind.key)return row;
+    const detail='<tr class="b2c-detail-row"><td colspan="6">'
+      +(ind.motivo?'<div style="margin-bottom:8px;font-size:11.5px;color:var(--b2c-text-muted)"><b>Principal motivo fora do padrão:</b> '+eh(ind.motivo[0])+' ('+ind.motivo[1]+' ocorrência'+(ind.motivo[1]!==1?'s':'')+')</div>':'')
+      +'<table class="b2c-cluster-mini"><thead><tr><th>Cluster</th><th>Eventos</th><th>Base</th><th>%</th></tr></thead><tbody>'+b2cClusterRows(ind)+'</tbody></table>'
+      +'</td></tr>';
+    return row+detail;
+  }).join('');
+}
+function b2cRenderKpis(){
+  const el=document.getElementById('b2c-kpis');
+  if(!el)return;
+  if(!B2C_SUMMARY.indicators.length){el.innerHTML='';return;}
+  const desviosCriticos=B2C_SUMMARY.indicators.filter(i=>b2cIndicatorStatus(i)==='bd').length;
+  const desviosAtencao=B2C_SUMMARY.indicators.filter(i=>b2cIndicatorStatus(i)==='wn').length;
+  const naMeta=B2C_SUMMARY.indicators.filter(i=>b2cIndicatorStatus(i)==='ok').length;
+  el.innerHTML=
+    '<div class="b2c-kpi"><div class="b2c-label">Indicadores anexados</div><div class="b2c-value">'+B2C_SUMMARY.indicators.length+' / '+Object.keys(B2C_INDICATOR_META).length+'</div></div>'
+    +'<div class="b2c-kpi b2c-ok"><div class="b2c-label">Na meta</div><div class="b2c-value">'+naMeta+'</div></div>'
+    +'<div class="b2c-kpi b2c-wn"><div class="b2c-label">Atenção</div><div class="b2c-value">'+desviosAtencao+'</div></div>'
+    +'<div class="b2c-kpi b2c-bd"><div class="b2c-label">Crítico</div><div class="b2c-value">'+desviosCriticos+'</div></div>';
+}
+function b2cRenderFilesList(){
+  const listEl=document.getElementById('b2c-filesList');
+  if(!listEl)return;
+  const entries=Object.entries(B2C_FILES);
+  if(!entries.length){listEl.innerHTML='';return;}
+  listEl.innerHTML=entries.map(([key,f])=>{
+    const meta=B2C_FILE_TYPES.find(t=>t.key===key);
+    return'<span class="b2c-file-chip b2c-file-ok"><i class="ti ti-check"></i> '+eh(f.fileName)+' — '+(meta?meta.label:key)+' ('+f.rowCount+' linhas)</span>';
+  }).join('');
+}
+function b2cRenderAll(){
+  b2cRenderKpis();
+  b2cRenderTable();
+  b2cRenderFilesList();
+  b2cRenderReport();
+  const statusEl=document.getElementById('b2c-status');
+  if(statusEl){
+    const n=Object.keys(B2C_FILES).length;
+    statusEl.textContent=n?n+' base(s) anexada(s) — atualizado em '+(B2C_SUMMARY.updatedAt?new Date(B2C_SUMMARY.updatedAt).toLocaleString('pt-BR'):'—'):'Nenhuma base anexada';
+  }
+}
+
+/* ---------- Relatório Executivo (mesmo padrão de texto plano com "▸ SEÇÃO"
+   já usado em B2B Encerrados/Rede) ---------- */
+function b2cBuildReportText(){
+  const now=new Date();
+  const dataGeracao=now.toLocaleDateString('pt-BR')+' às '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const inds=B2C_SUMMARY.indicators;
+  if(!inds.length)return'Nenhuma base anexada ainda.';
+  const linhas=inds.map(ind=>{
+    const status=b2cIndicatorStatus(ind);
+    const pct=ind.geral.pct;
+    const pctTxt=pct===null?'—':pp(pct)+'%';
+    const metaTxt=(ind.dir==='higher'?'≥':'≤')+pp(ind.meta)+'%';
+    const statusTxt=status==='ok'?'na meta':status==='wn'?'atenção':status==='na'?'sem dado':'crítico';
+    let linha=ind.label+': '+pctTxt+' (meta '+metaTxt+') — '+statusTxt+'.';
+    if(status!=='ok'&&status!=='na'&&ind.motivo)linha+=' Principal motivo: '+ind.motivo[0]+' ('+ind.motivo[1]+' ocorrências).';
+    return linha;
+  });
+  const criticos=inds.filter(i=>b2cIndicatorStatus(i)==='bd');
+  const atencao=inds.filter(i=>b2cIndicatorStatus(i)==='wn');
+  const fcaTxt=criticos.length||atencao.length
+    ?[
+      'Fato: '+(criticos.length?criticos.length+' indicador(es) crítico(s) ('+criticos.map(i=>i.label).join(', ')+')':'')+(criticos.length&&atencao.length?'; ':'')+(atencao.length?atencao.length+' indicador(es) em atenção ('+atencao.map(i=>i.label).join(', ')+')':'')+'.',
+      'Causa: '+(criticos[0]&&criticos[0].motivo?criticos[0].label+' concentrado em "'+criticos[0].motivo[0]+'" ('+criticos[0].motivo[1]+' ocorrências)':'ver detalhamento por cluster de cada indicador fora da meta')+'.',
+      'Ação: priorizar plano de ação para '+(criticos.length?criticos.map(i=>i.label).join(', '):atencao.map(i=>i.label).join(', '))+', com acompanhamento até o fechamento do período.',
+    ].join('\n')
+    :'Todos os indicadores anexados estão dentro da meta neste momento.';
+  const texto=[
+    'RELATÓRIO EXECUTIVO — B2C',
+    'Gerado em: '+dataGeracao,
+    '',
+    '▸ INDICADORES',
+    linhas.join('\n'),
+    '',
+    '▸ FCA — FATO, CAUSA E AÇÃO',
+    fcaTxt,
+  ].join('\n');
+  return texto;
+}
+function b2cRenderReport(){
+  const el=document.getElementById('b2c-report');
+  if(!el)return;
+  if(!B2C_SUMMARY.indicators.length){
+    el.innerHTML='<span style="color:var(--tx3);font-size:11px">Anexe as bases para gerar o relatório automático.</span>';
+    return;
+  }
+  el.innerHTML='<pre id="b2c-report-text">'+eh(b2cBuildReportText())+'</pre>';
+}
+document.getElementById('b2c-btnReport').addEventListener('click',b2cRenderReport);
+function b2cCopiarRelatorio(btn){
+  const rpt=document.getElementById('b2c-report');
+  if(!rpt)return;
+  const texto=(rpt.innerText||rpt.textContent||'').trim();
+  if(!texto)return;
+  const orig=btn?btn.innerHTML:'';
+  const done=ok=>{if(!btn)return;btn.innerHTML=ok?'<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Copiado!':'<i class="ti ti-x" style="font-size:11px;vertical-align:-1px"></i> Erro';setTimeout(()=>{btn.innerHTML=orig;},2200);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(()=>done(true)).catch(()=>done(false));
+  }else{
+    const ta=document.createElement('textarea');ta.value=texto;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done(true);}catch(e){done(false);}
+    document.body.removeChild(ta);
+  }
+}
 </script>
 </body>
 </html>
