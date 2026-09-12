@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T10:05:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T10:35:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -19114,11 +19114,16 @@ function rdeRowToRede(r,sheet){
   const mi=rdeMonthIndex(mes&&ano?`${ano}-${mes}`:(mes||openedAt));
   const wi=rdeWeekIndex(rdeGv(r,['semana','week','periodo semanal','período semanal'])||openedAt);
   if(isAC){
-    // Acesso: TME=col R, Prazo flag=col N (1=prazo ok), Outlier flag=col Q (1=outlier) — leitura por posição de coluna tem prioridade sobre o nome do cabeçalho
-    const colR=rdeColVal(r,'R'),colN=rdeColVal(r,'N'),colQ=rdeColVal(r,'Q');
+    /* Acesso: TME=col R, Prazo flag=col P PRAZO_SEM_PARADA_RELOGIO (1=no prazo, 0=fora do
+       prazo), Outlier flag=col Q OUTLIER_SEM_PARADA_RELOGIO (1=outlier) — referência
+       confirmada pelo usuário; corrige o commit 8269d8f (07/07), que tinha trocado pra
+       col N (PRAZO bruto, sem o ajuste de parada de relógio) por engano. Leitura por
+       posição de coluna continua tendo prioridade sobre o nome do cabeçalho, evitando
+       ambiguidade entre PRAZO e PRAZO_SEM_PARADA_RELOGIO (nomes parecidos). */
+    const colR=rdeColVal(r,'R'),colP=rdeColVal(r,'P'),colQ=rdeColVal(r,'Q');
     const tempo=rdeNum(rdeGv(r,['TME','tme','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
     const prazoRaw=rdeGv(r,['PRAZO_SEM_PARADA_RELOGIO','prazo sem parada relogio','no prazo','prazo','dentro prazo','dentro_sla','sla prazo','dentro']);
-    const prazo=colN!==null?Number(colN)==1:(prazoRaw!==''?rdeBoolish(prazoRaw):(tempo?tempo<=RDE_MTME:false));
+    const prazo=colP!==null?Number(colP)==1:(prazoRaw!==''?rdeBoolish(prazoRaw):(tempo?tempo<=RDE_MTME:false));
     const outRaw=rdeGv(r,['OUTLIER_SEM_PARADA_RELOGIO','outlier sem parada relogio','outlier','fora outlier','outlier 24h','outlier_24h']);
     const out=colQ!==null?Number(colQ)==1:(outRaw!==''?rdeBoolish(outRaw):(tempo>24));
     const cli=rdeNum(rdeGv(r,['CLIENTES AFETADOS','clientes afetados','clientes','cliente afetado','impactados','afetados']));
@@ -19931,79 +19936,83 @@ function renderRede(){
     const topCause=top8[0];
     const cityPct=topCity&&a.n?((topCity.fp+topCity.ou)/a.n*100).toFixed(1):0;
     const causePct=topCause&&a.n?((topCause.fp+topCause.ou)/a.n*100).toFixed(1):0;
-    const clReport=clEntries.map(x=>`${clNames[x.cl]||x.cl} <span class="${x.a.prazo>=RDE_M89?'rr-ok':'rr-bd'}">${x.a.prazo.toFixed(1)}%</span> (${x.a.n})`).join(' · ');
-    rptEl.innerHTML=
-      `<span class="rr-title">Relatório ${tabTxt}${clTxt} — ${scopeTxt}</span>`+
-      `<div class="rr-para"><b>Prazo:</b> <span class="rr-${prazoStatus}">${a.prazo.toFixed(1)}%</span> (${recs.filter(r=>r.p===1).length}/${a.n} chamados${a.prazo<RDE_M89?' · <b>'+((RDE_M89-a.prazo).toFixed(1))+' p.p. abaixo da meta</b>':''}).</div>`+
-      `<div class="rr-para"><b>Outlier:</b> <span class="rr-${outlierStatus}">${a.outlier.toFixed(1)}%</span> (${recs.filter(r=>r.o===1).length} chamados${a.outlier>RDE_MOUT?' · <b>'+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima do limite</b>':''}).</div>`+
-      `<div class="rr-para"><b>${tl} médio:</b> <span class="rr-${tmeStatus}">${a.tAvg.toFixed(2)}h</span> (mediana ${a.tMed.toFixed(2)}h${a.tAvg>RDE_MTME?' · <b>'+(a.tAvg-RDE_MTME).toFixed(2)+'h acima da meta</b>':''}).</div>`+
-      (clReport?`<div class="rr-para"><b>Por cluster:</b> ${clReport}.</div>`:'')+
-      (worstCl&&worstCl.a.prazo<RDE_M89?`<div class="rr-para"><b>Cluster crítico:</b> ${clNames[worstCl.cl]||worstCl.cl} com prazo de <span class="rr-bd">${worstCl.a.prazo.toFixed(1)}%</span> (${worstCl.a.n} chamados).</div>`:'')+
-      (topCity&&topCity.score>0?`<div class="rr-para"><b>Cidade mais ofensora:</b> ${eh(topCity.k)} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.</div>`:'')+
-      (topCause&&topCause.fp+topCause.ou>0?`<div class="rr-para"><b>Causa dominante:</b> ${eh(topCause.k)} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.</div>`:'')+
-      /* Linha final + bloco FCA voltados pra diretoria, a pedido do usuário: mantém toda a
-         estrutura já existente (título + parágrafos factuais acima) e só ACRESCENTA isto no
-         fim, reaproveitando os mesmos dados já calculados (prazoStatus/outlierStatus/
-         tmeStatus, worstCl, topCause, a.*) — nenhum cálculo novo, só nova leitura em cima do
-         que já existe. FCA = Fato/Causa/Ação, formato padrão de relatório operacional já
-         usado neste projeto (ver Relatório Executivo B2B Aging). */
-      (()=>{
-        const metasOk=prazoStatus==='ok'&&outlierStatus==='ok'&&tmeStatus==='ok';
-        const focoPartes=[
-          worstCl&&worstCl.a.prazo<RDE_M89?`ao cluster <b>${eh(clNames[worstCl.cl]||worstCl.cl)}</b>`:'',
-          topCause&&(topCause.fp+topCause.ou)>0?`à causa <b>${eh(topCause.k)}</b>`:''
-        ].filter(Boolean).join(' e ');
-        const execTxt=metasOk
-          ?'Operação dentro das metas neste recorte — sem pontos críticos que exijam ação imediata da diretoria.'
-          :`Recomenda-se atenção prioritária ${focoPartes||'aos indicadores fora da meta'}, com plano de ação para reverter o quadro até o fechamento do período.`;
-        const fatoPartes=[
-          prazoStatus!=='ok'?`Prazo em <b>${a.prazo.toFixed(1)}%</b> (${(RDE_M89-a.prazo).toFixed(1)} p.p. abaixo da meta de ${RDE_M89}%)`:'',
-          outlierStatus!=='ok'?`Outlier em <b>${a.outlier.toFixed(1)}%</b> (${(a.outlier-RDE_MOUT).toFixed(1)} p.p. acima do limite de ${RDE_MOUT}%)`:'',
-          tmeStatus!=='ok'?`${tl} médio em <b>${a.tAvg.toFixed(2)}h</b> (${(a.tAvg-RDE_MTME).toFixed(2)}h acima da meta de ${RDE_MTME}h)`:''
-        ].filter(Boolean);
-        const fatoTxt=fatoPartes.length?fatoPartes.join('; ')+'.':`Todos os indicadores (Prazo, Outlier e ${tl}) dentro da meta neste recorte.`;
-        /* Causa só cita cluster/causa como problema quando o indicador geral (metasOk) já
-           está fora da meta — senão o FCA fica contraditório: um subcluster pode ficar abaixo
-           do alvo mesmo com a média geral dentro da meta (ex.: MA INT abaixo enquanto o
-           agregado do mês está OK), e citar isso em "Causa" junto de um "Fato" que diz que
-           está tudo certo confundiria quem só lê o FCA. */
-        const causaPartes=metasOk?[]:[
-          worstCl&&worstCl.a.prazo<RDE_M89?`concentração de não-conformidade no cluster <b>${eh(clNames[worstCl.cl]||worstCl.cl)}</b> (prazo de ${worstCl.a.prazo.toFixed(1)}% em ${worstCl.a.n} chamados)`:'',
-          topCause&&(topCause.fp+topCause.ou)>0?`recorrência da causa <b>${eh(topCause.k)}</b> (${topCause.fp+topCause.ou} casos, ${causePct}% do total)`:''
-        ].filter(Boolean);
-        const causaTxt=causaPartes.length?causaPartes.join('; ')+'.':'Não se aplica — indicadores dentro do esperado, sem causa crítica concentrada.';
-        /* Ações específicas pra Prazo e MTTR, a pedido do usuário — cada uma só aparece
-           quando aquele indicador específico está fora da meta, e cita o cluster crítico
-           (worstCl) e a causa dominante (topCause) já identificados acima quando disponíveis,
-           em vez de texto genérico. Se só Outlier estiver fora da meta (Prazo e MTTR OK), cai
-           no texto genérico de antes — não há ação de Prazo/MTTR pra sugerir nesse caso. */
-        const clCritico=worstCl&&worstCl.a.prazo<RDE_M89?(clNames[worstCl.cl]||worstCl.cl):'';
-        const causaCritica=topCause&&(topCause.fp+topCause.ou)>0?topCause.k:'';
-        const acoesPrazo=prazoStatus!=='ok'?[
-          clCritico?`Priorizar atendimento por SLA no cluster <b>${eh(clCritico)}</b>, com fila dedicada para chamados a menos de 2h do vencimento do prazo.`
-                   :'Priorizar atendimento por SLA nos clusters com maior volume de chamados fora do prazo, com fila dedicada para chamados próximos do vencimento.',
-          clCritico?`Reforçar o dimensionamento de equipe técnica de campo no cluster <b>${eh(clCritico)}</b> (prazo atual de ${worstCl.a.prazo.toFixed(1)}%, ${worstCl.a.n} chamados) para reduzir a fila de espera.`
-                   :'Revisar o dimensionamento de equipe técnica de campo nos clusters mais impactados para reduzir a fila de espera.'
-        ]:[];
-        const acoesMttr=tmeStatus!=='ok'?[
-          causaCritica?`Padronizar checklist/procedimento de campo para a causa recorrente <b>${eh(causaCritica)}</b> (${topCause.fp+topCause.ou} casos), reduzindo o tempo de diagnóstico.`
-                      :'Padronizar checklist/procedimento de campo para as causas mais recorrentes, reduzindo o tempo de diagnóstico.',
-          causaCritica?`Aproximar estoque de peças/kits de reparo específicos para <b>${eh(causaCritica)}</b> das bases nos clusters mais impactados, reduzindo tempo de deslocamento/reposição.`
-                      :'Revisar a disponibilidade de peças/kits de reparo nas bases dos clusters mais impactados, reduzindo tempo de deslocamento/reposição.'
-        ]:[];
-        const acoesList=[
-          acoesPrazo.length?`<b>Prazo:</b> ${acoesPrazo.join(' ')}`:'',
-          acoesMttr.length?`<b>MTTR:</b> ${acoesMttr.join(' ')}`:''
-        ].filter(Boolean);
-        const acaoTxt=metasOk
-          ?'Manter monitoramento de rotina; nenhuma ação corretiva necessária neste recorte.'
-          :(acoesList.length?acoesList.join('<br>'):`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`);
-        return`<div class="rr-para"><b>Leitura executiva:</b> ${execTxt}</div>`+
-          `<div class="rr-para" style="margin-top:8px"><b>FCA Executivo</b></div>`+
-          `<div class="rr-para">&nbsp;&nbsp;<b>Fato:</b> ${fatoTxt}</div>`+
-          `<div class="rr-para">&nbsp;&nbsp;<b>Causa:</b> ${causaTxt}</div>`+
-          `<div class="rr-para">&nbsp;&nbsp;<b>Ação:</b> ${acaoTxt}</div>`;
-      })();
+    const clReport=clEntries.map(x=>`${clNames[x.cl]||x.cl} ${x.a.prazo.toFixed(1)}% (${x.a.n})`).join(', ');
+    /* Mesmo padrão de texto do Relatório Executivo Automático do B2B Encerrados
+       (renderExecReport): texto plano com seções "▸ TÍTULO", pensado pra ser copiado
+       (botão Copiar já existente em #rde-report-copy-btn) e colado em e-mail/WhatsApp —
+       antes disto o relatório da Rede era só HTML com <b>/<span> coloridos, sem padrão
+       nenhum com o resto do painel. Nenhum cálculo novo: só reescreve em texto plano os
+       mesmos dados já calculados acima (a.*, worstCl, topCity, topCause, clReport). */
+    const metasOk=prazoStatus==='ok'&&outlierStatus==='ok'&&tmeStatus==='ok';
+    const focoPartes=[
+      worstCl&&worstCl.a.prazo<RDE_M89?`ao cluster ${clNames[worstCl.cl]||worstCl.cl}`:'',
+      topCause&&(topCause.fp+topCause.ou)>0?`à causa ${topCause.k}`:''
+    ].filter(Boolean).join(' e ');
+    const fatoPartes=[
+      prazoStatus!=='ok'?`Prazo em ${a.prazo.toFixed(1)}% (${(RDE_M89-a.prazo).toFixed(1)} p.p. abaixo da meta de ${RDE_M89}%)`:'',
+      outlierStatus!=='ok'?`Outlier em ${a.outlier.toFixed(1)}% (${(a.outlier-RDE_MOUT).toFixed(1)} p.p. acima do limite de ${RDE_MOUT}%)`:'',
+      tmeStatus!=='ok'?`${tl} médio em ${a.tAvg.toFixed(2)}h (${(a.tAvg-RDE_MTME).toFixed(2)}h acima da meta de ${RDE_MTME}h)`:''
+    ].filter(Boolean);
+    const fatoTxt=fatoPartes.length?fatoPartes.join('; ')+'.':`Todos os indicadores (Prazo, Outlier e ${tl}) dentro da meta neste recorte.`;
+    /* Causa só cita cluster/causa como problema quando o indicador geral (metasOk) já está
+       fora da meta — senão o FCA fica contraditório: um subcluster pode ficar abaixo do alvo
+       mesmo com a média geral dentro da meta, e citar isso em "Causa" junto de um "Fato" que
+       diz que está tudo certo confundiria quem só lê o FCA. */
+    const causaPartes=metasOk?[]:[
+      worstCl&&worstCl.a.prazo<RDE_M89?`concentração de não-conformidade no cluster ${clNames[worstCl.cl]||worstCl.cl} (prazo de ${worstCl.a.prazo.toFixed(1)}% em ${worstCl.a.n} chamados)`:'',
+      topCause&&(topCause.fp+topCause.ou)>0?`recorrência da causa ${topCause.k} (${topCause.fp+topCause.ou} casos, ${causePct}% do total)`:''
+    ].filter(Boolean);
+    const causaTxt=causaPartes.length?causaPartes.join('; ')+'.':'Não se aplica — indicadores dentro do esperado, sem causa crítica concentrada.';
+    const clCritico=worstCl&&worstCl.a.prazo<RDE_M89?(clNames[worstCl.cl]||worstCl.cl):'';
+    const causaCritica=topCause&&(topCause.fp+topCause.ou)>0?topCause.k:'';
+    const acoesPrazo=prazoStatus!=='ok'?[
+      clCritico?`Priorizar atendimento por SLA no cluster ${clCritico}, com fila dedicada para chamados a menos de 2h do vencimento do prazo.`
+               :'Priorizar atendimento por SLA nos clusters com maior volume de chamados fora do prazo, com fila dedicada para chamados próximos do vencimento.',
+      clCritico?`Reforçar o dimensionamento de equipe técnica de campo no cluster ${clCritico} (prazo atual de ${worstCl.a.prazo.toFixed(1)}%, ${worstCl.a.n} chamados) para reduzir a fila de espera.`
+               :'Revisar o dimensionamento de equipe técnica de campo nos clusters mais impactados para reduzir a fila de espera.'
+    ]:[];
+    const acoesMttr=tmeStatus!=='ok'?[
+      causaCritica?`Padronizar checklist/procedimento de campo para a causa recorrente ${causaCritica} (${topCause.fp+topCause.ou} casos), reduzindo o tempo de diagnóstico.`
+                  :'Padronizar checklist/procedimento de campo para as causas mais recorrentes, reduzindo o tempo de diagnóstico.',
+      causaCritica?`Aproximar estoque de peças/kits de reparo específicos para ${causaCritica} das bases nos clusters mais impactados, reduzindo tempo de deslocamento/reposição.`
+                  :'Revisar a disponibilidade de peças/kits de reparo nas bases dos clusters mais impactados, reduzindo tempo de deslocamento/reposição.'
+    ]:[];
+    const acoesList=[
+      acoesPrazo.length?`Prazo: ${acoesPrazo.join(' ')}`:'',
+      acoesMttr.length?`MTTR: ${acoesMttr.join(' ')}`:''
+    ].filter(Boolean);
+    const acaoTxt=metasOk
+      ?'Manter monitoramento de rotina; nenhuma ação corretiva necessária neste recorte.'
+      :(acoesList.length?acoesList.join('\n'):`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`);
+    const execTxt=metasOk
+      ?'Operação dentro das metas neste recorte — sem pontos críticos que exijam ação imediata da diretoria.'
+      :`Recomenda-se atenção prioritária ${focoPartes||'aos indicadores fora da meta'}, com plano de ação para reverter o quadro até o fechamento do período.`;
+    const rdeTexto=[
+      `RELATÓRIO EXECUTIVO — ${tabTxt}${clTxt} — ${scopeTxt}`,
+      `Gerado em: ${now2()}`,
+      '',
+      `▸ PRAZO, OUTLIER E ${tl.toUpperCase()}`,
+      `Prazo: ${a.prazo.toFixed(1)}% (${recs.filter(r=>r.p===1).length}/${a.n} chamados${a.prazo<RDE_M89?' — '+((RDE_M89-a.prazo).toFixed(1))+' p.p. abaixo da meta':''}).`,
+      `Outlier: ${a.outlier.toFixed(1)}% (${recs.filter(r=>r.o===1).length} chamados${a.outlier>RDE_MOUT?' — '+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima do limite':''}).`,
+      `${tl} médio: ${a.tAvg.toFixed(2)}h (mediana ${a.tMed.toFixed(2)}h${a.tAvg>RDE_MTME?' — '+(a.tAvg-RDE_MTME).toFixed(2)+'h acima da meta':''}).`,
+      ...(clReport?[`Por cluster: ${clReport}.`]:[]),
+      '',
+      `▸ CLUSTER E CIDADE MAIS OFENSORES`,
+      worstCl&&worstCl.a.prazo<RDE_M89?`Cluster crítico: ${clNames[worstCl.cl]||worstCl.cl} com prazo de ${worstCl.a.prazo.toFixed(1)}% (${worstCl.a.n} chamados).`:'Nenhum cluster abaixo da meta de prazo neste recorte.',
+      ...(topCity&&topCity.score>0?[`Cidade mais ofensora: ${topCity.k} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.`]:[]),
+      '',
+      `▸ CAUSA DOMINANTE`,
+      topCause&&topCause.fp+topCause.ou>0?`${topCause.k} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.`:'Nenhuma causa concentrada neste recorte.',
+      '',
+      `▸ FCA — FATO, CAUSA E AÇÃO`,
+      `Fato: ${fatoTxt}`,
+      `Causa: ${causaTxt}`,
+      `Ação: ${acaoTxt}`,
+      '',
+      `▸ LEITURA EXECUTIVA`,
+      execTxt,
+    ].join('\n');
+    rptEl.innerHTML=`<pre id="rde-report-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">${eh(rdeTexto)}</pre>`;
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados para o período selecionado.</span>';}
   rdeRenderAtenuacao(recs);
   // Calls panel: sempre visível enquanto houver cluster e/ou período selecionado
