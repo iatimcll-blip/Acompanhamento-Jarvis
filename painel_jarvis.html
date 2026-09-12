@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T09:20:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T10:05:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -19068,8 +19068,17 @@ function rdeIsoWeek(d){if(!d)return{y:0,w:0};const x=new Date(Date.UTC(d.getFull
 function rdeClusterCode(v){const s=rdeNk(v);if(s.includes('CAP'))return'C';if(s.includes('NORTE')||s==='N'||s.includes('AM')||s.includes('AP')||s.includes('PA'))return'N';if(s.includes('PI')||s.includes('PIAUI')||s==='P'||s.includes('C31'))return'P';if(s.includes('INT')||s.includes('INTERIOR')||s==='I'||s.includes('MA')||s.includes('MARANHAO')||s.includes('C32'))return'I';return'I'}
 function rdeClusterFromRow(r){const uf=rdeNk(rdeGv(r,['UF','ufservico']));const cidade=rdeNk(rdeGv(r,['CIDADE','CIDADE_SIMPLES','cidadeservico','localidade']));const cluster=rdeGv(r,['cluster_calc','NOME CLUSTER','NOVO CLUSTER','CLUSTER','cluster','regional','regiao','area']);if(uf==='PI')return'P';if(uf==='AM'||uf==='AP'||uf==='PA')return'N';if(uf==='MA')return(cidade.includes('SAOLUIS')||cidade.includes('PACODOLUMIAR')||cidade.includes('RIBAMAR'))?'C':'I';return rdeClusterCode(cluster||uf||cidade)}
 function rdeEnsureLabel(arr,key,label){let i=arr.indexOf(key);if(i<0){arr.push(key);label&&arr===rdeM.mes?rdeM.ml.push(label):label&&arr===rdeM.sem&&rdeM.sl.push(label);i=arr.length-1}return i}
-function rdeMonthIndex(v){if(v instanceof Date&&!isNaN(v)){const key=`${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}`;return rdeEnsureLabel(rdeM.mes,key,rdeMlabel(key));}const raw=String(v||'').trim();if(!raw)return 0;const ym=raw.match(/^(\d{4})[-\/](\d{1,2})$|^(\d{1,2})[-\/](\d{4})$/);if(ym){const y=ym[1]||ym[4],mo=ym[2]||ym[3];const key=`${y}-${String(Number(mo)).padStart(2,'0')}`;return rdeEnsureLabel(rdeM.mes,key,rdeMlabel(key));}const d=rdeParseDateBR(raw);if(d)return rdeMonthIndex(d);const i=rdeM.ml.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.mes,raw,raw)}
-function rdeWeekIndex(v){if(v instanceof Date&&!isNaN(v)){const{y,w}=rdeIsoWeek(v);return rdeEnsureLabel(rdeM.sem,`${y}-W${String(w).padStart(2,'0')}`,`S${String(w).padStart(2,'0')}`)}const raw=String(v||'').trim();if(!raw)return 0;const d=rdeParseDateBR(raw);if(d)return rdeWeekIndex(d);const n=Number((raw.match(/\d+/)||[])[0]||0);if(n>0){const y=new Date().getFullYear();return rdeEnsureLabel(rdeM.sem,`${y}-W${String(n).padStart(2,'0')}`,`S${String(n).padStart(2,'0')}`);}const i=rdeM.sl.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.sem,raw,raw)}
+/* !raw retorna -1 (não 0): índice 0 é o mês real de QUALQUER linha que tenha sido a
+   primeira a popular rdeM.mes (ordem de upload, não necessariamente a mais antiga) —
+   uma linha sem DATA_ABERTURA (ou uma linha de lixo, tipo rodapé "Filtros aplicados:
+   ..." que alguns exports deixam na última linha da planilha) caía silenciosamente
+   nesse mês por engano, inflando a contagem dele. Achado com dado real: 15 chamados
+   sem data (14 reais sem abertura registrada + 1 linha de rodapé) inflavam o mês de
+   julho/2025 na base atual. rdeM.mes[-1]/rdeM.sem[-1] são undefined, e rdeToFlat() já
+   filtra `.filter(r=>r.m||r.w)` — ou seja, essas linhas já eram pra ter sido excluídas
+   por completo, só faltava não fabricar um índice 0 falso pra elas. */
+function rdeMonthIndex(v){if(v instanceof Date&&!isNaN(v)){const key=`${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}`;return rdeEnsureLabel(rdeM.mes,key,rdeMlabel(key));}const raw=String(v||'').trim();if(!raw)return-1;const ym=raw.match(/^(\d{4})[-\/](\d{1,2})$|^(\d{1,2})[-\/](\d{4})$/);if(ym){const y=ym[1]||ym[4],mo=ym[2]||ym[3];const key=`${y}-${String(Number(mo)).padStart(2,'0')}`;return rdeEnsureLabel(rdeM.mes,key,rdeMlabel(key));}const d=rdeParseDateBR(raw);if(d)return rdeMonthIndex(d);const i=rdeM.ml.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.mes,raw,raw)}
+function rdeWeekIndex(v){if(v instanceof Date&&!isNaN(v)){const{y,w}=rdeIsoWeek(v);return rdeEnsureLabel(rdeM.sem,`${y}-W${String(w).padStart(2,'0')}`,`S${String(w).padStart(2,'0')}`)}const raw=String(v||'').trim();if(!raw)return-1;const d=rdeParseDateBR(raw);if(d)return rdeWeekIndex(d);const n=Number((raw.match(/\d+/)||[])[0]||0);if(n>0){const y=new Date().getFullYear();return rdeEnsureLabel(rdeM.sem,`${y}-W${String(n).padStart(2,'0')}`,`S${String(n).padStart(2,'0')}`);}const i=rdeM.sl.findIndex(x=>rdeNk(x)===rdeNk(raw));return i>=0?i:rdeEnsureLabel(rdeM.sem,raw,raw)}
 function rdeLabelIndex(arr,v){const raw=String(v||'Não informado').trim()||'Não informado';let i=arr.findIndex(x=>rdeNk(x)===rdeNk(raw));if(i<0){arr.push(raw);i=arr.length-1}return i}
 function rdeFmtDate(v){const d=rdeParseDateBR(v);if(d){const ht=d.getHours()||d.getMinutes()||d.getSeconds();return ht?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}return String(v||'').trim()||'-'}
 function rdeCompactDetail(r,kind,cl,mi,wi,prazo,out,tempo,label,impacto){
