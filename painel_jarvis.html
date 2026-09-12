@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T13:55:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T14:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7038,8 +7038,48 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-b2c .b2c-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
   #panel-b2c .b2c-chart-card{background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:12px 14px;}
   #panel-b2c .b2c-chart-card h4{margin:0 0 8px;font-size:11.5px;font-weight:600;color:var(--b2c-navy);}
+  #panel-b2c .b2c-ind-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  #panel-b2c .b2c-ind-card{background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:12px 14px;cursor:pointer;transition:box-shadow .15s,transform .15s;text-align:left;}
+  #panel-b2c .b2c-ind-card:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
+  #panel-b2c .b2c-ind-card .b2c-label{font-size:10.5px;font-weight:500;color:var(--b2c-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #panel-b2c .b2c-ind-card .b2c-value{font-size:22px;font-weight:700;margin-top:3px;letter-spacing:-.01em;}
+  #panel-b2c .b2c-ind-card .b2c-meta-small{font-size:10px;color:var(--b2c-text-muted);margin-top:2px;}
+  #panel-b2c .b2c-ind-card.b2c-ok{border-left:3px solid var(--green);}
+  #panel-b2c .b2c-ind-card.b2c-ok .b2c-value{color:var(--green-dk);}
+  #panel-b2c .b2c-ind-card.b2c-wn{border-left:3px solid var(--orange);}
+  #panel-b2c .b2c-ind-card.b2c-wn .b2c-value{color:var(--orange);}
+  #panel-b2c .b2c-ind-card.b2c-bd{border-left:3px solid var(--red);}
+  #panel-b2c .b2c-ind-card.b2c-bd .b2c-value{color:var(--red-dk);}
+  #panel-b2c .b2c-ind-card.b2c-na{border-left:3px solid var(--bd2);}
+  #panel-b2c .b2c-ind-card.b2c-na .b2c-value{color:var(--b2c-text-muted);}
+  /* Sem #panel-b2c na frente destas regras de propósito: o overlay/modal é irmão do
+     painel no DOM (mesmo </div> que fecha #panel-b2c fecha antes de onde o modal foi
+     inserido, igual ao #msel-portal), então nunca herdaria as variáveis --b2c-* nem
+     seria alcançado por um seletor "#panel-b2c .xxx" — achado testando o clique real
+     (o modal renderizava no fluxo normal da página, sem virar overlay). Usa as
+     variáveis globais (--tx/--surface/--bd/--tx3) direto em vez das --b2c-* locais. */
+  .b2c-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.52);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);align-items:center;justify-content:center;z-index:10000;padding:20px;}
+  .b2c-modal-overlay.b2c-open{display:flex;}
+  .b2c-modal{position:relative;background:var(--surface);border-radius:var(--rxl);box-shadow:var(--shadow-lg);width:620px;max-width:94vw;padding:22px 24px;max-height:88vh;overflow-y:auto;color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;}
+  .b2c-modal h3{margin:0 0 2px;font-size:16px;font-weight:700;color:var(--tx);letter-spacing:-.01em;}
+  .b2c-modal .b2c-modal-sub{font-size:11.5px;color:var(--tx3);margin-bottom:14px;}
+  .b2c-modal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .b2c-modal-stat{background:var(--surface2);border-radius:var(--r);padding:8px 10px;}
+  .b2c-modal-stat .lbl{font-size:9.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.02em;}
+  .b2c-modal-stat .val{font-size:16px;font-weight:700;margin-top:2px;color:var(--tx);}
+  .b2c-modal-section-title{font-size:11.5px;font-weight:600;color:var(--tx);margin:16px 0 6px;}
+  .b2c-modal-close{position:absolute;top:16px;right:18px;background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--tx3);}
+  .b2c-modal-files{font-size:11px;color:var(--tx3);}
+  .b2c-modal .b2c-cluster-mini{width:100%;border-collapse:collapse;font-size:11.5px;}
+  .b2c-modal .b2c-cluster-mini th{text-align:left;color:var(--tx3);font-weight:600;padding:3px 8px;}
+  .b2c-modal .b2c-cluster-mini td{padding:3px 8px;color:var(--tx);}
+  .b2c-modal .b2c-status-pill{display:inline-block;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;}
+  .b2c-modal .b2c-status-ok{background:var(--green-bg);color:var(--green-dk);}
+  .b2c-modal .b2c-status-wn{background:var(--orange-bg,rgba(255,149,0,.14));color:var(--orange);}
+  .b2c-modal .b2c-status-bd{background:var(--red-bg);color:var(--red-dk);}
   @media (max-width:900px){
     #panel-b2c .b2c-charts-grid{grid-template-columns:1fr;}
+    #panel-b2c .b2c-ind-grid{grid-template-columns:repeat(2,1fr);}
   }
   #panel-b2c table{width:100%;border-collapse:collapse;background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);font-size:12.5px;}
   #panel-b2c thead th{text-align:center;background:var(--surface2);color:var(--b2c-text-muted);padding:9px 10px;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid var(--b2c-border);white-space:nowrap;}
@@ -7087,6 +7127,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <span class="card-action" onclick="b2cClearFilters()">Limpar filtros</span>
     </div>
     <div class="b2c-kpis" id="b2c-kpis"></div>
+    <div class="b2c-ind-grid" id="b2c-ind-grid"></div>
     <div class="b2c-charts-grid">
       <div class="b2c-chart-card"><h4>Indicadores com meta mínima (quanto maior, melhor)</h4><div style="height:220px"><canvas id="b2c-chart-higher"></canvas></div></div>
       <div class="b2c-chart-card"><h4>Indicadores com meta máxima (quanto menor, melhor)</h4><div style="height:220px"><canvas id="b2c-chart-lower"></canvas></div></div>
@@ -7104,6 +7145,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <span class="card-action" id="b2c-report-copy-btn" onclick="b2cCopiarRelatorio(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
     </div>
     <div class="b2c-report-box" id="b2c-report"><span style="color:var(--tx3);font-size:11px">Anexe as bases para gerar o relatório automático.</span></div>
+  </div>
+  <div class="b2c-modal-overlay" id="b2c-modal-overlay" onclick="if(event.target===this)b2cCloseIndicatorModal()">
+    <div class="b2c-modal" id="b2c-modal-body"></div>
   </div>
 
   <!-- ── PAINEL SWAP (mesma base de B2B Abertos, chamados com Dep_Atual = "SWAP") ── -->
@@ -21730,11 +21774,6 @@ function b2cFinishUpload(results){
 
 /* ---------- Render ---------- */
 const B2C_CLUSTER_ORDER=['C.32 - Maranhão','C.31 - Piaui','C.28 - Norte'];
-let b2cExpanded=null;
-function b2cToggleDetail(key){
-  b2cExpanded=b2cExpanded===key?null:key;
-  b2cRenderTable();
-}
 function b2cClusterRows(ind){
   const keys=Object.keys(ind.porCluster).sort((a,b)=>{
     const ia=B2C_CLUSTER_ORDER.indexOf(a),ib=B2C_CLUSTER_ORDER.indexOf(b);
@@ -21766,13 +21805,7 @@ function b2cRenderTable(){
     const metaCell='<span class="b2c-meta-op">'+(ind.dir==='higher'?'≥':'≤')+'</span>'
       +'<input type="number" class="b2c-meta-input" step="0.1" value="'+eh(String(ind.meta))+'" data-key="'+ind.key+'" onclick="event.stopPropagation()" onchange="b2cUpdateMeta(\''+ind.key+'\',this.value)">%';
     const denTxt=Number.isInteger(ind.geral.den)?ind.geral.den.toLocaleString('pt-BR'):ind.geral.den.toLocaleString('pt-BR',{maximumFractionDigits:1});
-    const row='<tr class="b2c-ind-row" onclick="b2cToggleDetail(\''+ind.key+'\')"><td>'+eh(ind.label)+'</td><td>'+metaCell+'</td><td>'+pctTxt+'</td><td>'+desvioTxt+'</td><td><span class="b2c-status-pill '+pillCls+'">'+pillTxt+'</span></td><td>'+denTxt+'</td></tr>';
-    if(b2cExpanded!==ind.key)return row;
-    const detail='<tr class="b2c-detail-row"><td colspan="6">'
-      +(ind.motivo?'<div style="margin-bottom:8px;font-size:11.5px;color:var(--b2c-text-muted)"><b>Principal motivo fora do padrão:</b> '+eh(ind.motivo[0])+' ('+ind.motivo[1]+' ocorrência'+(ind.motivo[1]!==1?'s':'')+')</div>':'')
-      +'<table class="b2c-cluster-mini"><thead><tr><th>Cluster</th><th>Eventos</th><th>Base</th><th>%</th></tr></thead><tbody>'+b2cClusterRows(ind)+'</tbody></table>'
-      +'</td></tr>';
-    return row+detail;
+    return'<tr class="b2c-ind-row" onclick="b2cOpenIndicatorModal(\''+ind.key+'\')"><td>'+eh(ind.label)+'</td><td>'+metaCell+'</td><td>'+pctTxt+'</td><td>'+desvioTxt+'</td><td><span class="b2c-status-pill '+pillCls+'">'+pillTxt+'</span></td><td>'+denTxt+'</td></tr>';
   }).join('');
 }
 function b2cRenderKpis(){
@@ -21788,6 +21821,78 @@ function b2cRenderKpis(){
     +'<div class="b2c-kpi b2c-wn"><div class="b2c-label">Atenção</div><div class="b2c-value">'+desviosAtencao+'</div></div>'
     +'<div class="b2c-kpi b2c-bd"><div class="b2c-label">Crítico</div><div class="b2c-value">'+desviosCriticos+'</div></div>';
 }
+/* Botão-contador por indicador: clicar abre o modal com todo o detalhamento (Meta/
+   Resultado/Desvio/Status, base(s) de origem, motivo dominante, quebra por cluster) —
+   substitui a antiga expansão de linha da tabela (b2cToggleDetail), que só mostrava
+   cluster+motivo; agora tabela e cards abrem o mesmo modal, mais completo. */
+const B2C_INDICATOR_SOURCE_FILES={
+  reparos24h:['reparosPrazo'],irt:['irt','plantaMedia'],mudEndereco:['mudEndereco'],
+  mudComodo:['mudComodo'],upgrade:['upgrade'],agingAltas:['agingAltas'],
+  efetividadeAltas:['efetividadeAltas'],efetividadeReparos:['efetividadeReparos'],
+  ifi:['ifi','agingAltas'],ifme:['ifme','reparosPrazo'],irr:['irr','reparosPrazo'],max:[],
+};
+function b2cRenderIndicatorCards(){
+  const el=document.getElementById('b2c-ind-grid');
+  if(!el)return;
+  if(!B2C_SUMMARY.indicators.length){el.innerHTML='';return;}
+  el.innerHTML=B2C_SUMMARY.indicators.map(ind=>{
+    const status=b2cIndicatorStatus(ind);
+    const pct=ind.geral.pct;
+    const valueTxt=pct===null?'—':pp(pct)+'%';
+    const metaTxt=(ind.dir==='higher'?'≥':'≤')+pp(ind.meta)+'%';
+    return'<button type="button" class="b2c-ind-card b2c-'+status+'" onclick="b2cOpenIndicatorModal(\''+ind.key+'\')">'
+      +'<div class="b2c-label">'+eh(ind.label)+'</div>'
+      +'<div class="b2c-value">'+valueTxt+'</div>'
+      +'<div class="b2c-meta-small">meta '+metaTxt+'</div>'
+      +'</button>';
+  }).join('');
+}
+function b2cOpenIndicatorModal(key){
+  const ind=B2C_SUMMARY.indicators.find(i=>i.key===key);
+  if(!ind)return;
+  const status=b2cIndicatorStatus(ind);
+  const statusTxt=status==='ok'?'Na meta':status==='wn'?'Atenção':status==='na'?'Sem dado':'Crítico';
+  const pct=ind.geral.pct;
+  const pctTxt=pct===null?'—':pp(pct)+'%';
+  const desvioTxt=pct===null?'—':(((pct-ind.meta)>=0?'+':'')+pp(pct-ind.meta)+' p.p.');
+  const metaTxt=(ind.dir==='higher'?'≥':'≤')+pp(ind.meta)+'%';
+  const denTxt=Number.isInteger(ind.geral.den)?ind.geral.den.toLocaleString('pt-BR'):ind.geral.den.toLocaleString('pt-BR',{maximumFractionDigits:1});
+  const dirTxt=ind.dir==='higher'?'quanto maior, melhor':'quanto menor, melhor';
+  const fontes=(B2C_INDICATOR_SOURCE_FILES[key]||[]).map(fk=>{
+    const f=B2C_FILES[fk];
+    const label=(B2C_FILE_TYPES.find(t=>t.key===fk)||{}).label||fk;
+    return f?('<div>'+eh(label)+': <b>'+eh(f.fileName)+'</b> — '+f.rowCount.toLocaleString('pt-BR')+' linhas, anexado em '+new Date(f.uploadedAt).toLocaleString('pt-BR')+'</div>'):('<div>'+eh(label)+': ainda não anexado</div>');
+  }).join('');
+  const clusterTable=Object.keys(ind.porCluster).length
+    ?'<table class="b2c-cluster-mini"><thead><tr><th>Cluster</th><th>Eventos</th><th>Base</th><th>%</th></tr></thead><tbody>'+b2cClusterRows(ind)+'</tbody></table>'
+    :'<p style="margin:0;color:var(--tx3);font-size:11.5px;">Sem dados de cluster ainda.</p>';
+  const body=
+    '<button type="button" class="b2c-modal-close" onclick="b2cCloseIndicatorModal()">&times;</button>'
+    +'<h3>'+eh(ind.label)+'</h3>'
+    +'<div class="b2c-modal-sub">'+dirTxt+' · filtros atuais aplicados (Cluster/Ano/Mês/Semana)</div>'
+    +'<div class="b2c-modal-grid">'
+      +'<div class="b2c-modal-stat"><div class="lbl">Meta</div><div class="val">'+metaTxt+'</div></div>'
+      +'<div class="b2c-modal-stat"><div class="lbl">Resultado</div><div class="val">'+pctTxt+'</div></div>'
+      +'<div class="b2c-modal-stat"><div class="lbl">Desvio</div><div class="val">'+desvioTxt+'</div></div>'
+      +'<div class="b2c-modal-stat"><div class="lbl">Status</div><div class="val"><span class="b2c-status-pill b2c-status-'+(status==='na'?'wn':status)+'">'+statusTxt+'</span></div></div>'
+    +'</div>'
+    +'<div class="b2c-modal-section-title">Base do cálculo</div>'
+    +'<div>Eventos: <b>'+ind.geral.num.toLocaleString('pt-BR')+'</b> · Denominador: <b>'+denTxt+'</b></div>'
+    +(ind.motivo?'<div style="margin-top:6px;"><b>Principal motivo fora do padrão:</b> '+eh(ind.motivo[0])+' ('+ind.motivo[1]+' ocorrência'+(ind.motivo[1]!==1?'s':'')+')</div>':'')
+    +'<div class="b2c-modal-section-title">Detalhamento por cluster</div>'
+    +clusterTable
+    +'<div class="b2c-modal-section-title">Base(s) de origem</div>'
+    +'<div class="b2c-modal-files">'+(fontes||'<div>Sem base anexada ainda.</div>')+'</div>';
+  const bodyEl=document.getElementById('b2c-modal-body');
+  if(bodyEl)bodyEl.innerHTML=body;
+  const overlay=document.getElementById('b2c-modal-overlay');
+  if(overlay){overlay.classList.add('b2c-open');overlay.dataset.openKey=key;}
+}
+function b2cCloseIndicatorModal(){
+  const overlay=document.getElementById('b2c-modal-overlay');
+  if(overlay)overlay.classList.remove('b2c-open');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')b2cCloseIndicatorModal();});
 function b2cRenderFilesList(){
   const listEl=document.getElementById('b2c-filesList');
   if(!listEl)return;
@@ -21801,6 +21906,7 @@ function b2cRenderFilesList(){
 function b2cRenderAll(){
   b2cFillFilters();
   b2cRenderKpis();
+  b2cRenderIndicatorCards();
   b2cRenderTable();
   b2cRenderCharts();
   b2cRenderFilesList();
@@ -21882,9 +21988,16 @@ function b2cRecomputeAndRender(){
   b2cRecomputeSummary();
   saveState();
   b2cRenderKpis();
+  b2cRenderIndicatorCards();
   b2cRenderTable();
   b2cRenderCharts();
   b2cRenderReport();
+  /* Se o modal de algum indicador estiver aberto (ex.: usuário editou a meta com o
+     modal já aberto), atualiza o conteúdo dele também, em vez de deixar com os
+     números antigos até fechar e abrir de novo. */
+  const overlay=document.getElementById('b2c-modal-overlay');
+  const openKey=overlay&&overlay.classList.contains('b2c-open')?overlay.dataset.openKey:null;
+  if(openKey)b2cOpenIndicatorModal(openKey);
 }
 function b2cClearFilters(){
   selB2cCluster=[];selB2cAno=[];selB2cMes=[];selB2cSemana=[];
