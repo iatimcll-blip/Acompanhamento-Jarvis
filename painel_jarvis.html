@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T12:15:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T13:55:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7035,6 +7035,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-b2c .b2c-kpi.b2c-ok .b2c-value{color:var(--green-dk);}
   #panel-b2c .b2c-kpi.b2c-wn .b2c-value{color:var(--orange);}
   #panel-b2c .b2c-kpi.b2c-bd .b2c-value{color:var(--red-dk);}
+  #panel-b2c .b2c-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+  #panel-b2c .b2c-chart-card{background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:12px 14px;}
+  #panel-b2c .b2c-chart-card h4{margin:0 0 8px;font-size:11.5px;font-weight:600;color:var(--b2c-navy);}
+  @media (max-width:900px){
+    #panel-b2c .b2c-charts-grid{grid-template-columns:1fr;}
+  }
   #panel-b2c table{width:100%;border-collapse:collapse;background:var(--b2c-card);border:.5px solid var(--b2c-border);border-radius:var(--rl);font-size:12.5px;}
   #panel-b2c thead th{text-align:center;background:var(--surface2);color:var(--b2c-text-muted);padding:9px 10px;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid var(--b2c-border);white-space:nowrap;}
   #panel-b2c thead th:first-child{text-align:left;}
@@ -7047,6 +7053,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-b2c .b2c-status-ok{background:var(--green-bg);color:var(--green-dk);}
   #panel-b2c .b2c-status-wn{background:var(--orange-bg,rgba(255,149,0,.14));color:var(--orange);}
   #panel-b2c .b2c-status-bd{background:var(--red-bg);color:var(--red-dk);}
+  #panel-b2c .b2c-meta-op{color:var(--b2c-text-muted);margin-right:3px;font-size:11px;}
+  #panel-b2c .b2c-meta-input{width:56px;height:24px;border:.5px solid var(--b2c-border);border-radius:6px;background:var(--surface2);color:var(--b2c-text);font-family:inherit;font-size:11.5px;text-align:right;padding:0 4px;}
+  #panel-b2c .b2c-meta-input:focus{border-color:var(--b2c-blue);outline:none;}
   #panel-b2c .b2c-cluster-mini{width:100%;border-collapse:collapse;font-size:11.5px;}
   #panel-b2c .b2c-cluster-mini th{text-align:left;color:var(--b2c-text-muted);font-weight:600;padding:3px 8px;}
   #panel-b2c .b2c-cluster-mini td{padding:3px 8px;}
@@ -7078,6 +7087,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <span class="card-action" onclick="b2cClearFilters()">Limpar filtros</span>
     </div>
     <div class="b2c-kpis" id="b2c-kpis"></div>
+    <div class="b2c-charts-grid">
+      <div class="b2c-chart-card"><h4>Indicadores com meta mínima (quanto maior, melhor)</h4><div style="height:220px"><canvas id="b2c-chart-higher"></canvas></div></div>
+      <div class="b2c-chart-card"><h4>Indicadores com meta máxima (quanto menor, melhor)</h4><div style="height:220px"><canvas id="b2c-chart-lower"></canvas></div></div>
+    </div>
     <div style="overflow-x:auto;">
     <table>
       <thead>
@@ -9965,6 +9978,15 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         b2cSummaryAt=remoteSt.b2cSummaryAt;
         if(typeof activeTab!=='undefined'&&activeTab==='b2c'&&typeof b2cRenderAll==='function')b2cRenderAll();
       }
+      /* Metas do B2C são config simples (igual RDE_M89/MOUT/MTME do Rede) sem
+         timestamp próprio — aplica sempre que o merge rodar (já protegido pelo
+         savedAt geral checado no topo da função), pra todo dispositivo comparar
+         contra o mesmo alvo. */
+      if(typeof B2C_INDICATOR_META!=='undefined'&&remoteSt.b2cMetaOverrides&&typeof remoteSt.b2cMetaOverrides==='object'){
+        Object.keys(remoteSt.b2cMetaOverrides).forEach(k=>{
+          if(B2C_INDICATOR_META[k]&&typeof remoteSt.b2cMetaOverrides[k]==='number')B2C_INDICATOR_META[k].meta=remoteSt.b2cMetaOverrides[k];
+        });
+      }
   }
 }
 function _isGhShaConflict(err){
@@ -10784,7 +10806,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -10959,6 +10981,11 @@ function applyState(st,label){
     if(Array.isArray(st.selB2cAno))selB2cAno=st.selB2cAno;
     if(Array.isArray(st.selB2cMes))selB2cMes=st.selB2cMes;
     if(Array.isArray(st.selB2cSemana))selB2cSemana=st.selB2cSemana;
+    if(st.b2cMetaOverrides&&typeof st.b2cMetaOverrides==='object'){
+      Object.keys(st.b2cMetaOverrides).forEach(k=>{
+        if(B2C_INDICATOR_META[k]&&typeof st.b2cMetaOverrides[k]==='number')B2C_INDICATOR_META[k].meta=st.b2cMetaOverrides[k];
+      });
+    }
   }catch(e){console.warn('applyState: falha ao restaurar resumo B2C:',e);}
   try{
     if(Array.isArray(st.dEnc)){
@@ -21432,6 +21459,11 @@ const B2C_INDICATOR_META={
   ifi:{label:'IFI',meta:3.5,dir:'lower'},
   ifme:{label:'IFME',meta:3.5,dir:'lower'},
   irr:{label:'IRR',meta:7,dir:'lower'},
+  /* MAX: indicador novo, fórmula/base ainda não definida pelo usuário — fica só a
+     estrutura (linha na tabela + caixa de meta editável + espaço reservado no
+     gráfico) até a planilha/fórmula chegar. b2cComputeIndicators() sempre inclui
+     esse indicador com pct:null ("Sem dado"), mesmo sem nenhuma base anexada pra ele. */
+  max:{label:'MAX',meta:0,dir:'higher'},
 };
 
 function b2cNk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase();}
@@ -21616,6 +21648,10 @@ function b2cComputeIndicators(){
     const motivo=b2cDominantMotivo(irr,()=>true,['Motivo OS']);
     out.push({key:'irr',...B2C_INDICATOR_META.irr,...res,motivo});
   }
+  /* MAX ainda não tem base/fórmula definida — entra sempre como "Sem dado" (pct:null),
+     só pra a linha/caixa de meta/espaço no gráfico já existirem na tela, prontos pro
+     dia em que a base chegar. */
+  out.push({key:'max',...B2C_INDICATOR_META.max,geral:{num:0,den:0,pct:null},porCluster:{},motivo:null});
   return out;
 }
 function b2cIndicatorStatus(ind){
@@ -21727,9 +21763,10 @@ function b2cRenderTable(){
     const pctTxt=pct===null?'—':pp(pct)+'%';
     const desvio=pct===null?'—':(ind.dir==='higher'?pct-ind.meta:pct-ind.meta);
     const desvioTxt=pct===null?'—':((desvio>=0?'+':'')+pp(desvio)+' p.p.');
-    const metaTxt=(ind.dir==='higher'?'≥':'≤')+pp(ind.meta)+'%';
+    const metaCell='<span class="b2c-meta-op">'+(ind.dir==='higher'?'≥':'≤')+'</span>'
+      +'<input type="number" class="b2c-meta-input" step="0.1" value="'+eh(String(ind.meta))+'" data-key="'+ind.key+'" onclick="event.stopPropagation()" onchange="b2cUpdateMeta(\''+ind.key+'\',this.value)">%';
     const denTxt=Number.isInteger(ind.geral.den)?ind.geral.den.toLocaleString('pt-BR'):ind.geral.den.toLocaleString('pt-BR',{maximumFractionDigits:1});
-    const row='<tr class="b2c-ind-row" onclick="b2cToggleDetail(\''+ind.key+'\')"><td>'+eh(ind.label)+'</td><td>'+metaTxt+'</td><td>'+pctTxt+'</td><td>'+desvioTxt+'</td><td><span class="b2c-status-pill '+pillCls+'">'+pillTxt+'</span></td><td>'+denTxt+'</td></tr>';
+    const row='<tr class="b2c-ind-row" onclick="b2cToggleDetail(\''+ind.key+'\')"><td>'+eh(ind.label)+'</td><td>'+metaCell+'</td><td>'+pctTxt+'</td><td>'+desvioTxt+'</td><td><span class="b2c-status-pill '+pillCls+'">'+pillTxt+'</span></td><td>'+denTxt+'</td></tr>';
     if(b2cExpanded!==ind.key)return row;
     const detail='<tr class="b2c-detail-row"><td colspan="6">'
       +(ind.motivo?'<div style="margin-bottom:8px;font-size:11.5px;color:var(--b2c-text-muted)"><b>Principal motivo fora do padrão:</b> '+eh(ind.motivo[0])+' ('+ind.motivo[1]+' ocorrência'+(ind.motivo[1]!==1?'s':'')+')</div>':'')
@@ -21765,6 +21802,7 @@ function b2cRenderAll(){
   b2cFillFilters();
   b2cRenderKpis();
   b2cRenderTable();
+  b2cRenderCharts();
   b2cRenderFilesList();
   b2cRenderReport();
   const statusEl=document.getElementById('b2c-status');
@@ -21772,6 +21810,46 @@ function b2cRenderAll(){
     const n=Object.keys(B2C_FILES).length;
     statusEl.textContent=n?n+' base(s) anexada(s) — atualizado em '+(B2C_SUMMARY.updatedAt?new Date(B2C_SUMMARY.updatedAt).toLocaleString('pt-BR'):'—'):'Nenhuma base anexada';
   }
+}
+/* Gráficos dos KPIs: barras agrupadas Resultado x Meta, separadas em dois grupos
+   porque as escalas são muito diferentes (indicadores de meta mínima ficam na casa
+   dos 80-95%; os de meta máxima, na casa de 0-10%) — um gráfico único com as duas
+   escalas juntas ficaria ilegível. Resultado colorido por status (verde/laranja/
+   vermelho); Meta sempre cinza, como referência. MAX entra com barra de Resultado
+   zerada (cinza) até ter base/fórmula própria — "espaço reservado" no gráfico. */
+const B2C_STATUS_COLOR={ok:'#34c759',wn:'#ff9500',bd:'#ff3b30',na:'#8e8e93'};
+let b2cChartHigher=null,b2cChartLower=null;
+function b2cRenderChartGroup(canvasId,chartRef,indicators){
+  const cv=document.getElementById(canvasId);
+  if(!cv||typeof Chart==='undefined')return chartRef;
+  if(chartRef){try{chartRef.destroy();}catch(e){}}
+  if(!indicators.length)return null;
+  const labels=indicators.map(i=>i.label);
+  const resultados=indicators.map(i=>i.geral.pct===null?0:+i.geral.pct.toFixed(2));
+  const cores=indicators.map(i=>B2C_STATUS_COLOR[b2cIndicatorStatus(i)]);
+  const metas=indicators.map(i=>i.meta);
+  const amDL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  return new Chart(cv,{
+    type:'bar',
+    plugins:amDL?[amDL]:[],
+    data:{labels,datasets:[
+      {label:'Resultado',data:resultados,backgroundColor:cores,borderRadius:4},
+      {label:'Meta',data:metas,backgroundColor:'rgba(142,142,147,.35)',borderRadius:4},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:9}}},
+        datalabels:amDL?{anchor:'end',align:'top',formatter:v=>v>0?pp(v)+'%':'',font:{size:9,weight:'bold'},color:'#8e8e93',clip:false}:{display:false}},
+      scales:{y:{beginAtZero:true,ticks:{callback:v=>v+'%'}},x:{ticks:{font:{size:9}}}},
+    }
+  });
+}
+function b2cRenderCharts(){
+  const inds=B2C_SUMMARY.indicators;
+  const higher=inds.filter(i=>i.dir==='higher');
+  const lower=inds.filter(i=>i.dir==='lower');
+  b2cChartHigher=b2cRenderChartGroup('b2c-chart-higher',b2cChartHigher,higher);
+  b2cChartLower=b2cRenderChartGroup('b2c-chart-lower',b2cChartLower,lower);
 }
 
 /* ---------- Filtros (mesmo padrão/widget "msel" + .fbar do B2B Encerrados) ----------
@@ -21805,12 +21883,30 @@ function b2cRecomputeAndRender(){
   saveState();
   b2cRenderKpis();
   b2cRenderTable();
+  b2cRenderCharts();
   b2cRenderReport();
 }
 function b2cClearFilters(){
   selB2cCluster=[];selB2cAno=[];selB2cMes=[];selB2cSemana=[];
   b2cFillFilters();
   b2cRecomputeAndRender();
+}
+
+/* ---------- Meta editável por indicador (caixa direto na tabela) ----------
+   Só muda o alvo de comparação (B2C_INDICATOR_META[key].meta) — os dados/percentuais
+   calculados não mudam, só o status (na meta/atenção/crítico) e o desvio em cima
+   deles. Sincroniza entre dispositivos como b2cMetaOverrides (só os valores de meta,
+   não a estrutura toda), pra todo mundo comparar contra o mesmo alvo. */
+function b2cUpdateMeta(key,value){
+  const v=parseFloat(String(value).replace(',','.'));
+  if(!B2C_INDICATOR_META[key]||isNaN(v))return;
+  B2C_INDICATOR_META[key].meta=v;
+  b2cRecomputeAndRender();
+}
+function b2cMetaOverrides(){
+  const out={};
+  Object.keys(B2C_INDICATOR_META).forEach(k=>{out[k]=B2C_INDICATOR_META[k].meta;});
+  return out;
 }
 
 /* ---------- Relatório Executivo (mesmo padrão de texto plano com "▸ SEÇÃO"
