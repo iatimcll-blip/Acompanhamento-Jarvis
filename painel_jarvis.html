@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-11T14:45:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T09:10:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14359,6 +14359,25 @@ function renderExecReport(d){
   const linhasOut=outlier>0
     ?`${outlier} chamado(s) excederam 24h de atendimento, representando ${pOut}% do volume total.\nClusters com registro de outlier: ${clusterLinesOut||'N/A'}.\nPrincipais cidades com outlier: ${topCidadesOut}.`
     :`Nenhum chamado outlier (>24h) registrado no período.`;
+  /* cidades com maiores desvios (fora da meta de 8h) + causa raiz dominante em cada uma —
+     complementa o recorte por cluster acima (que já mostra fora8 por cluster, mas sem
+     apontar cidade nem causa) e o ranking de outlier (que mostra cidade mas não causa). */
+  const cidadeDesvio={};
+  d.filter(x=>!x.dentro8h).forEach(x=>{
+    if(!x.cidade)return;
+    if(!cidadeDesvio[x.cidade])cidadeDesvio[x.cidade]={count:0,causas:{}};
+    cidadeDesvio[x.cidade].count++;
+    const c=fmtCausaRaiz(x.causaRaiz)||'Não informada';
+    cidadeDesvio[x.cidade].causas[c]=(cidadeDesvio[x.cidade].causas[c]||0)+1;
+  });
+  const topCidadesDesvio=Object.entries(cidadeDesvio)
+    .sort((a,b)=>b[1].count-a[1].count)
+    .slice(0,5)
+    .map(([cidade,info])=>{
+      const causaTop=se(info.causas)[0]||['Não informada',0];
+      return `${cidade}: ${info.count}/${fora8||1} (${pp(info.count/(fora8||1)*100)}%) — causa principal: ${causaTop[0]} (${causaTop[1]}/${info.count})`;
+    }).join('\n')||'N/A';
+  const linhasDesvio=fora8>0?topCidadesDesvio:`Nenhum chamado fora da meta de 8h registrado no período.`;
   const texto=[
     `RELATÓRIO EXECUTIVO — ${periodoLabel}`,
     `Gerado em: ${now2()}`,
@@ -14370,6 +14389,9 @@ function renderExecReport(d){
     '',
     `▸ OUTLIER (>24 HORAS)`,
     linhasOut,
+    '',
+    `▸ CIDADES COM MAIORES DESVIOS E CAUSAS`,
+    linhasDesvio,
     '',
     `▸ CIDADES COM MAIOR VOLUME DE CHAMADOS`,
     topCidadesVol,
