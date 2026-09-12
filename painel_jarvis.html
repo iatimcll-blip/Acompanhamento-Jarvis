@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T10:50:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T11:15:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -19291,30 +19291,54 @@ function rdeWoWSeries(all){
     return{...w,varPct};
   });
 }
+/* Semana de referência do WoW no relatório: em vez de sempre comparar as duas últimas
+   semanas da base inteira, acompanha o que está filtrado no painel — semana marcada em
+   rdePeriod (gran 'w'), ou a última semana dentro do mês marcado (gran 'm', via
+   rdeMonthForWeek, que já existe pra navegação mês↔semana). Sem período selecionado
+   (gran 'all') cai no comportamento antigo: as duas últimas semanas disponíveis. */
+function rdeWoWReferenceWeekIdx(weeks){
+  if(!weeks.length)return-1;
+  if(rdeGran==='w'&&rdePeriod.length){
+    const idxs=weeks.map((w,i)=>i).filter(i=>rdePeriod.includes(weeks[i].semana));
+    if(idxs.length)return idxs[idxs.length-1];
+  }
+  if(rdeGran==='m'&&rdePeriod.length){
+    const idxs=weeks.map((w,i)=>i).filter(i=>rdePeriod.includes(rdeMonthForWeek(weeks[i].semana)));
+    if(idxs.length)return idxs[idxs.length-1];
+  }
+  return weeks.length-1;
+}
 /* Extensão do insight de WoW pro Relatório Executivo: além da variação de volume já
-   calculada em rdeWoWInsightTxt(), compara Prazo/Outlier/TME-TMR da última semana
-   contra a semana anterior — informação que só existia no gráfico visual (rde-wow-ch),
-   nunca no texto do relatório. Reaproveita rdeWoWSeries() (mesmos dados do gráfico),
-   sem cálculo novo. */
+   calculada em rdeWoWInsightTxt(), compara Prazo/Outlier/TME-TMR da semana de referência
+   (rdeWoWReferenceWeekIdx, acima) contra a semana imediatamente anterior — informação que
+   só existia no gráfico visual (rde-wow-ch), nunca no texto do relatório. Reaproveita
+   rdeWoWSeries() (mesmos dados do gráfico), sem cálculo novo. */
 function rdeWoWReportTxt(all,tl){
   const weeks=rdeWoWSeries(all);
-  if(weeks.length<2)return rdeWoWInsightTxt(weeks);
-  const last=weeks[weeks.length-1],prev=weeks[weeks.length-2];
+  if(weeks.length<2)return rdeWoWInsightTxt(weeks,-1);
+  const idx=rdeWoWReferenceWeekIdx(weeks);
+  if(idx<1)return rdeWoWInsightTxt(weeks,idx);
+  const last=weeks[idx],prev=weeks[idx-1];
   const fmtDelta=(v,unit,dec)=>(v>=0?'+':'')+v.toFixed(dec)+unit;
   return[
-    rdeWoWInsightTxt(weeks),
+    rdeWoWInsightTxt(weeks,idx),
     `Prazo: ${last.prazo.toFixed(1)}% na semana ${last.label} vs ${prev.prazo.toFixed(1)}% na semana ${prev.label} (${fmtDelta(last.prazo-prev.prazo,' p.p.',1)}).`,
     `Outlier: ${last.outlier.toFixed(1)}% vs ${prev.outlier.toFixed(1)}% (${fmtDelta(last.outlier-prev.outlier,' p.p.',1)}).`,
     `${tl} médio: ${last.tAvg.toFixed(2)}h vs ${prev.tAvg.toFixed(2)}h (${fmtDelta(last.tAvg-prev.tAvg,'h',2)}).`,
   ].join('\n');
 }
-function rdeWoWInsightTxt(weeks){
-  if(weeks.length<2)return 'Dados insuficientes para comparação semana a semana.';
-  const last=weeks[weeks.length-1];
+/* idx opcional: índice da semana de referência dentro de `weeks` (default = última
+   disponível, comportamento original usado pelo card visual rde-wow-ch). O relatório
+   passa um idx filtrado (rdeWoWReferenceWeekIdx) pra sempre comparar a semana que está
+   selecionada no painel contra a semana imediatamente anterior a ela. */
+function rdeWoWInsightTxt(weeks,idx){
+  if(idx===undefined)idx=weeks.length-1;
+  if(weeks.length<2||idx<1)return 'Dados insuficientes para comparação semana a semana.';
+  const last=weeks[idx];
   if(last.varPct===null)return `Semana ${last.label}: ${last.total} chamados — sem semana anterior para comparar.`;
   const dir=last.varPct>=0?'alta':'queda';
   let streak=1;
-  for(let i=weeks.length-2;i>=1;i--){
+  for(let i=idx-1;i>=1;i--){
     const cur=weeks[i].varPct;
     if(cur===null)break;
     const curDir=cur>=0?'alta':'queda';
