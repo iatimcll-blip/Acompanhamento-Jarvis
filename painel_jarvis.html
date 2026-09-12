@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T09:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-12T09:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14370,14 +14370,32 @@ function renderExecReport(d){
     const c=fmtCausaRaiz(x.causaRaiz)||'Não informada';
     cidadeDesvio[x.cidade].causas[c]=(cidadeDesvio[x.cidade].causas[c]||0)+1;
   });
-  const topCidadesDesvio=Object.entries(cidadeDesvio)
-    .sort((a,b)=>b[1].count-a[1].count)
+  const desvioRanking=Object.entries(cidadeDesvio).sort((a,b)=>b[1].count-a[1].count);
+  const topCidadesDesvio=desvioRanking
     .slice(0,5)
     .map(([cidade,info])=>{
       const causaTop=se(info.causas)[0]||['Não informada',0];
       return `${cidade}: ${info.count}/${fora8||1} (${pp(info.count/(fora8||1)*100)}%) — causa principal: ${causaTop[0]} (${causaTop[1]}/${info.count})`;
     }).join('\n')||'N/A';
   const linhasDesvio=fora8>0?topCidadesDesvio:`Nenhum chamado fora da meta de 8h registrado no período.`;
+  /* FCA (Fato/Causa/Ação) montado em cima do ranking de desvio por cidade acima — mesmo
+     formato padrão de relatório operacional já usado no Rede (ver rdeRenderCard/FCA
+     Executivo), adaptado ao texto plano deste relatório (sem HTML, só copia/cola). Só
+     entra quando há desvio de verdade (fora8>0); senão o FCA ficaria vazio/contraditório. */
+  let fcaTxt;
+  if(fora8>0&&desvioRanking.length){
+    const[cidadeTop,infoTop]=desvioRanking[0];
+    const causaTop=se(infoTop.causas)[0]||['Não informada',0];
+    const pCidade=pp(infoTop.count/(fora8||1)*100);
+    const pCausaCidade=pp(causaTop[1]/infoTop.count*100);
+    fcaTxt=[
+      `Fato: ${cidadeTop} concentra ${infoTop.count}/${fora8} (${pCidade}%) dos chamados fora da meta de 8h no período.`,
+      `Causa: causa raiz predominante em ${cidadeTop} é ${causaTop[0]}, respondendo por ${causaTop[1]}/${infoTop.count} (${pCausaCidade}%) dos desvios da cidade.`,
+      `Ação: priorizar equipe técnica e reforçar estoque de material para atendimento de ${causaTop[0]} em ${cidadeTop}, com fila dedicada para chamados a menos de 2h do vencimento do prazo e acompanhamento semanal da evolução.`,
+    ].join('\n');
+  }else{
+    fcaTxt='Operação dentro da meta de 8h neste recorte — sem FCA a reportar.';
+  }
   const texto=[
     `RELATÓRIO EXECUTIVO — ${periodoLabel}`,
     `Gerado em: ${now2()}`,
@@ -14392,6 +14410,9 @@ function renderExecReport(d){
     '',
     `▸ CIDADES COM MAIORES DESVIOS E CAUSAS`,
     linhasDesvio,
+    '',
+    `▸ FCA — FATO, CAUSA E AÇÃO`,
+    fcaTxt,
     '',
     `▸ CIDADES COM MAIOR VOLUME DE CHAMADOS`,
     topCidadesVol,
