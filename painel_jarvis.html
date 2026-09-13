@@ -22600,13 +22600,15 @@ function b2cCopiarRelatorio(btn){
    não há risco de outro código ler o estado "trocado". Isso garante que os números do
    Executivo batem exatamente com o que cada painel mostraria sob o mesmo filtro, sem
    reimplementar a filtragem.
-   Nota sobre "Semana" compartilhada: Rede e B2C já usam o mesmo formato ISO ("AAAA-Www",
-   via rdeIsoWeek); B2B Encerrados usa um formato próprio ("Sxx" ou "AAAA-Sxx", vindo da
-   planilha ou de calcSemana()). O seletor de Semana do Executivo une os valores brutos
-   dos 3, então filtrar por uma semana só "bate" com o(s) painel(is) que usam aquele
-   formato — Ano e Mês (ambos sempre "AAAA"/"AAAA-MM" nos 3 painéis) não têm esse
-   problema. Normalizar os formatos de semana entre painéis é maior que o pedido atual e
-   arriscado sem confirmar o formato exato de dEnc.dataFechamento — não foi feito aqui. */
+   Nota sobre "Semana" compartilhada: Rede e B2C usam o formato ISO "AAAA-Www" (via
+   rdeIsoWeek); B2B Encerrados normalmente usa "AAAA-Sww" (calcSemana — MESMO algoritmo
+   ISO 8601 de rdeIsoWeek, só troca a letra), mas pode trazer outro formato quando vem
+   pronto da planilha. Bug real encontrado em produção: o seletor de Semana mostrava só
+   "W" (Rede/B2C) e filtrar por ele zerava sempre o bloco de Encerrados, mesmo com
+   milhares de chamados carregados. Corrigido normalizando as opções do seletor pra "W" e
+   expandindo de volta pros dois formatos ("W"+"S") na hora de filtrar o Encerrados — ver
+   execSemanaComEquivalentes(). Só não cobre o caso raro de uma planilha de Encerrados
+   trazer uma semana pré-calculada em outro formato qualquer (nem "S" nem "W"). */
 let selExecAno=[],selExecMes=[],selExecSemana=[],selExecRedeCluster=[],selExecEncCluster=[],selExecB2cCluster=[];
 let execTab='rede';
 const EXEC_CHARTS={};
@@ -22755,10 +22757,28 @@ function execEncFca(scope,st){
     acao:'Priorizar equipe técnica e reforçar estoque de material para atendimento de '+causaTop[0]+' em '+cidadeTop+', com acompanhamento até o fechamento do período.',
   };
 }
+/* Bug real de produção: B2B Encerrados sempre aparecia "sem dados" no Painel Executivo
+   quando o filtro de Semana estava selecionado, mesmo com milhares de chamados
+   carregados — o seletor de Semana é compartilhado (Rede/B2C usam "AAAA-Wxx", formato
+   ISO de rdeIsoWeek), mas o Encerrados guarda sua própria semana como "AAAA-Sxx" (de
+   calcSemana) ou como veio da planilha. calcSemana() usa o MESMO algoritmo ISO 8601 de
+   rdeIsoWeek (mesma conta de ajuste pra quinta-feira), só troca a letra — "2026-W37" e
+   "2026-S37" são a mesma semana civil. Sem essa conversão, `selWeek.includes(d.semana)`
+   nunca batia com nenhum registro do Encerrados quando uma Semana estava selecionada no
+   Painel Executivo. Passa os dois formatos (original + convertido) pra também não
+   quebrar se algum dado do Encerrados vier com o formato "W" (planilha com semana
+   pré-calculada nesse padrão). */
+function execSemanaComEquivalentes(semanas){
+  return semanas.flatMap(w=>{
+    if(/-W\d+$/i.test(w))return[w,w.replace(/-W(\d+)$/i,'-S$1')];
+    if(/-S\d+$/i.test(w))return[w,w.replace(/-S(\d+)$/i,'-W$1')];
+    return[w];
+  });
+}
 function execEncSnapshot(){
   const saved={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,encChartBucket};
   try{
-    selYear=selExecAno;selMes=selExecMes;selWeek=selExecSemana;
+    selYear=selExecAno;selMes=selExecMes;selWeek=execSemanaComEquivalentes(selExecSemana);
     selCluster=selExecEncCluster;selEncCluster=[];
     selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
     const scope=encScope();
@@ -22851,7 +22871,12 @@ function fillFiltersExec(){
   const b2cFlat=execB2cAllRowsRaw();
   const anos=new Set(),meses=new Set(),semanas=new Set();
   redeFlat.forEach(r=>{const y=String(r.m||r.w||'').slice(0,4);if(y)anos.add(y);if(r.m)meses.add(r.m);if(r.w)semanas.add(r.w);});
-  encFlat.forEach(r=>{const y=String(r.mes||'').slice(0,4);if(y)anos.add(y);if(r.mes)meses.add(r.mes);if(r.semana)semanas.add(r.semana);});
+  /* dEnc guarda semana como "AAAA-Sxx" (calcSemana, mesmo algoritmo ISO de rdeIsoWeek —
+     só troca a letra) — normaliza pra "AAAA-Wxx" aqui só pra popular as OPÇÕES do
+     seletor compartilhado sem duplicar a mesma semana civil como duas entradas
+     diferentes ("W37" e "S37"); execSemanaComEquivalentes() expande de volta pros dois
+     formatos na hora de filtrar o Encerrados de verdade. */
+  encFlat.forEach(r=>{const y=String(r.mes||'').slice(0,4);if(y)anos.add(y);if(r.mes)meses.add(r.mes);if(r.semana)semanas.add(r.semana.replace(/-S(\d+)$/i,'-W$1'));});
   b2cFlat.forEach(r=>{if(r.ano)anos.add(r.ano);if(r.mes)meses.add(r.mes);if(r.semana)semanas.add(r.semana);});
   const anoOpts=[...anos].sort(),mesOpts=[...meses].sort(),semanaOpts=[...semanas].sort();
   selExecAno=selExecAno.filter(a=>anoOpts.includes(a));
