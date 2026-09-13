@@ -6935,6 +6935,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-nota-wn{background:var(--orange-bg,rgba(255,149,0,.14));color:var(--orange);}
   #panel-executivo .exec-nota-bd{background:var(--red-bg);color:var(--red-dk);}
   #panel-executivo .exec-nota-na{background:var(--surface2);color:var(--tx3);}
+  #panel-executivo .exec-baremo-row-clicavel{cursor:pointer;}
+  #panel-executivo .exec-baremo-row-clicavel:hover{background:var(--surface2);}
+  #panel-executivo .exec-casos-txt{font-size:10px;color:var(--tx3);font-weight:400;margin-top:2px;white-space:nowrap;}
+  #panel-executivo .exec-baremo-detail-row td{background:var(--surface2);padding:0;}
+  #panel-executivo .exec-mini-wrap{max-height:220px;overflow-y:auto;overflow-x:auto;padding:8px 12px;}
+  #panel-executivo .exec-mini-table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
+  #panel-executivo .exec-mini-table th{text-align:left;color:var(--tx3);font-weight:600;padding:3px 8px;position:sticky;top:0;background:var(--surface2);}
+  #panel-executivo .exec-mini-table td{padding:3px 8px;}
+  #panel-executivo .exec-mini-cap{padding:4px 12px;color:var(--tx3);font-size:11px;}
   #panel-executivo .exec-empty{padding:24px;text-align:center;color:var(--tx3);font-size:12.5px;}
   @media (max-width:900px){
     #panel-executivo .exec-summary-grid{grid-template-columns:1fr;}
@@ -19041,7 +19050,7 @@ function encWoWSeries(){
   const weeks=labels.map(k=>{
     const rows=porSemana[k];
     const st=encRuleStats(rows);
-    return{semana:k,total:rows.length,pPrazo:st.pPrazo};
+    return{semana:k,total:rows.length,pPrazo:st.pPrazo,pOut:st.pOut};
   });
   return weeks.map((w,i)=>{
     const prev=i>0?weeks[i-1]:null;
@@ -22724,6 +22733,21 @@ function execRedeFca(all,ag){
     acao:'Priorizar plano de ação corretivo'+(worstCl&&worstCl.a.prazo<RDE_M89?' no cluster '+clNome:'')+', com acompanhamento até o fechamento do período.',
   };
 }
+/* Casos (chamados) que compõem o resultado do indicador NA SEMANA de referência —
+   usados no detalhamento "quais chamados explicam essa variação" pedido pelo usuário.
+   `allForWow` já é o recorte mais amplo (Ano+Mês+Cluster, sem a restrição de Semana)
+   calculado em execRedeSnapshot, então cobre tanto a semana de referência quanto a
+   anterior mesmo com uma Semana específica selecionada. */
+function execRedeCasosDesvio(allForWow,semana,indicadorKey){
+  if(!semana)return{total:0,amostra:[]};
+  const rows=allForWow.filter(r=>r.w===semana);
+  let off;
+  if(indicadorKey==='prazo')off=rows.filter(r=>r.p===0);
+  else if(indicadorKey==='outlier')off=rows.filter(r=>r.o===1);
+  else if(indicadorKey==='tme')off=rows.filter(r=>r.t>RDE_MTME);
+  else off=[];
+  return{total:off.length,amostra:off.slice(0,8).map(r=>({cidade:r.cidade||'—',cluster:RDE_CLUSTER_LABELS[r.cl]||r.cl,tempo:r.t,causa:r.c}))};
+}
 function execRedeSnapshot(){
   const savedCl=rdeCluster,savedYear=rdeYear,savedGran=rdeGran,savedPeriod=rdePeriod,savedTab=rdeTab;
   try{
@@ -22749,12 +22773,18 @@ function execRedeSnapshot(){
     }
     const wow=rdeWoWSeries(allForWow);
     const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
+    const wRef=wowRefIdx>=0?wow[wowRefIdx]:null,wPrev=wowRefIdx>=1?wow[wowRefIdx-1]:null;
     const indicadores=[
-      {key:'prazo',label:'No prazo',resultado:ag.prazo,meta:RDE_M89,dir:'higher',unidade:'%'},
-      {key:'outlier',label:'Outlier',resultado:ag.outlier,meta:RDE_MOUT,dir:'lower',unidade:'%'},
-      {key:'tme',label:'TME/TMR médio',resultado:ag.tAvg,meta:RDE_MTME,dir:'lower',unidade:'h'},
-    ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
-    return{total:ag.n,indicadores,wow,wowRefIdx,fca:execRedeFca(all,ag)};
+      {key:'prazo',label:'No prazo',resultado:ag.prazo,meta:RDE_M89,dir:'higher',unidade:'%',campoSemana:'prazo'},
+      {key:'outlier',label:'Outlier',resultado:ag.outlier,meta:RDE_MOUT,dir:'lower',unidade:'%',campoSemana:'outlier'},
+      {key:'tme',label:'TME/TMR médio',resultado:ag.tAvg,meta:RDE_MTME,dir:'lower',unidade:'h',campoSemana:'tAvg'},
+    ].map(i=>{
+      const semAtual=wRef?wRef[i.campoSemana]:null;
+      const semAnterior=wPrev?wPrev[i.campoSemana]:null;
+      const diffSem=(semAtual!==null&&semAtual!==undefined&&semAnterior!==null&&semAnterior!==undefined)?semAtual-semAnterior:null;
+      return{...i,nota:execBaremoNota(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio:wRef?execRedeCasosDesvio(allForWow,wRef.semana,i.key):null};
+    });
+    return{total:ag.n,indicadores,wow,wowRefIdx,semAtualLabel:wRef?(wRef.label||wRef.semana):null,semAnteriorLabel:wPrev?(wPrev.label||wPrev.semana):null,fca:execRedeFca(all,ag)};
   }finally{
     rdeCluster=savedCl;rdeYear=savedYear;rdeGran=savedGran;rdePeriod=savedPeriod;rdeTab=savedTab;
   }
@@ -22821,13 +22851,26 @@ function execEncSnapshot(){
     const savedWeekForWow=selWeek;
     if(selExecSemana.length)selWeek=[];
     const wow=encWoWSeries();
+    const scopeForWow=selExecSemana.length?encScope():scope;
     selWeek=savedWeekForWow;
     const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
+    const wRef=wowRefIdx>=0?wow[wowRefIdx]:null,wPrev=wowRefIdx>=1?wow[wowRefIdx-1]:null;
     const indicadores=[
-      {key:'prazo',label:'No prazo (≤ 8h)',resultado:st.pPrazo,meta:EXEC_ENC_META_PRAZO,dir:'higher',unidade:'%'},
-      {key:'outlier',label:'Outlier (> 24h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%'},
-    ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
-    return{total:scope.length,indicadores,wow,wowRefIdx,fca:execEncFca(scope,st)};
+      {key:'prazo',label:'No prazo (≤ 8h)',resultado:st.pPrazo,meta:EXEC_ENC_META_PRAZO,dir:'higher',unidade:'%',campoSemana:'pPrazo'},
+      {key:'outlier',label:'Outlier (> 24h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%',campoSemana:'pOut'},
+    ].map(i=>{
+      const semAtual=wRef?wRef[i.campoSemana]:null;
+      const semAnterior=wPrev?wPrev[i.campoSemana]:null;
+      const diffSem=(semAtual!==null&&semAtual!==undefined&&semAnterior!==null&&semAnterior!==undefined)?semAtual-semAnterior:null;
+      let casosDesvio=null;
+      if(wRef){
+        const rowsSemana=scopeForWow.filter(x=>x.semana===wRef.semana);
+        const off=i.key==='prazo'?rowsSemana.filter(x=>!x.dentro8h):rowsSemana.filter(x=>x.outlier24h);
+        casosDesvio={total:off.length,amostra:off.slice(0,8).map(x=>({cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',tempo:x.tempoTotal,protocolo:x.protocolo}))};
+      }
+      return{...i,nota:execBaremoNota(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio};
+    });
+    return{total:scope.length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execEncFca(scope,st)};
   }finally{
     selYear=saved.selYear;selMes=saved.selMes;selWeek=saved.selWeek;selCluster=saved.selCluster;
     selEncCluster=saved.selEncCluster;selEncAging=saved.selEncAging;selEncCausa=saved.selEncCausa;
@@ -22891,19 +22934,50 @@ function execB2cFca(indicadores){
     acao:'Priorizar plano de ação para '+piorList.map(i=>i.label).join(', ')+', com acompanhamento até o fechamento do período.',
   };
 }
+/* Resultado (%) de cada indicador B2C numa semana específica — recomputa
+   b2cComputeIndicators() só com selB2cSemana trocado pra aquela semana (mantendo
+   Cluster/Ano/Mês do Painel Executivo), reaproveitando o cálculo real de cada
+   indicador (share/ratio/max) em vez de duplicar a lógica. */
+function execB2cIndicatorsForWeek(semana){
+  if(!semana)return{};
+  const saved=selB2cSemana;
+  selB2cSemana=[semana];
+  const inds=b2cComputeIndicators();
+  selB2cSemana=saved;
+  const map={};
+  inds.forEach(ind=>{map[ind.key]=ind.geral.pct;});
+  return map;
+}
 function execB2cSnapshot(){
   const savedCl=selB2cCluster,savedAno=selB2cAno,savedMes=selB2cMes,savedSem=selB2cSemana;
   try{
     selB2cCluster=selExecB2cCluster;selB2cAno=selExecAno;selB2cMes=selExecMes;selB2cSemana=selExecSemana;
     const inds=b2cComputeIndicators();
     if(!inds.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
-    const indicadores=inds.map(ind=>({
-      key:ind.key,label:ind.label,resultado:ind.geral.pct,meta:ind.meta,dir:ind.dir,unidade:'%',
-      nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),motivo:ind.motivo,
-    }));
     const wow=execB2cVolumeWoWSeries();
     const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
-    return{total:execB2cCombinedRows().length,indicadores,wow,wowRefIdx,fca:execB2cFca(indicadores)};
+    const wRef=wowRefIdx>=0?wow[wowRefIdx]:null,wPrev=wowRefIdx>=1?wow[wowRefIdx-1]:null;
+    const pctAtual=wRef?execB2cIndicatorsForWeek(wRef.semana):{};
+    const pctAnterior=wPrev?execB2cIndicatorsForWeek(wPrev.semana):{};
+    const indicadores=inds.map(ind=>{
+      const semAtual=wRef&&pctAtual[ind.key]!==undefined?pctAtual[ind.key]:null;
+      const semAnterior=wPrev&&pctAnterior[ind.key]!==undefined?pctAnterior[ind.key]:null;
+      const diffSem=(semAtual!==null&&semAtual!==undefined&&semAnterior!==null&&semAnterior!==undefined)?semAtual-semAnterior:null;
+      let casosDesvio=null;
+      if(wRef){
+        const savedSem2=selB2cSemana;
+        selB2cSemana=[wRef.semana];
+        const det=b2cComputeIndicatorDetail(ind.key);
+        selB2cSemana=savedSem2;
+        casosDesvio=det?{total:det.total,amostra:det.rows.slice(0,8)}:{total:0,amostra:[]};
+      }
+      return{
+        key:ind.key,label:ind.label,resultado:ind.geral.pct,meta:ind.meta,dir:ind.dir,unidade:'%',
+        nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),motivo:ind.motivo,
+        semAtual,semAnterior,diffSem,casosDesvio,
+      };
+    });
+    return{total:execB2cCombinedRows().length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execB2cFca(indicadores)};
   }finally{
     selB2cCluster=savedCl;selB2cAno=savedAno;selB2cMes=savedMes;selB2cSemana=savedSem;
   }
@@ -22992,15 +23066,71 @@ function execRenderKpis(containerId,snap){
   });
   el.innerHTML=html;
 }
-function execRenderBaremoTable(tableId,indicadores){
+/* Coluna de comparação semanal do Baremo (pedido do usuário: "W36=96,3 | W37=93,2% —
+   difW=-3,1%"), sempre modulando alta/queda de uma semana pra outra + os casos que
+   compõem o desvio. semAnterior/semAtual/diffSem/casosDesvio já vêm calculados por
+   execRedeSnapshot/execEncSnapshot/execB2cSnapshot (mesma semana de referência do WoW,
+   ver execWowReferenceIdx). */
+function execFmtSemanaResultado(v,unidade){
+  return(v===null||v===undefined||isNaN(v))?'—':(v.toFixed(unidade==='h'?2:1)+(unidade||''));
+}
+function execDiffTxt(diff,unidade){
+  if(diff===null||diff===undefined||isNaN(diff))return'—';
+  return(diff>=0?'+':'')+diff.toFixed(unidade==='h'?2:1)+(unidade==='h'?'h':' p.p.');
+}
+function execDiffColor(diff,dir){
+  if(diff===null||diff===undefined||isNaN(diff))return'var(--tx3)';
+  if(diff===0)return'var(--tx3)';
+  const melhorou=dir==='higher'?diff>0:diff<0;
+  return melhorou?'var(--green-dk)':'var(--red-dk)';
+}
+function execRenderCasosDesvioMini(prefix,casosDesvio){
+  if(!casosDesvio||!casosDesvio.total)return'<div class="exec-mini-cap">Nenhum caso fora do padrão nesta semana.</div>';
+  let labels,rows;
+  if(prefix==='b2c'){
+    const rawRows=casosDesvio.amostra;
+    const cols=B2C_OFF_COL_PRIORITY.filter(c=>rawRows.some(r=>r[c]!==undefined&&r[c]!=='')).slice(0,5);
+    labels=cols;
+    rows=rawRows.map(r=>cols.map(c=>{let v=r[c];if(B2C_OFF_DATE_COLS.has(c)&&typeof v==='number')v=rdeFmtDate(v);return v;}));
+  }else if(prefix==='rede'){
+    labels=['Cidade','Cluster','Tempo (h)','Causa'];
+    rows=casosDesvio.amostra.map(r=>[r.cidade,r.cluster,typeof r.tempo==='number'?r.tempo.toFixed(1):r.tempo,r.causa]);
+  }else{
+    labels=['Cidade','Causa','Tempo (h)','Protocolo'];
+    rows=casosDesvio.amostra.map(r=>[r.cidade,r.causa,typeof r.tempo==='number'?r.tempo.toFixed(1):r.tempo,r.protocolo]);
+  }
+  const head='<tr>'+labels.map(l=>'<th>'+eh(l)+'</th>').join('')+'</tr>';
+  const body=rows.map(cells=>'<tr>'+cells.map(v=>'<td>'+eh(v===undefined||v===null||v==='' ?'—':String(v))+'</td>').join('')+'</tr>').join('');
+  const capNote=casosDesvio.total>rows.length?'<div class="exec-mini-cap">Mostrando '+rows.length+' de '+casosDesvio.total+' casos.</div>':'';
+  return'<div class="exec-mini-wrap"><table class="exec-mini-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'+capNote;
+}
+function execToggleCasosDesvio(rowId,trigger){
+  const row=document.getElementById(rowId);
+  if(!row)return;
+  const open=row.style.display!=='none';
+  row.style.display=open?'none':'table-row';
+  if(trigger)trigger.classList.toggle('exec-baremo-row-open',!open);
+}
+function execRenderBaremoTable(tableId,indicadores,prefix,semAnteriorLabel,semAtualLabel){
   const tbl=document.getElementById(tableId);if(!tbl)return;
+  const thead=tbl.querySelector('thead');
   const tbody=tbl.querySelector('tbody');if(!tbody)return;
-  if(!indicadores.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--tx3)">Sem dados no filtro atual.</td></tr>';return;}
-  tbody.innerHTML=indicadores.map(i=>{
+  if(thead)thead.innerHTML='<tr><th>Indicador</th><th>Resultado</th><th>Meta</th><th>Nota</th><th>Status</th><th>'+eh(semAnteriorLabel||'Sem. Ant.')+'</th><th>'+eh(semAtualLabel||'Sem. Atual')+'</th><th>Δ Semana</th></tr>';
+  if(!indicadores.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--tx3)">Sem dados no filtro atual.</td></tr>';return;}
+  tbody.innerHTML=indicadores.map((i,idx)=>{
     const cls=execBaremoClass(i.nota);
     const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
     const metaTxt=(i.dir==='lower'?'≤ ':'≥ ')+i.meta+(i.unidade||'');
-    return'<tr><td>'+eh(i.label)+'</td><td>'+resTxt+'</td><td>'+eh(metaTxt)+'</td><td>'+execBaremoBadge(i.nota)+'</td><td>'+execStatusLabel(cls)+'</td></tr>';
+    const temCasos=!!(i.casosDesvio&&i.casosDesvio.total>0);
+    const casosTxt=temCasos?'<div class="exec-casos-txt">'+i.casosDesvio.total+' caso(s) fora do padrão — clique para ver</div>':'';
+    const rowId='exec-baremo-detail-'+tableId+'-'+idx;
+    const linha='<tr'+(temCasos?' class="exec-baremo-row-clicavel" onclick="execToggleCasosDesvio(\''+rowId+'\',this)"':'')+'>'
+      +'<td>'+eh(i.label)+'</td><td>'+resTxt+'</td><td>'+eh(metaTxt)+'</td><td>'+execBaremoBadge(i.nota)+'</td><td>'+execStatusLabel(cls)+'</td>'
+      +'<td>'+execFmtSemanaResultado(i.semAnterior,i.unidade)+'</td><td>'+execFmtSemanaResultado(i.semAtual,i.unidade)+'</td>'
+      +'<td><span style="color:'+execDiffColor(i.diffSem,i.dir)+';font-weight:600">'+execDiffTxt(i.diffSem,i.unidade)+'</span>'+casosTxt+'</td>'
+      +'</tr>';
+    const detalhe=temCasos?'<tr class="exec-baremo-detail-row" id="'+rowId+'" style="display:none"><td colspan="8">'+execRenderCasosDesvioMini(prefix,i.casosDesvio)+'</td></tr>':'';
+    return linha+detalhe;
   }).join('');
 }
 function execRenderWowChart(canvasId,weeks){
@@ -23016,7 +23146,7 @@ function execRenderWowChart(canvasId,weeks){
 }
 function execRenderBlock(prefix,snap){
   execRenderKpis('exec-kpi-'+prefix,snap);
-  execRenderBaremoTable('exec-baremo-'+prefix,snap.indicadores);
+  execRenderBaremoTable('exec-baremo-'+prefix,snap.indicadores,prefix,snap.semAnteriorLabel,snap.semAtualLabel);
   const insEl=document.getElementById('exec-wow-insight-'+prefix);
   if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow,snap.wowRefIdx);
   execRenderWowChart('exec-wow-ch-'+prefix,snap.wow);
