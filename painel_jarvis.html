@@ -6678,6 +6678,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab active" id="ntab-dash" onclick="switchTab('dashboard')">
         <i class="ti ti-layout-dashboard"></i><span class="ntab-label"> Dashboard</span>
       </button>
+      <button class="ntab" id="ntab-exec" onclick="switchTab('executivo')">
+        <i class="ti ti-report-analytics"></i><span class="ntab-label"> Painel Executivo</span>
+      </button>
       <button class="ntab" id="ntab-ab" onclick="switchTab('abertos')">
         <i class="ti ti-clipboard-list"></i><span class="ntab-label"> B2B Abertos</span>
         <span class="ntab-badge nb-blue" id="nb-ab">0</span>
@@ -6896,6 +6899,133 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
   </div>
 
+  <!-- ── PAINEL EXECUTIVO ── -->
+  <style>
+  #panel-executivo .exec-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:10px 14px;margin-bottom:14px;}
+  #panel-executivo .exec-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  #panel-executivo .exec-summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
+  #panel-executivo .exec-summary-card{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:14px 16px;cursor:pointer;text-align:left;font-family:inherit;transition:box-shadow .15s,transform .15s;}
+  #panel-executivo .exec-summary-card:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
+  #panel-executivo .exec-summary-card.active{border-color:var(--blue);}
+  #panel-executivo .exec-summary-card .es-title{font-size:11.5px;font-weight:600;color:var(--tx3);display:flex;align-items:center;gap:6px;}
+  #panel-executivo .exec-summary-card .es-nota{font-size:26px;font-weight:700;margin-top:4px;letter-spacing:-.01em;}
+  #panel-executivo .exec-summary-card .es-sub{font-size:11px;color:var(--tx3);margin-top:2px;}
+  #panel-executivo .exec-summary-card .es-wow{font-size:11px;margin-top:6px;font-weight:600;}
+  #panel-executivo .exec-subtabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:.5px solid var(--bd);padding-bottom:0;}
+  #panel-executivo .exec-subtab{background:none;border:none;border-bottom:2px solid transparent;color:var(--tx3);font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+  #panel-executivo .exec-subtab:hover{color:var(--tx);}
+  #panel-executivo .exec-subtab.active{color:var(--blue);border-bottom-color:var(--blue);}
+  #panel-executivo .exec-section{display:none;}
+  #panel-executivo .exec-section.active{display:block;}
+  #panel-executivo .exec-section-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  #panel-executivo .exec-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
+  #panel-executivo .exec-kpi{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:12px 14px;}
+  #panel-executivo .exec-kpi .lb{font-size:10.5px;font-weight:500;color:var(--tx3);}
+  #panel-executivo .exec-kpi .vl{font-size:22px;font-weight:700;margin-top:3px;letter-spacing:-.01em;}
+  #panel-executivo .exec-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  #panel-executivo .exec-card{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:14px 16px;}
+  #panel-executivo .exec-card h4{margin:0 0 8px;font-size:12.5px;font-weight:600;color:var(--tx);}
+  #panel-executivo .exec-wow-insight{font-size:11.5px;color:var(--tx3);margin-bottom:8px;}
+  #panel-executivo table{width:100%;border-collapse:collapse;font-size:12px;}
+  #panel-executivo thead th{text-align:center;background:var(--surface2);color:var(--tx3);padding:7px 8px;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;border-bottom:.5px solid var(--bd);white-space:nowrap;}
+  #panel-executivo thead th:first-child{text-align:left;}
+  #panel-executivo tbody td{padding:7px 8px;border-bottom:.5px solid var(--bd);text-align:center;vertical-align:middle;}
+  #panel-executivo tbody td:first-child{text-align:left;font-weight:600;}
+  #panel-executivo .exec-nota{display:inline-block;min-width:34px;border-radius:20px;padding:2px 8px;font-weight:700;}
+  #panel-executivo .exec-nota-ok{background:var(--green-bg);color:var(--green-dk);}
+  #panel-executivo .exec-nota-wn{background:var(--orange-bg,rgba(255,149,0,.14));color:var(--orange);}
+  #panel-executivo .exec-nota-bd{background:var(--red-bg);color:var(--red-dk);}
+  #panel-executivo .exec-nota-na{background:var(--surface2);color:var(--tx3);}
+  #panel-executivo .exec-empty{padding:24px;text-align:center;color:var(--tx3);font-size:12.5px;}
+  @media (max-width:900px){
+    #panel-executivo .exec-summary-grid{grid-template-columns:1fr;}
+    #panel-executivo .exec-kpi-grid{grid-template-columns:repeat(2,1fr);}
+    #panel-executivo .exec-grid-2{grid-template-columns:1fr;}
+  }
+  </style>
+  <div class="panel" id="panel-executivo">
+    <div class="exec-toolbar">
+      <div class="exec-toolbar-left">
+        <span class="week-label"><i class="ti ti-calendar-stats" style="font-size:13px;vertical-align:-2px"></i> Ano</span>
+        <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-ano-selector" onclick="mselToggleOpen('exec-ano-selector')"><span class="msel-btn-lbl">Todos os anos</span></button></div>
+        <span class="week-label" style="margin-left:6px"><i class="ti ti-calendar-month" style="font-size:13px;vertical-align:-2px"></i> Mês</span>
+        <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-mes-selector" onclick="mselToggleOpen('exec-mes-selector')"><span class="msel-btn-lbl">Todos os meses</span></button></div>
+        <span class="week-label" style="margin-left:6px"><i class="ti ti-calendar" style="font-size:13px;vertical-align:-2px"></i> Semana</span>
+        <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-semana-selector" onclick="mselToggleOpen('exec-semana-selector')"><span class="msel-btn-lbl">Todas as semanas</span></button></div>
+        <span class="card-action" style="margin-left:6px" onclick="clearExecFilters()">Limpar filtros</span>
+      </div>
+    </div>
+
+    <div class="exec-summary-grid">
+      <button type="button" class="exec-summary-card" id="exec-summary-rede" onclick="execSetTab('rede')"></button>
+      <button type="button" class="exec-summary-card" id="exec-summary-encerrados" onclick="execSetTab('encerrados')"></button>
+      <button type="button" class="exec-summary-card" id="exec-summary-b2c" onclick="execSetTab('b2c')"></button>
+    </div>
+
+    <div class="exec-subtabs">
+      <button class="exec-subtab active" id="exec-subtab-rede" onclick="execSetTab('rede')"><i class="ti ti-router"></i> Rede</button>
+      <button class="exec-subtab" id="exec-subtab-encerrados" onclick="execSetTab('encerrados')"><i class="ti ti-circle-check"></i> B2B Encerrados</button>
+      <button class="exec-subtab" id="exec-subtab-b2c" onclick="execSetTab('b2c')"><i class="ti ti-users"></i> B2C</button>
+    </div>
+
+    <div class="exec-section active" id="exec-tab-rede">
+      <div class="exec-section-toolbar">
+        <span class="week-label"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
+        <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-rede-cluster-selector" onclick="mselToggleOpen('exec-rede-cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
+      </div>
+      <div class="exec-kpi-grid" id="exec-kpi-rede"></div>
+      <div class="exec-grid-2">
+        <div class="exec-card">
+          <h4>Baremo — Rede</h4>
+          <table id="exec-baremo-rede"><thead><tr><th>Indicador</th><th>Resultado</th><th>Meta</th><th>Nota</th><th>Status</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="exec-card">
+          <h4>Semana Contra Semana (WoW)</h4>
+          <div class="exec-wow-insight" id="exec-wow-insight-rede"></div>
+          <div class="cw" style="height:220px"><canvas id="exec-wow-ch-rede"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="exec-section" id="exec-tab-encerrados">
+      <div class="exec-section-toolbar">
+        <span class="week-label"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
+        <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-enc-cluster-selector" onclick="mselToggleOpen('exec-enc-cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
+      </div>
+      <div class="exec-kpi-grid" id="exec-kpi-encerrados"></div>
+      <div class="exec-grid-2">
+        <div class="exec-card">
+          <h4>Baremo — B2B Encerrados</h4>
+          <table id="exec-baremo-encerrados"><thead><tr><th>Indicador</th><th>Resultado</th><th>Meta</th><th>Nota</th><th>Status</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="exec-card">
+          <h4>Semana Contra Semana (WoW)</h4>
+          <div class="exec-wow-insight" id="exec-wow-insight-encerrados"></div>
+          <div class="cw" style="height:220px"><canvas id="exec-wow-ch-encerrados"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="exec-section" id="exec-tab-b2c">
+      <div class="exec-section-toolbar">
+        <span class="week-label"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
+        <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-b2c-cluster-selector" onclick="mselToggleOpen('exec-b2c-cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
+      </div>
+      <div class="exec-kpi-grid" id="exec-kpi-b2c"></div>
+      <div class="exec-grid-2">
+        <div class="exec-card">
+          <h4>Baremo — B2C</h4>
+          <table id="exec-baremo-b2c"><thead><tr><th>Indicador</th><th>Resultado</th><th>Meta</th><th>Nota</th><th>Status</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="exec-card">
+          <h4>Semana Contra Semana (WoW) — volume operacional</h4>
+          <div class="exec-wow-insight" id="exec-wow-insight-b2c"></div>
+          <div class="cw" style="height:220px"><canvas id="exec-wow-ch-b2c"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── PAINEL ABERTOS ── -->
   <div class="panel" id="panel-abertos">
     <div id="empty-ab" class="empty">
@@ -7073,6 +7203,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   .b2c-modal .b2c-cluster-mini{width:100%;border-collapse:collapse;font-size:11.5px;}
   .b2c-modal .b2c-cluster-mini th{text-align:left;color:var(--tx3);font-weight:600;padding:3px 8px;}
   .b2c-modal .b2c-cluster-mini td{padding:3px 8px;color:var(--tx);}
+  .b2c-off-rows-wrap{max-height:260px;overflow-y:auto;overflow-x:auto;border:.5px solid var(--bd);border-radius:var(--r);}
+  .b2c-off-rows-wrap table{white-space:nowrap;}
+  .b2c-off-rows-wrap thead th{position:sticky;top:0;background:var(--surface);}
   .b2c-modal .b2c-status-pill{display:inline-block;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;}
   .b2c-modal .b2c-status-ok{background:var(--green-bg);color:var(--green-dk);}
   .b2c-modal .b2c-status-wn{background:var(--orange-bg,rgba(255,149,0,.14));color:var(--orange);}
@@ -9610,8 +9743,8 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['abertos','b2c','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
-const DEFAULT_VIEWER_PANELS=['abertos','b2c','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
+const ALL_PANEL_KEYS=['executivo','abertos','b2c','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
+const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -10259,7 +10392,7 @@ function deleteUser(username){
   saveState();
   renderUsers();
 }
-const PANEL_LABELS={abertos:'B2B Abertos',swap:'SWAP',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP'};
+const PANEL_LABELS={executivo:'Painel Executivo',abertos:'B2B Abertos',swap:'SWAP',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -10850,7 +10983,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -11025,6 +11158,13 @@ function applyState(st,label){
     if(Array.isArray(st.selB2cAno))selB2cAno=st.selB2cAno;
     if(Array.isArray(st.selB2cMes))selB2cMes=st.selB2cMes;
     if(Array.isArray(st.selB2cSemana))selB2cSemana=st.selB2cSemana;
+    if(Array.isArray(st.selExecAno))selExecAno=st.selExecAno;
+    if(Array.isArray(st.selExecMes))selExecMes=st.selExecMes;
+    if(Array.isArray(st.selExecSemana))selExecSemana=st.selExecSemana;
+    if(Array.isArray(st.selExecRedeCluster))selExecRedeCluster=st.selExecRedeCluster;
+    if(Array.isArray(st.selExecEncCluster))selExecEncCluster=st.selExecEncCluster;
+    if(Array.isArray(st.selExecB2cCluster))selExecB2cCluster=st.selExecB2cCluster;
+    if(typeof st.execTab==='string')execTab=st.execTab;
     if(st.b2cMetaOverrides&&typeof st.b2cMetaOverrides==='object'){
       Object.keys(st.b2cMetaOverrides).forEach(k=>{
         if(B2C_INDICATOR_META[k]&&typeof st.b2cMetaOverrides[k]==='number')B2C_INDICATOR_META[k].meta=st.b2cMetaOverrides[k];
@@ -18312,15 +18452,16 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true){
-  if(!['dashboard','abertos','b2c','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
+  if(!['dashboard','executivo','abertos','b2c','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isDash=tab==='dashboard',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
+  const isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isDash?'dash':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
+  document.getElementById('panel-executivo').classList.toggle('active',isExec);
   document.getElementById('panel-abertos').classList.toggle('active',isAb);
   document.getElementById('panel-b2c').classList.toggle('active',isB2c);
   document.getElementById('panel-swap').classList.toggle('active',isSwap);
@@ -18364,6 +18505,7 @@ function switchTab(tab,persist=true){
   if(isB2c)b2cRenderAll();
   if(isSwap&&dAb.length)renderAllSwap();
   if(isDash)renderExecutiveDashboard();
+  if(isExec)renderExecutivo();
   updateShellTitle(tab);
   closeMobileNav();
   updateClearBtns();
@@ -21466,7 +21608,7 @@ document.getElementById('sb-btnExport').addEventListener('click', ()=>{
    - IFI: contagem de linhas ÷ Qtd. Ativações (Aging Altas.xlsx) por Novo Cluster.
    - IFME / IRR: contagem de linhas ÷ total de Reparos (Reparos Prazo.xlsx) por
      Novo Cluster. */
-let B2C_RAW={reparosPrazo:[],irt:[],mudEndereco:[],mudComodo:[],upgrade:[],agingAltas:[],efetividadeAltas:[],efetividadeReparos:[],ifi:[],ifme:[],irr:[],plantaMedia:[]};
+let B2C_RAW={reparosPrazo:[],irt:[],mudEndereco:[],mudComodo:[],upgrade:[],agingAltas:[],efetividadeAltas:[],efetividadeReparos:[],ifi:[],ifme:[],irr:[],plantaMedia:[],maxRaw:[]};
 let B2C_FILES={};
 let B2C_SUMMARY={indicators:[],updatedAt:''};
 let b2cSummaryAt='';
@@ -21487,9 +21629,18 @@ const B2C_FILE_TYPES=[
   {key:'efetividadeAltas',match:/efetividade\s*altas/i,sigCols:['conclusao_os','Qtd. Total'],label:'Efetividade Altas'},
   {key:'efetividadeReparos',match:/efetividade\s*reparos/i,sigCols:['FILA','data_conclusao'],label:'Efetividade Reparos'},
   {key:'ifi',match:/\bifi\b/i,sigCols:['Qtd IFI'],label:'IFI'},
-  {key:'ifme',match:/\bifme\b|^data$/i,sigCols:['Qtd. IFME','Aging IFME'],label:'IFME'},
+  {key:'ifme',match:/\bifme\b|^data\.xlsx?$/i,sigCols:['Qtd. IFME','Aging IFME'],label:'IFME'},
   {key:'irr',match:/\birr\b/i,sigCols:['Qtd. IRR','Aging IRR'],label:'IRR'},
   {key:'plantaMedia',match:/planta\s*m[eé]dia/i,sigCols:['Media Base Media'],label:'Planta Média'},
+  /* Bases do indicador MAX (reincidência de reparo): sempre anexadas junto com as
+     outras 12 — CLIENTES_vs_MAX e RESUMO_REPAROS são os pivots do Power BI (só pra
+     conferência manual, não entram no cálculo do painel); MAX.xlsx é o extrato bruto
+     nível-chamado usado pra recalcular o indicador. As duas primeiras precisam vir
+     ANTES de maxRaw nesta lista — b2cDetectFileType() usa o primeiro match — porque
+     o nome dos três arquivos sempre contém "MAX". */
+  {key:'clientesVsMax',match:/clientes.*max/i,sigCols:['concat_max3'],label:'Clientes vs. MAX (Power BI)'},
+  {key:'resumoReparosMax',match:/resumo.*reparos.*max/i,sigCols:['Chamados MAX3','Clientes MAX3'],label:'Resumo Reparos MAX (Power BI)'},
+  {key:'maxRaw',match:/max/i,sigCols:['MAX3','motivo_conclusao_real'],label:'MAX (extrato bruto)'},
 ];
 const B2C_INDICATOR_META={
   reparos24h:{label:'Reparos 24h',meta:85,dir:'higher'},
@@ -21503,12 +21654,16 @@ const B2C_INDICATOR_META={
   ifi:{label:'IFI',meta:3.5,dir:'lower'},
   ifme:{label:'IFME',meta:3.5,dir:'lower'},
   irr:{label:'IRR',meta:7,dir:'lower'},
-  /* MAX: indicador novo, fórmula/base ainda não definida pelo usuário — fica só a
-     estrutura (linha na tabela + caixa de meta editável + espaço reservado no
-     gráfico) até a planilha/fórmula chegar. b2cComputeIndicators() sempre inclui
-     esse indicador com pct:null ("Sem dado"), mesmo sem nenhuma base anexada pra ele. */
-  max:{label:'MAX',meta:0,dir:'higher'},
+  /* MAX: % de clientes distintos (Contrato) reincidentes — maior MAX3 observado no
+     contrato, dentro do filtro atual, é >= 1. Quanto menor, melhor (dir:'lower').
+     Meta 15% é um ponto de partida editável (o usuário não informou um alvo formal
+     pra este indicador, ao contrário dos outros 10 que vieram com meta definida). */
+  max:{label:'MAX',meta:15,dir:'lower'},
 };
+/* MAX.xlsx é extrato nacional (Power BI) com vários Gerentes misturados — o painel só
+   cobre MA/PI/Norte, cujos chamados no extrato são sempre do Gerente abaixo (confirmado
+   com o usuário; ver b2cProcessFilesSequential). */
+const B2C_MAX_GERENTE='Wellington Marcio';
 
 function b2cNk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase();}
 function b2cGv(r,cols){
@@ -21548,6 +21703,30 @@ function b2cNormalizeRow(row){
     cluster:String(b2cGv(row,['Cluster'])||'').trim(),
     unidade:String(b2cGv(row,['Unidade'])||'').trim(),
     cidadeUf:String(b2cGv(row,['Cidade_UF','Cidade/UF'])||'').trim(),
+    ano,mes,semana,
+    raw:row,
+  };
+}
+/* MAX.xlsx (extrato bruto do indicador MAX) usa nomes de coluna diferentes das
+   outras 12 bases: "Cluster" no formato "C.32|Maranhão" (em vez de "Novo Cluster"
+   no formato "C.32 - Maranhão") e não tem "Unidade"/"Cidade_UF". Reaproveita
+   b2cRowDate (já cobre "Data Abertura Chamado") pra não duplicar a lógica de
+   período, só troca a extração do cluster e cidade. */
+function b2cNormalizeMaxRow(row){
+  const d=b2cRowDate(row);
+  let mes='',semana='',ano='';
+  if(d){
+    ano=String(d.getFullYear());
+    mes=ano+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const iso=rdeIsoWeek(d);
+    semana=iso.y+'-W'+String(iso.w).padStart(2,'0');
+  }
+  const clRaw=String(b2cGv(row,['Cluster'])||'').trim();
+  return{
+    novoCluster:clRaw?clRaw.replace('|',' - '):'Não informado',
+    cluster:clRaw,
+    unidade:'',
+    cidadeUf:String(b2cGv(row,['Cidade'])||'').trim(),
     ano,mes,semana,
     raw:row,
   };
@@ -21620,10 +21799,65 @@ function b2cFilterRows(rows){
 function b2cFilterRowsClusterOnly(rows){
   return selB2cCluster.length?rows.filter(r=>selB2cCluster.includes(r.novoCluster)):rows;
 }
+/* Predicados de "fora do padrão" (Aging/conclusão) extraídos como funções nomeadas
+   em vez de ficarem inline dentro de b2cComputeIndicators — reaproveitados também
+   por b2cComputeIndicatorDetail() (lista de chamados fora do prazo no modal), pra
+   não duplicar a regra em dois lugares e um dia divergir sem querer. */
+function b2cWithin3(r){const v=b2cNum(b2cGv(r.raw,['Aging']));return!isNaN(v)&&v<=3;}
+function b2cBeyond3(r){const v=b2cNum(b2cGv(r.raw,['Aging']));return!isNaN(v)&&v>3;}
+function b2cAgingAltasDias(r){const a=b2cNum(b2cGv(r.raw,['Data Ativação'])),c=b2cNum(b2cGv(r.raw,['Data Criação Contrato']));return(!isNaN(a)&&!isNaN(c))?a-c:NaN;}
+const B2C_OFF_PREDICATES={
+  reparos24h:r=>b2cGv(r.raw,['Reparo'])!=='Até 24 hrs',
+  mudEndereco:b2cBeyond3,
+  mudComodo:b2cBeyond3,
+  upgrade:b2cBeyond3,
+  agingAltas:r=>{const d=b2cAgingAltasDias(r);return!(!isNaN(d)&&d<=3);},
+  efetividadeAltas:r=>b2cGv(r.raw,['conclusao_os'])!=='Realizado',
+  efetividadeReparos:r=>b2cGv(r.raw,['conclusao'])!=='Realizado',
+};
+/* MAX (reincidência): dedup por Contrato tomando o MAIOR MAX3 observado (equivalente
+   a MAXIFS) dentro do recorte já filtrado por b2cFilterRows — o mesmo contrato pode
+   aparecer em vários chamados com MAX3 diferente. Cliente é "reincidente" quando
+   esse máximo é >= 1. Ressalva já documentada no prompt original do indicador: o
+   recálculo aqui é por período filtrado (Ano/Mês/Semana/Cluster do painel), então
+   olhando "todos os períodos" o total tende a ficar bem maior que um recorte
+   semanal isolado do Power BI — não é um bug, é escopo temporal diferente. */
+function b2cMaxIndicator(rows){
+  const byContrato={};
+  rows.forEach(r=>{
+    const c=b2cGv(r.raw,['Contrato']);
+    const m=b2cNum(b2cGv(r.raw,['MAX3']));
+    const mv=isNaN(m)?0:m;
+    if(!byContrato[c])byContrato[c]={max:mv,cluster:r.novoCluster,rows:[r]};
+    else{
+      byContrato[c].rows.push(r);
+      if(mv>byContrato[c].max)byContrato[c].max=mv;
+    }
+  });
+  const byCl={};
+  let numTotal=0,denTotal=0;
+  Object.values(byContrato).forEach(c=>{
+    const cl=c.cluster;
+    if(!byCl[cl])byCl[cl]={num:0,den:0};
+    byCl[cl].den++;denTotal++;
+    if(c.max>=1){byCl[cl].num++;numTotal++;}
+  });
+  const porCluster={};
+  Object.keys(byCl).forEach(cl=>{porCluster[cl]={...byCl[cl],pct:byCl[cl].den?byCl[cl].num/byCl[cl].den*100:null};});
+  const motivoCnt={};
+  Object.values(byContrato).filter(c=>c.max>=1).forEach(c=>{
+    c.rows.forEach(r=>{
+      const mo=String(b2cGv(r.raw,['motivo_conclusao_real'])||'Não informado').trim()||'Não informado';
+      motivoCnt[mo]=(motivoCnt[mo]||0)+1;
+    });
+  });
+  const motivo=Object.entries(motivoCnt).sort((a,b)=>b[1]-a[1])[0]||null;
+  return{geral:{num:numTotal,den:denTotal,pct:denTotal?numTotal/denTotal*100:null},porCluster,motivo};
+}
 function b2cComputeIndicators(){
   const out=[];
-  const within3=r=>{const v=b2cNum(b2cGv(r.raw,['Aging']));return!isNaN(v)&&v<=3;};
-  const beyond3=r=>{const v=b2cNum(b2cGv(r.raw,['Aging']));return!isNaN(v)&&v>3;};
+  const within3=b2cWithin3;
+  const beyond3=b2cBeyond3;
 
   const reparosPrazo=b2cFilterRows(B2C_RAW.reparosPrazo);
   const mudEndereco=b2cFilterRows(B2C_RAW.mudEndereco);
@@ -21659,8 +21893,7 @@ function b2cComputeIndicators(){
     out.push({key:'upgrade',...B2C_INDICATOR_META.upgrade,...res,motivo});
   }
   if(agingAltas.length){
-    const diasFn=r=>{const a=b2cNum(b2cGv(r.raw,['Data Ativação'])),c=b2cNum(b2cGv(r.raw,['Data Criação Contrato']));return(!isNaN(a)&&!isNaN(c))?a-c:NaN;};
-    const res=b2cShareIndicator(agingAltas,r=>{const d=diasFn(r);return!isNaN(d)&&d<=3;});
+    const res=b2cShareIndicator(agingAltas,r=>{const d=b2cAgingAltasDias(r);return!isNaN(d)&&d<=3;});
     out.push({key:'agingAltas',...B2C_INDICATOR_META.agingAltas,...res,motivo:null});
   }
   if(efetividadeAltas.length){
@@ -21692,10 +21925,13 @@ function b2cComputeIndicators(){
     const motivo=b2cDominantMotivo(irr,()=>true,['Motivo OS']);
     out.push({key:'irr',...B2C_INDICATOR_META.irr,...res,motivo});
   }
-  /* MAX ainda não tem base/fórmula definida — entra sempre como "Sem dado" (pct:null),
-     só pra a linha/caixa de meta/espaço no gráfico já existirem na tela, prontos pro
-     dia em que a base chegar. */
-  out.push({key:'max',...B2C_INDICATOR_META.max,geral:{num:0,den:0,pct:null},porCluster:{},motivo:null});
+  const maxRaw=b2cFilterRows(B2C_RAW.maxRaw);
+  if(maxRaw.length){
+    const res=b2cMaxIndicator(maxRaw);
+    out.push({key:'max',...B2C_INDICATOR_META.max,...res});
+  }else{
+    out.push({key:'max',...B2C_INDICATOR_META.max,geral:{num:0,den:0,pct:null},porCluster:{},motivo:null});
+  }
   return out;
 }
 function b2cIndicatorStatus(ind){
@@ -21710,51 +21946,162 @@ function b2cRecomputeSummary(){
 }
 
 /* ---------- Upload (múltiplos arquivos, com detecção automática) ---------- */
+/* As bases maiores (IRT/Efetividade Reparos) passam de 30-48 mil linhas e o
+   XLSX.read() delas sozinho já leva alguns segundos de trabalho síncrono. Antes,
+   todos os FileReader eram disparados juntos (readAsArrayBuffer em loop) e só
+   sincronizavam no fim via contador "pending" — isso empilhava o parse dos 12
+   arquivos nos mesmos instantes, travando a aba inteira por vários minutos sem
+   nenhum repaint no meio (usuário via "travamentos"). Agora processa 1 arquivo
+   por vez, com um yield (setTimeout 0) antes de cada etapa pesada pra o navegador
+   ter chance de pintar a barra de status ("Lendo 3 de 12: IRT.xlsx...") — o tempo
+   total não cai muito, mas a aba nunca fica presa por mais que a duração de UM
+   arquivo, e o usuário vê o progresso em vez de uma tela parada. */
+function b2cYield(){return new Promise(r=>setTimeout(r,0));}
+async function b2cNormalizeRowsChunked(rows,normalizeFn){
+  const CHUNK=4000;
+  const out=new Array(rows.length);
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const end=Math.min(i+CHUNK,rows.length);
+    for(let j=i;j<end;j++)out[j]=normalizeFn(rows[j]);
+    if(end<rows.length)await b2cYield();
+  }
+  return out;
+}
+/* As 2 bases pivot do Power BI (Clientes vs. MAX / Resumo Reparos MAX) são só pra
+   conferência manual — não entram em nenhum cálculo do painel — então não passam
+   pelo filtro de linha "lixo" nem pela normalização (que exige Novo Cluster/data,
+   colunas que essas tabelas-resumo não têm). */
+const B2C_REFERENCE_ONLY_TYPES=new Set(['clientesVsMax','resumoReparosMax']);
+/* MAX.xlsx é um extrato nacional de ~150k linhas exportado pelo Power BI com string
+   inline em toda célula (sem shared strings) — XLSX.read+sheet_to_json nesse arquivo
+   leva ~25s de CPU 100% síncrona (medido com o mesmo xlsx.full.min.js via Node).
+   Sem nenhum yield possível no meio de uma chamada síncrona, isso trava a aba inteira
+   (sem repaint, sem resposta a clique) pelo tempo todo — o usuário via isso como os 3
+   arquivos MAX "não subindo", porque o loop sequencial fica parado no MAX.xlsx e nunca
+   chega nos outros dois. Solução: fazer o parse pesado num Web Worker (mesma lib via
+   importScripts), que não bloqueia a UI; se o Worker falhar por qualquer motivo (ex.:
+   página aberta via file://, que bloqueia Worker de blob: URL), cai no parse síncrono
+   de antes — sem worker, mesmo comportamento de sempre. */
+let _b2cXlsxWorker=null;
+function _b2cGetXlsxWorker(){
+  if(_b2cXlsxWorker)return _b2cXlsxWorker;
+  const xlsxUrl=new URL('assets/vendor/xlsx/xlsx.full.min.js',document.baseURI).href;
+  const src='importScripts('+JSON.stringify(xlsxUrl)+');'
+    +'function nk(v){return String(v||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^a-z0-9]/gi,"").toUpperCase();}'
+    +'onmessage=function(e){'
+    +'  try{'
+    +'    const wb=XLSX.read(e.data,{type:"array",dense:true,cellHTML:false,cellStyles:false,cellFormula:false,cellText:false,cellNF:false});'
+    +'    const sn=wb.SheetNames.find(function(n){return nk(n)===nk("Export")})||wb.SheetNames[0];'
+    +'    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:""});'
+    +'    postMessage({ok:true,rows:rows});'
+    +'  }catch(err){'
+    +'    postMessage({ok:false,error:(err&&err.message)||String(err)});'
+    +'  }'
+    +'};';
+  const blob=new Blob([src],{type:'application/javascript'});
+  _b2cXlsxWorker=new Worker(URL.createObjectURL(blob));
+  return _b2cXlsxWorker;
+}
+function b2cParseXlsxInWorker(buf){
+  return new Promise((resolve,reject)=>{
+    let worker;
+    try{worker=_b2cGetXlsxWorker();}catch(err){reject(err);return;}
+    const onMsg=(e)=>{
+      worker.removeEventListener('message',onMsg);
+      worker.removeEventListener('error',onErr);
+      const d=e.data;
+      if(d&&d.ok)resolve(d.rows);
+      else reject(new Error((d&&d.error)||'Falha ao processar no worker'));
+    };
+    const onErr=(err)=>{
+      worker.removeEventListener('message',onMsg);
+      worker.removeEventListener('error',onErr);
+      _b2cXlsxWorker=null;
+      reject(err instanceof Error?err:new Error((err&&err.message)||'Erro no worker'));
+    };
+    worker.addEventListener('message',onMsg);
+    worker.addEventListener('error',onErr);
+    worker.postMessage(buf,[buf]);
+  });
+}
+async function b2cParseXlsxRows(file){
+  if(typeof Worker!=='undefined'){
+    try{
+      const buf=await file.arrayBuffer();
+      return await b2cParseXlsxInWorker(buf);
+    }catch(err){
+      console.warn('[b2c] Worker de parsing indisponível/falhou, usando fallback no thread principal:',err);
+    }
+  }
+  const buf2=await file.arrayBuffer();
+  const wb=XLSX.read(buf2,{type:'array',dense:true,cellHTML:false,cellStyles:false,cellFormula:false,cellText:false,cellNF:false});
+  const sn=wb.SheetNames.find(n=>b2cNk(n)===b2cNk('Export'))||wb.SheetNames[0];
+  return XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
+}
+async function b2cProcessFilesSequential(files){
+  const statusEl=document.getElementById('b2c-status');
+  const results=[];
+  for(let i=0;i<files.length;i++){
+    const f=files[i];
+    statusEl.textContent='Lendo '+(i+1)+' de '+files.length+': '+f.name+' (aguarde, arquivos grandes podem levar mais de 1 minuto)...';
+    await b2cYield();
+    try{
+      const rawRows=await b2cParseXlsxRows(f);
+      await b2cYield();
+      const headerKeysRaw=rawRows.length?Object.keys(rawRows[0]):[];
+      const type=b2cDetectFileType(f.name,headerKeysRaw);
+      if(!type){
+        results.push({name:f.name,ok:false,reason:'Não reconhecido'});
+      }else if(B2C_REFERENCE_ONLY_TYPES.has(type.key)){
+        B2C_RAW[type.key]=rawRows;
+        B2C_FILES[type.key]={fileName:f.name,rowCount:rawRows.length,uploadedAt:new Date().toISOString()};
+        results.push({name:f.name,ok:true,type:type.label,rows:rawRows.length});
+      }else{
+        /* As bases-modelo (as 12 do B2C + MAX.xlsx) sempre trazem 2 linhas de "lixo"
+           coladas no rodapé pelo exportador do Excel: uma linha "Total" (resumo
+           agregado, ex.: "Qtd. Ativações": 7479 — um número desproporcional, não um
+           evento de verdade) e uma linha "Filtros aplicados: ..." (metadado do
+           export, não um registro). As duas sempre vêm com a coluna de cluster em
+           branco, ao contrário de qualquer linha real — mesmo padrão de bug já
+           achado e corrigido no Painel Rede (linha de rodapé "Filtros aplicados"
+           inflando um mês por engano). Sem este filtro, a linha "Total" era contada
+           como se fosse 1 evento com Qtd. gigante, dobrando denominadores como o de
+           IFI (achado testando com os arquivos reais: contagem batia ~2x o valor
+           esperado). MAX.xlsx usa "Cluster" em vez de "Novo Cluster" — filtra pela
+           coluna certa conforme o tipo já detectado, em vez de assumir sempre
+           "Novo Cluster" (que ficaria sempre em branco pra MAX.xlsx e zeraria a
+           base inteira). */
+        const clusterCol=type.key==='maxRaw'?'Cluster':'Novo Cluster';
+        let rows=rawRows.filter(r=>String(b2cGv(r,[clusterCol])||'').trim()!=='');
+        /* MAX.xlsx é o único extrato NACIONAL entre as bases do B2C (Power BI, sem
+           recorte prévio de região): junto com o Gerente deste painel (MA/PI) vêm
+           linhas de outros gerentes/regiões (ex.: Jose Nilton, Andre de Araujo Santos,
+           Jerzio Mutao — achado testando com o extrato real: 124 mil das 150 mil linhas
+           eram de fora). O corte oficial, confirmado com o usuário, é por Gerente —
+           "Wellington Marcio" é quem responde por MA/PI neste extrato — em vez de tentar
+           casar strings de Cluster (frágil a variação de grafia entre exports). */
+        if(type.key==='maxRaw')rows=rows.filter(r=>String(b2cGv(r,['Gerente'])||'').trim()===B2C_MAX_GERENTE);
+        statusEl.textContent='Processando '+(i+1)+' de '+files.length+': '+f.name+' ('+rows.length.toLocaleString('pt-BR')+' linhas)...';
+        await b2cYield();
+        const normalizeFn=type.key==='maxRaw'?b2cNormalizeMaxRow:b2cNormalizeRow;
+        const normalized=await b2cNormalizeRowsChunked(rows,normalizeFn);
+        B2C_RAW[type.key]=normalized;
+        B2C_FILES[type.key]={fileName:f.name,rowCount:normalized.length,uploadedAt:new Date().toISOString()};
+        results.push({name:f.name,ok:true,type:type.label,rows:normalized.length});
+      }
+    }catch(err){
+      results.push({name:f.name,ok:false,reason:err.message});
+    }
+  }
+  b2cFinishUpload(results);
+}
 document.getElementById('b2c-filesInput').addEventListener('change',function(e){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');this.value='';return}
   const files=Array.from(e.target.files||[]);
-  if(!files.length)return;
-  const statusEl=document.getElementById('b2c-status');
-  statusEl.textContent='Lendo '+files.length+' arquivo(s)...';
-  let pending=files.length;
-  const results=[];
-  files.forEach(f=>{
-    const rd=new FileReader();
-    rd.onload=ev=>{
-      try{
-        const wb=XLSX.read(ev.target.result,{type:'array'});
-        const sn=wb.SheetNames.find(n=>b2cNk(n)===b2cNk('Export'))||wb.SheetNames[0];
-        const rawRows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
-        /* As 12 bases-modelo sempre trazem 2 linhas de "lixo" coladas no rodapé pelo
-           exportador do Excel: uma linha "Total" (resumo agregado, ex.: "Qtd.
-           Ativações": 7479 — um número desproporcional, não um evento de verdade) e uma
-           linha "Filtros aplicados: ..." (metadado do export, não um registro). As
-           duas sempre vêm com "Novo Cluster" em branco, ao contrário de qualquer linha
-           real — mesmo padrão de bug já achado e corrigido no Painel Rede (linha de
-           rodapé "Filtros aplicados" inflando um mês por engano). Sem este filtro, a
-           linha "Total" era contada como se fosse 1 evento com Qtd. gigante, dobrando
-           denominadores como o de IFI (achado testando com os arquivos reais: contagem
-           batia ~2x o valor esperado). */
-        const rows=rawRows.filter(r=>String(b2cGv(r,['Novo Cluster'])||'').trim()!=='');
-        const headerKeys=rows.length?Object.keys(rows[0]):[];
-        const type=b2cDetectFileType(f.name,headerKeys);
-        if(!type){
-          results.push({name:f.name,ok:false,reason:'Não reconhecido'});
-        }else{
-          B2C_RAW[type.key]=rows.map(b2cNormalizeRow);
-          B2C_FILES[type.key]={fileName:f.name,rowCount:rows.length,uploadedAt:new Date().toISOString()};
-          results.push({name:f.name,ok:true,type:type.label,rows:rows.length});
-        }
-      }catch(err){
-        results.push({name:f.name,ok:false,reason:err.message});
-      }
-      pending--;
-      if(pending===0)b2cFinishUpload(results);
-    };
-    rd.onerror=()=>{results.push({name:f.name,ok:false,reason:'Erro de leitura'});pending--;if(pending===0)b2cFinishUpload(results);};
-    rd.readAsArrayBuffer(f);
-  });
   this.value='';
+  if(!files.length)return;
+  document.getElementById('b2c-status').textContent='Lendo '+files.length+' arquivo(s)...';
+  b2cProcessFilesSequential(files);
 });
 function b2cFinishUpload(results){
   b2cRecomputeSummary();
@@ -21829,8 +22176,63 @@ const B2C_INDICATOR_SOURCE_FILES={
   reparos24h:['reparosPrazo'],irt:['irt','plantaMedia'],mudEndereco:['mudEndereco'],
   mudComodo:['mudComodo'],upgrade:['upgrade'],agingAltas:['agingAltas'],
   efetividadeAltas:['efetividadeAltas'],efetividadeReparos:['efetividadeReparos'],
-  ifi:['ifi','agingAltas'],ifme:['ifme','reparosPrazo'],irr:['irr','reparosPrazo'],max:[],
+  ifi:['ifi','agingAltas'],ifme:['ifme','reparosPrazo'],irr:['irr','reparosPrazo'],max:['maxRaw'],
 };
+/* Lista de chamados "fora do prazo/padrão" por indicador, pro modal — recalculada na
+   hora (não fica guardada em B2C_SUMMARY: manteria as linhas cruas fora do
+   dispositivo que anexou as bases, o mesmo problema de tamanho já resolvido pra
+   B2C_RAW não ir pro localStorage/sync). Pra IRT/IFI/IFME/IRR cada linha do arquivo
+   de "eventos" já É uma ocorrência fora do padrão (não existe linha "dentro do
+   padrão" nesses arquivos), então a lista é o próprio arquivo filtrado. */
+const B2C_OFF_SHARE_SOURCE={reparos24h:'reparosPrazo',mudEndereco:'mudEndereco',mudComodo:'mudComodo',upgrade:'upgrade',agingAltas:'agingAltas',efetividadeAltas:'efetividadeAltas',efetividadeReparos:'efetividadeReparos'};
+const B2C_OFF_EVENT_SOURCE={irt:'irt',ifi:'ifi',ifme:'ifme',irr:'irr'};
+const B2C_OFF_ROW_CAP=300;
+function b2cComputeIndicatorDetail(key){
+  if(key==='max'){
+    const rows=b2cFilterRows(B2C_RAW.maxRaw);
+    if(!rows.length)return null;
+    const byContrato={};
+    rows.forEach(r=>{
+      const c=b2cGv(r.raw,['Contrato']);
+      const m=b2cNum(b2cGv(r.raw,['MAX3']));
+      if(!byContrato[c])byContrato[c]={max:isNaN(m)?0:m,rows:[r]};
+      else{byContrato[c].rows.push(r);if(!isNaN(m)&&m>byContrato[c].max)byContrato[c].max=m;}
+    });
+    const offRows=[];
+    Object.values(byContrato).forEach(c=>{if(c.max>=1)c.rows.forEach(r=>offRows.push(r.raw));});
+    if(!offRows.length)return{total:0,rows:[]};
+    return{total:offRows.length,rows:offRows.slice(0,B2C_OFF_ROW_CAP)};
+  }
+  if(B2C_OFF_EVENT_SOURCE[key]){
+    const rows=b2cFilterRows(B2C_RAW[B2C_OFF_EVENT_SOURCE[key]]);
+    if(!rows.length)return null;
+    return{total:rows.length,rows:rows.slice(0,B2C_OFF_ROW_CAP).map(r=>r.raw)};
+  }
+  const fileKey=B2C_OFF_SHARE_SOURCE[key];
+  const pred=B2C_OFF_PREDICATES[key];
+  if(!fileKey||!pred)return null;
+  const base=b2cFilterRows(B2C_RAW[fileKey]);
+  if(!base.length)return null;
+  const rows=base.filter(pred);
+  return{total:rows.length,rows:rows.slice(0,B2C_OFF_ROW_CAP).map(r=>r.raw)};
+}
+const B2C_OFF_COL_PRIORITY=['Chamado','OS','Contrato','Novo Cluster','Cluster','Cidade_UF','Cidade','Bairro','Unidade',
+  'Motivo OS','Motivo','Conclusão OS','Conclusão','conclusao','conclusao_os','motivo_conclusao_real','Causa da Falha',
+  'Reparo','Aging','MAX3','Data Abertura Chamado','Data Evento','Data Conclusão','Data Ativação','Data Reparo'];
+const B2C_OFF_DATE_COLS=new Set(['Data Abertura Chamado','Data Evento','Data Conclusão','Data Ativação','Data Reparo']);
+function b2cRenderOffRowsTable(detail){
+  if(!detail)return'<p style="margin:0;color:var(--tx3);font-size:11.5px;">Detalhamento de chamados só fica disponível no dispositivo que anexou as bases (dados brutos não sincronizam entre dispositivos).</p>';
+  if(!detail.rows.length)return'<p style="margin:0;color:var(--tx3);font-size:11.5px;">Nenhum chamado fora do padrão no filtro atual.</p>';
+  const cols=B2C_OFF_COL_PRIORITY.filter(c=>detail.rows.some(r=>r[c]!==undefined&&r[c]!=='')).slice(0,7);
+  const head='<tr>'+cols.map(c=>'<th>'+eh(c)+'</th>').join('')+'</tr>';
+  const body=detail.rows.map(r=>'<tr>'+cols.map(c=>{
+    let v=r[c];
+    if(B2C_OFF_DATE_COLS.has(c)&&typeof v==='number')v=rdeFmtDate(v);
+    return'<td>'+eh(v===undefined||v===''?'—':String(v))+'</td>';
+  }).join('')+'</tr>').join('');
+  const capNote=detail.total>detail.rows.length?'<div style="margin-top:6px;color:var(--tx3);font-size:11px;">Mostrando '+detail.rows.length.toLocaleString('pt-BR')+' de '+detail.total.toLocaleString('pt-BR')+' chamados. Use os filtros pra reduzir o recorte.</div>':'';
+  return'<div class="b2c-off-rows-wrap"><table class="b2c-cluster-mini"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'+capNote;
+}
 function b2cRenderIndicatorCards(){
   const el=document.getElementById('b2c-ind-grid');
   if(!el)return;
@@ -21881,6 +22283,8 @@ function b2cOpenIndicatorModal(key){
     +(ind.motivo?'<div style="margin-top:6px;"><b>Principal motivo fora do padrão:</b> '+eh(ind.motivo[0])+' ('+ind.motivo[1]+' ocorrência'+(ind.motivo[1]!==1?'s':'')+')</div>':'')
     +'<div class="b2c-modal-section-title">Detalhamento por cluster</div>'
     +clusterTable
+    +'<div class="b2c-modal-section-title">Chamados fora do prazo/padrão</div>'
+    +b2cRenderOffRowsTable(b2cComputeIndicatorDetail(key))
     +'<div class="b2c-modal-section-title">Base(s) de origem</div>'
     +'<div class="b2c-modal-files">'+(fontes||'<div>Sem base anexada ainda.</div>')+'</div>';
   const bodyEl=document.getElementById('b2c-modal-body');
@@ -22085,6 +22489,295 @@ function b2cCopiarRelatorio(btn){
     try{document.execCommand('copy');done(true);}catch(e){done(false);}
     document.body.removeChild(ta);
   }
+}
+
+/* ═══════════════ PAINEL EXECUTIVO ═══════════════
+   Resumo somente-leitura de Rede + B2B Encerrados + B2C, sem upload próprio — lê os
+   arrays já carregados em cada painel de origem (rdeAD/rdeBD, dEnc, B2C_RAW). Ano/Mês/
+   Semana são compartilhados entre os 3 blocos; Cluster é independente por bloco porque
+   cada painel de origem usa uma taxonomia de cluster diferente (Rede: códigos C/I/P/N;
+   B2B Encerrados: nomes 'MA CAP'/'MA INT'/.../'AM/AP' via CLUSTER_ORDER; B2C: 'C.32 -
+   Maranhão'/'C.31 - Piaui'/'C.28 - Norte' via B2C_CLUSTER_ORDER — confirmado lendo
+   normCluster()/normClusterByCity() e fillClusterSelector(), não são a mesma lista).
+   Em vez de duplicar a lógica de filtro de cada painel, cada snapshot troca
+   temporariamente as variáveis globais de filtro daquele painel, chama a função de
+   cálculo já existente, e restaura no finally — tudo síncrono, sem await no meio, então
+   não há risco de outro código ler o estado "trocado". Isso garante que os números do
+   Executivo batem exatamente com o que cada painel mostraria sob o mesmo filtro, sem
+   reimplementar a filtragem.
+   Nota sobre "Semana" compartilhada: Rede e B2C já usam o mesmo formato ISO ("AAAA-Www",
+   via rdeIsoWeek); B2B Encerrados usa um formato próprio ("Sxx" ou "AAAA-Sxx", vindo da
+   planilha ou de calcSemana()). O seletor de Semana do Executivo une os valores brutos
+   dos 3, então filtrar por uma semana só "bate" com o(s) painel(is) que usam aquele
+   formato — Ano e Mês (ambos sempre "AAAA"/"AAAA-MM" nos 3 painéis) não têm esse
+   problema. Normalizar os formatos de semana entre painéis é maior que o pedido atual e
+   arriscado sem confirmar o formato exato de dEnc.dataFechamento — não foi feito aqui. */
+let selExecAno=[],selExecMes=[],selExecSemana=[],selExecRedeCluster=[],selExecEncCluster=[],selExecB2cCluster=[];
+let execTab='rede';
+const EXEC_CHARTS={};
+
+/* Nota baremo 0-10, proporcional ao cumprimento da meta (fórmula confirmada com o
+   usuário): indicador "maior melhor" -> min(10,(resultado/meta)*10); "menor melhor" ->
+   min(10,(meta/resultado)*10), com resultado<=0 -> nota 10 (melhor caso possível, evita
+   dividir por zero). Sempre limitada a [0,10]; sem resultado/meta válidos -> null (vira
+   "—" na UI, não confundir com nota 0). */
+function execBaremoNota(resultado,meta,dir){
+  if(resultado===null||resultado===undefined||isNaN(resultado)||!meta)return null;
+  const nota=dir==='lower'?(resultado<=0?10:(meta/resultado)*10):(resultado/meta)*10;
+  return Math.max(0,Math.min(10,nota));
+}
+function execBaremoClass(nota){
+  if(nota===null||nota===undefined||isNaN(nota))return'na';
+  if(nota>=9)return'ok';
+  if(nota>=7)return'wn';
+  return'bd';
+}
+function execNotaColor(cls){return cls==='ok'?'var(--green-dk)':cls==='wn'?'var(--orange)':cls==='bd'?'var(--red-dk)':'var(--tx3)';}
+function execStatusLabel(cls){return cls==='ok'?'Na meta':cls==='wn'?'Atenção':cls==='bd'?'Crítico':'Sem dados';}
+function execBaremoBadge(nota){
+  const cls=execBaremoClass(nota);
+  return'<span class="exec-nota exec-nota-'+cls+'">'+(cls==='na'?'—':nota.toFixed(1))+'</span>';
+}
+function execAvgNota(indicadores){
+  const notas=indicadores.map(i=>i.nota).filter(n=>n!==null&&n!==undefined&&!isNaN(n));
+  return notas.length?notas.reduce((a,b)=>a+b,0)/notas.length:null;
+}
+/* Texto de insight WoW genérico — mesma lógica de streak já usada em
+   rdeWoWInsightTxt()/encWoWInsightTxt(), só parametrizada pra servir aos 3 blocos. */
+function execWoWInsightTxt(weeks){
+  if(!weeks||!weeks.length)return'Sem dados de semana no filtro atual.';
+  if(weeks.length<2)return'Dados insuficientes para comparação semana a semana no filtro atual.';
+  const last=weeks[weeks.length-1];
+  if(last.varPct===null||last.varPct===undefined)return'Semana '+(last.label||last.semana)+': '+last.total+' registros — sem semana anterior no filtro atual.';
+  const dir=last.varPct>=0?'alta':'queda';
+  let streak=1;
+  for(let i=weeks.length-2;i>=1;i--){
+    const cur=weeks[i].varPct;
+    if(cur===null||cur===undefined)break;
+    const curDir=cur>=0?'alta':'queda';
+    if(curDir===dir)streak++;else break;
+  }
+  const streakTxt=streak>=2?(', a '+streak+'ª '+dir+' seguida'):'';
+  return'Semana '+(last.label||last.semana)+': '+pp(Math.abs(last.varPct))+'% de '+dir+' em volume frente à semana anterior'+streakTxt+'.';
+}
+
+/* ---------- Rede ---------- */
+function execRedeFlatAll(){
+  const savedTab=rdeTab;
+  try{rdeTab='';return rdeTabFlat();}
+  finally{rdeTab=savedTab;}
+}
+function execRedeSnapshot(){
+  const savedCl=rdeCluster,savedYear=rdeYear,savedGran=rdeGran,savedPeriod=rdePeriod,savedTab=rdeTab;
+  try{
+    rdeTab='';
+    rdeCluster=selExecRedeCluster;
+    rdeYear=selExecAno;
+    if(selExecSemana.length){rdeGran='w';rdePeriod=selExecSemana;}
+    else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes;}
+    else{rdeGran='all';rdePeriod=[];}
+    const all=rdeGetDisplayRecs();
+    if(!all.length)return{total:0,indicadores:[],wow:[]};
+    const ag=rdeAgg2(all);
+    const wow=rdeWoWSeries(all);
+    const indicadores=[
+      {key:'prazo',label:'No prazo',resultado:ag.prazo,meta:RDE_M89,dir:'higher',unidade:'%'},
+      {key:'outlier',label:'Outlier',resultado:ag.outlier,meta:RDE_MOUT,dir:'lower',unidade:'%'},
+      {key:'tme',label:'TME/TMR médio',resultado:ag.tAvg,meta:RDE_MTME,dir:'lower',unidade:'h'},
+    ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
+    return{total:ag.n,indicadores,wow};
+  }finally{
+    rdeCluster=savedCl;rdeYear=savedYear;rdeGran=savedGran;rdePeriod=savedPeriod;rdeTab=savedTab;
+  }
+}
+
+/* ---------- B2B Encerrados ---------- */
+const EXEC_ENC_META_PRAZO=85,EXEC_ENC_META_OUTLIER=2;
+function execEncSnapshot(){
+  const saved={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,encChartBucket};
+  try{
+    selYear=selExecAno;selMes=selExecMes;selWeek=selExecSemana;
+    selCluster=selExecEncCluster;selEncCluster=[];
+    selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
+    const scope=encScope();
+    if(!scope.length)return{total:0,indicadores:[],wow:[]};
+    const st=encRuleStats(scope);
+    const wow=encWoWSeries();
+    const indicadores=[
+      {key:'prazo',label:'No prazo (≤ 8h)',resultado:st.pPrazo,meta:EXEC_ENC_META_PRAZO,dir:'higher',unidade:'%'},
+      {key:'outlier',label:'Outlier (> 24h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%'},
+    ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
+    return{total:scope.length,indicadores,wow};
+  }finally{
+    selYear=saved.selYear;selMes=saved.selMes;selWeek=saved.selWeek;selCluster=saved.selCluster;
+    selEncCluster=saved.selEncCluster;selEncAging=saved.selEncAging;selEncCausa=saved.selEncCausa;
+    selEncUf=saved.selEncUf;selEncSemana=saved.selEncSemana;selEncSeg=saved.selEncSeg;encChartBucket=saved.encChartBucket;
+  }
+}
+
+/* ---------- B2C ---------- */
+/* Bases operacionais do B2C usadas como "volume" pro WoW (exclui MAX/pivots do Power
+   BI, que não representam volume de atendimento do período). */
+const EXEC_B2C_VOLUME_KEYS=['reparosPrazo','mudEndereco','mudComodo','upgrade','agingAltas','efetividadeAltas','efetividadeReparos'];
+function execB2cAllRowsRaw(){
+  return EXEC_B2C_VOLUME_KEYS.flatMap(k=>B2C_RAW[k]||[]);
+}
+function execB2cCombinedRows(){
+  return EXEC_B2C_VOLUME_KEYS.flatMap(k=>b2cFilterRows(B2C_RAW[k]||[]));
+}
+/* WoW do B2C = variação semanal do volume total combinado das bases operacionais. B2C
+   não tem uma tabela única de "chamados" (são ~12 bases separadas), então não há um
+   volume único por indicador pra comparar — isso espelha o mesmo conceito de "WoW de
+   volume" que rdeWoWSeries()/encWoWSeries() já usam pros outros 2 painéis. O baremo (por
+   indicador, na tabela) é o que dá o detalhamento de qualidade; o WoW aqui é só a
+   leitura de volume/tendência operacional. */
+function execB2cVolumeWoWSeries(){
+  const rows=execB2cCombinedRows();
+  const porSemana={};
+  rows.forEach(r=>{if(!r.semana)return;(porSemana[r.semana]=porSemana[r.semana]||[]).push(r);});
+  const labels=Object.keys(porSemana).sort();
+  const weeks=labels.map(k=>({semana:k,total:porSemana[k].length}));
+  return weeks.map((w,i)=>{
+    const prev=i>0?weeks[i-1]:null;
+    const varPct=prev&&prev.total?((w.total-prev.total)/prev.total*100):null;
+    return{...w,varPct};
+  });
+}
+function execB2cSnapshot(){
+  const savedCl=selB2cCluster,savedAno=selB2cAno,savedMes=selB2cMes,savedSem=selB2cSemana;
+  try{
+    selB2cCluster=selExecB2cCluster;selB2cAno=selExecAno;selB2cMes=selExecMes;selB2cSemana=selExecSemana;
+    const inds=b2cComputeIndicators();
+    if(!inds.length)return{total:0,indicadores:[],wow:[]};
+    const indicadores=inds.map(ind=>({
+      key:ind.key,label:ind.label,resultado:ind.geral.pct,meta:ind.meta,dir:ind.dir,unidade:'%',
+      nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),
+    }));
+    const wow=execB2cVolumeWoWSeries();
+    return{total:execB2cCombinedRows().length,indicadores,wow};
+  }finally{
+    selB2cCluster=savedCl;selB2cAno=savedAno;selB2cMes=savedMes;selB2cSemana=savedSem;
+  }
+}
+
+/* ---------- Filtros compartilhados ---------- */
+function fillFiltersExec(){
+  const redeFlat=execRedeFlatAll();
+  const encFlat=dEnc;
+  const b2cFlat=execB2cAllRowsRaw();
+  const anos=new Set(),meses=new Set(),semanas=new Set();
+  redeFlat.forEach(r=>{const y=String(r.m||r.w||'').slice(0,4);if(y)anos.add(y);if(r.m)meses.add(r.m);if(r.w)semanas.add(r.w);});
+  encFlat.forEach(r=>{const y=String(r.mes||'').slice(0,4);if(y)anos.add(y);if(r.mes)meses.add(r.mes);if(r.semana)semanas.add(r.semana);});
+  b2cFlat.forEach(r=>{if(r.ano)anos.add(r.ano);if(r.mes)meses.add(r.mes);if(r.semana)semanas.add(r.semana);});
+  const anoOpts=[...anos].sort(),mesOpts=[...meses].sort(),semanaOpts=[...semanas].sort();
+  selExecAno=selExecAno.filter(a=>anoOpts.includes(a));
+  selExecMes=selExecMes.filter(m=>mesOpts.includes(m));
+  selExecSemana=selExecSemana.filter(s=>semanaOpts.includes(s));
+  mselRender('exec-ano-selector',anoOpts,selExecAno,{allLabel:'Todos os anos',onChange:(v)=>{selExecAno=v;renderExecutivo();saveState();}});
+  mselRender('exec-mes-selector',mesOpts,selExecMes,{allLabel:'Todos os meses',onChange:(v)=>{selExecMes=v;renderExecutivo();saveState();}});
+  mselRender('exec-semana-selector',semanaOpts,selExecSemana,{allLabel:'Todas as semanas',onChange:(v)=>{selExecSemana=v;renderExecutivo();saveState();}});
+
+  const redeClOpts=RDE_CLUSTER_KEYS.filter(c=>redeFlat.some(r=>r.cl===c));
+  selExecRedeCluster=selExecRedeCluster.filter(c=>redeClOpts.includes(c));
+  mselRender('exec-rede-cluster-selector',redeClOpts,selExecRedeCluster,{allLabel:'Todos os clusters',labelFn:c=>RDE_CLUSTER_LABELS[c]||c,onChange:(v)=>{selExecRedeCluster=v;renderExecutivo();saveState();}});
+
+  const encAllC=[...new Set(encFlat.map(d=>d.cluster).filter(Boolean))];
+  const encClOpts=CLUSTER_ORDER.filter(c=>encAllC.includes(c));
+  selExecEncCluster=selExecEncCluster.filter(c=>encClOpts.includes(c));
+  mselRender('exec-enc-cluster-selector',encClOpts,selExecEncCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selExecEncCluster=v;renderExecutivo();saveState();}});
+
+  const b2cAllC=[...new Set(b2cFlat.map(r=>r.novoCluster).filter(Boolean))];
+  const b2cClOpts=B2C_CLUSTER_ORDER.filter(c=>b2cAllC.includes(c));
+  selExecB2cCluster=selExecB2cCluster.filter(c=>b2cClOpts.includes(c));
+  mselRender('exec-b2c-cluster-selector',b2cClOpts,selExecB2cCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selExecB2cCluster=v;renderExecutivo();saveState();}});
+}
+function clearExecFilters(){
+  selExecAno=[];selExecMes=[];selExecSemana=[];selExecRedeCluster=[];selExecEncCluster=[];selExecB2cCluster=[];
+  fillFiltersExec();
+  renderExecutivo();
+  saveState();
+}
+function execSyncTabUI(tab){
+  document.querySelectorAll('#panel-executivo .exec-subtab').forEach(b=>b.classList.remove('active'));
+  const btn=document.getElementById('exec-subtab-'+tab);if(btn)btn.classList.add('active');
+  document.querySelectorAll('#panel-executivo .exec-section').forEach(s=>s.classList.remove('active'));
+  const sec=document.getElementById('exec-tab-'+tab);if(sec)sec.classList.add('active');
+  document.querySelectorAll('#panel-executivo .exec-summary-card').forEach(c=>c.classList.remove('active'));
+  const card=document.getElementById('exec-summary-'+tab);if(card)card.classList.add('active');
+}
+function execSetTab(tab){
+  execTab=tab;
+  execSyncTabUI(tab);
+  saveState();
+}
+
+/* ---------- Render ---------- */
+function execRenderSummaryCard(cardId,titulo,icon,snap){
+  const el=document.getElementById(cardId);if(!el)return;
+  const notaMedia=execAvgNota(snap.indicadores);
+  const cls=execBaremoClass(notaMedia);
+  const last=snap.wow&&snap.wow.length?snap.wow[snap.wow.length-1]:null;
+  const temWow=last&&last.varPct!==null&&last.varPct!==undefined;
+  const wowTxt=!temWow?'Sem WoW disponível':('Semana: '+(last.varPct>=0?'▲ +':'▼ ')+pp(Math.abs(last.varPct))+'% vs. anterior');
+  const wowColor=!temWow?'var(--tx3)':(last.varPct>=0?'var(--green-dk)':'var(--red-dk)');
+  el.innerHTML='<div class="es-title"><i class="ti '+icon+'"></i> '+eh(titulo)+'</div>'
+    +'<div class="es-nota" style="color:'+execNotaColor(cls)+'">'+(notaMedia===null?'—':notaMedia.toFixed(1))+'</div>'
+    +'<div class="es-sub">'+(snap.total?snap.total.toLocaleString('pt-BR')+' registros no filtro':'Sem dados no filtro atual')+'</div>'
+    +'<div class="es-wow" style="color:'+wowColor+'">'+wowTxt+'</div>';
+}
+function execRenderKpis(containerId,snap){
+  const el=document.getElementById(containerId);if(!el)return;
+  if(!snap.total){el.innerHTML='<div class="exec-empty">Sem base carregada ou sem dados no filtro atual.</div>';return;}
+  const notaMedia=execAvgNota(snap.indicadores);
+  let html='<div class="exec-kpi"><div class="lb">Volume no filtro</div><div class="vl">'+snap.total.toLocaleString('pt-BR')+'</div></div>';
+  html+='<div class="exec-kpi"><div class="lb">Nota baremo média</div><div class="vl" style="color:'+execNotaColor(execBaremoClass(notaMedia))+'">'+(notaMedia===null?'—':notaMedia.toFixed(1))+'</div></div>';
+  snap.indicadores.slice(0,2).forEach(i=>{
+    const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
+    html+='<div class="exec-kpi"><div class="lb">'+eh(i.label)+'</div><div class="vl">'+resTxt+'</div></div>';
+  });
+  el.innerHTML=html;
+}
+function execRenderBaremoTable(tableId,indicadores){
+  const tbl=document.getElementById(tableId);if(!tbl)return;
+  const tbody=tbl.querySelector('tbody');if(!tbody)return;
+  if(!indicadores.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--tx3)">Sem dados no filtro atual.</td></tr>';return;}
+  tbody.innerHTML=indicadores.map(i=>{
+    const cls=execBaremoClass(i.nota);
+    const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
+    const metaTxt=(i.dir==='lower'?'≤ ':'≥ ')+i.meta+(i.unidade||'');
+    return'<tr><td>'+eh(i.label)+'</td><td>'+resTxt+'</td><td>'+eh(metaTxt)+'</td><td>'+execBaremoBadge(i.nota)+'</td><td>'+execStatusLabel(cls)+'</td></tr>';
+  }).join('');
+}
+function execRenderWowChart(canvasId,weeks){
+  if(EXEC_CHARTS[canvasId]){try{EXEC_CHARTS[canvasId].destroy();}catch(e){}EXEC_CHARTS[canvasId]=null;}
+  const ctx=document.getElementById(canvasId);if(!ctx)return;
+  if(!weeks||!weeks.length)return;
+  const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
+  const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
+  const labels=weeks.map(w=>w.label||w.semana);
+  const vals=weeks.map(w=>w.varPct===null||w.varPct===undefined?null:Math.round(w.varPct*10)/10);
+  const bg=vals.map(v=>v===null?'rgba(142,142,147,.35)':(v>=0?'#34c759':'#ff3b30'));
+  EXEC_CHARTS[canvasId]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Variação % vs. semana anterior',data:vals,backgroundColor:bg,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y===null?'Sem semana anterior':'Semana '+c.label+': '+(c.parsed.y>=0?'+':'')+c.parsed.y+'% vs. anterior'}}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'%',color:txC}},x:{grid:{display:false},ticks:{color:txC,maxRotation:45,autoSkip:false,font:{size:9}}}}}});
+}
+function execRenderBlock(prefix,snap){
+  execRenderKpis('exec-kpi-'+prefix,snap);
+  execRenderBaremoTable('exec-baremo-'+prefix,snap.indicadores);
+  const insEl=document.getElementById('exec-wow-insight-'+prefix);
+  if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow);
+  execRenderWowChart('exec-wow-ch-'+prefix,snap.wow);
+}
+function renderExecutivo(){
+  fillFiltersExec();
+  const redeSnap=execRedeSnapshot();
+  const encSnap=execEncSnapshot();
+  const b2cSnap=execB2cSnapshot();
+  execRenderSummaryCard('exec-summary-rede','Rede','ti-router',redeSnap);
+  execRenderSummaryCard('exec-summary-encerrados','B2B Encerrados','ti-circle-check',encSnap);
+  execRenderSummaryCard('exec-summary-b2c','B2C','ti-users',b2cSnap);
+  execSyncTabUI(execTab);
+  execRenderBlock('rede',redeSnap);
+  execRenderBlock('encerrados',encSnap);
+  execRenderBlock('b2c',b2cSnap);
 }
 </script>
 </body>
