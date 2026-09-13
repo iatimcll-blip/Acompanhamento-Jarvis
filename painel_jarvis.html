@@ -6962,6 +6962,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button type="button" class="exec-summary-card" id="exec-summary-b2c" onclick="execSetTab('b2c')"></button>
     </div>
 
+    <!-- Relatório Executivo (mesmo padrão de texto plano "▸ SEÇÃO" já usado em Rede/B2B Encerrados/B2C) -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+      <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
+      <span class="card-action" id="exec-report-copy-btn" onclick="execCopiarRelatorio(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+    </div>
+    <div class="rede-report-box" id="exec-report" style="margin-bottom:14px"><span style="color:var(--tx3);font-size:11px">Carregue bases em Rede, B2B Encerrados ou B2C para gerar o relatório automático.</span></div>
+
     <div class="exec-subtabs">
       <button class="exec-subtab active" id="exec-subtab-rede" onclick="execSetTab('rede')"><i class="ti ti-router"></i> Rede</button>
       <button class="exec-subtab" id="exec-subtab-encerrados" onclick="execSetTab('encerrados')"><i class="ti ti-circle-check"></i> B2B Encerrados</button>
@@ -22766,6 +22773,91 @@ function execRenderBlock(prefix,snap){
   if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow);
   execRenderWowChart('exec-wow-ch-'+prefix,snap.wow);
 }
+/* ---------- Relatório Executivo (mesmo padrão de texto plano "▸ SEÇÃO" já usado em
+   Rede/B2B Encerrados/B2C — ver rdeRenderCard()/renderExecReport()/b2cBuildReportText())
+   — aqui é a versão consolidada dos 3 blocos, não repete o detalhamento de cidade/causa
+   que cada painel de origem já tem no próprio relatório, só o essencial pra leitura
+   executiva rápida (volume, indicadores vs. meta, nota baremo, WoW) + um FCA apontando
+   o bloco com pior nota média. */
+function execBlockReportLines(titulo,snap){
+  if(!snap.total)return['▸ '+titulo,'Sem base carregada ou sem dados no filtro atual.',''];
+  const notaMedia=execAvgNota(snap.indicadores);
+  const linhasInd=snap.indicadores.map(i=>{
+    const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
+    const metaTxt=(i.dir==='lower'?'≤':'≥')+i.meta+(i.unidade||'');
+    const notaTxt=i.nota===null||i.nota===undefined?'—':i.nota.toFixed(1);
+    return i.label+': '+resTxt+' (meta '+metaTxt+') — nota '+notaTxt+'/10.';
+  });
+  return[
+    '▸ '+titulo,
+    'Volume no filtro: '+snap.total.toLocaleString('pt-BR')+' registros. Nota baremo média: '+(notaMedia===null?'—':notaMedia.toFixed(1))+'/10.',
+    ...linhasInd,
+    execWoWInsightTxt(snap.wow),
+    '',
+  ];
+}
+function execBuildReportText(redeSnap,encSnap,b2cSnap){
+  const blocos=[{titulo:'REDE',snap:redeSnap},{titulo:'B2B ENCERRADOS',snap:encSnap},{titulo:'B2C',snap:b2cSnap}];
+  const comDados=blocos.filter(b=>b.snap.total>0);
+  if(!comDados.length)return'Nenhum painel de origem (Rede, B2B Encerrados, B2C) tem dados no filtro atual.';
+  const filtroTxt=[
+    selExecAno.length?'Ano '+selExecAno.join('+'):'',
+    selExecMes.length?'Mês '+selExecMes.join('+'):'',
+    selExecSemana.length?'Semana '+selExecSemana.join('+'):'',
+  ].filter(Boolean).join(' · ')||'Todo o período';
+  const linhas=blocos.flatMap(b=>execBlockReportLines(b.titulo,b.snap));
+  const comNota=comDados.map(b=>({...b,notaMedia:execAvgNota(b.snap.indicadores)})).filter(b=>b.notaMedia!==null);
+  const pior=comNota.length?[...comNota].sort((a,b)=>a.notaMedia-b.notaMedia)[0]:null;
+  const criticoBloco=pior&&pior.notaMedia<7?pior:null;
+  const piorInd=criticoBloco?[...criticoBloco.snap.indicadores].filter(i=>i.nota!==null&&i.nota!==undefined).sort((a,b)=>a.nota-b.nota)[0]:null;
+  const piorIndTxt=piorInd?', pior indicador "'+piorInd.label+'" ('+(piorInd.resultado===null||piorInd.resultado===undefined?'—':piorInd.resultado.toFixed(1)+(piorInd.unidade||''))+', nota '+piorInd.nota.toFixed(1)+')':'';
+  const fcaTxt=criticoBloco
+    ?[
+      'Fato: '+criticoBloco.titulo+' com nota baremo média '+criticoBloco.notaMedia.toFixed(1)+'/10'+piorIndTxt+'.',
+      'Causa: ver detalhamento por cluster e motivo dominante no painel '+criticoBloco.titulo+' para a causa raiz específica.',
+      'Ação: priorizar plano de recuperação para '+criticoBloco.titulo+(piorInd?' com foco em "'+piorInd.label+'"':'')+', com acompanhamento até o fechamento do período.',
+    ].join('\n')
+    :'Todos os painéis com dados estão com nota baremo média igual ou acima de 7 neste recorte — sem bloco crítico a reportar.';
+  const execTxt=criticoBloco
+    ?'Recomenda-se atenção prioritária ao painel '+criticoBloco.titulo+' neste recorte, com plano de ação até o fechamento do período.'
+    :'Operação dentro do esperado nos painéis com dados carregados para este recorte — sem pontos críticos que exijam ação imediata da diretoria.';
+  return[
+    'RELATÓRIO EXECUTIVO — VISÃO CONSOLIDADA (REDE + B2B ENCERRADOS + B2C)',
+    'Gerado em: '+now2(),
+    'Filtro: '+filtroTxt,
+    '',
+    ...linhas,
+    '▸ FCA — FATO, CAUSA E AÇÃO',
+    fcaTxt,
+    '',
+    '▸ LEITURA EXECUTIVA',
+    execTxt,
+  ].join('\n');
+}
+function execRenderReport(redeSnap,encSnap,b2cSnap){
+  const el=document.getElementById('exec-report');if(!el)return;
+  if(!redeSnap.total&&!encSnap.total&&!b2cSnap.total){
+    el.innerHTML='<span style="color:var(--tx3);font-size:11px">Carregue bases em Rede, B2B Encerrados ou B2C para gerar o relatório automático.</span>';
+    return;
+  }
+  el.innerHTML='<pre id="exec-report-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(execBuildReportText(redeSnap,encSnap,b2cSnap))+'</pre>';
+}
+function execCopiarRelatorio(btn){
+  const rpt=document.getElementById('exec-report');
+  if(!rpt)return;
+  const texto=(rpt.innerText||rpt.textContent||'').trim();
+  if(!texto)return;
+  const orig=btn?btn.innerHTML:'';
+  const done=ok=>{if(!btn)return;btn.innerHTML=ok?'<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Copiado!':'<i class="ti ti-x" style="font-size:11px;vertical-align:-1px"></i> Erro';setTimeout(()=>{btn.innerHTML=orig;},2200);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(()=>done(true)).catch(()=>done(false));
+  }else{
+    const ta=document.createElement('textarea');ta.value=texto;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done(true);}catch(e){done(false);}
+    document.body.removeChild(ta);
+  }
+}
 function renderExecutivo(){
   fillFiltersExec();
   const redeSnap=execRedeSnapshot();
@@ -22774,6 +22866,7 @@ function renderExecutivo(){
   execRenderSummaryCard('exec-summary-rede','Rede','ti-router',redeSnap);
   execRenderSummaryCard('exec-summary-encerrados','B2B Encerrados','ti-circle-check',encSnap);
   execRenderSummaryCard('exec-summary-b2c','B2C','ti-users',b2cSnap);
+  execRenderReport(redeSnap,encSnap,b2cSnap);
   execSyncTabUI(execTab);
   execRenderBlock('rede',redeSnap);
   execRenderBlock('encerrados',encSnap);
