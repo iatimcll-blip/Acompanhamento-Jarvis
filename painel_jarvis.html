@@ -6911,6 +6911,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-summary-card .es-nota{font-size:26px;font-weight:700;margin-top:4px;letter-spacing:-.01em;}
   #panel-executivo .exec-summary-card .es-sub{font-size:11px;color:var(--tx3);margin-top:2px;}
   #panel-executivo .exec-summary-card .es-wow{font-size:11px;margin-top:6px;font-weight:600;}
+  #panel-executivo .exec-summary-card .es-indicadores{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;padding-top:8px;border-top:.5px solid var(--bd);}
+  #panel-executivo .exec-summary-card .es-ind-chip{font-size:10.5px;font-weight:600;white-space:nowrap;}
   #panel-executivo .exec-subtabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:.5px solid var(--bd);padding-bottom:0;}
   #panel-executivo .exec-subtab{background:none;border:none;border-bottom:2px solid transparent;color:var(--tx3);font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;}
   #panel-executivo .exec-subtab:hover{color:var(--tx);}
@@ -23043,9 +23045,19 @@ function execRenderSummaryCard(cardId,titulo,icon,snap){
   const temWow=last&&last.varPct!==null&&last.varPct!==undefined;
   const wowTxt=!temWow?'Sem WoW disponível':('Semana: '+(last.varPct>=0?'▲ +':'▼ ')+pp(Math.abs(last.varPct))+'% vs. anterior');
   const wowColor=!temWow?'var(--tx3)':(last.varPct>=0?'var(--green-dk)':'var(--red-dk)');
+  /* Pedido do usuário: mostrar direto no card-resumo o resultado de cada indicador NA
+     SEMANA selecionada (i.semAtual — mesma semana de referência do WoW/Baremo, ver
+     execWowReferenceIdx). Sem Semana selecionada, semAtual já cai na última semana
+     disponível; sem série semanal nenhuma, cai no resultado do recorte Ano/Mês/Cluster. */
+  const indHtml=snap.indicadores.map(i=>{
+    const val=(i.semAtual!==null&&i.semAtual!==undefined&&!isNaN(i.semAtual))?i.semAtual:i.resultado;
+    const valTxt=(val===null||val===undefined||isNaN(val))?'—':(val.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
+    return'<span class="es-ind-chip" style="color:'+execStatusColor(i.status)+'">'+eh(i.label)+': '+valTxt+'</span>';
+  }).join('');
   el.innerHTML='<div class="es-title"><i class="ti '+icon+'"></i> '+eh(titulo)+'</div>'
     +'<div class="es-nota" style="color:'+execStatusColor(cls)+'">'+execStatusLabel(cls)+'</div>'
     +'<div class="es-sub">'+(snap.total?snap.total.toLocaleString('pt-BR')+' registros no filtro':'Sem dados no filtro atual')+'</div>'
+    +(indHtml?'<div class="es-indicadores">'+indHtml+'</div>':'')
     +'<div class="es-wow" style="color:'+wowColor+'">'+wowTxt+'</div>';
 }
 function execRenderKpis(containerId,snap){
