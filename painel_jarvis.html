@@ -22646,17 +22646,36 @@ function execPontuacaoFinal(indicadores,pesos){
   const w=pesos&&pesos.length===notas.length?pesos:notas.map(()=>1/notas.length);
   return notas.reduce((soma,nota,i)=>soma+nota*w[i],0);
 }
+/* Índice de referência do WoW dentro da série `weeks`: a pedido do usuário, quando uma
+   Semana específica está selecionada no Painel Executivo, a comparação SEMPRE usa
+   aquela semana contra a imediatamente anterior — não a última semana que sobrar depois
+   de filtrar (que, se a Semana selecionada não for a mais recente da base, dava uma
+   comparação errada/confusa). Mesmo espírito do já existente rdeWoWReferenceWeekIdx()
+   do Painel Rede, só que genérico pros 3 blocos e usando execSemanaComEquivalentes()
+   pra casar o formato "W"/"S" entre painéis. Sem semana selecionada, cai no
+   comportamento antigo: a última semana disponível no recorte. */
+function execWowReferenceIdx(weeks,semanasSelecionadas){
+  if(!weeks||!weeks.length)return-1;
+  if(semanasSelecionadas&&semanasSelecionadas.length){
+    const alvo=new Set(execSemanaComEquivalentes(semanasSelecionadas));
+    for(let i=weeks.length-1;i>=0;i--)if(alvo.has(weeks[i].semana))return i;
+  }
+  return weeks.length-1;
+}
 /* Texto de insight WoW genérico — mesma lógica de streak já usada em
-   rdeWoWInsightTxt()/encWoWInsightTxt(), só parametrizada pra servir aos 3 blocos. */
-function execWoWInsightTxt(weeks){
+   rdeWoWInsightTxt()/encWoWInsightTxt(), só parametrizada pra servir aos 3 blocos.
+   `refIdx` (opcional) é o índice de execWowReferenceIdx() — default: última semana. */
+function execWoWInsightTxt(weeks,refIdx){
   if(!weeks||!weeks.length)return'Sem dados de semana no filtro atual.';
-  if(weeks.length<2)return'Dados insuficientes para comparação semana a semana no filtro atual.';
-  const last=weeks[weeks.length-1];
-  const prev=weeks[weeks.length-2];
+  const idx=refIdx===undefined||refIdx===null||refIdx<0?weeks.length-1:refIdx;
+  if(idx<0||idx>=weeks.length)return'Sem dados de semana no filtro atual.';
+  const last=weeks[idx];
+  if(idx<1)return'Semana '+(last.label||last.semana)+': '+last.total.toLocaleString('pt-BR')+' registros — sem semana anterior disponível para comparar.';
+  const prev=weeks[idx-1];
   if(last.varPct===null||last.varPct===undefined)return'Semana '+(last.label||last.semana)+': '+last.total+' registros — sem semana anterior no filtro atual.';
   const dir=last.varPct>=0?'alta':'queda';
   let streak=1;
-  for(let i=weeks.length-2;i>=1;i--){
+  for(let i=idx-1;i>=1;i--){
     const cur=weeks[i].varPct;
     if(cur===null||cur===undefined)break;
     const curDir=cur>=0?'alta':'queda';
@@ -22715,15 +22734,27 @@ function execRedeSnapshot(){
     else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes;}
     else{rdeGran='all';rdePeriod=[];}
     const all=rdeGetDisplayRecs();
-    if(!all.length)return{total:0,indicadores:[],wow:[],fca:null};
+    if(!all.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
     const ag=rdeAgg2(all);
-    const wow=rdeWoWSeries(all);
+    /* WoW SEMPRE compara com a semana anterior (pedido do usuário): se uma Semana
+       específica estiver selecionada, `all` já ficou restrito só a ela (pra baremo/
+       indicadores), e rdeWoWSeries(all) teria só 1 semana — sem "anterior" nenhuma pra
+       comparar. Recalcula a série do WoW sem a restrição de Semana (só Ano+Mês+Cluster)
+       e localiza a semana selecionada dentro dessa série mais ampla, garantindo que a
+       semana imediatamente anterior sempre apareça. */
+    let allForWow=all;
+    if(selExecSemana.length){
+      rdeGran=selExecMes.length?'m':'all';rdePeriod=selExecMes.length?selExecMes:[];
+      allForWow=rdeGetDisplayRecs();
+    }
+    const wow=rdeWoWSeries(allForWow);
+    const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
     const indicadores=[
       {key:'prazo',label:'No prazo',resultado:ag.prazo,meta:RDE_M89,dir:'higher',unidade:'%'},
       {key:'outlier',label:'Outlier',resultado:ag.outlier,meta:RDE_MOUT,dir:'lower',unidade:'%'},
       {key:'tme',label:'TME/TMR médio',resultado:ag.tAvg,meta:RDE_MTME,dir:'lower',unidade:'h'},
     ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
-    return{total:ag.n,indicadores,wow,fca:execRedeFca(all,ag)};
+    return{total:ag.n,indicadores,wow,wowRefIdx,fca:execRedeFca(all,ag)};
   }finally{
     rdeCluster=savedCl;rdeYear=savedYear;rdeGran=savedGran;rdePeriod=savedPeriod;rdeTab=savedTab;
   }
@@ -22782,14 +22813,21 @@ function execEncSnapshot(){
     selCluster=selExecEncCluster;selEncCluster=[];
     selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
     const scope=encScope();
-    if(!scope.length)return{total:0,indicadores:[],wow:[],fca:null};
+    if(!scope.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
     const st=encRuleStats(scope);
+    /* WoW SEMPRE compara com a semana anterior (mesmo motivo do bloco Rede acima):
+       recalcula sem a restrição de Semana (selWeek), só Ano+Mês+Cluster, senão uma
+       Semana selecionada deixaria só 1 semana na série, sem "anterior" pra comparar. */
+    const savedWeekForWow=selWeek;
+    if(selExecSemana.length)selWeek=[];
     const wow=encWoWSeries();
+    selWeek=savedWeekForWow;
+    const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
     const indicadores=[
       {key:'prazo',label:'No prazo (≤ 8h)',resultado:st.pPrazo,meta:EXEC_ENC_META_PRAZO,dir:'higher',unidade:'%'},
       {key:'outlier',label:'Outlier (> 24h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%'},
     ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
-    return{total:scope.length,indicadores,wow,fca:execEncFca(scope,st)};
+    return{total:scope.length,indicadores,wow,wowRefIdx,fca:execEncFca(scope,st)};
   }finally{
     selYear=saved.selYear;selMes=saved.selMes;selWeek=saved.selWeek;selCluster=saved.selCluster;
     selEncCluster=saved.selEncCluster;selEncAging=saved.selEncAging;selEncCausa=saved.selEncCausa;
@@ -22814,7 +22852,13 @@ function execB2cCombinedRows(){
    indicador, na tabela) é o que dá o detalhamento de qualidade; o WoW aqui é só a
    leitura de volume/tendência operacional. */
 function execB2cVolumeWoWSeries(){
+  /* WoW SEMPRE compara com a semana anterior (mesmo motivo do Rede/Encerrados): ignora
+     selB2cSemana aqui (mesmo que o snapshot já tenha setado pra selExecSemana um pouco
+     antes), senão uma Semana selecionada deixaria só 1 semana na série. */
+  const savedSemana=selB2cSemana;
+  if(selExecSemana.length)selB2cSemana=[];
   const rows=execB2cCombinedRows();
+  selB2cSemana=savedSemana;
   const porSemana={};
   rows.forEach(r=>{if(!r.semana)return;(porSemana[r.semana]=porSemana[r.semana]||[]).push(r);});
   const labels=Object.keys(porSemana).sort();
@@ -22852,13 +22896,14 @@ function execB2cSnapshot(){
   try{
     selB2cCluster=selExecB2cCluster;selB2cAno=selExecAno;selB2cMes=selExecMes;selB2cSemana=selExecSemana;
     const inds=b2cComputeIndicators();
-    if(!inds.length)return{total:0,indicadores:[],wow:[],fca:null};
+    if(!inds.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
     const indicadores=inds.map(ind=>({
       key:ind.key,label:ind.label,resultado:ind.geral.pct,meta:ind.meta,dir:ind.dir,unidade:'%',
       nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),motivo:ind.motivo,
     }));
     const wow=execB2cVolumeWoWSeries();
-    return{total:execB2cCombinedRows().length,indicadores,wow,fca:execB2cFca(indicadores)};
+    const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
+    return{total:execB2cCombinedRows().length,indicadores,wow,wowRefIdx,fca:execB2cFca(indicadores)};
   }finally{
     selB2cCluster=savedCl;selB2cAno=savedAno;selB2cMes=savedMes;selB2cSemana=savedSem;
   }
@@ -22925,7 +22970,8 @@ function execRenderSummaryCard(cardId,titulo,icon,snap){
   const el=document.getElementById(cardId);if(!el)return;
   const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
   const cls=execBaremoClass(pontuacaoFinal);
-  const last=snap.wow&&snap.wow.length?snap.wow[snap.wow.length-1]:null;
+  const wowIdx=snap.wowRefIdx!==undefined&&snap.wowRefIdx!==null&&snap.wowRefIdx>=0?snap.wowRefIdx:(snap.wow&&snap.wow.length?snap.wow.length-1:-1);
+  const last=snap.wow&&wowIdx>=0?snap.wow[wowIdx]:null;
   const temWow=last&&last.varPct!==null&&last.varPct!==undefined;
   const wowTxt=!temWow?'Sem WoW disponível':('Semana: '+(last.varPct>=0?'▲ +':'▼ ')+pp(Math.abs(last.varPct))+'% vs. anterior');
   const wowColor=!temWow?'var(--tx3)':(last.varPct>=0?'var(--green-dk)':'var(--red-dk)');
@@ -22972,7 +23018,7 @@ function execRenderBlock(prefix,snap){
   execRenderKpis('exec-kpi-'+prefix,snap);
   execRenderBaremoTable('exec-baremo-'+prefix,snap.indicadores);
   const insEl=document.getElementById('exec-wow-insight-'+prefix);
-  if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow);
+  if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow,snap.wowRefIdx);
   execRenderWowChart('exec-wow-ch-'+prefix,snap.wow);
 }
 /* ---------- Relatório Executivo (mesmo padrão de texto plano "▸ SEÇÃO" já usado em
@@ -22994,7 +23040,7 @@ function execBlockReportLines(titulo,snap){
     '▸ '+titulo,
     'Volume no filtro: '+snap.total.toLocaleString('pt-BR')+' registros. Pontuação Final: '+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'/10.',
     ...linhasInd,
-    execWoWInsightTxt(snap.wow),
+    execWoWInsightTxt(snap.wow,snap.wowRefIdx),
     '',
   ];
 }
