@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-12T14:20:00-03:00';</script>
+window.APP_BUILD_ID='2026-09-13T02:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -10268,9 +10268,10 @@ async function restoreGhState(){
     if(!st||typeof st!=='object')return false;
     if(st.savedAt)_setLastKnownRemoteSavedAt(st.savedAt);
     if(shouldApplyRemoteState(st)){
-      const applied=applyState(st,'Base compartilhada');
-      if(applied||stateHasBaseData(st)){
-        saveLocalState(st);
+      const merged=mergeRemoteStateForRestore(st);
+      const applied=applyState(merged,'Base compartilhada');
+      if(applied||stateHasBaseData(merged)){
+        saveLocalState();
         _ghToast('Bases carregadas do GitHub ✓','var(--green-dk)',5000);
       }
       updateCentralStatus();updateClearBtns();
@@ -10975,6 +10976,48 @@ function shouldApplyRemoteState(st){
   if(remoteAt&&remoteAt>=localAt)return true;
   return stateSignature(st)!==stateSignature(local)&&stateHasBaseData(st);
 }
+/* Bug real: "perco a base ao atualizar o navegador" — savedAt é UM timestamp global pro
+   estado inteiro, não por painel. shouldApplyRemoteState() só compara esse timestamp
+   global: se QUALQUER painel tiver sido salvo em outro dispositivo/aba há pouco (ex.:
+   sincronização automática, ou só alguém trocando um filtro em Sobreaviso), o savedAt
+   remoto fica "mais novo" que o local por completo — e o applyState(remoteSt) que vinha
+   depois substituía TODOS os painéis, inclusive um upload feito localmente segundos
+   antes num painel que ainda não tinha sido empurrado pro GitHub/Sheets (o push é
+   assíncrono e debounced em 800ms). O F5 carregava a cópia local fresca corretamente
+   (restoreState/restoreStateFromIndexedDb), mas a sincronização remota que roda em
+   seguida sobrescrevia por cima com uma cópia mais antiga daquele painel específico.
+   Correção: comparar o timestamp de CADA painel (lastAbAt/lastEncAt/fuelBaseAt/
+   fuelVeiculosBaseAt/rdeState.at/lastAtivAt/lastPopAt/b2cSummaryAt, os mesmos já
+   rastreados em stateMeta/stateSignature) entre o remoto e o estado local ATUAL (sempre
+   fiel à memória, via buildState() — não confia em localStorage/IndexedDB, que podem
+   estar vazios/atrasados por causa da cota) — só deixa o remoto substituir as chaves
+   daquele painel específico se o timestamp remoto daquele painel for mais novo. Painéis
+   sem timestamp próprio rastreado (Preventivas, Audit Material, Saldo SAP, filtros do
+   Painel Executivo) continuam recebendo o remoto sempre que ele for considerado — não
+   temos como comparar por seção nesses casos, mesmo risco que já existia antes. */
+const REMOTE_MERGE_SECTIONS=[
+  {at:'lastAbAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf']},
+  {at:'lastEncAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
+  {at:'fuelBaseAt',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseFile','fuelRFilter']},
+  {at:'fuelVeiculosBaseAt',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
+  {at:'rdeState.at',keys:['rdeState']},
+  {at:'lastAtivAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivSrch','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
+  {at:'lastPopAt',keys:['dPop','lastPopAt','lastPopBaseAt','lastPopFile']},
+  {at:'b2cSummaryAt',keys:['b2cSummary','b2cSummaryAt','b2cMetaOverrides','selB2cCluster','selB2cAno','selB2cMes','selB2cSemana']},
+];
+function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
+function mergeRemoteStateForRestore(remoteSt){
+  if(!remoteSt||typeof remoteSt!=='object')return remoteSt;
+  let localSt;
+  try{localSt=buildState();}catch(e){return remoteSt;}
+  const merged={...remoteSt};
+  REMOTE_MERGE_SECTIONS.forEach(({at,keys})=>{
+    const remoteAt=_stPath(remoteSt,at)||'';
+    const localAtVal=_stPath(localSt,at)||'';
+    if(localAtVal&&(!remoteAt||remoteAt<localAtVal))keys.forEach(k=>{delete merged[k];});
+  });
+  return merged;
+}
 function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rdeBaseFile||'',M:{mes:[...rdeM.mes],ml:[...rdeM.ml],sem:[...rdeM.sem],sl:[...rdeM.sl],ca:[...rdeM.ca],mo:[...rdeM.mo]},at:rdeBaseAt||'',expurgo:rdeExpurgo||{}}}
 /* fuelRFilter.q/fuelVFilter.placa/condutor são caixas de busca por texto livre — nunca
    devem ir pro estado sincronizado (senão um termo digitado por qualquer usuário passa
@@ -11155,6 +11198,17 @@ function applyState(st,label){
       if(Object.prototype.hasOwnProperty.call(st,'b2cSummaryAt'))b2cSummaryAt=st.b2cSummaryAt||'';
       changed=true;
     }
+    /* b2cRaw só existe numa cópia LOCAL (ver saveLocalState) — nunca vem de um restore
+       remoto (GH/Sheets), então essa seção simplesmente não roda nesse caso, sem apagar
+       o que já estava carregado. Restaura as bases brutas por trás de cada indicador
+       (usadas por b2cComputeIndicators/execB2cSnapshot e pelo modal de detalhamento),
+       que antes só sobreviviam no dispositivo/aba que nunca recarregou a página. */
+    if(st.b2cRaw&&typeof st.b2cRaw==='object'){
+      Object.keys(B2C_RAW).forEach(k=>{if(Array.isArray(st.b2cRaw[k]))B2C_RAW[k]=st.b2cRaw[k];});
+      if(st.b2cFiles&&typeof st.b2cFiles==='object')B2C_FILES=st.b2cFiles;
+      b2cRenderAll();
+      changed=true;
+    }
     if(Array.isArray(st.selB2cCluster))selB2cCluster=st.selB2cCluster;
     if(Array.isArray(st.selB2cAno))selB2cAno=st.selB2cAno;
     if(Array.isArray(st.selB2cMes))selB2cMes=st.selB2cMes;
@@ -11332,8 +11386,19 @@ function applyState(st,label){
 }
 function saveLocalState(st){
   const state=st||buildState();
-  idbSet(STORAGE_KEY,state).catch(e=>console.warn('Não foi possível salvar as bases no IndexedDB:',e));
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}
+  /* B2C_RAW (as ~13 bases anexadas, até ~150 mil linhas cada no MAX.xlsx) nunca entra em
+     buildState() de propósito — pesaria demais no payload enviado ao GitHub/Sheets pra
+     sincronizar entre dispositivos. Mas isso também fazia o F5 "perder" as bases do B2C
+     neste MESMO dispositivo: só o resumo agregado (B2C_SUMMARY) sobrevivia, os dados
+     brutos por trás de cada indicador (usados por execB2cSnapshot/modal de detalhamento)
+     ficavam vazios até reanexar tudo de novo. A cópia LOCAL (localStorage/IndexedDB,
+     nunca sai deste navegador) sempre inclui B2C_RAW aqui — independente do "state"
+     recebido ter vindo de buildState() (upload local) ou de um restore remoto (GH/Sheets,
+     que nunca traz b2cRaw) — assim uma sincronização remota nunca apaga o B2C_RAW que já
+     estava salvo localmente. */
+  const localState=(state&&typeof state==='object')?{...state,b2cRaw:B2C_RAW,b2cFiles:B2C_FILES}:state;
+  idbSet(STORAGE_KEY,localState).catch(e=>console.warn('Não foi possível salvar as bases no IndexedDB:',e));
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(localState))}
   catch(e){
     /* Causa raiz de "os dados voltam para o passado" mesmo anexando a base mais recente:
        quando a base cresce (ex.: Encerrados 7180 + Rede 5000+ linhas juntos passam da cota
@@ -11387,8 +11452,9 @@ async function restoreSharedState(){
     const st=data&&data.state;
     if(!st||typeof st!=='object')return false;
     if(shouldApplyRemoteState(st)){
-      const applied=applyState(st,'Base compartilhada');
-      if(applied||stateHasBaseData(st))saveLocalState(st);
+      const merged=mergeRemoteStateForRestore(st);
+      const applied=applyState(merged,'Base compartilhada');
+      if(applied||stateHasBaseData(merged))saveLocalState();
       updateCentralStatus();updateClearBtns();
       return true;
     }
@@ -20514,10 +20580,7 @@ window.addEventListener('storage',function(e){
       updateClearBtns();
     }catch(err){}
   }
-});initAuth();renderFuel();autoLoadOfsDefault();
-rdeMetaLoad();rdeMetaFill();rdeMetaUpdSub();
-rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls();renderRede();}
-updateCentralStatus();
+});
 
 </script>
 <!-- deploy retry: audio upload validation -->
@@ -22869,6 +22932,24 @@ function renderExecutivo(){
   execRenderBlock('encerrados',encSnap);
   execRenderBlock('b2c',b2cSnap);
 }
+
+/* Bug real de produção ("perco a base ao atualizar o navegador"): initAuth() — que
+   dispara restoreState()/applyState(), a restauração de TODAS as bases — ficava no
+   FINAL do primeiro <script> do documento (bem no início do arquivo). applyState()
+   toca em seções de painéis definidos em <script>s BEM POSTERIORES (Audit Material,
+   B2C, Painel Executivo) — mas como <script>s não-module/não-defer executam em ordem,
+   ao rodar initAuth() logo ali, essas seções ainda nem tinham sido declaradas
+   (B2C_RAW, normalizeAmTickets etc. inexistentes ainda), então cada uma dessas seções
+   estourava um ReferenceError. O try/catch por seção (ver applyState) engolia o erro
+   silenciosamente — só um console.warn, nada visível na tela — deixando exatamente as
+   bases de Audit Material e B2C sempre vazias após qualquer F5, mesmo com o dado
+   intacto salvo em localStorage/IndexedDB. Mover a chamada pro final do documento,
+   depois que TODOS os <script>s (e portanto todas as funções/variáveis que
+   applyState() referencia) já foram executados, resolve na raiz. */
+initAuth();renderFuel();autoLoadOfsDefault();
+rdeMetaLoad();rdeMetaFill();rdeMetaUpdSub();
+rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls();renderRede();}
+updateCentralStatus();
 </script>
 </body>
 </html>
