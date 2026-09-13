@@ -22622,38 +22622,33 @@ let selExecAno=[],selExecMes=[],selExecSemana=[],selExecRedeCluster=[],selExecEn
 let execTab='rede';
 const EXEC_CHARTS={};
 
-/* Nota baremo 0-10, proporcional ao cumprimento da meta (fórmula confirmada com o
-   usuário): indicador "maior melhor" -> min(10,(resultado/meta)*10); "menor melhor" ->
-   min(10,(meta/resultado)*10), com resultado<=0 -> nota 10 (melhor caso possível, evita
-   dividir por zero). Sempre limitada a [0,10]; sem resultado/meta válidos -> null (vira
-   "—" na UI, não confundir com nota 0). */
-function execBaremoNota(resultado,meta,dir){
-  if(resultado===null||resultado===undefined||isNaN(resultado)||!meta)return null;
-  const nota=dir==='lower'?(resultado<=0?10:(meta/resultado)*10):(resultado/meta)*10;
-  return Math.max(0,Math.min(10,nota));
+/* A pedido do usuário: a nota/pontuação baremo (0-10) foi removida — não serve como
+   balizador. Status de cada indicador agora vem direto da comparação resultado x meta
+   (mesmo critério já usado em b2cIndicatorStatus: "atenção" a partir de 90% da meta pra
+   indicador "maior melhor", ou até 130% da meta pra "menor melhor"), sem nenhuma nota
+   numérica no meio. */
+function execIndicatorStatus(resultado,meta,dir){
+  if(resultado===null||resultado===undefined||isNaN(resultado)||!meta)return'na';
+  if(dir==='higher')return resultado>=meta?'ok':resultado>=meta*0.9?'wn':'bd';
+  return resultado<=meta?'ok':resultado<=meta*1.3?'wn':'bd';
 }
-function execBaremoClass(nota){
-  if(nota===null||nota===undefined||isNaN(nota))return'na';
-  if(nota>=9)return'ok';
-  if(nota>=7)return'wn';
-  return'bd';
-}
-function execNotaColor(cls){return cls==='ok'?'var(--green-dk)':cls==='wn'?'var(--orange)':cls==='bd'?'var(--red-dk)':'var(--tx3)';}
+function execStatusColor(cls){return cls==='ok'?'var(--green-dk)':cls==='wn'?'var(--orange)':cls==='bd'?'var(--red-dk)':'var(--tx3)';}
 function execStatusLabel(cls){return cls==='ok'?'Na meta':cls==='wn'?'Atenção':cls==='bd'?'Crítico':'Sem dados';}
-function execBaremoBadge(nota){
-  const cls=execBaremoClass(nota);
-  return'<span class="exec-nota exec-nota-'+cls+'">'+(cls==='na'?'—':nota.toFixed(1))+'</span>';
+function execStatusBadge(cls){return'<span class="exec-nota exec-nota-'+cls+'">'+execStatusLabel(cls)+'</span>';}
+/* Distância do resultado até a meta (maior = pior) — usada só pra ordenar "qual
+   indicador está mais longe da meta" nos FCAs, agora que não há mais nota numérica. */
+function execGapMeta(i){
+  if(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))return-Infinity;
+  return i.dir==='lower'?(i.resultado-i.meta):(i.meta-i.resultado);
 }
-/* Pontuação Final = Σ(Nota_i × Peso_i) — fórmula confirmada com o usuário, pesos iguais
-   (1/n) somando 1, então já sai direto na escala 0-10 sem precisar normalizar depois.
-   Indicador sem nota (sem dado no filtro atual) não entra na soma nem no n — o peso é
-   redistribuído só entre os indicadores que têm nota, senão um indicador "sem dado"
-   (ex.: MAX sem base anexada) puxaria a pontuação final artificialmente pra baixo. */
-function execPontuacaoFinal(indicadores,pesos){
-  const notas=indicadores.map(i=>i.nota).filter(n=>n!==null&&n!==undefined&&!isNaN(n));
-  if(!notas.length)return null;
-  const w=pesos&&pesos.length===notas.length?pesos:notas.map(()=>1/notas.length);
-  return notas.reduce((soma,nota,i)=>soma+nota*w[i],0);
+/* Status geral do bloco (cards-resumo, KPIs) = o pior status entre os indicadores com
+   dado — substitui a antiga Pontuação Final numérica, removida a pedido do usuário. */
+function execWorstStatus(indicadores){
+  const comDado=indicadores.filter(i=>i.status&&i.status!=='na');
+  if(!comDado.length)return'na';
+  if(comDado.some(i=>i.status==='bd'))return'bd';
+  if(comDado.some(i=>i.status==='wn'))return'wn';
+  return'ok';
 }
 /* Índice de referência do WoW dentro da série `weeks`: a pedido do usuário, quando uma
    Semana específica está selecionada no Painel Executivo, a comparação SEMPRE usa
@@ -22782,7 +22777,7 @@ function execRedeSnapshot(){
       const semAtual=wRef?wRef[i.campoSemana]:null;
       const semAnterior=wPrev?wPrev[i.campoSemana]:null;
       const diffSem=(semAtual!==null&&semAtual!==undefined&&semAnterior!==null&&semAnterior!==undefined)?semAtual-semAnterior:null;
-      return{...i,nota:execBaremoNota(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio:wRef?execRedeCasosDesvio(allForWow,wRef.semana,i.key):null};
+      return{...i,status:execIndicatorStatus(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio:wRef?execRedeCasosDesvio(allForWow,wRef.semana,i.key):null};
     });
     return{total:ag.n,indicadores,wow,wowRefIdx,semAtualLabel:wRef?(wRef.label||wRef.semana):null,semAnteriorLabel:wPrev?(wPrev.label||wPrev.semana):null,fca:execRedeFca(all,ag)};
   }finally{
@@ -22868,7 +22863,7 @@ function execEncSnapshot(){
         const off=i.key==='prazo'?rowsSemana.filter(x=>!x.dentro8h):rowsSemana.filter(x=>x.outlier24h);
         casosDesvio={total:off.length,amostra:off.slice(0,8).map(x=>({cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',tempo:x.tempoTotal,protocolo:x.protocolo}))};
       }
-      return{...i,nota:execBaremoNota(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio};
+      return{...i,status:execIndicatorStatus(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio};
     });
     return{total:scope.length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execEncFca(scope,st)};
   }finally{
@@ -22917,13 +22912,13 @@ function execB2cVolumeWoWSeries(){
    do pior deles — "motivo" já vem calculado por b2cComputeIndicators()/
    b2cDominantMotivo(), reaproveitado direto, sem recalcular nada. */
 function execB2cFca(indicadores){
-  const comDado=indicadores.filter(i=>i.nota!==null&&i.nota!==undefined);
+  const comDado=indicadores.filter(i=>i.resultado!==null&&i.resultado!==undefined&&!isNaN(i.resultado));
   if(!comDado.length)return null;
-  const criticos=comDado.filter(i=>execBaremoClass(i.nota)==='bd');
-  const atencao=comDado.filter(i=>execBaremoClass(i.nota)==='wn');
+  const criticos=comDado.filter(i=>i.status==='bd');
+  const atencao=comDado.filter(i=>i.status==='wn');
   if(!criticos.length&&!atencao.length)return{fato:'Todos os indicadores anexados estão dentro da meta neste recorte.',causa:'Não se aplica — sem causa crítica concentrada.',acao:'Manter monitoramento de rotina; nenhuma ação corretiva necessária.'};
   const piorList=criticos.length?criticos:atencao;
-  const pior=[...piorList].sort((a,b)=>a.nota-b.nota)[0];
+  const pior=[...piorList].sort((a,b)=>execGapMeta(b)-execGapMeta(a))[0];
   const fatoPartes=[
     criticos.length?(criticos.length+' indicador(es) crítico(s) ('+criticos.map(i=>i.label).join(', ')+')'):'',
     atencao.length?(atencao.length+' indicador(es) em atenção ('+atencao.map(i=>i.label).join(', ')+')'):'',
@@ -22973,7 +22968,7 @@ function execB2cSnapshot(){
       }
       return{
         key:ind.key,label:ind.label,resultado:ind.geral.pct,meta:ind.meta,dir:ind.dir,unidade:'%',
-        nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),motivo:ind.motivo,
+        status:execIndicatorStatus(ind.geral.pct,ind.meta,ind.dir),motivo:ind.motivo,
         semAtual,semAnterior,diffSem,casosDesvio,
       };
     });
@@ -23042,25 +23037,22 @@ function execSetTab(tab){
 /* ---------- Render ---------- */
 function execRenderSummaryCard(cardId,titulo,icon,snap){
   const el=document.getElementById(cardId);if(!el)return;
-  const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
-  const cls=execBaremoClass(pontuacaoFinal);
+  const cls=execWorstStatus(snap.indicadores);
   const wowIdx=snap.wowRefIdx!==undefined&&snap.wowRefIdx!==null&&snap.wowRefIdx>=0?snap.wowRefIdx:(snap.wow&&snap.wow.length?snap.wow.length-1:-1);
   const last=snap.wow&&wowIdx>=0?snap.wow[wowIdx]:null;
   const temWow=last&&last.varPct!==null&&last.varPct!==undefined;
   const wowTxt=!temWow?'Sem WoW disponível':('Semana: '+(last.varPct>=0?'▲ +':'▼ ')+pp(Math.abs(last.varPct))+'% vs. anterior');
   const wowColor=!temWow?'var(--tx3)':(last.varPct>=0?'var(--green-dk)':'var(--red-dk)');
   el.innerHTML='<div class="es-title"><i class="ti '+icon+'"></i> '+eh(titulo)+'</div>'
-    +'<div class="es-nota" style="color:'+execNotaColor(cls)+'">'+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'</div>'
+    +'<div class="es-nota" style="color:'+execStatusColor(cls)+'">'+execStatusLabel(cls)+'</div>'
     +'<div class="es-sub">'+(snap.total?snap.total.toLocaleString('pt-BR')+' registros no filtro':'Sem dados no filtro atual')+'</div>'
     +'<div class="es-wow" style="color:'+wowColor+'">'+wowTxt+'</div>';
 }
 function execRenderKpis(containerId,snap){
   const el=document.getElementById(containerId);if(!el)return;
   if(!snap.total){el.innerHTML='<div class="exec-empty">Sem base carregada ou sem dados no filtro atual.</div>';return;}
-  const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
   let html='<div class="exec-kpi"><div class="lb">Volume no filtro</div><div class="vl">'+snap.total.toLocaleString('pt-BR')+'</div></div>';
-  html+='<div class="exec-kpi"><div class="lb">Pontuação Final</div><div class="vl" style="color:'+execNotaColor(execBaremoClass(pontuacaoFinal))+'">'+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'</div></div>';
-  snap.indicadores.slice(0,2).forEach(i=>{
+  snap.indicadores.slice(0,3).forEach(i=>{
     const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
     html+='<div class="exec-kpi"><div class="lb">'+eh(i.label)+'</div><div class="vl">'+resTxt+'</div></div>';
   });
@@ -23115,21 +23107,27 @@ function execRenderBaremoTable(tableId,indicadores,prefix,semAnteriorLabel,semAt
   const tbl=document.getElementById(tableId);if(!tbl)return;
   const thead=tbl.querySelector('thead');
   const tbody=tbl.querySelector('tbody');if(!tbody)return;
-  if(thead)thead.innerHTML='<tr><th>Indicador</th><th>Resultado</th><th>Meta</th><th>Nota</th><th>Status</th><th>'+eh(semAnteriorLabel||'Sem. Ant.')+'</th><th>'+eh(semAtualLabel||'Sem. Atual')+'</th><th>Δ Semana</th></tr>';
-  if(!indicadores.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--tx3)">Sem dados no filtro atual.</td></tr>';return;}
+  /* Sem coluna de Nota (removida a pedido do usuário — não serve como balizador); Status
+     vem direto da comparação resultado x meta (execIndicatorStatus, já calculado como
+     i.status por execRedeSnapshot/execEncSnapshot/execB2cSnapshot). */
+  if(thead)thead.innerHTML='<tr><th>Indicador</th><th>Resultado</th><th>Meta</th><th>Status</th><th>'+eh(semAnteriorLabel||'Sem. Ant.')+'</th><th>'+eh(semAtualLabel||'Sem. Atual')+'</th><th>Δ Semana</th></tr>';
+  if(!indicadores.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--tx3)">Sem dados no filtro atual.</td></tr>';return;}
   tbody.innerHTML=indicadores.map((i,idx)=>{
-    const cls=execBaremoClass(i.nota);
     const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
     const metaTxt=(i.dir==='lower'?'≤ ':'≥ ')+i.meta+(i.unidade||'');
+    /* "sempre colocar os chamados para posteriores consultas" (pedido do usuário): todo
+       indicador com pelo menos 1 caso fora do padrão na semana de referência fica
+       clicável, abrindo a lista de chamados — nunca só um número solto sem like de
+       consulta. */
     const temCasos=!!(i.casosDesvio&&i.casosDesvio.total>0);
-    const casosTxt=temCasos?'<div class="exec-casos-txt">'+i.casosDesvio.total+' caso(s) fora do padrão — clique para ver</div>':'';
+    const casosTxt=temCasos?'<div class="exec-casos-txt">'+i.casosDesvio.total+' caso(s) fora do padrão — clique para ver os chamados</div>':'';
     const rowId='exec-baremo-detail-'+tableId+'-'+idx;
     const linha='<tr'+(temCasos?' class="exec-baremo-row-clicavel" onclick="execToggleCasosDesvio(\''+rowId+'\',this)"':'')+'>'
-      +'<td>'+eh(i.label)+'</td><td>'+resTxt+'</td><td>'+eh(metaTxt)+'</td><td>'+execBaremoBadge(i.nota)+'</td><td>'+execStatusLabel(cls)+'</td>'
+      +'<td>'+eh(i.label)+'</td><td>'+resTxt+'</td><td>'+eh(metaTxt)+'</td><td>'+execStatusBadge(i.status)+'</td>'
       +'<td>'+execFmtSemanaResultado(i.semAnterior,i.unidade)+'</td><td>'+execFmtSemanaResultado(i.semAtual,i.unidade)+'</td>'
       +'<td><span style="color:'+execDiffColor(i.diffSem,i.dir)+';font-weight:600">'+execDiffTxt(i.diffSem,i.unidade)+'</span>'+casosTxt+'</td>'
       +'</tr>';
-    const detalhe=temCasos?'<tr class="exec-baremo-detail-row" id="'+rowId+'" style="display:none"><td colspan="8">'+execRenderCasosDesvioMini(prefix,i.casosDesvio)+'</td></tr>':'';
+    const detalhe=temCasos?'<tr class="exec-baremo-detail-row" id="'+rowId+'" style="display:none"><td colspan="7">'+execRenderCasosDesvioMini(prefix,i.casosDesvio)+'</td></tr>':'';
     return linha+detalhe;
   }).join('');
 }
@@ -23171,16 +23169,14 @@ function execRenderBlock(prefix,snap){
    o bloco com pior nota média. */
 function execBlockReportLines(titulo,snap){
   if(!snap.total)return['▸ '+titulo,'Sem base carregada ou sem dados no filtro atual.',''];
-  const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
   const linhasInd=snap.indicadores.map(i=>{
     const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
     const metaTxt=(i.dir==='lower'?'≤':'≥')+i.meta+(i.unidade||'');
-    const notaTxt=i.nota===null||i.nota===undefined?'—':i.nota.toFixed(1);
-    return i.label+': '+resTxt+' (meta '+metaTxt+') — nota '+notaTxt+'/10.';
+    return i.label+': '+resTxt+' (meta '+metaTxt+') — '+execStatusLabel(i.status)+'.';
   });
   return[
     '▸ '+titulo,
-    'Volume no filtro: '+snap.total.toLocaleString('pt-BR')+' registros. Pontuação Final: '+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'/10.',
+    'Volume no filtro: '+snap.total.toLocaleString('pt-BR')+' registros.',
     ...linhasInd,
     execWoWInsightTxt(snap.wow,snap.wowRefIdx),
     '',
@@ -23196,17 +23192,19 @@ function execBuildReportText(redeSnap,encSnap,b2cSnap){
     selExecSemana.length?'Semana '+selExecSemana.join('+'):'',
   ].filter(Boolean).join(' · ')||'Todo o período';
   const linhas=blocos.flatMap(b=>execBlockReportLines(b.titulo,b.snap));
-  const comNota=comDados.map(b=>({...b,pontuacaoFinal:execPontuacaoFinal(b.snap.indicadores)})).filter(b=>b.pontuacaoFinal!==null);
-  const pior=comNota.length?[...comNota].sort((a,b)=>a.pontuacaoFinal-b.pontuacaoFinal)[0]:null;
-  const criticoBloco=pior&&pior.pontuacaoFinal<7?pior:null;
+  /* Bloco "crítico" pra Leitura Executiva = o que tiver mais indicadores em status
+     crítico ('bd') — substitui a antiga comparação por Pontuação Final, removida a
+     pedido do usuário (não servia como balizador). */
+  const comStatus=comDados.map(b=>({...b,criticos:b.snap.indicadores.filter(i=>i.status==='bd').length}));
+  const criticoBloco=comStatus.filter(b=>b.criticos>0).sort((a,b)=>b.criticos-a.criticos)[0]||null;
   /* FCA real de cada painel de origem (execRedeFca/execEncFca/execB2cFca, já calculados
      dentro do snapshot de cada bloco), listados um atrás do outro — a pedido do
-     usuário, em vez de sintetizar um FCA novo só a partir da Pontuação Final. */
+     usuário, em vez de sintetizar um FCA novo só a partir de uma nota. */
   const fcaTxt=comDados.filter(b=>b.snap.fca).map(b=>
     'Painel '+b.titulo+':\nFato: '+b.snap.fca.fato+'\nCausa: '+b.snap.fca.causa+'\nAção: '+b.snap.fca.acao
   ).join('\n\n')||'Nenhum painel com FCA a reportar neste recorte (todos dentro da meta ou sem dados).';
   const execTxt=criticoBloco
-    ?'Recomenda-se atenção prioritária ao painel '+criticoBloco.titulo+' (Pontuação Final '+criticoBloco.pontuacaoFinal.toFixed(1)+'/10) neste recorte, com plano de ação até o fechamento do período.'
+    ?'Recomenda-se atenção prioritária ao painel '+criticoBloco.titulo+' ('+criticoBloco.criticos+' indicador(es) crítico(s)) neste recorte, com plano de ação até o fechamento do período.'
     :'Operação dentro do esperado nos painéis com dados carregados para este recorte — sem pontos críticos que exijam ação imediata da diretoria.';
   return[
     'RELATÓRIO EXECUTIVO — VISÃO CONSOLIDADA (REDE + B2B ENCERRADOS + B2C)',
