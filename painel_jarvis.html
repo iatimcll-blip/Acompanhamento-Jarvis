@@ -23162,10 +23162,18 @@ function execRenderBaremoTable(tableId,indicadores,prefix,semAnteriorLabel,semAt
     return linha+detalhe;
   }).join('');
 }
-function execRenderWowChart(canvasId,weeks){
+function execRenderWowChart(canvasId,weeksFull,refIdx){
   if(EXEC_CHARTS[canvasId]){try{EXEC_CHARTS[canvasId].destroy();}catch(e){}EXEC_CHARTS[canvasId]=null;}
   const ctx=document.getElementById(canvasId);if(!ctx)return;
-  if(!weeks||!weeks.length)return;
+  if(!weeksFull||!weeksFull.length)return;
+  /* Pedido do usuário: o gráfico mostra só a análise "semana anterior -> semana atual"
+     conforme a Semana selecionada no filtro (mesma referência já usada no texto/tabela,
+     ver execWowReferenceIdx) — 2 barras, não a série inteira de semanas do recorte
+     Ano/Mês/Cluster (que existe só pra garantir que a semana anterior esteja disponível
+     pra comparar, ver execRedeSnapshot/execEncSnapshot/execB2cSnapshot). */
+  const idx=refIdx===undefined||refIdx===null||refIdx<0?weeksFull.length-1:refIdx;
+  const weeks=idx>=0?weeksFull.slice(Math.max(0,idx-1),idx+1):weeksFull;
+  if(!weeks.length)return;
   const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
   const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
   const labels=weeks.map(w=>w.label||w.semana);
@@ -23190,7 +23198,7 @@ function execRenderBlock(prefix,snap){
   execRenderBaremoTable('exec-baremo-'+prefix,snap.indicadores,prefix,snap.semAnteriorLabel,snap.semAtualLabel);
   const insEl=document.getElementById('exec-wow-insight-'+prefix);
   if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow,snap.wowRefIdx);
-  execRenderWowChart('exec-wow-ch-'+prefix,snap.wow);
+  execRenderWowChart('exec-wow-ch-'+prefix,snap.wow,snap.wowRefIdx);
 }
 /* ---------- Relatório Executivo (mesmo padrão de texto plano "▸ SEÇÃO" já usado em
    Rede/B2B Encerrados/B2C — ver rdeRenderCard()/renderExecReport()/b2cBuildReportText())
