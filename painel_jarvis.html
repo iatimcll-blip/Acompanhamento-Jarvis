@@ -7154,6 +7154,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-b2c label.b2c-file-btn:hover{opacity:.85;}
   #panel-b2c .b2c-db-status{font-size:11px;color:var(--b2c-text-muted);}
   #panel-b2c .b2c-files-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+  #panel-b2c .b2c-progress{display:flex;}
+  #panel-b2c .b2c-progress-track{flex:1;height:6px;border-radius:4px;overflow:hidden;background:var(--surface2);}
+  #panel-b2c .b2c-progress-fill{height:100%;background:var(--b2c-blue);transition:width .2s;}
+  #panel-b2c .b2c-progress-pct{font-size:11px;color:var(--b2c-text-muted);min-width:34px;text-align:right;}
   #panel-b2c .b2c-file-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:.5px solid var(--b2c-border);border-radius:20px;padding:4px 10px 4px 12px;font-size:11px;color:var(--b2c-text-muted);}
   #panel-b2c .b2c-file-chip.b2c-file-ok{color:var(--green-dk);}
   #panel-b2c .b2c-file-chip.b2c-file-unknown{color:var(--red-dk);border-color:rgba(255,59,48,.3);}
@@ -7251,6 +7255,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="b2c-toolbar-left">
         <button class="b2c-btn" id="b2c-btnReport"><i class="ti ti-file-report"></i> Gerar Relatório</button>
       </div>
+    </div>
+    <div class="b2c-progress" id="b2c-progress" style="display:none;align-items:center;gap:8px;margin-bottom:10px;">
+      <div class="b2c-progress-track"><div class="b2c-progress-fill" id="b2c-progress-fill" style="width:0%"></div></div>
+      <span class="b2c-progress-pct" id="b2c-progress-pct">0%</span>
     </div>
     <div class="b2c-files-list" id="b2c-filesList"></div>
     <div class="fbar" style="border-radius:var(--rl);border:.5px solid var(--b2c-border);margin-bottom:14px;">
@@ -22102,11 +22110,32 @@ async function b2cParseXlsxRows(file){
   const sn=wb.SheetNames.find(n=>b2cNk(n)===b2cNk('Export'))||wb.SheetNames[0];
   return XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
 }
+/* % de carregamento pedida pelo usuário: mostra o progresso da FILA (quantos dos N
+   arquivos já terminaram), não um progresso interno de cada arquivo — o parse do XLSX
+   (XLSX.read/sheet_to_json) não expõe nenhum callback de progresso, então uma % "por
+   dentro" de um arquivo só seria fingida (travaria em ~99% por até ~25s no MAX.xlsx,
+   sem refletir nada real). A % por arquivo-concluído é honesta e já é o sinal mais útil
+   quando se anexa várias bases de uma vez. */
+function b2cSetProgress(done,total){
+  const wrap=document.getElementById('b2c-progress');
+  const fill=document.getElementById('b2c-progress-fill');
+  const pct=document.getElementById('b2c-progress-pct');
+  if(!wrap||!fill||!pct)return;
+  const p=total?Math.round(done/total*100):0;
+  wrap.style.display='flex';
+  fill.style.width=p+'%';
+  pct.textContent=p+'%';
+}
+function b2cHideProgress(){
+  const wrap=document.getElementById('b2c-progress');
+  if(wrap)wrap.style.display='none';
+}
 async function b2cProcessFilesSequential(files){
   const statusEl=document.getElementById('b2c-status');
   const results=[];
   for(let i=0;i<files.length;i++){
     const f=files[i];
+    b2cSetProgress(i,files.length);
     statusEl.textContent='Lendo '+(i+1)+' de '+files.length+': '+f.name+' (aguarde, arquivos grandes podem levar mais de 1 minuto)...';
     await b2cYield();
     try{
@@ -22156,6 +22185,7 @@ async function b2cProcessFilesSequential(files){
     }catch(err){
       results.push({name:f.name,ok:false,reason:err.message});
     }
+    b2cSetProgress(i+1,files.length);
   }
   b2cFinishUpload(results);
 }
@@ -22168,6 +22198,7 @@ document.getElementById('b2c-filesInput').addEventListener('change',function(e){
   b2cProcessFilesSequential(files);
 });
 function b2cFinishUpload(results){
+  b2cHideProgress();
   b2cRecomputeSummary();
   saveState();
   b2cRenderAll();
@@ -22602,9 +22633,16 @@ function execBaremoBadge(nota){
   const cls=execBaremoClass(nota);
   return'<span class="exec-nota exec-nota-'+cls+'">'+(cls==='na'?'—':nota.toFixed(1))+'</span>';
 }
-function execAvgNota(indicadores){
+/* Pontuação Final = Σ(Nota_i × Peso_i) — fórmula confirmada com o usuário, pesos iguais
+   (1/n) somando 1, então já sai direto na escala 0-10 sem precisar normalizar depois.
+   Indicador sem nota (sem dado no filtro atual) não entra na soma nem no n — o peso é
+   redistribuído só entre os indicadores que têm nota, senão um indicador "sem dado"
+   (ex.: MAX sem base anexada) puxaria a pontuação final artificialmente pra baixo. */
+function execPontuacaoFinal(indicadores,pesos){
   const notas=indicadores.map(i=>i.nota).filter(n=>n!==null&&n!==undefined&&!isNaN(n));
-  return notas.length?notas.reduce((a,b)=>a+b,0)/notas.length:null;
+  if(!notas.length)return null;
+  const w=pesos&&pesos.length===notas.length?pesos:notas.map(()=>1/notas.length);
+  return notas.reduce((soma,nota,i)=>soma+nota*w[i],0);
 }
 /* Texto de insight WoW genérico — mesma lógica de streak já usada em
    rdeWoWInsightTxt()/encWoWInsightTxt(), só parametrizada pra servir aos 3 blocos. */
@@ -22634,6 +22672,37 @@ function execRedeFlatAll(){
   try{rdeTab='';return rdeTabFlat();}
   finally{rdeTab=savedTab;}
 }
+/* FCA real da Rede (Fato/Causa/Ação), no mesmo padrão do Relatório Executivo do
+   próprio Painel Rede (ver o bloco "Executive Report" dentro de renderRede) — pior
+   cluster por Prazo + causa mais recorrente, calculados aqui em cima dos MESMOS
+   registros já filtrados (rdeGetDisplayRecs) usados pra tabela de baremo, então bate
+   com o resto do bloco. Não reaproveita a função de dentro de renderRede porque ela é
+   parte de uma função gigante e sempre usa o filtro ATIVO na tela do Painel Rede, não
+   o filtro do Painel Executivo. */
+function execRedeFca(all,ag){
+  if(!all.length)return null;
+  const prazoOk=ag.prazo>=RDE_M89,outlierOk=ag.outlier<=RDE_MOUT,tmeOk=ag.tAvg<=RDE_MTME;
+  if(prazoOk&&outlierOk&&tmeOk)return{fato:'Todos os indicadores (Prazo, Outlier e TME/TMR) dentro da meta neste recorte.',causa:'Não se aplica — sem causa crítica concentrada.',acao:'Manter monitoramento de rotina; nenhuma ação corretiva necessária.'};
+  const clMap={};all.forEach(r=>{if(!r.cl)return;(clMap[r.cl]=clMap[r.cl]||[]).push(r);});
+  const worstCl=Object.keys(clMap).map(cl=>({cl,a:rdeAgg2(clMap[cl])})).filter(x=>x.a.n>0).sort((a,b)=>a.a.prazo-b.a.prazo)[0];
+  const causeMap={};all.forEach(r=>{const c=String(r.c||'Não informado').trim()||'Não informado';if(!causeMap[c])causeMap[c]={fp:0,ou:0};if(r.p===0)causeMap[c].fp++;if(r.o===1)causeMap[c].ou++;});
+  const topCause=Object.entries(causeMap).map(([k,v])=>({k,...v})).sort((a,b)=>(b.fp+b.ou)-(a.fp+a.ou))[0];
+  const fatoPartes=[
+    !prazoOk?('Prazo em '+ag.prazo.toFixed(1)+'% ('+(RDE_M89-ag.prazo).toFixed(1)+' p.p. abaixo da meta de '+RDE_M89+'%)'):'',
+    !outlierOk?('Outlier em '+ag.outlier.toFixed(1)+'% ('+(ag.outlier-RDE_MOUT).toFixed(1)+' p.p. acima do limite de '+RDE_MOUT+'%)'):'',
+    !tmeOk?('TME/TMR médio em '+ag.tAvg.toFixed(2)+'h ('+(ag.tAvg-RDE_MTME).toFixed(2)+'h acima da meta de '+RDE_MTME+'h)'):'',
+  ].filter(Boolean);
+  const clNome=worstCl?(RDE_CLUSTER_LABELS[worstCl.cl]||worstCl.cl):'';
+  const causaPartes=[
+    worstCl&&worstCl.a.prazo<RDE_M89?('concentração de não-conformidade no cluster '+clNome+' (prazo de '+worstCl.a.prazo.toFixed(1)+'% em '+worstCl.a.n+' chamados)'):'',
+    topCause&&(topCause.fp+topCause.ou)>0?('recorrência da causa '+topCause.k+' ('+(topCause.fp+topCause.ou)+' casos)'):'',
+  ].filter(Boolean);
+  return{
+    fato:fatoPartes.join('; ')+'.',
+    causa:causaPartes.length?causaPartes.join('; ')+'.':'Ver detalhamento por cluster e causa no Painel Rede.',
+    acao:'Priorizar plano de ação corretivo'+(worstCl&&worstCl.a.prazo<RDE_M89?' no cluster '+clNome:'')+', com acompanhamento até o fechamento do período.',
+  };
+}
 function execRedeSnapshot(){
   const savedCl=rdeCluster,savedYear=rdeYear,savedGran=rdeGran,savedPeriod=rdePeriod,savedTab=rdeTab;
   try{
@@ -22644,7 +22713,7 @@ function execRedeSnapshot(){
     else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes;}
     else{rdeGran='all';rdePeriod=[];}
     const all=rdeGetDisplayRecs();
-    if(!all.length)return{total:0,indicadores:[],wow:[]};
+    if(!all.length)return{total:0,indicadores:[],wow:[],fca:null};
     const ag=rdeAgg2(all);
     const wow=rdeWoWSeries(all);
     const indicadores=[
@@ -22652,7 +22721,7 @@ function execRedeSnapshot(){
       {key:'outlier',label:'Outlier',resultado:ag.outlier,meta:RDE_MOUT,dir:'lower',unidade:'%'},
       {key:'tme',label:'TME/TMR médio',resultado:ag.tAvg,meta:RDE_MTME,dir:'lower',unidade:'h'},
     ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
-    return{total:ag.n,indicadores,wow};
+    return{total:ag.n,indicadores,wow,fca:execRedeFca(all,ag)};
   }finally{
     rdeCluster=savedCl;rdeYear=savedYear;rdeGran=savedGran;rdePeriod=savedPeriod;rdeTab=savedTab;
   }
@@ -22660,6 +22729,32 @@ function execRedeSnapshot(){
 
 /* ---------- B2B Encerrados ---------- */
 const EXEC_ENC_META_PRAZO=85,EXEC_ENC_META_OUTLIER=2;
+/* FCA real do B2B Encerrados, no mesmo padrão do Relatório Executivo Automático do
+   próprio painel (renderExecReport): cidade mais concentrada em desvio da meta de 8h +
+   causa raiz dominante NAQUELA cidade — mesma lógica, recalculada aqui em cima do
+   `scope` já filtrado pelo Painel Executivo (não o filtro ativo na tela do Encerrados). */
+function execEncFca(scope,st){
+  if(!scope.length)return null;
+  const prazoOk=st.pPrazo>=EXEC_ENC_META_PRAZO,outlierOk=st.pOut<=EXEC_ENC_META_OUTLIER;
+  if(prazoOk&&outlierOk)return{fato:'Prazo ('+st.pPrazo.toFixed(1)+'%) e Outlier ('+st.pOut.toFixed(1)+'%) dentro da meta neste recorte.',causa:'Não se aplica — sem causa crítica concentrada.',acao:'Manter monitoramento de rotina; nenhuma ação corretiva necessária.'};
+  const cidadeDesvio={};
+  scope.filter(x=>!x.dentro8h).forEach(x=>{
+    if(!x.cidade)return;
+    if(!cidadeDesvio[x.cidade])cidadeDesvio[x.cidade]={count:0,causas:{}};
+    cidadeDesvio[x.cidade].count++;
+    const c=fmtCausaRaiz(x.causaRaiz)||'Não informada';
+    cidadeDesvio[x.cidade].causas[c]=(cidadeDesvio[x.cidade].causas[c]||0)+1;
+  });
+  const ranking=Object.entries(cidadeDesvio).sort((a,b)=>b[1].count-a[1].count);
+  if(!ranking.length)return{fato:'Outlier acima do limite, sem concentração por cidade identificada no recorte.',causa:'Ver detalhamento no Painel B2B Encerrados.',acao:'Priorizar plano de ação corretivo até o fechamento do período.'};
+  const[cidadeTop,infoTop]=ranking[0];
+  const causaTop=Object.entries(infoTop.causas).sort((a,b)=>b[1]-a[1])[0];
+  return{
+    fato:cidadeTop+' concentra '+infoTop.count+' chamado(s) fora da meta de 8h no período.',
+    causa:'Causa raiz predominante em '+cidadeTop+' é '+causaTop[0]+', respondendo por '+causaTop[1]+'/'+infoTop.count+' dos desvios da cidade.',
+    acao:'Priorizar equipe técnica e reforçar estoque de material para atendimento de '+causaTop[0]+' em '+cidadeTop+', com acompanhamento até o fechamento do período.',
+  };
+}
 function execEncSnapshot(){
   const saved={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,encChartBucket};
   try{
@@ -22667,14 +22762,14 @@ function execEncSnapshot(){
     selCluster=selExecEncCluster;selEncCluster=[];
     selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
     const scope=encScope();
-    if(!scope.length)return{total:0,indicadores:[],wow:[]};
+    if(!scope.length)return{total:0,indicadores:[],wow:[],fca:null};
     const st=encRuleStats(scope);
     const wow=encWoWSeries();
     const indicadores=[
       {key:'prazo',label:'No prazo (≤ 8h)',resultado:st.pPrazo,meta:EXEC_ENC_META_PRAZO,dir:'higher',unidade:'%'},
       {key:'outlier',label:'Outlier (> 24h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%'},
     ].map(i=>({...i,nota:execBaremoNota(i.resultado,i.meta,i.dir)}));
-    return{total:scope.length,indicadores,wow};
+    return{total:scope.length,indicadores,wow,fca:execEncFca(scope,st)};
   }finally{
     selYear=saved.selYear;selMes=saved.selMes;selWeek=saved.selWeek;selCluster=saved.selCluster;
     selEncCluster=saved.selEncCluster;selEncAging=saved.selEncAging;selEncCausa=saved.selEncCausa;
@@ -22710,18 +22805,40 @@ function execB2cVolumeWoWSeries(){
     return{...w,varPct};
   });
 }
+/* FCA real do B2C, no mesmo padrão do Relatório Executivo do próprio painel
+   (b2cBuildReportText): indicadores fora da meta (crítico/atenção) + motivo dominante
+   do pior deles — "motivo" já vem calculado por b2cComputeIndicators()/
+   b2cDominantMotivo(), reaproveitado direto, sem recalcular nada. */
+function execB2cFca(indicadores){
+  const comDado=indicadores.filter(i=>i.nota!==null&&i.nota!==undefined);
+  if(!comDado.length)return null;
+  const criticos=comDado.filter(i=>execBaremoClass(i.nota)==='bd');
+  const atencao=comDado.filter(i=>execBaremoClass(i.nota)==='wn');
+  if(!criticos.length&&!atencao.length)return{fato:'Todos os indicadores anexados estão dentro da meta neste recorte.',causa:'Não se aplica — sem causa crítica concentrada.',acao:'Manter monitoramento de rotina; nenhuma ação corretiva necessária.'};
+  const piorList=criticos.length?criticos:atencao;
+  const pior=[...piorList].sort((a,b)=>a.nota-b.nota)[0];
+  const fatoPartes=[
+    criticos.length?(criticos.length+' indicador(es) crítico(s) ('+criticos.map(i=>i.label).join(', ')+')'):'',
+    atencao.length?(atencao.length+' indicador(es) em atenção ('+atencao.map(i=>i.label).join(', ')+')'):'',
+  ].filter(Boolean);
+  return{
+    fato:fatoPartes.join('; ')+'.',
+    causa:pior&&pior.motivo?(pior.label+' concentrado em "'+pior.motivo[0]+'" ('+pior.motivo[1]+' ocorrências).'):'Ver detalhamento por cluster de cada indicador fora da meta no Painel B2C.',
+    acao:'Priorizar plano de ação para '+piorList.map(i=>i.label).join(', ')+', com acompanhamento até o fechamento do período.',
+  };
+}
 function execB2cSnapshot(){
   const savedCl=selB2cCluster,savedAno=selB2cAno,savedMes=selB2cMes,savedSem=selB2cSemana;
   try{
     selB2cCluster=selExecB2cCluster;selB2cAno=selExecAno;selB2cMes=selExecMes;selB2cSemana=selExecSemana;
     const inds=b2cComputeIndicators();
-    if(!inds.length)return{total:0,indicadores:[],wow:[]};
+    if(!inds.length)return{total:0,indicadores:[],wow:[],fca:null};
     const indicadores=inds.map(ind=>({
       key:ind.key,label:ind.label,resultado:ind.geral.pct,meta:ind.meta,dir:ind.dir,unidade:'%',
-      nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),
+      nota:execBaremoNota(ind.geral.pct,ind.meta,ind.dir),motivo:ind.motivo,
     }));
     const wow=execB2cVolumeWoWSeries();
-    return{total:execB2cCombinedRows().length,indicadores,wow};
+    return{total:execB2cCombinedRows().length,indicadores,wow,fca:execB2cFca(indicadores)};
   }finally{
     selB2cCluster=savedCl;selB2cAno=savedAno;selB2cMes=savedMes;selB2cSemana=savedSem;
   }
@@ -22781,23 +22898,23 @@ function execSetTab(tab){
 /* ---------- Render ---------- */
 function execRenderSummaryCard(cardId,titulo,icon,snap){
   const el=document.getElementById(cardId);if(!el)return;
-  const notaMedia=execAvgNota(snap.indicadores);
-  const cls=execBaremoClass(notaMedia);
+  const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
+  const cls=execBaremoClass(pontuacaoFinal);
   const last=snap.wow&&snap.wow.length?snap.wow[snap.wow.length-1]:null;
   const temWow=last&&last.varPct!==null&&last.varPct!==undefined;
   const wowTxt=!temWow?'Sem WoW disponível':('Semana: '+(last.varPct>=0?'▲ +':'▼ ')+pp(Math.abs(last.varPct))+'% vs. anterior');
   const wowColor=!temWow?'var(--tx3)':(last.varPct>=0?'var(--green-dk)':'var(--red-dk)');
   el.innerHTML='<div class="es-title"><i class="ti '+icon+'"></i> '+eh(titulo)+'</div>'
-    +'<div class="es-nota" style="color:'+execNotaColor(cls)+'">'+(notaMedia===null?'—':notaMedia.toFixed(1))+'</div>'
+    +'<div class="es-nota" style="color:'+execNotaColor(cls)+'">'+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'</div>'
     +'<div class="es-sub">'+(snap.total?snap.total.toLocaleString('pt-BR')+' registros no filtro':'Sem dados no filtro atual')+'</div>'
     +'<div class="es-wow" style="color:'+wowColor+'">'+wowTxt+'</div>';
 }
 function execRenderKpis(containerId,snap){
   const el=document.getElementById(containerId);if(!el)return;
   if(!snap.total){el.innerHTML='<div class="exec-empty">Sem base carregada ou sem dados no filtro atual.</div>';return;}
-  const notaMedia=execAvgNota(snap.indicadores);
+  const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
   let html='<div class="exec-kpi"><div class="lb">Volume no filtro</div><div class="vl">'+snap.total.toLocaleString('pt-BR')+'</div></div>';
-  html+='<div class="exec-kpi"><div class="lb">Nota baremo média</div><div class="vl" style="color:'+execNotaColor(execBaremoClass(notaMedia))+'">'+(notaMedia===null?'—':notaMedia.toFixed(1))+'</div></div>';
+  html+='<div class="exec-kpi"><div class="lb">Pontuação Final</div><div class="vl" style="color:'+execNotaColor(execBaremoClass(pontuacaoFinal))+'">'+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'</div></div>';
   snap.indicadores.slice(0,2).forEach(i=>{
     const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
     html+='<div class="exec-kpi"><div class="lb">'+eh(i.label)+'</div><div class="vl">'+resTxt+'</div></div>';
@@ -22841,7 +22958,7 @@ function execRenderBlock(prefix,snap){
    o bloco com pior nota média. */
 function execBlockReportLines(titulo,snap){
   if(!snap.total)return['▸ '+titulo,'Sem base carregada ou sem dados no filtro atual.',''];
-  const notaMedia=execAvgNota(snap.indicadores);
+  const pontuacaoFinal=execPontuacaoFinal(snap.indicadores);
   const linhasInd=snap.indicadores.map(i=>{
     const resTxt=(i.resultado===null||i.resultado===undefined||isNaN(i.resultado))?'—':(i.resultado.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
     const metaTxt=(i.dir==='lower'?'≤':'≥')+i.meta+(i.unidade||'');
@@ -22850,7 +22967,7 @@ function execBlockReportLines(titulo,snap){
   });
   return[
     '▸ '+titulo,
-    'Volume no filtro: '+snap.total.toLocaleString('pt-BR')+' registros. Nota baremo média: '+(notaMedia===null?'—':notaMedia.toFixed(1))+'/10.',
+    'Volume no filtro: '+snap.total.toLocaleString('pt-BR')+' registros. Pontuação Final: '+(pontuacaoFinal===null?'—':pontuacaoFinal.toFixed(1))+'/10.',
     ...linhasInd,
     execWoWInsightTxt(snap.wow),
     '',
@@ -22866,20 +22983,17 @@ function execBuildReportText(redeSnap,encSnap,b2cSnap){
     selExecSemana.length?'Semana '+selExecSemana.join('+'):'',
   ].filter(Boolean).join(' · ')||'Todo o período';
   const linhas=blocos.flatMap(b=>execBlockReportLines(b.titulo,b.snap));
-  const comNota=comDados.map(b=>({...b,notaMedia:execAvgNota(b.snap.indicadores)})).filter(b=>b.notaMedia!==null);
-  const pior=comNota.length?[...comNota].sort((a,b)=>a.notaMedia-b.notaMedia)[0]:null;
-  const criticoBloco=pior&&pior.notaMedia<7?pior:null;
-  const piorInd=criticoBloco?[...criticoBloco.snap.indicadores].filter(i=>i.nota!==null&&i.nota!==undefined).sort((a,b)=>a.nota-b.nota)[0]:null;
-  const piorIndTxt=piorInd?', pior indicador "'+piorInd.label+'" ('+(piorInd.resultado===null||piorInd.resultado===undefined?'—':piorInd.resultado.toFixed(1)+(piorInd.unidade||''))+', nota '+piorInd.nota.toFixed(1)+')':'';
-  const fcaTxt=criticoBloco
-    ?[
-      'Fato: '+criticoBloco.titulo+' com nota baremo média '+criticoBloco.notaMedia.toFixed(1)+'/10'+piorIndTxt+'.',
-      'Causa: ver detalhamento por cluster e motivo dominante no painel '+criticoBloco.titulo+' para a causa raiz específica.',
-      'Ação: priorizar plano de recuperação para '+criticoBloco.titulo+(piorInd?' com foco em "'+piorInd.label+'"':'')+', com acompanhamento até o fechamento do período.',
-    ].join('\n')
-    :'Todos os painéis com dados estão com nota baremo média igual ou acima de 7 neste recorte — sem bloco crítico a reportar.';
+  const comNota=comDados.map(b=>({...b,pontuacaoFinal:execPontuacaoFinal(b.snap.indicadores)})).filter(b=>b.pontuacaoFinal!==null);
+  const pior=comNota.length?[...comNota].sort((a,b)=>a.pontuacaoFinal-b.pontuacaoFinal)[0]:null;
+  const criticoBloco=pior&&pior.pontuacaoFinal<7?pior:null;
+  /* FCA real de cada painel de origem (execRedeFca/execEncFca/execB2cFca, já calculados
+     dentro do snapshot de cada bloco), listados um atrás do outro — a pedido do
+     usuário, em vez de sintetizar um FCA novo só a partir da Pontuação Final. */
+  const fcaTxt=comDados.filter(b=>b.snap.fca).map(b=>
+    'Painel '+b.titulo+':\nFato: '+b.snap.fca.fato+'\nCausa: '+b.snap.fca.causa+'\nAção: '+b.snap.fca.acao
+  ).join('\n\n')||'Nenhum painel com FCA a reportar neste recorte (todos dentro da meta ou sem dados).';
   const execTxt=criticoBloco
-    ?'Recomenda-se atenção prioritária ao painel '+criticoBloco.titulo+' neste recorte, com plano de ação até o fechamento do período.'
+    ?'Recomenda-se atenção prioritária ao painel '+criticoBloco.titulo+' (Pontuação Final '+criticoBloco.pontuacaoFinal.toFixed(1)+'/10) neste recorte, com plano de ação até o fechamento do período.'
     :'Operação dentro do esperado nos painéis com dados carregados para este recorte — sem pontos críticos que exijam ação imediata da diretoria.';
   return[
     'RELATÓRIO EXECUTIVO — VISÃO CONSOLIDADA (REDE + B2B ENCERRADOS + B2C)',
@@ -22887,7 +23001,7 @@ function execBuildReportText(redeSnap,encSnap,b2cSnap){
     'Filtro: '+filtroTxt,
     '',
     ...linhas,
-    '▸ FCA — FATO, CAUSA E AÇÃO',
+    '▸ FCA — FATO, CAUSA E AÇÃO (por painel)',
     fcaTxt,
     '',
     '▸ LEITURA EXECUTIVA',
