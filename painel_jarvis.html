@@ -23140,9 +23140,21 @@ function execRenderWowChart(canvasId,weeks){
   const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
   const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
   const labels=weeks.map(w=>w.label||w.semana);
-  const vals=weeks.map(w=>w.varPct===null||w.varPct===undefined?null:Math.round(w.varPct*10)/10);
-  const bg=vals.map(v=>v===null?'rgba(142,142,147,.35)':(v>=0?'#34c759':'#ff3b30'));
-  EXEC_CHARTS[canvasId]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Variação % vs. semana anterior',data:vals,backgroundColor:bg,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y===null?'Sem semana anterior':'Semana '+c.label+': '+(c.parsed.y>=0?'+':'')+c.parsed.y+'% vs. anterior'}}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'%',color:txC}},x:{grid:{display:false},ticks:{color:txC,maxRotation:45,autoSkip:false,font:{size:9}}}}}});
+  /* Bug real reportado: a primeira semana da série (sem semana anterior pra calcular %)
+     ficava com valor `null` — o Chart.js não desenha NEM rotula um ponto null, então
+     virava um espaço em branco no gráfico, parecendo quebrado. Usa 0 (barra "achatada",
+     mesmo visual de antes) mas SEMPRE com um rótulo de texto explicando o motivo, via
+     chartjs-plugin-datalabels (mesmo padrão já usado em rChEnc/rChSem) — nunca fica em
+     branco sem explicação. */
+  const temComparacao=weeks.map(w=>w.varPct!==null&&w.varPct!==undefined);
+  const vals=weeks.map((w,i)=>temComparacao[i]?Math.round(w.varPct*10)/10:0);
+  const bg=vals.map((v,i)=>temComparacao[i]?(v>=0?'#34c759':'#ff3b30'):'rgba(142,142,147,.5)');
+  const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  EXEC_CHARTS[canvasId]=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels,datasets:[{label:'Variação % vs. semana anterior',data:vals,backgroundColor:bg,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:16}},plugins:{
+    legend:{display:false},
+    tooltip:{callbacks:{label:c=>temComparacao[c.dataIndex]?('Semana '+c.label+': '+(vals[c.dataIndex]>=0?'+':'')+vals[c.dataIndex]+'% vs. anterior'):('Semana '+c.label+': sem semana anterior no filtro atual para comparar.')}},
+    datalabels:DL?{anchor:'end',align:'end',offset:4,clamp:true,clip:false,color:(c)=>temComparacao[c.dataIndex]?txC:'#8e8e93',font:{size:9},formatter:(v,c)=>temComparacao[c.dataIndex]?'':'sem comparação'}:{display:false},
+  },scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'%',color:txC}},x:{grid:{display:false},ticks:{color:txC,maxRotation:45,autoSkip:false,font:{size:9}}}}}});
 }
 function execRenderBlock(prefix,snap){
   execRenderKpis('exec-kpi-'+prefix,snap);
