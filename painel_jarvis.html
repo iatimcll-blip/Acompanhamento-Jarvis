@@ -23147,12 +23147,16 @@ function execSetTab(tab){
 }
 
 /* ---------- Render ---------- */
-function execFmtIndicadorSemana(i){
-  const val=execIndicadorSemanaValor(i);
+/* Cards-resumo mostram o RESULTADO DO PERÍODO (i.resultado/i.status, mesmo recorte
+   Ano/Mês/Semana/Cluster do resto do painel) — não mais o valor da última semana
+   isolada. Trocado de volta a pedido do usuário: os cards mostravam só a semana (ex.
+   63,6%) enquanto os painéis nativos de Rede/B2B Encerrados/B2C mostram o acumulado
+   do período (ex. 72,7%) para o MESMO filtro — números "diferentes" sem nenhum
+   rótulo explicando por quê, o que parecia (e de fato era, olhando de fora) uma
+   divergência entre o Painel Executivo e os painéis oficiais. */
+function execFmtIndicadorResultado(i){
+  const val=i.resultado;
   return(val===null||val===undefined||isNaN(val))?'—':(val.toFixed(i.unidade==='h'?2:1)+(i.unidade||''));
-}
-function execIndicadorSemanaValor(i){
-  return(i.semAtual!==null&&i.semAtual!==undefined&&!isNaN(i.semAtual))?i.semAtual:i.resultado;
 }
 function execRenderSummaryCard(cardId,titulo,icon,snap){
   const el=document.getElementById(cardId);if(!el)return;
@@ -23161,22 +23165,13 @@ function execRenderSummaryCard(cardId,titulo,icon,snap){
   const temWow=last&&last.varPct!==null&&last.varPct!==undefined;
   const wowTxt=!temWow?'Sem WoW disponível':('Semana: '+(last.varPct>=0?'▲ +':'▼ ')+pp(Math.abs(last.varPct))+'% vs. anterior');
   const wowColor=!temWow?'var(--tx3)':(last.varPct>=0?'var(--green-dk)':'var(--red-dk)');
-  /* Pedido do usuário: no lugar do status geral do bloco ("Crítico"), o destaque do
-     card agora é o VALOR do indicador principal (o 1º da lista) na semana selecionada
-     — mesmo i.semAtual já usado na linha de indicadores abaixo. A cor reflete o status
-     DAQUELE valor específico (resultado x meta na semana), não o status do recorte
-     inteiro (i.status) — senão a cor podia contradizer o número mostrado (ex.: mostrar
-     80% de uma semana abaixo da meta, mas colorido de verde por causa da média geral). */
+  // Destaque do card = resultado do indicador principal (1º da lista) no período do
+  // filtro, com a cor do status já calculado pelo snapshot (i.status).
   const principal=snap.indicadores[0]||null;
-  const notaTxt=principal?execFmtIndicadorSemana(principal):'—';
-  const notaColor=principal?execStatusColor(execIndicatorStatus(execIndicadorSemanaValor(principal),principal.meta,principal.dir)):'var(--tx3)';
-  /* Pedido do usuário: mostrar direto no card-resumo o resultado de cada indicador NA
-     SEMANA selecionada (i.semAtual — mesma semana de referência do WoW/Baremo, ver
-     execWowReferenceIdx). Sem Semana selecionada, semAtual já cai na última semana
-     disponível; sem série semanal nenhuma, cai no resultado do recorte Ano/Mês/Cluster. */
+  const notaTxt=principal?execFmtIndicadorResultado(principal):'—';
+  const notaColor=principal?execStatusColor(principal.status):'var(--tx3)';
   const indHtml=snap.indicadores.map(i=>{
-    const corSemana=execStatusColor(execIndicatorStatus(execIndicadorSemanaValor(i),i.meta,i.dir));
-    return'<span class="es-ind-chip" style="color:'+corSemana+'">'+eh(i.label)+': '+execFmtIndicadorSemana(i)+'</span>';
+    return'<span class="es-ind-chip" style="color:'+execStatusColor(i.status)+'">'+eh(i.label)+': '+execFmtIndicadorResultado(i)+'</span>';
   }).join('');
   el.innerHTML='<div class="es-title"><i class="ti '+icon+'"></i> '+eh(titulo)+'</div>'
     +(principal?'<div class="es-nota-label">'+eh(principal.label)+'</div>':'')
