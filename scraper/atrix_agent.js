@@ -29,6 +29,13 @@ const INTERVAL_MIN  = parseInt(process.env.INTERVAL_MINUTES || '90', 10);
 const DELAY_MS      = parseFloat(process.env.DELAY_SECONDS  || '2') * 1000;
 const DEBUG         = ['1','true','yes'].includes((process.env.DEBUG || '').toLowerCase());
 const SINGLE_CYCLE  = ['1','true','yes'].includes((process.env.SINGLE_CYCLE || '').toLowerCase());
+/* Diagnostico temporario (investigacao do ticket #07092026-44785, 2026-09-14): filtra
+   pra um unico chamado (ATRIX_ONLY_TICKET) e/ou despeja a estrutura real da pagina
+   quando o Substatus nao e encontrado (ATRIX_DUMP_HTML) — sem isso, um ciclo de
+   diagnostico varreria os 240 chamados de novo so pra investigar 1. Ambos default
+   desligados; nao afetam o ciclo normal. */
+const ATRIX_ONLY_TICKET = (process.env.ATRIX_ONLY_TICKET || '').trim();
+const ATRIX_DUMP_HTML   = ['1','true','yes'].includes((process.env.ATRIX_DUMP_HTML || '').toLowerCase());
 
 // Parametrizável via env para permitir um segundo ciclo independente (ex.: Ativações B2B,
 // que roda 1x/dia em vez de a cada 30min — ver .github/workflows/atrix-sync-ativacoes.yml)
@@ -183,6 +190,11 @@ async function loadTickets() {
   const all      = JSON.parse(content);
   const withLink = all.filter(t => t.link);
   info(`${withLink.length} chamados com link (total: ${all.length}).`);
+  if (ATRIX_ONLY_TICKET) {
+    const scoped = withLink.filter(t => (t.id === ATRIX_ONLY_TICKET) || (t.ticketId === ATRIX_ONLY_TICKET));
+    info(`ATRIX_ONLY_TICKET=${ATRIX_ONLY_TICKET} — restringindo a ${scoped.length} chamado(s).`);
+    return scoped;
+  }
   return withLink;
 }
 
@@ -525,6 +537,33 @@ async function extractSubstatus(page, ticket) {
     // Regra 3: o Substatus, quando encontrado, sempre prevalece — nenhuma outra
     // informação (Status incluído) o sobrescreve.
     if (sub) return { value: sub, source: 'substatus' };
+
+    // Diagnostico temporario (ver ATRIX_DUMP_HTML no topo do arquivo): nenhuma
+    // estrategia achou o Substatus — despeja todos os <select> da pagina (name/id/
+    // classe + texto selecionado) e todos os elementos cujo texto e exatamente
+    // "Substatus" (normalizado), pra investigar a estrutura real sem precisar de
+    // screenshot/DEBUG completo.
+    if (ATRIX_DUMP_HTML) {
+      const dump = await page.evaluate(() => {
+        const sels = Array.from(document.querySelectorAll('select')).map(s => ({
+          name: s.name || '', id: s.id || '', cls: s.className || '',
+          selected: (s.options[s.selectedIndex] || {}).text || '',
+        }));
+        const normLabel = t => t.toLowerCase().replace(/[-\s:*]/g, '');
+        const labels = [];
+        for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
+          if (normLabel(cell.textContent) !== 'substatus') continue;
+          labels.push({
+            tag: cell.tagName, cls: cell.className || '',
+            nextTag: cell.nextElementSibling ? cell.nextElementSibling.tagName : null,
+            nextHtml: cell.nextElementSibling ? cell.nextElementSibling.outerHTML.slice(0, 200) : null,
+          });
+        }
+        return { sels, labels };
+      });
+      info(`[${tid}] DUMP selects: ${JSON.stringify(dump.sels)}`);
+      info(`[${tid}] DUMP labels "Substatus": ${JSON.stringify(dump.labels)}`);
+    }
 
     // Regra 2: sem Substatus, usar o Status da página.
     const pageStatus = await extractPageStatus();
