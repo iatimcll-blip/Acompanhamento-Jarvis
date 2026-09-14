@@ -6999,6 +6999,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="cw" style="height:220px"><canvas id="exec-wow-ch-rede"></canvas></div>
         </div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px">
+        <div class="rede-section-title" style="margin:0">Relatório Executivo Automático — Rede</div>
+        <span class="card-action" id="exec-report-rede-copy-btn" onclick="execCopiarRelatorioSub('exec-report-rede',this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
+      <div class="rede-report-box" id="exec-report-rede"><span style="color:var(--tx3);font-size:11px">Sem dados de Rede no filtro atual.</span></div>
     </div>
 
     <div class="exec-section" id="exec-tab-encerrados">
@@ -7014,6 +7019,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="cw" style="height:220px"><canvas id="exec-wow-ch-encerrados"></canvas></div>
         </div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px">
+        <div class="rede-section-title" style="margin:0">Relatório Executivo Automático — B2B Encerrados</div>
+        <span class="card-action" id="exec-report-encerrados-copy-btn" onclick="execCopiarRelatorioSub('exec-report-encerrados',this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
+      <div class="rede-report-box" id="exec-report-encerrados"><span style="color:var(--tx3);font-size:11px">Sem dados de B2B Encerrados no filtro atual.</span></div>
     </div>
 
     <div class="exec-section" id="exec-tab-b2c">
@@ -7029,15 +7039,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="cw" style="height:220px"><canvas id="exec-wow-ch-b2c"></canvas></div>
         </div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px">
+        <div class="rede-section-title" style="margin:0">Relatório Executivo Automático — B2C</div>
+        <span class="card-action" id="exec-report-b2c-copy-btn" onclick="execCopiarRelatorioSub('exec-report-b2c',this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
+      <div class="rede-report-box" id="exec-report-b2c"><span style="color:var(--tx3);font-size:11px">Sem dados de B2C no filtro atual.</span></div>
     </div>
 
     <!-- Relatório Executivo Automático (mesmo padrão de texto plano "▸ SEÇÃO" já usado em
          Rede/B2B Encerrados/B2C) — no final da página, igual aos outros painéis. -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
       <div class="rede-section-title" style="margin:0">Relatório Executivo Automático</div>
-      <span class="card-action" id="exec-report-copy-btn" onclick="execCopiarRelatorio(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      <span class="card-action" id="exec-global-report-copy-btn" onclick="execCopiarRelatorio(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
     </div>
-    <div class="rede-report-box" id="exec-report"><span style="color:var(--tx3);font-size:11px">Carregue bases em Rede, B2B Encerrados ou B2C para gerar o relatório automático.</span></div>
+    <div class="rede-report-box" id="exec-global-report"><span style="color:var(--tx3);font-size:11px">Carregue bases em Rede, B2B Encerrados ou B2C para gerar o relatório automático.</span></div>
   </div>
 
   <!-- ── PAINEL ABERTOS ── -->
@@ -14746,9 +14761,12 @@ function gFEnc(){
   return f.slice().sort((a,b)=>typeof a[scEnc]==='number'?(a[scEnc]-b[scEnc])*sdEnc:String(a[scEnc]).localeCompare(String(b[scEnc]))*sdEnc);
 }
 
-function renderExecReport(d){
-  const el=document.getElementById('exec-report');if(!el)return;
-  if(!d||!d.length){el.innerHTML='';return}
+/* Extraído de dentro de renderExecReport() (mesmo motivo do rdeBuildReportText, ver
+   comentário lá): função pura reaproveitável pelo bloco B2B Encerrados do Painel
+   Executivo, chamada dentro da janela "swap → calcula → restaura" de execEncSnapshot()
+   (onde selMes/selWeek já estão trocados pro recorte do Painel Executivo). */
+function encBuildFullReportText(d){
+  if(!d||!d.length)return null;
   const s=encRuleStats(d);
   const total=s.total||1;
   const fora8=s.fora8,pFora8=pp(s.pFora8);
@@ -14820,7 +14838,7 @@ function renderExecReport(d){
   }else{
     fcaTxt='Operação dentro da meta de 8h neste recorte — sem FCA a reportar.';
   }
-  const texto=[
+  return[
     `RELATÓRIO EXECUTIVO — ${periodoLabel}`,
     `Gerado em: ${now2()}`,
     '',
@@ -14841,6 +14859,11 @@ function renderExecReport(d){
     `▸ CIDADES COM MAIOR VOLUME DE CHAMADOS`,
     topCidadesVol,
   ].join('\n');
+}
+function renderExecReport(d){
+  const el=document.getElementById('exec-report');if(!el)return;
+  const texto=encBuildFullReportText(d);
+  if(texto===null){el.innerHTML='';return}
   el.innerHTML=`<div class="tsec" style="margin-bottom:16px">
     <div class="tsec-hd">
       <span class="tsec-title"><i class="ti ti-report" style="font-size:13px;vertical-align:-1px;margin-right:4px"></i>Relatório Executivo Automático</span>
@@ -20328,6 +20351,113 @@ function rde4RenderAll(recs){
   }
 }
 
+/* Extraído de dentro de renderRede() (recorte "Executive Report") pra virar uma função
+   pura reaproveitável — usada tanto pelo próprio Painel Rede quanto pelo bloco Rede do
+   Painel Executivo (a pedido do usuário: "reportará o relatório do subpainel completo com
+   dados e FCA", não um resumo condensado). `recs` = mesmo recorte já filtrado por
+   Ano/Mês|Semana/Cluster (rdeGetDisplayRecs() no painel nativo, execRedeSnapshot() no
+   Executivo); `allForWow` = recorte mais amplo só por Cluster (sem a restrição de
+   Mês/Semana), necessário pro WoW comparar semanas — ver mesmo motivo documentado em
+   execRedeSnapshot. Lê rdeGran/rdePeriod/rdeTab/rdeCluster do estado global no momento da
+   chamada (por isso o Painel Executivo troca essas variáveis antes de chamar, no mesmo
+   padrão "swap → calcula → restaura" do resto do módulo). */
+function rdeBuildReportText(recs,allForWow){
+  const a=rdeAgg2(recs);
+  if(!a.n)return null;
+  const gk=rdePKey();
+  const wowKeys=[...new Set((allForWow||recs).map(r=>r[gk]))].filter(Boolean);
+  const rdeWMultiYear=gk==='w'&&rdeWyears(wowKeys).size>1;
+  const isAC=rdeTab==='ACESSO',tl=rdeTab==='AMBOS'?'TME/TMR':isAC?'TME':'TMR';
+  const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.map(p=>rdeWname(p,rdeWMultiYear)).join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
+  const clNames={'C':'MA CAP','I':'MA INT','P':'PI','N':'NORTE (PA/AM/AP)'};
+  const tabTxt=rdeTab==='AMBOS'?'Backbone + Acesso':rdeTab==='ACESSO'?'Acesso':'Backbone';
+  const clTxt=rdeCluster.length?` · ${rdeCluster.map(c=>clNames[c]||c).join('+')}`:'';
+  const prazoStatus=a.prazo>=RDE_M89?'ok':'bd',outlierStatus=a.outlier<=RDE_MOUT?'ok':'bd',tmeStatus=a.tAvg<=RDE_MTME?'ok':'bd';
+  const clMap={};recs.forEach(r=>{if(!clMap[r.cl])clMap[r.cl]=[];clMap[r.cl].push(r);});
+  const clKeys=Object.keys(clMap).sort();
+  // Best/worst cluster
+  const clEntries=clKeys.map(cl=>({cl,a:rdeAgg2(clMap[cl])})).filter(x=>x.a.n>0);
+  const worstCl=clEntries.sort((a,b)=>a.a.prazo-b.a.prazo)[0];
+  // Cities/causes
+  const cityMap={};recs.forEach(r=>{const c=r.cidade&&r.cidade!==''?r.cidade:'Não informado';if(!cityMap[c])cityMap[c]={total:0,fp:0,ou:0};cityMap[c].total++;if(r.p===0)cityMap[c].fp++;if(r.o===1)cityMap[c].ou++;});
+  const topCities=Object.entries(cityMap).map(([k,v])=>({k,...v,score:v.fp+v.ou})).filter(x=>x.k!=='Não informado'||x.score>0).sort((a,b)=>b.score-a.score).slice(0,10);
+  const causeMap={};recs.forEach(r=>{const c=String(r.c||'Não informado').trim()||'Não informado';if(!causeMap[c])causeMap[c]={fp:0,ou:0};if(r.p===0)causeMap[c].fp++;if(r.o===1)causeMap[c].ou++;});
+  const top8=Object.entries(causeMap).map(([k,v])=>({k,...v})).sort((a,b)=>(b.fp+b.ou)-(a.fp+a.ou)).slice(0,8);
+  // Top city/cause
+  const topCity=topCities[0];
+  const topCause=top8[0];
+  const cityPct=topCity&&a.n?((topCity.fp+topCity.ou)/a.n*100).toFixed(1):0;
+  const causePct=topCause&&a.n?((topCause.fp+topCause.ou)/a.n*100).toFixed(1):0;
+  const clReport=clEntries.map(x=>`${clNames[x.cl]||x.cl} ${x.a.prazo.toFixed(1)}% (${x.a.n})`).join(', ');
+  const metasOk=prazoStatus==='ok'&&outlierStatus==='ok'&&tmeStatus==='ok';
+  const focoPartes=[
+    worstCl&&worstCl.a.prazo<RDE_M89?`ao cluster ${clNames[worstCl.cl]||worstCl.cl}`:'',
+    topCause&&(topCause.fp+topCause.ou)>0?`à causa ${topCause.k}`:''
+  ].filter(Boolean).join(' e ');
+  const fatoPartes=[
+    prazoStatus!=='ok'?`Prazo em ${a.prazo.toFixed(1)}% (${(RDE_M89-a.prazo).toFixed(1)} p.p. abaixo da meta de ${RDE_M89}%)`:'',
+    outlierStatus!=='ok'?`Outlier em ${a.outlier.toFixed(1)}% (${(a.outlier-RDE_MOUT).toFixed(1)} p.p. acima do limite de ${RDE_MOUT}%)`:'',
+    tmeStatus!=='ok'?`${tl} médio em ${a.tAvg.toFixed(2)}h (${(a.tAvg-RDE_MTME).toFixed(2)}h acima da meta de ${RDE_MTME}h)`:''
+  ].filter(Boolean);
+  const fatoTxt=fatoPartes.length?fatoPartes.join('; ')+'.':`Todos os indicadores (Prazo, Outlier e ${tl}) dentro da meta neste recorte.`;
+  const causaPartes=metasOk?[]:[
+    worstCl&&worstCl.a.prazo<RDE_M89?`concentração de não-conformidade no cluster ${clNames[worstCl.cl]||worstCl.cl} (prazo de ${worstCl.a.prazo.toFixed(1)}% em ${worstCl.a.n} chamados)`:'',
+    topCause&&(topCause.fp+topCause.ou)>0?`recorrência da causa ${topCause.k} (${topCause.fp+topCause.ou} casos, ${causePct}% do total)`:''
+  ].filter(Boolean);
+  const causaTxt=causaPartes.length?causaPartes.join('; ')+'.':'Não se aplica — indicadores dentro do esperado, sem causa crítica concentrada.';
+  const clCritico=worstCl&&worstCl.a.prazo<RDE_M89?(clNames[worstCl.cl]||worstCl.cl):'';
+  const causaCritica=topCause&&(topCause.fp+topCause.ou)>0?topCause.k:'';
+  const acoesPrazo=prazoStatus!=='ok'?[
+    clCritico?`Priorizar atendimento por SLA no cluster ${clCritico}, com fila dedicada para chamados a menos de 2h do vencimento do prazo.`
+             :'Priorizar atendimento por SLA nos clusters com maior volume de chamados fora do prazo, com fila dedicada para chamados próximos do vencimento.',
+    clCritico?`Reforçar o dimensionamento de equipe técnica de campo no cluster ${clCritico} (prazo atual de ${worstCl.a.prazo.toFixed(1)}%, ${worstCl.a.n} chamados) para reduzir a fila de espera.`
+             :'Revisar o dimensionamento de equipe técnica de campo nos clusters mais impactados para reduzir a fila de espera.'
+  ]:[];
+  const acoesMttr=tmeStatus!=='ok'?[
+    causaCritica?`Padronizar checklist/procedimento de campo para a causa recorrente ${causaCritica} (${topCause.fp+topCause.ou} casos), reduzindo o tempo de diagnóstico.`
+                :'Padronizar checklist/procedimento de campo para as causas mais recorrentes, reduzindo o tempo de diagnóstico.',
+    causaCritica?`Aproximar estoque de peças/kits de reparo específicos para ${causaCritica} das bases nos clusters mais impactados, reduzindo tempo de deslocamento/reposição.`
+                :'Revisar a disponibilidade de peças/kits de reparo nas bases dos clusters mais impactados, reduzindo tempo de deslocamento/reposição.'
+  ]:[];
+  const acoesList=[
+    acoesPrazo.length?`Prazo: ${acoesPrazo.join(' ')}`:'',
+    acoesMttr.length?`MTTR: ${acoesMttr.join(' ')}`:''
+  ].filter(Boolean);
+  const acaoTxt=metasOk
+    ?'Manter monitoramento de rotina; nenhuma ação corretiva necessária neste recorte.'
+    :(acoesList.length?acoesList.join('\n'):`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`);
+  const execTxt=metasOk
+    ?'Operação dentro das metas neste recorte — sem pontos críticos que exijam ação imediata da diretoria.'
+    :`Recomenda-se atenção prioritária ${focoPartes||'aos indicadores fora da meta'}, com plano de ação para reverter o quadro até o fechamento do período.`;
+  return[
+    `RELATÓRIO EXECUTIVO — ${tabTxt}${clTxt} — ${scopeTxt}`,
+    `Gerado em: ${now2()}`,
+    '',
+    `▸ PRAZO, OUTLIER E ${tl.toUpperCase()}`,
+    `Prazo: ${a.prazo.toFixed(1)}% (${recs.filter(r=>r.p===1).length}/${a.n} chamados${a.prazo<RDE_M89?' — '+((RDE_M89-a.prazo).toFixed(1))+' p.p. abaixo da meta':''}).`,
+    `Outlier: ${a.outlier.toFixed(1)}% (${recs.filter(r=>r.o===1).length} chamados${a.outlier>RDE_MOUT?' — '+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima do limite':''}).`,
+    `${tl} médio: ${a.tAvg.toFixed(2)}h (mediana ${a.tMed.toFixed(2)}h${a.tAvg>RDE_MTME?' — '+(a.tAvg-RDE_MTME).toFixed(2)+'h acima da meta':''}).`,
+    ...(clReport?[`Por cluster: ${clReport}.`]:[]),
+    '',
+    `▸ SEMANA CONTRA SEMANA (WoW)`,
+    rdeWoWReportTxt(allForWow||recs,tl),
+    '',
+    `▸ CLUSTER E CIDADE MAIS OFENSORES`,
+    worstCl&&worstCl.a.prazo<RDE_M89?`Cluster crítico: ${clNames[worstCl.cl]||worstCl.cl} com prazo de ${worstCl.a.prazo.toFixed(1)}% (${worstCl.a.n} chamados).`:'Nenhum cluster abaixo da meta de prazo neste recorte.',
+    ...(topCity&&topCity.score>0?[`Cidade mais ofensora: ${topCity.k} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.`]:[]),
+    '',
+    `▸ CAUSA DOMINANTE`,
+    topCause&&topCause.fp+topCause.ou>0?`${topCause.k} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.`:'Nenhuma causa concentrada neste recorte.',
+    '',
+    `▸ FCA — FATO, CAUSA E AÇÃO`,
+    `Fato: ${fatoTxt}`,
+    `Causa: ${causaTxt}`,
+    `Ação: ${acaoTxt}`,
+    '',
+    `▸ LEITURA EXECUTIVA`,
+    execTxt,
+  ].join('\n');
+}
 function renderRede(){
   if(!rdeBD.length&&!rdeAD.length)return;
   const recs=rdeGetDisplayRecs();
@@ -20436,99 +20566,7 @@ function renderRede(){
   // Executive Report
   const rptEl=document.getElementById('rde-report');
   if(rptEl&&a.n>0){
-    const scopeTxt=rdeGran==='all'?'Acumulado':(rdeGran==='w'?'Semana '+(rdePeriod.map(p=>rdeWname(p,rdeWMultiYear)).join('+')||''):(rdePeriod.length?rdePeriod.map(rdeMname).join('+'):''));
-    const clNames={'C':'MA CAP','I':'MA INT','P':'PI','N':'NORTE (PA/AM/AP)'};
-    const tabTxt=rdeTab==='AMBOS'?'Backbone + Acesso':rdeTab==='ACESSO'?'Acesso':'Backbone';
-    const clTxt=rdeCluster.length?` · ${rdeCluster.map(c=>clNames[c]||c).join('+')}`:'';
-    const prazoStatus=a.prazo>=RDE_M89?'ok':'bd',outlierStatus=a.outlier<=RDE_MOUT?'ok':'bd',tmeStatus=a.tAvg<=RDE_MTME?'ok':'bd';
-    // Best/worst cluster
-    const clEntries=clKeys.map(cl=>({cl,a:rdeAgg2(clMap[cl])})).filter(x=>x.a.n>0);
-    const worstCl=clEntries.sort((a,b)=>a.a.prazo-b.a.prazo)[0];
-    const bestCl=[...clEntries].sort((a,b)=>b.a.prazo-a.a.prazo)[0];
-    // Top city/cause
-    const topCity=topCities[0];
-    const topCause=top8[0];
-    const cityPct=topCity&&a.n?((topCity.fp+topCity.ou)/a.n*100).toFixed(1):0;
-    const causePct=topCause&&a.n?((topCause.fp+topCause.ou)/a.n*100).toFixed(1):0;
-    const clReport=clEntries.map(x=>`${clNames[x.cl]||x.cl} ${x.a.prazo.toFixed(1)}% (${x.a.n})`).join(', ');
-    /* Mesmo padrão de texto do Relatório Executivo Automático do B2B Encerrados
-       (renderExecReport): texto plano com seções "▸ TÍTULO", pensado pra ser copiado
-       (botão Copiar já existente em #rde-report-copy-btn) e colado em e-mail/WhatsApp —
-       antes disto o relatório da Rede era só HTML com <b>/<span> coloridos, sem padrão
-       nenhum com o resto do painel. Nenhum cálculo novo: só reescreve em texto plano os
-       mesmos dados já calculados acima (a.*, worstCl, topCity, topCause, clReport). */
-    const metasOk=prazoStatus==='ok'&&outlierStatus==='ok'&&tmeStatus==='ok';
-    const focoPartes=[
-      worstCl&&worstCl.a.prazo<RDE_M89?`ao cluster ${clNames[worstCl.cl]||worstCl.cl}`:'',
-      topCause&&(topCause.fp+topCause.ou)>0?`à causa ${topCause.k}`:''
-    ].filter(Boolean).join(' e ');
-    const fatoPartes=[
-      prazoStatus!=='ok'?`Prazo em ${a.prazo.toFixed(1)}% (${(RDE_M89-a.prazo).toFixed(1)} p.p. abaixo da meta de ${RDE_M89}%)`:'',
-      outlierStatus!=='ok'?`Outlier em ${a.outlier.toFixed(1)}% (${(a.outlier-RDE_MOUT).toFixed(1)} p.p. acima do limite de ${RDE_MOUT}%)`:'',
-      tmeStatus!=='ok'?`${tl} médio em ${a.tAvg.toFixed(2)}h (${(a.tAvg-RDE_MTME).toFixed(2)}h acima da meta de ${RDE_MTME}h)`:''
-    ].filter(Boolean);
-    const fatoTxt=fatoPartes.length?fatoPartes.join('; ')+'.':`Todos os indicadores (Prazo, Outlier e ${tl}) dentro da meta neste recorte.`;
-    /* Causa só cita cluster/causa como problema quando o indicador geral (metasOk) já está
-       fora da meta — senão o FCA fica contraditório: um subcluster pode ficar abaixo do alvo
-       mesmo com a média geral dentro da meta, e citar isso em "Causa" junto de um "Fato" que
-       diz que está tudo certo confundiria quem só lê o FCA. */
-    const causaPartes=metasOk?[]:[
-      worstCl&&worstCl.a.prazo<RDE_M89?`concentração de não-conformidade no cluster ${clNames[worstCl.cl]||worstCl.cl} (prazo de ${worstCl.a.prazo.toFixed(1)}% em ${worstCl.a.n} chamados)`:'',
-      topCause&&(topCause.fp+topCause.ou)>0?`recorrência da causa ${topCause.k} (${topCause.fp+topCause.ou} casos, ${causePct}% do total)`:''
-    ].filter(Boolean);
-    const causaTxt=causaPartes.length?causaPartes.join('; ')+'.':'Não se aplica — indicadores dentro do esperado, sem causa crítica concentrada.';
-    const clCritico=worstCl&&worstCl.a.prazo<RDE_M89?(clNames[worstCl.cl]||worstCl.cl):'';
-    const causaCritica=topCause&&(topCause.fp+topCause.ou)>0?topCause.k:'';
-    const acoesPrazo=prazoStatus!=='ok'?[
-      clCritico?`Priorizar atendimento por SLA no cluster ${clCritico}, com fila dedicada para chamados a menos de 2h do vencimento do prazo.`
-               :'Priorizar atendimento por SLA nos clusters com maior volume de chamados fora do prazo, com fila dedicada para chamados próximos do vencimento.',
-      clCritico?`Reforçar o dimensionamento de equipe técnica de campo no cluster ${clCritico} (prazo atual de ${worstCl.a.prazo.toFixed(1)}%, ${worstCl.a.n} chamados) para reduzir a fila de espera.`
-               :'Revisar o dimensionamento de equipe técnica de campo nos clusters mais impactados para reduzir a fila de espera.'
-    ]:[];
-    const acoesMttr=tmeStatus!=='ok'?[
-      causaCritica?`Padronizar checklist/procedimento de campo para a causa recorrente ${causaCritica} (${topCause.fp+topCause.ou} casos), reduzindo o tempo de diagnóstico.`
-                  :'Padronizar checklist/procedimento de campo para as causas mais recorrentes, reduzindo o tempo de diagnóstico.',
-      causaCritica?`Aproximar estoque de peças/kits de reparo específicos para ${causaCritica} das bases nos clusters mais impactados, reduzindo tempo de deslocamento/reposição.`
-                  :'Revisar a disponibilidade de peças/kits de reparo nas bases dos clusters mais impactados, reduzindo tempo de deslocamento/reposição.'
-    ]:[];
-    const acoesList=[
-      acoesPrazo.length?`Prazo: ${acoesPrazo.join(' ')}`:'',
-      acoesMttr.length?`MTTR: ${acoesMttr.join(' ')}`:''
-    ].filter(Boolean);
-    const acaoTxt=metasOk
-      ?'Manter monitoramento de rotina; nenhuma ação corretiva necessária neste recorte.'
-      :(acoesList.length?acoesList.join('\n'):`Priorizar plano de ação corretivo ${focoPartes||'nos indicadores fora da meta'} até o fechamento do período, com acompanhamento semanal da evolução.`);
-    const execTxt=metasOk
-      ?'Operação dentro das metas neste recorte — sem pontos críticos que exijam ação imediata da diretoria.'
-      :`Recomenda-se atenção prioritária ${focoPartes||'aos indicadores fora da meta'}, com plano de ação para reverter o quadro até o fechamento do período.`;
-    const rdeTexto=[
-      `RELATÓRIO EXECUTIVO — ${tabTxt}${clTxt} — ${scopeTxt}`,
-      `Gerado em: ${now2()}`,
-      '',
-      `▸ PRAZO, OUTLIER E ${tl.toUpperCase()}`,
-      `Prazo: ${a.prazo.toFixed(1)}% (${recs.filter(r=>r.p===1).length}/${a.n} chamados${a.prazo<RDE_M89?' — '+((RDE_M89-a.prazo).toFixed(1))+' p.p. abaixo da meta':''}).`,
-      `Outlier: ${a.outlier.toFixed(1)}% (${recs.filter(r=>r.o===1).length} chamados${a.outlier>RDE_MOUT?' — '+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima do limite':''}).`,
-      `${tl} médio: ${a.tAvg.toFixed(2)}h (mediana ${a.tMed.toFixed(2)}h${a.tAvg>RDE_MTME?' — '+(a.tAvg-RDE_MTME).toFixed(2)+'h acima da meta':''}).`,
-      ...(clReport?[`Por cluster: ${clReport}.`]:[]),
-      '',
-      `▸ SEMANA CONTRA SEMANA (WoW)`,
-      rdeWoWReportTxt(all,tl),
-      '',
-      `▸ CLUSTER E CIDADE MAIS OFENSORES`,
-      worstCl&&worstCl.a.prazo<RDE_M89?`Cluster crítico: ${clNames[worstCl.cl]||worstCl.cl} com prazo de ${worstCl.a.prazo.toFixed(1)}% (${worstCl.a.n} chamados).`:'Nenhum cluster abaixo da meta de prazo neste recorte.',
-      ...(topCity&&topCity.score>0?[`Cidade mais ofensora: ${topCity.k} com ${topCity.fp+topCity.ou} ocorrências (${cityPct}% do total) — ${topCity.fp} fora do prazo, ${topCity.ou} outlier.`]:[]),
-      '',
-      `▸ CAUSA DOMINANTE`,
-      topCause&&topCause.fp+topCause.ou>0?`${topCause.k} — ${topCause.fp+topCause.ou} casos (${causePct}% do total), sendo ${topCause.fp} fora do prazo e ${topCause.ou} outlier.`:'Nenhuma causa concentrada neste recorte.',
-      '',
-      `▸ FCA — FATO, CAUSA E AÇÃO`,
-      `Fato: ${fatoTxt}`,
-      `Causa: ${causaTxt}`,
-      `Ação: ${acaoTxt}`,
-      '',
-      `▸ LEITURA EXECUTIVA`,
-      execTxt,
-    ].join('\n');
+    const rdeTexto=rdeBuildReportText(recs,all);
     rptEl.innerHTML=`<pre id="rde-report-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">${eh(rdeTexto)}</pre>`;
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados para o período selecionado.</span>';}
   rdeRenderAtenuacao(recs);
@@ -22795,14 +22833,19 @@ function execRedeCasosDesvio(allForWow,semana,indicadorKey){
 function execRedeSnapshot(){
   const savedCl=rdeCluster,savedYear=rdeYear,savedGran=rdeGran,savedPeriod=rdePeriod,savedTab=rdeTab;
   try{
-    rdeTab='';
+    /* 'AMBOS' (não '' vazio): rdeTabFlat() trata os dois igual (qualquer valor que não
+       seja 'ACESSO'/'BACKBONE' vira "os dois combinados"), mas rdeBuildReportText() usa o
+       texto literal 'AMBOS' pra montar o título/rótulo do relatório ("Backbone + Acesso",
+       "TME/TMR") — com '' o relatório do Painel Executivo saía dizendo só "Backbone"/
+       "TMR", como se fosse só metade da base, quando na verdade são os 2 tipos somados. */
+    rdeTab='AMBOS';
     rdeCluster=selExecRedeCluster;
     rdeYear=selExecAno;
     if(selExecSemana.length){rdeGran='w';rdePeriod=selExecSemana;}
     else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes;}
     else{rdeGran='all';rdePeriod=[];}
     const all=rdeGetDisplayRecs();
-    if(!all.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
+    if(!all.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null,nativeReportTxt:null};
     const ag=rdeAgg2(all);
     /* WoW SEMPRE compara com a semana anterior (pedido do usuário): se uma Semana
        específica estiver selecionada, `all` já ficou restrito só a ela (pra baremo/
@@ -22828,7 +22871,13 @@ function execRedeSnapshot(){
       const diffSem=(semAtual!==null&&semAtual!==undefined&&semAnterior!==null&&semAnterior!==undefined)?semAtual-semAnterior:null;
       return{...i,status:execIndicatorStatus(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio:wRef?execRedeCasosDesvio(allForWow,wRef.semana,i.key):null};
     });
-    return{total:ag.n,indicadores,wow,wowRefIdx,semAtualLabel:wRef?(wRef.label||wRef.semana):null,semAnteriorLabel:wPrev?(wPrev.label||wPrev.semana):null,fca:execRedeFca(all,ag)};
+    /* Relatório nativo completo (mesmo texto que o Painel Rede mostraria com este
+       recorte) — pedido do usuário: cada subpainel do Painel Executivo reporta "o
+       relatório do subpainel completo com dados e FCA", não um resumo condensado.
+       Reaproveita rdeBuildReportText (extraída de renderRede) enquanto rdeGran/rdePeriod/
+       rdeTab/rdeCluster ainda estão trocados pro recorte do Painel Executivo. */
+    const nativeReportTxt=rdeBuildReportText(all,allForWow);
+    return{total:ag.n,indicadores,wow,wowRefIdx,semAtualLabel:wRef?(wRef.label||wRef.semana):null,semAnteriorLabel:wPrev?(wPrev.label||wPrev.semana):null,fca:execRedeFca(all,ag),nativeReportTxt};
   }finally{
     rdeCluster=savedCl;rdeYear=savedYear;rdeGran=savedGran;rdePeriod=savedPeriod;rdeTab=savedTab;
   }
@@ -22887,7 +22936,7 @@ function execEncSnapshot(){
     selCluster=selExecEncCluster;selEncCluster=[];
     selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
     const scope=encScope();
-    if(!scope.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
+    if(!scope.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null,nativeReportTxt:null};
     const st=encRuleStats(scope);
     /* WoW SEMPRE compara com a semana anterior (mesmo motivo do bloco Rede acima):
        recalcula sem a restrição de Semana (selWeek), só Ano+Mês+Cluster, senão uma
@@ -22914,7 +22963,12 @@ function execEncSnapshot(){
       }
       return{...i,status:execIndicatorStatus(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio};
     });
-    return{total:scope.length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execEncFca(scope,st)};
+    /* Relatório nativo completo (mesmo texto que o Painel B2B Encerrados mostraria com
+       este recorte) — mesmo motivo do bloco Rede acima. `scope` já é exatamente o `d` que
+       renderAllEnc() passaria pro renderExecReport nativo, só que filtrado pelo recorte do
+       Painel Executivo em vez do filtro ativo na tela do Encerrados. */
+    const nativeReportTxt=encBuildFullReportText(scope);
+    return{total:scope.length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execEncFca(scope,st),nativeReportTxt};
   }finally{
     selYear=saved.selYear;selMes=saved.selMes;selWeek=saved.selWeek;selCluster=saved.selCluster;
     selEncCluster=saved.selEncCluster;selEncAging=saved.selEncAging;selEncCausa=saved.selEncCausa;
@@ -22997,7 +23051,7 @@ function execB2cSnapshot(){
   try{
     selB2cCluster=selExecB2cCluster;selB2cAno=selExecAno;selB2cMes=selExecMes;selB2cSemana=selExecSemana;
     const inds=b2cComputeIndicators();
-    if(!inds.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null};
+    if(!inds.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null,nativeReportTxt:null};
     const wow=execB2cVolumeWoWSeries();
     const wowRefIdx=execWowReferenceIdx(wow,selExecSemana);
     const wRef=wowRefIdx>=0?wow[wowRefIdx]:null,wPrev=wowRefIdx>=1?wow[wowRefIdx-1]:null;
@@ -23021,7 +23075,16 @@ function execB2cSnapshot(){
         semAtual,semAnterior,diffSem,casosDesvio,
       };
     });
-    return{total:execB2cCombinedRows().length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execB2cFca(indicadores)};
+    /* Relatório nativo completo (mesmo texto que o Painel B2C mostraria com este
+       recorte) — mesmo motivo do bloco Rede acima. b2cBuildReportText() só lê
+       B2C_SUMMARY.indicators (sem parâmetro), então troca temporariamente por `inds`
+       (já calculado com o recorte do Painel Executivo) e restaura em seguida — mesmo
+       padrão "swap → calcula → restaura" já usado pros filtros. */
+    const savedIndicators=B2C_SUMMARY.indicators;
+    B2C_SUMMARY.indicators=inds;
+    const nativeReportTxt=b2cBuildReportText();
+    B2C_SUMMARY.indicators=savedIndicators;
+    return{total:execB2cCombinedRows().length,indicadores,wow,wowRefIdx,semAtualLabel:wRef?wRef.semana:null,semAnteriorLabel:wPrev?wPrev.semana:null,fca:execB2cFca(indicadores),nativeReportTxt};
   }finally{
     selB2cCluster=savedCl;selB2cAno=savedAno;selB2cMes=savedMes;selB2cSemana=savedSem;
   }
@@ -23245,6 +23308,35 @@ function execRenderBlock(prefix,snap){
   const insEl=document.getElementById('exec-wow-insight-'+prefix);
   if(insEl)insEl.textContent=execWoWInsightTxt(snap.wow,snap.wowRefIdx);
   execRenderWowChart('exec-wow-ch-'+prefix,snap.wow,snap.wowRefIdx);
+  execRenderSubReport('exec-report-'+prefix,snap.nativeReportTxt);
+}
+/* Relatório Executivo Automático NATIVO de cada subpainel (Rede/B2B Encerrados/B2C),
+   dentro da própria aba do Painel Executivo — a pedido do usuário: "reportará o
+   relatório do subpainel completo com dados e FCA", não o resumo condensado de
+   execBlockReportLines (esse resumo continua existindo só no relatório consolidado do
+   final da página). `texto` já vem pronto de snap.nativeReportTxt (rdeBuildReportText/
+   encBuildFullReportText/b2cBuildReportText, chamados dentro do snapshot de cada bloco
+   com o recorte do Painel Executivo). */
+function execRenderSubReport(boxId,texto){
+  const el=document.getElementById(boxId);if(!el)return;
+  if(!texto){el.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados no filtro atual.</span>';return;}
+  el.innerHTML='<pre id="'+boxId+'-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(texto)+'</pre>';
+}
+function execCopiarRelatorioSub(boxId,btn){
+  const rpt=document.getElementById(boxId);
+  if(!rpt)return;
+  const texto=(rpt.innerText||rpt.textContent||'').trim();
+  if(!texto)return;
+  const orig=btn?btn.innerHTML:'';
+  const done=ok=>{if(!btn)return;btn.innerHTML=ok?'<i class="ti ti-check" style="font-size:11px;vertical-align:-1px"></i> Copiado!':'<i class="ti ti-x" style="font-size:11px;vertical-align:-1px"></i> Erro';setTimeout(()=>{btn.innerHTML=orig;},2200);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(()=>done(true)).catch(()=>done(false));
+  }else{
+    const ta=document.createElement('textarea');ta.value=texto;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done(true);}catch(e){done(false);}
+    document.body.removeChild(ta);
+  }
 }
 /* ---------- Relatório Executivo (mesmo padrão de texto plano "▸ SEÇÃO" já usado em
    Rede/B2B Encerrados/B2C — ver rdeRenderCard()/renderExecReport()/b2cBuildReportText())
@@ -23304,16 +23396,26 @@ function execBuildReportText(redeSnap,encSnap,b2cSnap){
     execTxt,
   ].join('\n');
 }
+/* Ids "exec-global-report*" (não "exec-report*"): bug real achado nesta rodada — o
+   B2B Encerrados JÁ usava "exec-report"/"exec-report-text" pro seu próprio Relatório
+   Executivo nativo (renderExecReport, dentro do painel Encerrados) desde antes do Painel
+   Executivo existir, e rptBuildEncerrados() (Central de Relatórios/PPT) também lê
+   "exec-report-text" esperando ser o do Encerrados. document.getElementById sempre pega o
+   PRIMEIRO elemento com aquele id no documento — como o box do Painel Executivo vinha
+   antes no HTML, o relatório nativo do Encerrados nunca aparecia no lugar certo (escrevia
+   por cima do box do Painel Executivo) e a Central de Relatórios podia pegar o texto
+   errado. Renomeado só o lado do Painel Executivo pra não quebrar os dois consumidores
+   mais antigos. */
 function execRenderReport(redeSnap,encSnap,b2cSnap){
-  const el=document.getElementById('exec-report');if(!el)return;
+  const el=document.getElementById('exec-global-report');if(!el)return;
   if(!redeSnap.total&&!encSnap.total&&!b2cSnap.total){
     el.innerHTML='<span style="color:var(--tx3);font-size:11px">Carregue bases em Rede, B2B Encerrados ou B2C para gerar o relatório automático.</span>';
     return;
   }
-  el.innerHTML='<pre id="exec-report-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(execBuildReportText(redeSnap,encSnap,b2cSnap))+'</pre>';
+  el.innerHTML='<pre id="exec-global-report-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(execBuildReportText(redeSnap,encSnap,b2cSnap))+'</pre>';
 }
 function execCopiarRelatorio(btn){
-  const rpt=document.getElementById('exec-report');
+  const rpt=document.getElementById('exec-global-report');
   if(!rpt)return;
   const texto=(rpt.innerText||rpt.textContent||'').trim();
   if(!texto)return;
