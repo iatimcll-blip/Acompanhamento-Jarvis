@@ -1517,9 +1517,10 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rede-cnt{display:inline-block;background:rgba(0,0,0,.12);border-radius:99px;padding:0 5px;font-size:9px;font-weight:700;min-width:16px;text-align:center;margin-left:3px;line-height:15px;vertical-align:middle}
 .rede-sgbtn.on .rede-cnt{background:rgba(255,255,255,.22)}
 .rede-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
-/* #rde-kpis tem 5 cartões (MTTR, Projeção MTTR, Prazo, Outlier, TME/TMR) — todos numa linha
-   só em telas largas; volta a quebrar em telas menores pra não espremer os números. */
-#rde-kpis{grid-template-columns:repeat(5,1fr)}
+/* #rde-kpis tem 4 cartões (MTTR, Prazo, Outlier, TME/TMR) — todos numa linha só em telas
+   largas; volta a quebrar em telas menores pra não espremer os números. --rde-kpi-cols é
+   setado via JS (renderRede) caso o número de cartões volte a mudar no futuro. */
+#rde-kpis{grid-template-columns:repeat(var(--rde-kpi-cols,4),1fr)}
 @media(max-width:1180px){#rde-kpis{grid-template-columns:repeat(3,1fr)}}
 .rede-kpi-card{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);padding:16px}
 .rede-kpi-card .rkl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:4px}
@@ -19543,7 +19544,17 @@ function rdeRowToRede(r,sheet){
      ao trocar pra fechamento. Sem fechamento (chamado ainda aberto), cai na abertura como
      aproximação — melhor que descartar a linha, e se corrige sozinho no próximo upload
      depois que o chamado fechar. */
-  const closedAt=rdeParseDateBR(rdeGv(r,['DATA_FECHAMENTO','data fechamento','fechamento','encerramento','data encerramento','data fim']))||openedAt;
+  const closedAtRaw=rdeParseDateBR(rdeGv(r,['DATA_FECHAMENTO','data fechamento','fechamento','encerramento','data encerramento','data fim']));
+  const closedAt=closedAtRaw||openedAt;
+  /* MTTR usa o tempo real decorrido (Fechamento − Abertura, em horas corridas), não o
+     campo TME/TMR da planilha: TME/TMR já vem com ajuste de SLA (ex.: pausa fora do
+     horário comercial) e por isso não bate com o MTTR de referência da Alloha (mesma
+     base-fonte). Confirmado numericamente: Setembro/2026 deu 8,50h de elapsed real contra
+     8,64h da Alloha (diferença de ~1,6%, dentro do esperado por arredondamento), enquanto
+     a média do campo TME/TMR deu só 5,79h — bem mais longe. O campo TME/TMR em si continua
+     correto e é o que o card "TME/TMR médio" e o Prazo/Outlier usam (já validados exatos
+     contra a Alloha), só o MTTR passa a usar este cálculo à parte. */
+  const elapsedH=(openedAt&&closedAtRaw&&closedAtRaw>=openedAt)?(closedAtRaw-openedAt)/36e5:null;
   const mes=rdeGv(r,['mes','mês','competencia','competência','periodo','período']);
   const ano=rdeGv(r,['ano']);
   const cl=rdeClusterFromRow(r);
@@ -19565,7 +19576,7 @@ function rdeRowToRede(r,sheet){
     const cli=rdeNum(rdeGv(r,['CLIENTES AFETADOS','clientes afetados','clientes','cliente afetado','impactados','afetados']));
     const motivo=rdeLabelIndex(rdeM.mo,rdeGv(r,['CAUSA_SIMPLES','ORIGEM','CLASSE_CABO','motivo','causa','causa raiz','falha','tipo encerramento']));
     const detail=rdeCompactDetail(r,'Acesso',cl,mi,wi,prazo,out,tempo,rdeM.mo[motivo]||'Acesso',cli);
-    return{kind:'ac',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,cli,motivo,detail]};
+    return{kind:'ac',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,cli,motivo,detail,elapsedH]};
   }
   // Backbone: TMR=col R, Prazo flag=col S (1=prazo ok), Outlier flag=col T (1=outlier) — leitura por posição de coluna tem prioridade sobre o nome do cabeçalho
   const colR=rdeColVal(r,'R'),colS=rdeColVal(r,'S'),colT=rdeColVal(r,'T');
@@ -19576,7 +19587,7 @@ function rdeRowToRede(r,sheet){
   const out=colT!==null?Number(colT)==1:(outRaw!==''?rdeBoolish(outRaw):(tempo>24));
   const causa=rdeLabelIndex(rdeM.ca,rdeGv(r,['[INCIDENTE - TRECHO DOWN] MOTIVO DA FALHA (REDE)','MOTIVO DA FALHA (REDE)','FALHA','motivo','causa','causa raiz','tipo encerramento']));
   const detail=rdeCompactDetail(r,'Backbone',cl,mi,wi,prazo,out,tempo,rdeM.ca[causa]||'Backbone',0);
-  return{kind:'bb',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,causa,detail]};
+  return{kind:'bb',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,causa,detail,elapsedH]};
 }
 function rdeApplyRows(rows,fileName){
   const bb=[],ac=[];
@@ -19797,7 +19808,7 @@ function rdeRenderWow(all){
   const bgColors=vals.map(v=>v===null?'rgba(142,142,147,.35)':(v>=0?'#34c759':'#ff3b30'));
   rdeWowCh=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Variação % vs. semana anterior',data:vals,backgroundColor:bgColors,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y===null?'Sem semana anterior':'Semana '+c.label+': '+(c.parsed.y>=0?'+':'')+c.parsed.y+'% vs. anterior'}}},scales:{y:{grid:{color:gdC},ticks:{callback:v=>v+'%',color:txC}},x:{grid:{display:false},ticks:{color:txC,maxRotation:45,autoSkip:false,font:{size:9}}}}}});
 }
-function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
+function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';const eh=r[isAC?9:8];return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,elapsedH:(typeof eh==='number'&&eh>=0)?eh:null,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
 function rdeTabFlat(){
   let out;
   if(rdeTab==='ACESSO')out=rdeToFlat(rdeAD,'AC');
@@ -19854,29 +19865,20 @@ function rdeMttrFlat(mk){
   out=out.filter(r=>rdeClFilter(r.cl));
   return out.filter(r=>r.m===mk);
 }
-/* MTTR = tempo médio de reparo do mês (o selecionado no filtro, ou o mês civil atual quando
-   nenhum mês específico está selecionado), unificando TME (Acesso) e TMR (Backbone) numa
-   única média — os chamados marcados como expurgo (rdeExpurgo) são excluídos tanto do
+/* MTTR = tempo real decorrido entre Abertura e Fechamento (elapsedH, calculado em
+   rdeRowToRede), em horas corridas, do mês em questão (o selecionado no filtro, ou o mês
+   civil atual quando nenhum mês específico está selecionado) — unifica Acesso e Backbone
+   numa única média. Os chamados marcados como expurgo (rdeExpurgo) são excluídos tanto do
    somatório quanto da contagem, exatamente como pedido: "quando estiver com a opção
-   expurgo marcada o TME ou TMR não entram no cálculo do MTTR". Quando o mês em questão É o
-   mês civil corrente, a "projeção" é o próprio MTTR calculado com os chamados fechados até
-   agora — a leitura é "se o ritmo atual se mantiver, essa é a média esperada no fechamento
-   do mês" (não há como projetar uma média por volume/dias sem inventar peso arbitrário:
-   multiplicar dias já cancela matematicamente numerador e denominador e devolve o mesmo
-   valor). Para um mês JÁ FECHADO (selecionado no filtro), não existe "projeção" — o mês já
-   acabou, então diaAtual=diasNoMes (100% decorrido) e o card de projeção na tela mostra o
-   valor final em vez de uma projeção. */
+   expurgo marcada o TME ou TMR não entram no cálculo do MTTR". */
 function rdeComputeMttr(){
   const mk=rdeMttrMonthKey(),isCurrent=mk===rdeCurrentMonthKey();
   const flat=rdeMttrFlat(mk);
   const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
   const expurgados=flat.length-validos.length;
-  const ts=validos.map(r=>r.t).filter(t=>t>0);
+  const ts=validos.map(r=>r.elapsedH).filter(t=>t!==null&&t>0);
   const avg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;
-  const[y,mo]=mk.split('-').map(Number);
-  const diasNoMes=y&&mo?new Date(y,mo,0).getDate():0;
-  const diaAtual=isCurrent?new Date().getDate():diasNoMes;
-  return{n:validos.length,total:flat.length,expurgados,avg:+avg.toFixed(2),diaAtual,diasNoMes,mk,isCurrent};
+  return{n:validos.length,total:flat.length,expurgados,avg:+avg.toFixed(2),mk,isCurrent};
 }
 function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
@@ -20319,8 +20321,13 @@ function renderRede(){
     const pGap=a.prazo>=RDE_M89?'✓ dentro da meta':'▼ '+(RDE_M89-a.prazo).toFixed(1)+' p.p. abaixo';
     const oGap=a.outlier<=RDE_MOUT?'✓ dentro da meta':'▲ '+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima';
     const tGap=a.tAvg<=RDE_MTME?'✓ dentro da meta':'▲ '+(a.tAvg-RDE_MTME).toFixed(2)+'h acima';
-    // MTTR + Projeção do MTTR entram nos mesmos 5 cartões da linha, à esquerda dos 3 já
-    // existentes (Prazo/Outlier/TME-TMR) — mesmo visual (rkl/rkv/rkmeta/rkgap/rkbar).
+    // MTTR entra nos mesmos 4 cartões da linha, à esquerda dos 3 já existentes
+    // (Prazo/Outlier/TME-TMR) — mesmo visual (rkl/rkv/rkmeta/rkgap/rkbar). O card de
+    // "Projeção MTTR" foi retirado: ele sempre mostrava o mesmíssimo valor do card MTTR
+    // (não há como projetar uma média por volume/dias sem inventar peso arbitrário —
+    // multiplicar dias já cancela matematicamente numerador e denominador e devolve o
+    // mesmo valor), então era um card 100% duplicado, só com um rótulo diferente.
+    kpiEl.style.setProperty('--rde-kpi-cols','4');
     const m=rdeComputeMttr();
     const mCls=m.n?(m.avg<=RDE_MTME?'ok':m.avg<=RDE_MTME*1.5?'wn':'bd'):'';
     const mGap=m.n?(m.avg<=RDE_MTME?'✓ dentro da meta':'▲ '+(m.avg-RDE_MTME).toFixed(2)+'h acima'):'';
@@ -20329,11 +20336,8 @@ function renderRede(){
     const mesNome=mkY&&mkM?new Date(mkY,mkM-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}):'';
     const mttrLabel=m.isCurrent?'MTTR do mês':'MTTR — '+mesNome;
     const mttrMeta=m.n?(m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+' · meta ≤'+RDE_MTME+'h'):('Sem chamados em '+mesNome+' ainda');
-    const projLabel=m.isCurrent?'Projeção MTTR (fim do mês)':'MTTR (mês fechado)';
-    const projMeta=m.isCurrent?(m.n?('Ritmo até o dia '+m.diaAtual+' de '+m.diasNoMes+' de '+mesNome):''):(m.n?'Mês encerrado — valor final, sem projeção':'');
     kpiEl.innerHTML=
       `<div class="rede-kpi-card"><div class="rkl">${eh(mttrLabel)}</div><div class="rkv ${mCls}">${m.n?m.avg.toFixed(2)+'h':'–'}</div><div class="rkmeta">${mttrMeta}</div><div class="rkgap ${mCls}">${mGap}</div>${mBar}</div>`+
-      `<div class="rede-kpi-card"><div class="rkl">${eh(projLabel)}</div><div class="rkv ${mCls}">${m.n?m.avg.toFixed(2)+'h':'–'}</div><div class="rkmeta">${projMeta}</div><div class="rkgap ${mCls}">${mGap}</div>${mBar}</div>`+
       `<div class="rede-kpi-card"><div class="rkl">Prazo</div><div class="rkv ${pCls}">${a.prazo.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.p===1).length} de ${a.n} · meta ≥${RDE_M89}%</div><div class="rkgap ${pCls}">${pGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.prazo,100).toFixed(0)}%;background:${c3(pCls)}"></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">Outlier</div><div class="rkv ${oCls}">${a.outlier.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.o===1).length} de ${a.n} · meta ≤${RDE_MOUT}%</div><div class="rkgap ${oCls}">${oGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.outlier/10*100,100).toFixed(0)}%;background:${c3(oCls)}"></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">${tl} médio</div><div class="rkv ${tCls}">${a.tAvg.toFixed(2)}h</div><div class="rkmeta">mediana ${a.tMed.toFixed(2)}h · meta ≤${RDE_MTME}h</div><div class="rkgap ${tCls}">${tGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.tAvg/RDE_MTME/2*100,100).toFixed(0)}%;background:${c3(tCls)}"></div></div></div>`;
