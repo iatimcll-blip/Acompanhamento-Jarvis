@@ -427,26 +427,42 @@ async function extractSubstatus(page, ticket) {
     // ── Coleta o Substatus por todas as estratégias, sem retornar ainda ──────────
     // O Status da página é sempre conferido depois: se indicar Fechado/Cancelado,
     // tem prioridade sobre o Substatus encontrado (regra de negócio).
+    //
+    // Retry (achado investigando o ticket #07092026-44785, 2026-09-14): o MESMO
+    // chamado, lido 2x em execuções diferentes com poucos minutos de intervalo, deu
+    // resultados diferentes — 1a vez "Substatus não encontrado" (caiu pro Status),
+    // 2a vez achou certo "PENDENTE AGENDAMENTO". Não é bug de estrutura de página,
+    // é corrida: o <select> de Substatus às vezes ainda não terminou de carregar
+    // (ex.: dropdown dependente do Status, populado por uma chamada assíncrona) nos
+    // 2s fixos de espera após o page.goto. As estratégias 2-6 abaixo rodam dentro de
+    // um loop de até 3 tentativas (com espera entre elas) antes de desistir e cair
+    // pro Status/Fechado — cada `if(!sub)` já é idempotente, então repetir o bloco
+    // inteiro só relê a página de novo, sem duplicar nenhum efeito colateral.
     let sub = null;
-
-    // Estratégia 2: seletor personalizado via .env
-    if (ATRIX_SUB_SEL) {
-      sub = await selText(page, ATRIX_SUB_SEL);
-      if (sub) dbg(`[${tid}] override selector: ${sub}`);
-    }
-
-    // Estratégia 3: seletores nominais (name/id/class com "substatus")
-    if (!sub) {
-      for (const sel of SELECTORS) {
-        const found = await selText(page, sel);
-        if (found) { sub = found; dbg(`[${tid}] via "${sel}": ${found}`); break; }
+    for (let attempt = 1; attempt <= 3 && !sub; attempt++) {
+      if (attempt > 1) {
+        dbg(`[${tid}] Substatus não encontrado na tentativa ${attempt - 1} — aguardando e tentando de novo.`);
+        await page.waitForTimeout(2500);
       }
-    }
 
-    // Estratégia 4: buscar célula/label com texto "Substatus" e select adjacente
-    // NÃO usa fallback posicional (ss[1]) pois capta campos errados (técnico, prioridade)
-    if (!sub) {
-      sub = await page.evaluate((blanks) => {
+      // Estratégia 2: seletor personalizado via .env
+      if (ATRIX_SUB_SEL) {
+        sub = await selText(page, ATRIX_SUB_SEL);
+        if (sub) dbg(`[${tid}] override selector: ${sub}`);
+      }
+
+      // Estratégia 3: seletores nominais (name/id/class com "substatus")
+      if (!sub) {
+        for (const sel of SELECTORS) {
+          const found = await selText(page, sel);
+          if (found) { sub = found; dbg(`[${tid}] via "${sel}": ${found}`); break; }
+        }
+      }
+
+      // Estratégia 4: buscar célula/label com texto "Substatus" e select adjacente
+      // NÃO usa fallback posicional (ss[1]) pois capta campos errados (técnico, prioridade)
+      if (!sub) {
+        sub = await page.evaluate((blanks) => {
         const optText = el => {
           if (!el || el.tagName !== 'SELECT') return null;
           const opt = el.options[el.selectedIndex];
@@ -533,6 +549,7 @@ async function extractSubstatus(page, ticket) {
       }, [...BLANK_VALUES]);
       if (sub) dbg(`[${tid}] via texto solto "Substatus:": ${sub}`);
     }
+    } // fim do loop de retry (attempt)
 
     // Regra 3: o Substatus, quando encontrado, sempre prevalece — nenhuma outra
     // informação (Status incluído) o sobrescreve.
