@@ -346,6 +346,18 @@ async function extractSubstatus(page, ticket) {
       // espaço interno ("Sub Status") não batia contra o alvo "substatus" antes desta
       // correção, já que só espaços/pontuação no FINAL do texto eram removidos.
       const normLabel = t => t.toLowerCase().replace(/[-\s:*]/g, '');
+      // Bug real (ticket #07092026-44785, reportado pelo usuário): Status/Substatus/
+      // "Pendente até" no Atrix ficam na MESMA linha/contêiner (3 campos lado a lado).
+      // `row.querySelector('select')` sempre devolve o PRIMEIRO select daquele contêiner
+      // em ordem de documento — pro rótulo "Status" (1º campo da linha) isso acerta por
+      // coincidência, mas a mesma técnica usada pra "Substatus" (2º campo) também
+      // devolvia o select do Status, porque ele vem antes no HTML. Corrigido pra só
+      // aceitar o select mais próximo que vem DEPOIS do próprio rótulo no documento.
+      const selectAfter = (cell, container) => {
+        const sels = Array.from(container.querySelectorAll('select'))
+          .filter(s => cell.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return sels[0] || null;
+      };
 
       // 1. Rótulo/célula "Status" com select adjacente (mesma estrutura do Substatus)
       for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
@@ -359,8 +371,7 @@ async function extractSubstatus(page, ticket) {
         }
         const row = cell.closest('tr,div,fieldset,dl,form');
         if (row) {
-          const sel = row.querySelector('select');
-          const t = optText(sel);
+          const t = optText(selectAfter(cell, row));
           if (t) return t;
         }
       }
@@ -435,6 +446,19 @@ async function extractSubstatus(page, ticket) {
         // posição — "Substatus *", "Sub-Status:", "Sub Status" e "Substatus" casam igual.
         const normLabel = t => t.toLowerCase().replace(/[-\s:*]/g, '');
 
+        // Bug real (ticket #07092026-44785): Status/Substatus/"Pendente até" ficam na
+        // MESMA linha (3 campos lado a lado, Status vem primeiro). `row.querySelector
+        // ('select')` sempre devolvia o PRIMEIRO select do contêiner — ou seja, o select
+        // do Status, não o do Substatus — fazendo o painel mostrar "Em espera" (Status)
+        // mesmo com o Substatus ("PENDENTE AGENDAMENTO") preenchido na página. Corrigido
+        // pra só aceitar o select mais próximo que vem DEPOIS do próprio rótulo
+        // "Substatus" no documento, nunca um select de um campo anterior na mesma linha.
+        const selectAfter = (cell, container) => {
+          const sels = Array.from(container.querySelectorAll('select'))
+            .filter(s => cell.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
+          return sels[0] || null;
+        };
+
         // Percorrer td, th, span, div, label, dt que contenham somente "Substatus"
         for (const cell of document.querySelectorAll('td,th,span,div,label,dt')) {
           if (normLabel(cell.textContent) !== 'substatus') continue;
@@ -446,11 +470,10 @@ async function extractSubstatus(page, ticket) {
             const t = optText(sel);
             if (t) return t;
           }
-          // Select dentro da linha/container pai
+          // Select dentro da linha/container pai — só o que vem depois do rótulo
           const row = cell.closest('tr,div,fieldset,dl,form');
           if (row) {
-            const sel = row.querySelector('select');
-            const t = optText(sel);
+            const t = optText(selectAfter(cell, row));
             if (t) return t;
           }
         }
