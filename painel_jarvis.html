@@ -19893,15 +19893,25 @@ function rdeMttrFlat(mk){
    civil atual quando nenhum mês específico está selecionado) — unifica Acesso e Backbone
    numa única média. Os chamados marcados como expurgo (rdeExpurgo) são excluídos tanto do
    somatório quanto da contagem, exatamente como pedido: "quando estiver com a opção
-   expurgo marcada o TME ou TMR não entram no cálculo do MTTR". */
+   expurgo marcada o TME ou TMR não entram no cálculo do MTTR".
+   Limiar RDE_MTTR_MIN_H (15min=0,25h): chamados fechados quase instantaneamente após
+   aberto (prováveis duplicidade/erro de lançamento, não reparo real) ficam de fora do
+   MTTR — achado comparando contra a base oficial em 2 meses independentes: SEM esse
+   corte, Agosto/2026 dava 8,39h (oficial 8,63h, -2,8%) e Setembro/2026 dava 8,50h
+   (oficial 8,64h, -1,6%); a distribuição real de ambos os meses tem uma lacuna natural
+   bem em torno de 15min (nenhum chamado entre ~0,25h e ~0,37h nos dois meses), e cortando
+   exatamente aí os dois batem quase exato: Agosto 8,63h (diff -0,004h) e Setembro 8,67h
+   (diff +0,03h) — evidência forte de que é essa mesma regra que a base oficial usa. */
+const RDE_MTTR_MIN_H=0.25;
 function rdeComputeMttr(){
   const mk=rdeMttrMonthKey(),isCurrent=mk===rdeCurrentMonthKey();
   const flat=rdeMttrFlat(mk);
   const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
   const expurgados=flat.length-validos.length;
-  const ts=validos.map(r=>r.elapsedH).filter(t=>t!==null&&t>0);
+  const ts=validos.map(r=>r.elapsedH).filter(t=>t!==null&&t>RDE_MTTR_MIN_H);
+  const instantaneos=validos.length-ts.length;
   const avg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;
-  return{n:validos.length,total:flat.length,expurgados,avg:+avg.toFixed(2),mk,isCurrent};
+  return{n:ts.length,total:flat.length,expurgados,instantaneos,avg:+avg.toFixed(2),mk,isCurrent};
 }
 function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
@@ -20358,7 +20368,7 @@ function renderRede(){
     const[mkY,mkM]=(m.mk||'').split('-').map(Number);
     const mesNome=mkY&&mkM?new Date(mkY,mkM-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}):'';
     const mttrLabel=m.isCurrent?'MTTR do mês':'MTTR — '+mesNome;
-    const mttrMeta=m.n?(m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+' · meta ≤'+RDE_MTME+'h'):('Sem chamados em '+mesNome+' ainda');
+    const mttrMeta=m.n?(m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+(m.instantaneos?' · '+m.instantaneos+' fechado'+(m.instantaneos!==1?'s':'')+' em <15min (ignorado'+(m.instantaneos!==1?'s':'')+')':'')+' · meta ≤'+RDE_MTME+'h'):('Sem chamados em '+mesNome+' ainda');
     kpiEl.innerHTML=
       `<div class="rede-kpi-card"><div class="rkl">${eh(mttrLabel)}</div><div class="rkv ${mCls}">${m.n?m.avg.toFixed(2)+'h':'–'}</div><div class="rkmeta">${mttrMeta}</div><div class="rkgap ${mCls}">${mGap}</div>${mBar}</div>`+
       `<div class="rede-kpi-card"><div class="rkl">Prazo</div><div class="rkv ${pCls}">${a.prazo.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.p===1).length} de ${a.n} · meta ≥${RDE_M89}%</div><div class="rkgap ${pCls}">${pGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.prazo,100).toFixed(0)}%;background:${c3(pCls)}"></div></div></div>`+
