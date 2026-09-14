@@ -19535,11 +19535,20 @@ function rdeRowToRede(r,sheet){
   const hasAcessoCols=cols.has('TME')||cols.has('CLIENTESAFETADOS');
   const isAC=hasTmr?false:hasAcessoCols?true:tipo.includes('acesso');
   const openedAt=rdeParseDateBR(rdeGv(r,['DATA_ABERTURA','data abertura','abertura','data']));
+  /* Competência de mês/semana usa DATA_FECHAMENTO (fechamento), não abertura — bug real
+     encontrado comparando a base anexada contra o relatório de referência da Alloha
+     (mesma base-fonte): um chamado aberto em agosto mas fechado em setembro contava em
+     agosto no Jarvis, mas em setembro na Alloha — a competência oficial da empresa é pelo
+     fechamento. Confirmado batendo exatamente (99 chamados, 72,7% prazo, 20,2% outlier)
+     ao trocar pra fechamento. Sem fechamento (chamado ainda aberto), cai na abertura como
+     aproximação — melhor que descartar a linha, e se corrige sozinho no próximo upload
+     depois que o chamado fechar. */
+  const closedAt=rdeParseDateBR(rdeGv(r,['DATA_FECHAMENTO','data fechamento','fechamento','encerramento','data encerramento','data fim']))||openedAt;
   const mes=rdeGv(r,['mes','mês','competencia','competência','periodo','período']);
   const ano=rdeGv(r,['ano']);
   const cl=rdeClusterFromRow(r);
-  const mi=rdeMonthIndex(mes&&ano?`${ano}-${mes}`:(mes||openedAt));
-  const wi=rdeWeekIndex(rdeGv(r,['semana','week','periodo semanal','período semanal'])||openedAt);
+  const mi=rdeMonthIndex(mes&&ano?`${ano}-${mes}`:(mes||closedAt));
+  const wi=rdeWeekIndex(rdeGv(r,['semana','week','periodo semanal','período semanal'])||closedAt);
   if(isAC){
     /* Acesso: TME=col R, Prazo flag=col P PRAZO_SEM_PARADA_RELOGIO (1=no prazo, 0=fora do
        prazo), Outlier flag=col Q OUTLIER_SEM_PARADA_RELOGIO (1=outlier) — referência
