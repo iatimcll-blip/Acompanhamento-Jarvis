@@ -10539,7 +10539,15 @@ function safeUrl(v){const raw=String(v||'').trim();if(!raw)return'';try{const u=
 function bestLink(...vals){for(const v of vals){const u=safeUrl(v);if(u)return u}return''}
 function gv(r,ns){for(const n of ns)if(r[n]!==undefined&&r[n]!=='')return r[n];const m=Object.fromEntries(Object.keys(r).map(k=>[nk(k),k]));for(const n of ns){const k=m[nk(n)];if(k&&r[k]!==undefined&&r[k]!=='')return r[k]}return''}
 function colVal(r,idx,ns){const byName=gv(r,ns);if(byName!==undefined&&byName!==null&&byName!=='')return byName;return Object.values(r)[idx]??''}
-function normMopByCity(uf,cidade){const u=String(uf||'').toUpperCase().trim(),c=nk(cidade);if(u==='MA'){if(c.includes('SAOLUIS')||c.includes('PACODOLUMIAR')||c.includes('RIBAMAR'))return'SLN MA';return'GIGA+ MA'}if(u==='PI')return'GIGA+ PI';if(u==='PA'){if(c.includes('SANTAREM')||c.includes('ALMEIRIM'))return'ADX';if(c.includes('BELEM')||c.includes('ANANINDEUA'))return'SLN PA';return'SLN PA'}if(u==='AM'||u==='AP')return'ADX';return''}
+/* c==='SAOLUIS'/c==='SANTAREM' (comparação exata, não .includes()): bug real
+   encontrado numa auditoria — "São Luís Gonzaga do Maranhão" (município distinto, no
+   interior) normaliza pra "SAOLUISGONZAGADOMARANHAO", que CONTÉM "SAOLUIS" como
+   prefixo, então .includes('SAOLUIS') classificava esse município errado como capital
+   (SLN MA/MA CAP); mesma coisa com "Santarém Novo" (PA, região de Belém) caindo como a
+   OUTRA Santarém (região ADX). Os demais .includes() desta função (RIBAMAR/
+   PACODOLUMIAR/ALMEIRIM/BELEM/ANANINDEUA) continuam de propósito — são sufixo/prefixo
+   de nomes maiores sem colisão conhecida (ex.: "São José de Ribamar"). */
+function normMopByCity(uf,cidade){const u=String(uf||'').toUpperCase().trim(),c=nk(cidade);if(u==='MA'){if(c==='SAOLUIS'||c.includes('PACODOLUMIAR')||c.includes('RIBAMAR'))return'SLN MA';return'GIGA+ MA'}if(u==='PI')return'GIGA+ PI';if(u==='PA'){if(c==='SANTAREM'||c.includes('ALMEIRIM'))return'ADX';if(c.includes('BELEM')||c.includes('ANANINDEUA'))return'SLN PA';return'SLN PA'}if(u==='AM'||u==='AP')return'ADX';return''}
 function fmtMop(v){const raw=String(v||'').trim().replace(/\s+/g,' ');const up=raw.toUpperCase(),k=up.replace(/\s+/g,'');if(k==='MACAP')return'MA CAP';if(k==='MAINT')return'MA INT';if(k==='PICAP')return'PI CAP';if(k==='PIINT')return'PI INT';if(k==='PACAP')return'PA CAP';if(k==='PAINT')return'PA INT';if(k==='AP/AM'||k==='APAM')return'AP / AM';if(k==='GIGA+PI'||k==='GIGAPI')return'GIGA+ PI';if(k==='GIGA+MA'||k==='GIGAMA')return'GIGA+ MA';if(k==='SLNMA')return'SLN MA';if(k==='SLNPA')return'SLN PA';if(k==='ADX')return'ADX';return up||''}
 function iMop(uf,reg){return normMopByCity(uf,'')||''}
 function cnt(arr,key){const r={};arr.forEach(d=>{if(d[key])r[d[key]]=(r[d[key]]||0)+1});return r}
@@ -10555,9 +10563,10 @@ function calcSemana(d){if(!d||isNaN(d))return'';const dt=new Date(Date.UTC(d.get
 function normSemana(s){return s?s.replace(/^[Ss](\d+)$/,(_,n)=>'S'+String(n).padStart(2,'0')):s}
 function normClusterByCity(uf,cidade){
   const u=String(uf||'').toUpperCase().trim(),c=nk(cidade);
-  if(u==='MA'){return(c.includes('SAOLUIS')||c.includes('PACODOLUMIAR')||c.includes('RIBAMAR'))?'MA CAP':'MA INT'}
+  // c==='SAOLUIS'/c==='SANTAREM' (não .includes()) — mesmo bug real e mesmo motivo de normMopByCity acima.
+  if(u==='MA'){return(c==='SAOLUIS'||c.includes('PACODOLUMIAR')||c.includes('RIBAMAR'))?'MA CAP':'MA INT'}
   if(u==='PI'){return c.includes('TERESINA')?'PI CAP':'PI INT'}
-  if(u==='PA'){if(c.includes('SANTAREM')||c.includes('ALMEIRIM'))return'AM/AP';return(c.includes('BELEM')||c.includes('ANANINDEUA'))?'PA CAP':'PA INT'}
+  if(u==='PA'){if(c==='SANTAREM'||c.includes('ALMEIRIM'))return'AM/AP';return(c.includes('BELEM')||c.includes('ANANINDEUA'))?'PA CAP':'PA INT'}
   if(u==='AM'||u==='AP')return'AM/AP';
   return'';
 }
@@ -12504,7 +12513,9 @@ function ativSyncControls(){
 function ativBrlK(v){ v=Number(v||0); return v>=1000?('R$ '+(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil'):brl(v); }
 function ativFmtData(v){
   if(v==null||v==='')return '—';
-  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?'—':d.toLocaleDateString('pt-BR'); }
+  // Delega pro rdeParseDateBR (mesma correção do bug de fuso horário em serial numérico
+  // do Excel, ver comentário lá) em vez de duplicar a conversão errada aqui.
+  if(typeof v==='number'){ const d=rdeParseDateBR(v); return d?d.toLocaleDateString('pt-BR'):'—'; }
   return String(v);
 }
 
@@ -14898,7 +14909,7 @@ function renderTEnc(){
     const cfTC=d.titulo?titleCasePT(d.titulo)||d.titulo:'—';
     const clrDot=CCLR[d.cluster]||'#8e8e93';
     const clsSpan=`<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${clrDot};flex-shrink:0"></span>${d.cluster||'—'}</span>`;
-    return`<tr class="enc-flat"><td class="tid enc-nowrap">${d.protocolo}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}&nbsp;${ol}</td><td class="enc-causa" title="${causa}">${causa||'—'}</td></tr>`;
+    return`<tr class="enc-flat"><td class="tid enc-nowrap">${eh(d.protocolo)}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${eh(cliTC)}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${eh(cfTC)}</td><td class="enc-nowrap" style="color:var(--tx3)">${eh(cidadeUf)}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${eh(d.faixa)}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${eh(d.semana||'—')}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}&nbsp;${ol}</td><td class="enc-causa" title="${eh(causa)}">${eh(causa||'—')}</td></tr>`;
   }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sEnc(c){scEnc===c?sdEnc*=-1:(scEnc=c,sdEnc=-1);renderTEnc()}
@@ -15108,7 +15119,7 @@ function renderTSi(){
     const cleanLink=safeUrl(d.link);
     const protoCell=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.protocolo)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:eh(d.protocolo);
     const obsCell=canEdit()?siAnnObsInput(d.protocolo):siAnnObsReadonly(d.protocolo);
-    return`<tr class="enc-flat"><td class="tid enc-nowrap">${protoCell}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td><td class="enc-obs">${obsCell}</td></tr>`;
+    return`<tr class="enc-flat"><td class="tid enc-nowrap">${protoCell}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${eh(cliTC)}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${eh(cfTC)}</td><td class="enc-nowrap" style="color:var(--tx3)">${eh(cidadeUf)}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${eh(d.faixa)}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${eh(d.semana||'—')}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td><td class="enc-obs">${obsCell}</td></tr>`;
   }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sSi(c){scSi===c?sdSi*=-1:(scSi=c,sdSi=-1);renderTSi()}
@@ -15422,7 +15433,7 @@ function renderTPref(){
     const cleanLink=safeUrl(d.link);
     const protoCell=cleanLink?`<a href="${eh(cleanLink)}" target="_blank" rel="noopener noreferrer" title="Abrir ticket">${eh(d.protocolo)}<i class="ti ti-external-link" style="color:var(--blue);font-size:11px;margin-left:4px"></i></a>`:eh(d.protocolo);
     const causa=fmtCausaRaiz(d.causaRaiz);
-    return`<tr class="enc-flat"><td class="tid enc-nowrap">${protoCell}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${cliTC}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${cfTC}</td><td class="enc-nowrap" style="color:var(--tx3)">${cidadeUf}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${d.faixa}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${d.semana||'—'}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td><td class="enc-nowrap" title="${eh(causa)}" style="color:var(--tx3)">${eh(causa)}</td></tr>`;
+    return`<tr class="enc-flat"><td class="tid enc-nowrap">${protoCell}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${eh(cliTC)}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${eh(cfTC)}</td><td class="enc-nowrap" style="color:var(--tx3)">${eh(cidadeUf)}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${eh(d.faixa)}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${eh(d.semana||'—')}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}</td><td class="enc-nowrap" title="${eh(causa)}" style="color:var(--tx3)">${eh(causa)}</td></tr>`;
   }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
 }
 function sPref(c){scPref===c?sdPref*=-1:(scPref=c,sdPref=-1);renderTPref()}
@@ -15536,7 +15547,14 @@ function fuelInRenewalPeriod(r,win=fuelCycleWindow()){
 }
 function fuelPeriodRequests(){
   const win=fuelCycleWindow();
-  const rows=fuelValidRequests().filter(r=>r&&r.source==='alelo-base'?fuelInRenewalPeriod(r,win):true);
+  /* Bug real encontrado numa auditoria: só as linhas de origem 'alelo-base' eram
+     filtradas pela janela do ciclo atual — solicitações manuais (addFuelRequest())
+     passavam sempre, incondicionalmente, então uma compra manual registrada num mês
+     continuava contando pro gasto/saldo de TODOS os meses seguintes pra sempre
+     (dFuelRequests nunca é podado). Solicitações manuais têm um campo de data válido
+     (mesmo formato lido por fuelRequestDate), então aplicar o mesmo filtro nelas
+     também funciona sem precisar de um caminho separado. */
+  const rows=fuelValidRequests().filter(r=>fuelInRenewalPeriod(r,win));
   return fuelCompileRequests(rows);
 }
 function fuelIsCoringaPlate(placa){return String(fuelVehicleByPlate(placa).tipoCartao||'').toLowerCase()==='coringa'}
@@ -18171,16 +18189,16 @@ function ofsRenderCards(rows){
   cards.innerHTML=list.sort((a,b)=>b.total-a.total).map((t,i)=>{
     const taxa=t.total?Math.round(t.concluido/t.total*100):0;
     const barItems=Object.entries(t.statusCounts||{}).map(([s,v])=>({s,v})).filter(x=>x.v>0).sort((a,b)=>(OFS_STATUS_ORDER.indexOf(a.s)<0?99:OFS_STATUS_ORDER.indexOf(a.s))-(OFS_STATUS_ORDER.indexOf(b.s)<0?99:OFS_STATUS_ORDER.indexOf(b.s))||a.s.localeCompare(b.s,'pt-BR'));
-    const bar=barItems.map(x=>`<div style="width:${Math.round(x.v/t.total*100)}%;background:${OFS_STATUS_COLORS[x.s]||'#94a3b8'};height:100%;transition:width .3s" title="${x.s}: ${x.v}"></div>`).join('');
+    const bar=barItems.map(x=>`<div style="width:${Math.round(x.v/t.total*100)}%;background:${OFS_STATUS_COLORS[x.s]||'#94a3b8'};height:100%;transition:width .3s" title="${eh(x.s)}: ${x.v}"></div>`).join('');
     const semSt=t.semStatus||0;
-    return`<div class="ofs-tcard" data-tec="${t.nome.replace(/"/g,'&quot;')}" onclick="ofsOpenTec(this.dataset.tec)" title="Clique para ver os chamados de ${t.nome}">
+    return`<div class="ofs-tcard" data-tec="${eh(t.nome)}" onclick="ofsOpenTec(this.dataset.tec)" title="Clique para ver os chamados de ${eh(t.nome)}">
       <div class="ofs-tc-head">
         <div class="ofs-tc-rank">#${i+1}</div>
         <div style="flex:1;min-width:0">
-          <div class="ofs-tc-name">${t.nome}</div>
+          <div class="ofs-tc-name">${eh(t.nome)}</div>
           <div style="font-size:10px;color:var(--tx3);margin-top:2px">
-            <span class="ofs-uf-tag ${t.uf||'MA'}">${t.uf||'MA'}</span>
-            <span class="ofs-gp-tag" style="margin-left:2px;background:${ofsGrupoColor(t.grupo)}22;color:${ofsGrupoColor(t.grupo)}">${t.grupo||'—'}</span>
+            <span class="ofs-uf-tag ${eh(t.uf||'MA')}">${eh(t.uf||'MA')}</span>
+            <span class="ofs-gp-tag" style="margin-left:2px;background:${ofsGrupoColor(t.grupo)}22;color:${ofsGrupoColor(t.grupo)}">${eh(t.grupo||'—')}</span>
             &nbsp;${t.dias} dias · ${t.media_dia}/dia
           </div>
         </div>
@@ -18255,8 +18273,8 @@ function ofsRenderAlerts(tecs){
     const ab=(t.pendente||0)+(t.iniciado||0);
     const barW=Math.max(2,Math.min(100,t.taxa));
     const bg=i%2?'background:rgba(128,128,128,.025);':'';
-    return`<tr style="${bg}border-bottom:.5px solid var(--bd);cursor:pointer" data-tec="${t.nome.replace(/"/g,'&quot;')}" onclick="ofsOpenTec(this.dataset.tec)" title="Ver detalhes de ${t.nome}">
-      <td style="padding:7px 10px;color:var(--tx1);font-weight:500;white-space:nowrap">${t.nome} <span class="ofs-uf-tag ${t.uf||'MA'}">${t.uf||'MA'}</span></td>
+    return`<tr style="${bg}border-bottom:.5px solid var(--bd);cursor:pointer" data-tec="${eh(t.nome)}" onclick="ofsOpenTec(this.dataset.tec)" title="Ver detalhes de ${eh(t.nome)}">
+      <td style="padding:7px 10px;color:var(--tx1);font-weight:500;white-space:nowrap">${eh(t.nome)} <span class="ofs-uf-tag ${eh(t.uf||'MA')}">${eh(t.uf||'MA')}</span></td>
       <td style="padding:7px 10px;white-space:nowrap"><span class="ofs-gp-tag" style="background:${ofsGrupoColor(t.grupo)}22;color:${ofsGrupoColor(t.grupo)}">${ofsGrupoAbbr(t.grupo)}</span></td>
       <td style="padding:7px 10px;white-space:nowrap"><span class="ofs-st-pill" style="color:${r.color};background:${r.bg}">${r.label}</span></td>
       <td style="padding:7px 10px;white-space:nowrap;min-width:110px">
@@ -18336,9 +18354,9 @@ function ofsOpenTec(nome){
     const isSel=t.nome===nome;
     const tc2=t.taxa>=80?'#22c55e':t.taxa>=60?'#f59e0b':'#ef4444';
     const bg=isSel?'background:rgba(249,115,22,.08);':i%2?'background:rgba(128,128,128,.03);':'';
-    return`<tr style="${bg}border-bottom:.5px solid var(--bd);cursor:pointer" data-tec-grp="${t.nome.replace(/"/g,'&quot;')}" data-exp-idx="${i}" onclick="ofsGrpExpand(this,${i})" title="Ver produções de ${t.nome}">
+    return`<tr style="${bg}border-bottom:.5px solid var(--bd);cursor:pointer" data-tec-grp="${eh(t.nome)}" data-exp-idx="${i}" onclick="ofsGrpExpand(this,${i})" title="Ver produções de ${eh(t.nome)}">
       <td style="padding:6px 10px;white-space:nowrap;font-weight:${isSel?700:400};color:${isSel?'#f97316':'var(--tx1)'}">
-        ${isSel?'▶ ':''}<span>${t.nome}</span>
+        ${isSel?'▶ ':''}<span>${eh(t.nome)}</span>
         <i class="ti ti-chevron-down" id="ofs-gx-icon-${i}" style="font-size:10px;opacity:.4;margin-left:5px;transition:transform .2s"></i>
       </td>
       <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;color:var(--tx1)">${t.total}</td>
@@ -18406,8 +18424,8 @@ function ofsGrpExpand(tr,idx){
       return`<tr style="border-bottom:.5px solid var(--bd)">
         <td style="padding:4px 8px;color:var(--tx2);white-space:nowrap">${dt}</td>
         <td style="padding:4px 8px;color:var(--tx1);white-space:nowrap">${eh(chamado)}</td>
-        <td style="padding:4px 8px;color:var(--tx1)">${r.tipo||'—'}</td>
-        <td style="padding:4px 8px"><span class="ofs-st-pill" style="color:${sc};background:${sc}1a">${r.status.charAt(0).toUpperCase()+r.status.slice(1)}</span></td>
+        <td style="padding:4px 8px;color:var(--tx1)">${eh(r.tipo||'—')}</td>
+        <td style="padding:4px 8px"><span class="ofs-st-pill" style="color:${sc};background:${sc}1a">${eh(r.status.charAt(0).toUpperCase()+r.status.slice(1))}</span></td>
       </tr>`;
     }).join('')||`<tr><td colspan="4" style="padding:8px 8px;text-align:center;color:var(--tx3)">Sem atividades no filtro atual</td></tr>`;
   }
@@ -19255,10 +19273,10 @@ function rptBuildOfs(){
   const rows=ofsFilteredRows(),tecs=ofsCalcTecnicos(rows),total=rows.length;
   const scored=tecs.map(t=>({...t,_r:_ofsRisk(t)})).sort((a,b)=>a._r.ord-b._r.ord||b.total-a.total);
   const tecRows=scored.map(t=>`<tr>
-    <td style="font-weight:600;white-space:nowrap">${t.nome}</td>
-    <td style="white-space:nowrap">${t.uf||'MA'}</td>
-    <td style="white-space:nowrap">${ofsGrupoAbbr(t.grupo)}</td>
-    <td style="color:${t._r.color};font-weight:700;white-space:nowrap">${t._r.label}</td>
+    <td style="font-weight:600;white-space:nowrap">${eh(t.nome)}</td>
+    <td style="white-space:nowrap">${eh(t.uf||'MA')}</td>
+    <td style="white-space:nowrap">${eh(ofsGrupoAbbr(t.grupo))}</td>
+    <td style="color:${t._r.color};font-weight:700;white-space:nowrap">${eh(t._r.label)}</td>
     <td style="text-align:right;font-weight:700">${t.total}</td>
     <td style="text-align:right;color:#22c55e;font-weight:700">${t.concluido}</td>
     <td style="text-align:right;color:#f59e0b">${t.pendente||0}</td>
@@ -19520,14 +19538,39 @@ function rdeBoolish(v){const s=rdeNk(v);return v===1||v===true||['SIM','S','TRUE
    (`toLocaleString('pt-BR',{...hour,minute})` gera "dd/mm/aaaa, hh:mm", usado como
    fallback de elapsedH em rdeToFlat pra sessões com base carregada antes desse campo
    existir). */
-function rdeParseDateBR(v){if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v||'').trim();if(!raw)return null;const iso=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(iso){const x=new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]),Number(iso[4]||0),Number(iso[5]||0),Number(iso[6]||0));return isNaN(x)?null:x}const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(m){const y=Number(m[3].length===2?'20'+m[3]:m[3]);const x=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(x)?null:x}const d=new Date(raw);return isNaN(d)?null:d}
+/* Serial numérico do Excel: NÃO usar (v-25569)*86400*1000 como epoch ms direto — isso
+   cria o instante como meia-noite UTC, e o resto do código lê esse Date com getters
+   LOCAIS (getMonth/getDate/toLocaleDateString); no fuso do Brasil (UTC-3), meia-noite
+   UTC do dia X é 21h do dia X-1 local, deslocando data/mês/semana em 1 dia pra trás.
+   Bug real achado numa auditoria: não aparecia nos testes porque a base usada trazia
+   datas como texto, não serial — mas atinge qualquer export com células de data
+   "de verdade" do Excel, incluindo Ativações B2B (mesma função). XLSX.SSF.parse_date_code
+   decompõe o serial em ano/mês/dia/hora direto, sem passar por nenhum epoch UTC —
+   monta o Date só com o construtor local, sem conversão de fuso no meio. */
+function rdeParseDateBR(v){if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const dc=XLSX.SSF.parse_date_code(v);if(!dc)return null;const d=new Date(dc.y,dc.m-1,dc.d,dc.H||0,dc.M||0,Math.floor(dc.S||0));return isNaN(d)?null:d}const raw=String(v||'').trim();if(!raw)return null;const iso=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(iso){const x=new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]),Number(iso[4]||0),Number(iso[5]||0),Number(iso[6]||0));return isNaN(x)?null:x}const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(m){const y=Number(m[3].length===2?'20'+m[3]:m[3]);const x=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(x)?null:x}const d=new Date(raw);return isNaN(d)?null:d}
 /* Retorna {y,w}: ano e semana ISO — usa o ano da quinta-feira daquela semana (padrão
    ISO 8601), não o ano da data original. Sem isso, datas do fim de dezembro/início de
    janeiro caem na semana 1/52-53 do ano "errado" (ex.: 31/12 pode ser semana 1 do ano
    seguinte, mas v.getFullYear() ainda aponta pro ano anterior). */
 function rdeIsoWeek(d){if(!d)return{y:0,w:0};const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const y0=new Date(Date.UTC(x.getUTCFullYear(),0,1));return{y:x.getUTCFullYear(),w:Math.ceil((((x-y0)/86400000)+1)/7)}}
-function rdeClusterCode(v){const s=rdeNk(v);if(s.includes('CAP'))return'C';if(s.includes('NORTE')||s==='N'||s.includes('AM')||s.includes('AP')||s.includes('PA'))return'N';if(s.includes('PI')||s.includes('PIAUI')||s==='P'||s.includes('C31'))return'P';if(s.includes('INT')||s.includes('INTERIOR')||s==='I'||s.includes('MA')||s.includes('MARANHAO')||s.includes('C32'))return'I';return'I'}
-function rdeClusterFromRow(r){const uf=rdeNk(rdeGv(r,['UF','ufservico']));const cidade=rdeNk(rdeGv(r,['CIDADE','CIDADE_SIMPLES','cidadeservico','localidade']));const cluster=rdeGv(r,['cluster_calc','NOME CLUSTER','NOVO CLUSTER','CLUSTER','cluster','regional','regiao','area']);if(uf==='PI')return'P';if(uf==='AM'||uf==='AP'||uf==='PA')return'N';if(uf==='MA')return(cidade.includes('SAOLUIS')||cidade.includes('PACODOLUMIAR')||cidade.includes('RIBAMAR'))?'C':'I';return rdeClusterCode(cluster||uf||cidade)}
+/* Tokenizado (não rdeNk+.includes livre): bug real encontrado numa auditoria — a
+   versão anterior checava .includes('CAP') ANTES do estado, então "PA CAP"/"AM CAP"
+   (mesma convenção de nomenclatura usada no resto do código, ver CLUSTER_ORDER)
+   caíam em 'C' (MA CAP) por engano nesse fallback (só usado quando a coluna UF da
+   linha vem vazia/não-padrão). Só reordenar não bastava: rdeNk() remove os espaços,
+   então "PI CAP" virava "PICAP", que CONTÉM "AP" como substring e cairia em Norte
+   antes de checar Piauí. Tokenizar (dividir por separador, comparar token exato) evita
+   as duas colisões de uma vez. */
+function rdeClusterCode(v){
+  const tokens=String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  const has=t=>tokens.includes(t);
+  if(has('PI')||has('PIAUI')||has('C31'))return'P';
+  if(has('NORTE')||has('N')||has('AM')||has('AP')||has('PA'))return'N';
+  if(has('CAP'))return'C';
+  if(has('INT')||has('INTERIOR')||has('I')||has('MA')||has('MARANHAO')||has('C32'))return'I';
+  return'I';
+}
+function rdeClusterFromRow(r){const uf=rdeNk(rdeGv(r,['UF','ufservico']));const cidade=rdeNk(rdeGv(r,['CIDADE','CIDADE_SIMPLES','cidadeservico','localidade']));const cluster=rdeGv(r,['cluster_calc','NOME CLUSTER','NOVO CLUSTER','CLUSTER','cluster','regional','regiao','area']);if(uf==='PI')return'P';if(uf==='AM'||uf==='AP'||uf==='PA')return'N';if(uf==='MA')return(cidade==='SAOLUIS'||cidade.includes('PACODOLUMIAR')||cidade.includes('RIBAMAR'))?'C':'I';return rdeClusterCode(cluster||uf||cidade)}
 function rdeEnsureLabel(arr,key,label){let i=arr.indexOf(key);if(i<0){arr.push(key);label&&arr===rdeM.mes?rdeM.ml.push(label):label&&arr===rdeM.sem&&rdeM.sl.push(label);i=arr.length-1}return i}
 /* !raw retorna -1 (não 0): índice 0 é o mês real de QUALQUER linha que tenha sido a
    primeira a popular rdeM.mes (ordem de upload, não necessariamente a mais antiga) —
@@ -20666,8 +20709,15 @@ if(bootSync){
   try{localStorage.setItem(SHEETS_URL_KEY,bootSync);localStorage.setItem(SHEETS_AUTO_KEY,'1');}catch(e){}
   history.replaceState(null,'',location.pathname);
 }
-/* ?ghtk=<token> — instala o GitHub token no dispositivo e limpa a URL */
-const bootGhTk=bootParams.get('ghtk');
+/* #ghtk=<token> — instala o GitHub token no dispositivo e limpa a URL. Usa o
+   FRAGMENTO da URL (#), não query string (?): fragmentos nunca são enviados numa
+   requisição HTTP (nem pro servidor que hospeda o arquivo, nem pra bots de preview de
+   link do WhatsApp/Slack/Telegram, que buscam a URL via HTTP antes de qualquer JS
+   rodar) — bug real de segurança encontrado numa auditoria: com "?ghtk=" o token
+   trafegava exposto até o replaceState rodar, o que já é tarde pra esses casos.
+   Aceita o formato antigo "?ghtk=" só como fallback de compatibilidade com links já
+   distribuídos antes desta correção. */
+const bootGhTk=new URLSearchParams(location.hash.replace(/^#/,'')).get('ghtk')||bootParams.get('ghtk');
 if(bootGhTk){
   try{localStorage.setItem(GH_TOKEN_KEY,_cleanGhToken(bootGhTk));}catch(e){}
   history.replaceState(null,'',location.pathname);
@@ -21113,7 +21163,7 @@ function amRenderMatLines(){
   t.mats.forEach((m,idx)=>{
     const line = document.createElement('div');
     line.className = 'am-mat-line';
-    line.innerHTML = '<span>'+(m.cod||'—')+' — '+m.desc+' <span class="am-qty-pill">Qtd: '+m.qtd+'</span>'+(m.manual?' <em style="color:var(--am-text-muted);font-style:normal;">(manual)</em>':'')+amMatWarnIcon(t.mats,m)+'</span>'+
+    line.innerHTML = '<span>'+eh(m.cod||'—')+' — '+eh(m.desc)+' <span class="am-qty-pill">Qtd: '+eh(m.qtd)+'</span>'+(m.manual?' <em style="color:var(--am-text-muted);font-style:normal;">(manual)</em>':'')+amMatWarnIcon(t.mats,m)+'</span>'+
       '<button class="am-rm" data-idx="'+idx+'">remover</button>';
     box.appendChild(line);
   });
