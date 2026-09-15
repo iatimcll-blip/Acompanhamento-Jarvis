@@ -6941,7 +6941,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-nota-na{background:var(--surface2);color:var(--tx3);}
   #panel-executivo .exec-baremo-row-clicavel{cursor:pointer;}
   #panel-executivo .exec-baremo-row-clicavel:hover{background:var(--surface2);}
-  #panel-executivo .exec-casos-txt{font-size:10px;color:var(--tx3);font-weight:400;margin-top:2px;white-space:nowrap;}
+  #panel-executivo .exec-casos-txt{font-size:10px;color:var(--tx3);font-weight:400;margin-top:2px;}
+  #panel-executivo .exec-export-btn{color:var(--blue);cursor:pointer;font-weight:600;margin-left:6px;white-space:nowrap;}
+  #panel-executivo .exec-export-btn:hover{opacity:.7;}
   #panel-executivo .exec-baremo-detail-row td{background:var(--surface2);padding:0;}
   #panel-executivo .exec-mini-wrap{max-height:220px;overflow-y:auto;overflow-x:auto;padding:8px 12px;}
   #panel-executivo .exec-mini-table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
@@ -23208,8 +23210,10 @@ function execDiffColor(diff,dir){
   const melhorou=dir==='higher'?diff>0:diff<0;
   return melhorou?'var(--green-dk)':'var(--red-dk)';
 }
-function execRenderCasosDesvioMini(prefix,casosDesvio){
-  if(!casosDesvio||!casosDesvio.total)return'<div class="exec-mini-cap">Nenhum caso fora do padrão nesta semana.</div>';
+/* Extraído de execRenderCasosDesvioMini (mesma derivação de colunas por bloco, cada
+   um com campos diferentes na amostra) pra ser reaproveitado também pelo export em
+   Excel — mesmas colunas mostradas na tela, sem duplicar a lógica de mapeamento. */
+function execCasosDesvioLabelsRows(prefix,casosDesvio){
   let labels,rows;
   if(prefix==='b2c'){
     const rawRows=casosDesvio.amostra;
@@ -23226,10 +23230,35 @@ function execRenderCasosDesvioMini(prefix,casosDesvio){
     labels=['OS','Protocolo','Cidade','Causa','Tempo (SLA)'];
     rows=casosDesvio.amostra.map(r=>[r.os,r.protocolo,r.cidade,r.causa,typeof r.tempo==='number'?r.tempo.toFixed(1)+'h':r.tempo]);
   }
+  return{labels,rows};
+}
+function execRenderCasosDesvioMini(prefix,casosDesvio){
+  if(!casosDesvio||!casosDesvio.total)return'<div class="exec-mini-cap">Nenhum caso fora do padrão nesta semana.</div>';
+  const{labels,rows}=execCasosDesvioLabelsRows(prefix,casosDesvio);
   const head='<tr>'+labels.map(l=>'<th>'+eh(l)+'</th>').join('')+'</tr>';
   const body=rows.map(cells=>'<tr>'+cells.map(v=>'<td>'+eh(v===undefined||v===null||v==='' ?'—':String(v))+'</td>').join('')+'</tr>').join('');
   const capNote=casosDesvio.total>rows.length?'<div class="exec-mini-cap">Mostrando '+rows.length+' de '+casosDesvio.total+' casos.</div>':'';
   return'<div class="exec-mini-wrap"><table class="exec-mini-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'+capNote;
+}
+/* Exportar (pedido do usuário: "no Painel Baremo colocar um exportar para cada
+   indicador") — reaproveita as mesmas colunas já mostradas na lista de casos que
+   compõem o desvio daquele indicador (execCasosDesvioLabelsRows), só que sem limite
+   de amostra e direto num .xlsx pra análise fora do navegador. Os dados ficam num
+   mapa global (EXEC_BAREMO_EXPORT_MAP) preenchido em execRenderBaremoTable, porque o
+   onclick do botão só pode carregar uma chave simples (rowId), não o objeto inteiro. */
+let EXEC_BAREMO_EXPORT_MAP={};
+function execExportarCasosIndicador(rowId){
+  const info=EXEC_BAREMO_EXPORT_MAP[rowId];
+  if(!info||!info.casosDesvio||!info.casosDesvio.amostra.length){alert('Nenhum caso pra exportar neste indicador.');return;}
+  const{labels,rows}=execCasosDesvioLabelsRows(info.prefix,info.casosDesvio);
+  const objRows=rows.map(cells=>{const o={};labels.forEach((l,i)=>o[l]=cells[i]===undefined||cells[i]===null?'':cells[i]);return o;});
+  const ws=XLSX.utils.json_to_sheet(objRows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,info.label.slice(0,31)||'Casos');
+  const blocoNomes={rede:'Rede',encerrados:'B2B_Encerrados',b2c:'B2C'};
+  const nomeArquivo=('baremo_'+(blocoNomes[info.prefix]||info.prefix)+'_'+info.label+'_'+new Date().toISOString().slice(0,10)+'.xlsx')
+    .normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9_.-]+/g,'_');
+  XLSX.writeFile(wb,nomeArquivo);
 }
 function execToggleCasosDesvio(rowId,trigger){
   const row=document.getElementById(rowId);
@@ -23255,8 +23284,13 @@ function execRenderBaremoTable(tableId,indicadores,prefix,semAnteriorLabel,semAt
        clicável, abrindo a lista de chamados — nunca só um número solto sem like de
        consulta. */
     const temCasos=!!(i.casosDesvio&&i.casosDesvio.total>0);
-    const casosTxt=temCasos?'<div class="exec-casos-txt">'+i.casosDesvio.total+' caso(s) fora do padrão — clique para ver os chamados</div>':'';
     const rowId='exec-baremo-detail-'+tableId+'-'+idx;
+    /* Exportar (pedido do usuário): guarda os dados desta linha no mapa global pelo
+       mesmo rowId já usado pra abrir/fechar os casos, e usa event.stopPropagation()
+       pra clicar em "Exportar" não também abrir/fechar a linha (ela é clicável). */
+    EXEC_BAREMO_EXPORT_MAP[rowId]={prefix,label:i.label,casosDesvio:i.casosDesvio};
+    const exportBtn=temCasos?' <span class="exec-export-btn" onclick="event.stopPropagation();execExportarCasosIndicador(\''+rowId+'\')" title="Exportar os chamados deste indicador para Excel"><i class="ti ti-file-spreadsheet"></i> Exportar</span>':'';
+    const casosTxt=temCasos?'<div class="exec-casos-txt">'+i.casosDesvio.total+' caso(s) fora do padrão — clique para ver os chamados'+exportBtn+'</div>':'';
     const linha='<tr'+(temCasos?' class="exec-baremo-row-clicavel" onclick="execToggleCasosDesvio(\''+rowId+'\',this)"':'')+'>'
       +'<td>'+eh(i.label)+'</td><td>'+resTxt+'</td><td>'+eh(metaTxt)+'</td><td>'+execStatusBadge(i.status)+'</td>'
       +'<td>'+execFmtSemanaResultado(i.semAnterior,i.unidade)+'</td><td>'+execFmtSemanaResultado(i.semAtual,i.unidade)+'</td>'
