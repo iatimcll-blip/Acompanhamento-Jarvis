@@ -10213,6 +10213,16 @@ function _mergeGhRemoteIntoLocal(remoteSt){
           if(typeof amRenderAnalytics==='function')amRenderAnalytics();
         }
       }
+      /* Saldo SAP: mesma técnica de merge por chave (cod, código do item SAP) já usada
+         acima pra Audit Material/dPrevent — corrigido junto com o bug de "SB_STOCK
+         nunca sincronizava" (ver buildState()/applyState()/REMOTE_MERGE_SECTIONS). */
+      if(Array.isArray(remoteSt.SB_STOCK)){
+        SB_STOCK=_mergeArraysByKey(SB_STOCK,remoteSt.SB_STOCK,x=>x.cod);
+        if(Object.prototype.hasOwnProperty.call(remoteSt,'sbStockAt')&&remoteSt.sbStockAt>(sbStockAt||'')){
+          sbStockAt=remoteSt.sbStockAt;
+        }
+        if(typeof activeTab!=='undefined'&&activeTab==='saldoSap'&&typeof sbRenderTable==='function')sbRenderTable();
+      }
       /* B2C: cada upload recalcula o resumo inteiro (não são registros editados um a
          um) — mesmo padrão de Ativações/POP acima, troca por inteiro só quando o
          resumo remoto for comprovadamente mais recente que o calculado neste
@@ -11067,10 +11077,12 @@ function shouldApplyRemoteState(st){
    rastreados em stateMeta/stateSignature) entre o remoto e o estado local ATUAL (sempre
    fiel à memória, via buildState() — não confia em localStorage/IndexedDB, que podem
    estar vazios/atrasados por causa da cota) — só deixa o remoto substituir as chaves
-   daquele painel específico se o timestamp remoto daquele painel for mais novo. Painéis
-   sem timestamp próprio rastreado (Preventivas, Audit Material, Saldo SAP, filtros do
-   Painel Executivo) continuam recebendo o remoto sempre que ele for considerado — não
-   temos como comparar por seção nesses casos, mesmo risco que já existia antes. */
+   daquele painel específico se o timestamp remoto daquele painel for mais novo.
+   Preventivas (lastPreventAt), Audit Material (amLastEditAt) e Saldo SAP (sbStockAt)
+   ganharam timestamp próprio numa correção posterior — ver os 3 usos de
+   `new Date().toISOString()` nos pontos de edição de cada painel — e entraram aqui.
+   Filtros do Painel Executivo continuam sem guarda própria (não são dado, são só
+   preferência de tela — risco bem menor que os outros). */
 const REMOTE_MERGE_SECTIONS=[
   {at:'lastAbAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf']},
   {at:'lastEncAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
@@ -11080,6 +11092,9 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'lastAtivAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivSrch','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
   {at:'lastPopAt',keys:['dPop','lastPopAt','lastPopBaseAt','lastPopFile']},
   {at:'b2cSummaryAt',keys:['b2cSummary','b2cSummaryAt','b2cMetaOverrides','selB2cCluster','selB2cAno','selB2cMes','selB2cSemana']},
+  {at:'lastPreventAt',keys:['dPrevent','dPrevTecnicos','lastPreventAt']},
+  {at:'amLastEditAt',keys:['amTickets','amTicketsClearedAt','amLastEditAt']},
+  {at:'sbStockAt',keys:['SB_STOCK','sbStockAt']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -11103,7 +11118,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPop,lastPopAt,lastPopBaseAt,lastPopFile,dPrevTecnicos,amTickets:AM_TICKETS,amTicketsClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -11133,8 +11148,13 @@ function normalizeFuelRequests(list){const base=Array.isArray(list)?list:[],by=n
 function normalizeFuelWithdrawals(list){return(Array.isArray(list)?list:[]).map((r,i)=>({...r,id:r.id||('WDR'+Date.now()+i),valor:Number(r.valor||0),data:r.data||new Date().toISOString().slice(0,10)})).filter(r=>r.valor>0)}
 function normalizeFuelAportes(list){return(Array.isArray(list)?list:[]).map((r,i)=>({...r,id:r.id||('APT'+Date.now()+i),valor:Number(r.valor||0),data:r.data||new Date().toISOString().slice(0,10),desc:r.desc||''})).filter(r=>r.valor>0)}
 function asArr(v){return Array.isArray(v)?v:(v?[v]:[]);}
+/* Marcado por applyState() com as abas cujo render pesado já rodou neste ciclo de
+   restauração — restoreActiveTab() usa isso pra não mandar switchTab() renderizar
+   a aba ativa de novo, evitando um 2º render redundante da mesma aba no boot. */
+let _lastApplyRenderedTabs = new Set();
 function applyState(st,label){
   if(!st||typeof st!=='object')return false;
+  _lastApplyRenderedTabs = new Set();
   let changed=false;
   const clearLegacyFuelRequests=Number(st.version||0)<6;
   /* Cada seção roda isolada em seu próprio try/catch: uma seção com problema (bug
@@ -11164,7 +11184,7 @@ function applyState(st,label){
       selSwapSub=asArr(st.selSwapSub).filter(s=>_abSubs.includes(s));
       selSwapUf=asArr(st.selSwapUf).filter(u=>_abUfs.includes(u));
       fillFiltersAb();if(!abInteractionLock)renderAllAb();
-      fillFiltersSwap();if(!abInteractionLock)renderAllSwap();
+      fillFiltersSwap();if(!abInteractionLock){renderAllSwap();if(dAb.length)_lastApplyRenderedTabs.add('swap');}
       document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
       document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
       const emptySwap=document.getElementById('empty-swap'),dashSwap=document.getElementById('dash-swap');
@@ -11217,6 +11237,7 @@ function applyState(st,label){
       ativPeriod=asArr(st.ativPeriod);
       selAtivSrch=st.selAtivSrch||'';
       renderPanelAtivacoes();
+      _lastApplyRenderedTabs.add('ativacoes');
       document.getElementById('empty-ativ').style.display=dAtiv.length?'none':'block';
       document.getElementById('dash-ativ').style.display=dAtiv.length?'block':'none';
       changed=true;
@@ -11227,7 +11248,9 @@ function applyState(st,label){
       /* normaliza a cidade pro padrão Primeira Maiúscula mesmo em registros salvos
          antes dessa regra existir (ou digitados em CAIXA ALTA/minúsculo) */
       dPrevent=st.dPrevent.map(d=>d.cidade?{...d,cidade:titleCasePT(repairPtBR(d.cidade))}:d);
+      if(Object.prototype.hasOwnProperty.call(st,'lastPreventAt'))lastPreventAt=st.lastPreventAt||'';
       renderPreventAll();
+      _lastApplyRenderedTabs.add('preventivas');
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Agendamento de Preventivas:',e);}
@@ -11240,6 +11263,7 @@ function applyState(st,label){
       renderPreventCidadeDatalist();
       renderPreventPopDatalist();
       fillFiltersPop();renderAllPop();
+      _lastApplyRenderedTabs.add('pop');
       const emptyPop=document.getElementById('empty-pop'),dashPop=document.getElementById('dash-pop');
       if(emptyPop)emptyPop.style.display=dPop.length?'none':'block';
       if(dashPop)dashPop.style.display=dPop.length?'block':'none';
@@ -11262,9 +11286,23 @@ function applyState(st,label){
       AM_TICKETS.length = 0;
       normalizeAmTickets(st.amTickets).forEach(t=>AM_TICKETS.push(t));
       if(Object.prototype.hasOwnProperty.call(st,'amTicketsClearedAt'))amTicketsClearedAt=st.amTicketsClearedAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'amLastEditAt'))amLastEditAt=st.amLastEditAt||'';
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Audit Material:',e);}
+  try{
+    /* Saldo SAP: bug real de sincronização — SB_STOCK só existia em localStorage
+       (chave só do dispositivo que fez upload), nunca fazia parte de buildState(),
+       então nenhum outro dispositivo via a base de estoque anexada. sbRenderTable()
+       é definida num <script> mais abaixo (mesmo motivo do Audit Material acima) —
+       só os dados são restaurados aqui; a renderização acontece quando o usuário
+       abre a aba. */
+    if(Array.isArray(st.SB_STOCK)){
+      SB_STOCK=st.SB_STOCK;
+      if(Object.prototype.hasOwnProperty.call(st,'sbStockAt'))sbStockAt=st.sbStockAt||'';
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Saldo SAP:',e);}
   try{
     /* B2C: só o resumo agregado por indicador sincroniza (poucas dezenas de
        números) — as bases brutas (até ~50 mil linhas por arquivo) ficam só no
@@ -11379,6 +11417,7 @@ function applyState(st,label){
       renderAllSi();
       renderAllPref();
       renderPanelRepetidos();
+      _lastApplyRenderedTabs.add('semIntervencao').add('prefeitura').add('repetidos');
       document.getElementById('empty-enc').style.display=dEnc.length?'none':'block';
       document.getElementById('dash-enc').style.display=dEnc.length?'block':'none';
       document.getElementById('empty-si').style.display=dEnc.length?'none':'block';
@@ -11430,6 +11469,7 @@ function applyState(st,label){
       if(st.fuelRFilter&&typeof st.fuelRFilter==='object')fuelRFilter={q:st.fuelRFilter.q||'',tipo:asArr(st.fuelRFilter.tipo),tipoCartao:asArr(st.fuelRFilter.tipoCartao),dataIni:st.fuelRFilter.dataIni||'',dataFim:st.fuelRFilter.dataFim||''};
       if(st.fuelVFilter&&typeof st.fuelVFilter==='object')fuelVFilter={placa:st.fuelVFilter.placa||'',condutor:st.fuelVFilter.condutor||'',setor:asArr(st.fuelVFilter.setor),superior:asArr(st.fuelVFilter.superior),tipoCartao:asArr(st.fuelVFilter.tipoCartao),status:asArr(st.fuelVFilter.status)};
       renderFuel();
+      _lastApplyRenderedTabs.add('combustivel');
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Combustível:',e);}
@@ -11440,6 +11480,7 @@ function applyState(st,label){
         idbSet(REDE_STORAGE,st.rdeState).catch(e=>console.warn('rede IndexedDB save',e));
         try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st.rdeState));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
         rdeRestoreUI();rdeSyncControls();renderRede();
+        _lastApplyRenderedTabs.add('rede');
         changed=true;
       }
     }
@@ -11452,6 +11493,7 @@ function applyState(st,label){
       const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
       const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
       renderOfs();updateCentralStatus();
+      _lastApplyRenderedTabs.add('ofs');
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar OFS:',e);}
@@ -11625,7 +11667,7 @@ async function restoreStateFromIndexedDb(fallbackRemote){
 function restoreActiveTab(){
   restoreOfsState();
   const saved=localStorage.getItem(ACTIVE_TAB_KEY)||activeTab||'dashboard';
-  switchTab(saved,false);
+  switchTab(saved,false,_lastApplyRenderedTabs);
 }
 
 function barRows(entries,clrFn,lmax){
@@ -12750,6 +12792,7 @@ const PREV_STATUS_BADGE={'Agendada':'b-blue','Em andamento':'b-orange','Concluí
 const PREV_CONDBADGE={'Não avaliado':'b-teal','Conforme':'b-green','Atenção':'b-orange','Crítico':'b-red'};
 const PREVENT_REMIND_SEEN_KEY='jarvis:prevent:remind:v1';
 let dPrevent=[];
+let lastPreventAt=''; // timestamp de sincronização — ver buildState()/applyState()/REMOTE_MERGE_SECTIONS
 let prevEditId=null,prevConcludeId=null,prevConcludePhotos=[],prevViewPhotos=[],prevViewId=null;
 /* Catálogo de POPs (aba "Oficial" da Base_Oficial_de_POP's_e_Endereços) — fonte de
    autocomplete para Nomenclatura/UF/Cidade/Endereço/Tipo de Collocation no formulário
@@ -13096,6 +13139,7 @@ function addPreventTecnico(){
   if(dPrevTecnicos.some(t=>t.nome.toUpperCase()===nome.toUpperCase())){alert('Esse técnico/equipe já está cadastrado.');return;}
   dPrevTecnicos.push({id:'TEC'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),nome});
   input.value='';
+  lastPreventAt=new Date().toISOString();
   saveState();
   renderPreventTecList();renderPreventRespDatalist();
 }
@@ -13104,6 +13148,7 @@ function delPreventTecnico(id){
   const t=dPrevTecnicos.find(x=>x.id===id);if(!t)return;
   if(confirm(`Remover "${t.nome}" da lista de técnicos/equipes?`)){
     dPrevTecnicos=dPrevTecnicos.filter(x=>x.id!==id);
+    lastPreventAt=new Date().toISOString();
     saveState();renderPreventTecList();renderPreventRespDatalist();
   }
 }
@@ -13187,6 +13232,7 @@ function savePreventiva(){
       itens:sel.map(nome=>({nome,condicao:'Não avaliado',obs:''})), fotos:[]
     });
   }
+  lastPreventAt=new Date().toISOString();
   saveState();renderPreventAll();resetPreventForm();showPreventSubtab('ac');
 }
 function editPreventiva(id){
@@ -13213,13 +13259,13 @@ function editPreventiva(id){
 function startPreventiva(id){
   if(!canEdit())return;
   const p=dPrevent.find(x=>x.id===id);if(!p)return;
-  p.status='Em andamento';saveState();renderPreventAll();
+  p.status='Em andamento';lastPreventAt=new Date().toISOString();saveState();renderPreventAll();
 }
 function delPreventiva(id){
   if(!canEdit())return;
   const p=dPrevent.find(x=>x.id===id);if(!p)return;
   if(confirm(`Excluir a preventiva do "${p.pop}" (${prevFmtData(p.dataAgendada)})?`)){
-    dPrevent=dPrevent.filter(x=>x.id!==id);saveState();renderPreventAll();
+    dPrevent=dPrevent.filter(x=>x.id!==id);lastPreventAt=new Date().toISOString();saveState();renderPreventAll();
   }
 }
 function openPreventConclude(id){
@@ -13280,7 +13326,7 @@ function confirmPreventConclude(){
       itens:p.itens.map(i=>({nome:i.nome,condicao:'Não avaliado',obs:''}))
     });
   }
-  closePreventModal();saveState();renderPreventAll();
+  closePreventModal();lastPreventAt=new Date().toISOString();saveState();renderPreventAll();
 }
 function clearPreventFilters(){
   document.getElementById('prevent-q-srch').value='';
@@ -18091,11 +18137,26 @@ function saveOfsState(){
 /* uf/grupo salvos antes desta versão usavam o sentinel escalar 'all' (sem filtro);
    converte para array vazio em vez de tratar 'all' como um valor de filtro literal */
 function ofsLegacyAllToArr(v){if(Array.isArray(v))return v;if(!v||v==='all')return[];return[v];}
+/* Bug real de sincronização entre dispositivos, achado numa auditoria: initAuth()
+   chama restoreState() (que já restaura ofsRows/ofsMeta a partir do estado
+   SINCRONIZADO, via applyState()) e, na sequência, restoreActiveTab() — cuja primeira
+   linha era esta função, lendo OFS_KEY (chave só deste dispositivo, NUNCA
+   sincronizada) e sobrescrevendo ofsRows/ofsMeta de novo, por cima do que tinha
+   acabado de vir sincronizado. Resultado: o painel OFS de qualquer dispositivo
+   diferente do último que fez upload local ali nunca refletia o que foi
+   sincronizado — sempre a última base OFS anexada NAQUELE navegador especificamente.
+   Corrigido: rows/meta da cópia local só entram como FALLBACK (quando ofsRows ainda
+   está vazio nesse momento — ex. antes do primeiro upload em qualquer dispositivo, ou
+   se o estado sincronizado não trouxe OFS por algum motivo), nunca mais como
+   sobrescrita incondicional. ofsFilter continua sempre restaurado da cópia local —
+   filtro é preferência de tela, não dado compartilhado, e nunca fez parte de
+   buildState() mesmo. */
 function restoreOfsState(){
   try{
-    const raw=localStorage.getItem(OFS_KEY);if(!raw){restoreOfsStateFromIndexedDb();return}
+    const raw=localStorage.getItem(OFS_KEY);
+    if(!raw){restoreOfsStateFromIndexedDb();return}
     const s=JSON.parse(raw);
-    if(s.rows&&Array.isArray(s.rows)){
+    if(!ofsRows.length&&s.rows&&Array.isArray(s.rows)){
       ofsRows=ofsSanitizeRows(s.rows);
       ofsMeta=s.meta||{fname:'',loaded:true};
     }
@@ -18106,9 +18167,11 @@ function restoreOfsState(){
 }
 async function restoreOfsStateFromIndexedDb(){
   try{
-    const s=await idbGet(OFS_KEY);if(!s||!Array.isArray(s.rows))return;
-    ofsRows=ofsSanitizeRows(s.rows);
-    ofsMeta=s.meta||{fname:'',loaded:true};
+    const s=await idbGet(OFS_KEY);if(!s)return;
+    if(!ofsRows.length&&Array.isArray(s.rows)){
+      ofsRows=ofsSanitizeRows(s.rows);
+      ofsMeta=s.meta||{fname:'',loaded:true};
+    }
     if(s.filter)ofsFilter={...ofsFilter,...s.filter,uf:ofsLegacyAllToArr(s.filter.uf),grupo:ofsLegacyAllToArr(s.filter.grupo),months:asArr(s.filter.months),weeks:asArr(s.filter.weeks)};
     const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
     const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
@@ -18686,7 +18749,7 @@ function scrollTabbar(dir){
 }
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
-function switchTab(tab,persist=true){
+function switchTab(tab,persist=true,skipRenderTabs=null){
   if(!['dashboard','executivo','abertos','b2c','swap','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
@@ -18724,21 +18787,22 @@ function switchTab(tab,persist=true){
   if(upEnc)upEnc.style.display=(isEnc||isRep||isSi||isPref)?'flex':'none';
   if(upFuel)upFuel.style.display=isFuel?'':'none';
   if(upOfs)upOfs.style.display=isOfs?'flex':'none';
-  if(isFuel){renderFuel();setTimeout(initFuelSplit,80);}
-  if(isSi)renderAllSi();
-  if(isPref)renderAllPref();
-  if(isRep)renderPanelRepetidos();
-  if(isOfs)renderOfs();
-  if(isRede){rdeSyncControls();renderRede();}
+  const _skip=k=>!!(skipRenderTabs&&skipRenderTabs.has(k));
+  if(isFuel){if(!_skip('combustivel'))renderFuel();setTimeout(initFuelSplit,80);}
+  if(isSi&&!_skip('semIntervencao'))renderAllSi();
+  if(isPref&&!_skip('prefeitura'))renderAllPref();
+  if(isRep&&!_skip('repetidos'))renderPanelRepetidos();
+  if(isOfs&&!_skip('ofs'))renderOfs();
+  if(isRede){rdeSyncControls();if(!_skip('rede'))renderRede();}
   if(isMon)loadMonitorPanel();
   if(isWpp){wppUnreadCount=0;updateWppBadge();loadWhatsAppPanel();}
-  if(isAtiv)renderPanelAtivacoes();
-  if(isPrevent)renderPreventAll();
-  if(isPop)renderAllPop();
+  if(isAtiv&&!_skip('ativacoes'))renderPanelAtivacoes();
+  if(isPrevent&&!_skip('preventivas'))renderPreventAll();
+  if(isPop&&!_skip('pop'))renderAllPop();
   if(isAuditMaterial)amRenderTable();
   if(isSaldoSap)sbRenderTable();
   if(isB2c)b2cRenderAll();
-  if(isSwap&&dAb.length)renderAllSwap();
+  if(isSwap&&dAb.length&&!_skip('swap'))renderAllSwap();
   if(isDash)renderExecutiveDashboard();
   if(isExec)renderExecutivo();
   updateShellTitle(tab);
@@ -20861,6 +20925,13 @@ window.addEventListener('storage',function(e){
    pra um merge remoto atrasado não trazer de volta os chamados antigos removidos. */
 const AM_LS_CATALOG_KEY = 'auditMaterial.catalog.v1';
 let amTicketsClearedAt = '';
+/* Timestamp de sincronização pra qualquer edição individual (classificação/
+   observação/material) — distinto de amTicketsClearedAt, que é só pra reimportação
+   TOTAL da base via CSV. Sem isso, essas edições não tinham como entrar em
+   REMOTE_MERGE_SECTIONS (guarda por seção), correndo o risco de serem revertidas
+   silenciosamente por um pull remoto atrasado — mesma classe de bug já documentada
+   ali pra Preventivas/Audit Material/Saldo SAP. */
+let amLastEditAt = '';
 
 function amNormalizeTicket(t,i){
   t._id = i;
@@ -21212,6 +21283,7 @@ function amRenderTable(){
     sel.addEventListener('change', (e)=>{
       const t=amFindTicketByKey(sel.dataset.key); if(!t)return;
       t.classificacao = e.target.value;
+      amLastEditAt=new Date().toISOString();
       saveState();
       amRenderAnalytics();
     });
@@ -21220,6 +21292,7 @@ function amRenderTable(){
     inp.addEventListener('change', (e)=>{
       const t = amFindTicketByKey(inp.dataset.key); if(!t)return;
       t.obs = e.target.value;
+      amLastEditAt=new Date().toISOString();
       saveState();
       const tr = inp.closest('tr');
       if(tr && t.mats.length===0){
@@ -21290,6 +21363,7 @@ function amRenderMatLines(){
   box.querySelectorAll('.am-rm').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       t.mats.splice(parseInt(btn.dataset.idx),1);
+      amLastEditAt=new Date().toISOString();
       saveState();
       amRenderMatLines();
       amUpdateKpis();
@@ -21396,6 +21470,7 @@ document.getElementById('am-btnAddItem').addEventListener('click', ()=>{
   errEl.style.display = 'none';
   const t=amFindTicketByKey(amCurrentTicketKey); if(!t)return;
   t.mats.push(item);
+  amLastEditAt=new Date().toISOString();
   saveState();
   amSelectedItem = null;
   document.getElementById('am-acInput').value = '';
@@ -21767,6 +21842,7 @@ document.getElementById('am-btnReport').addEventListener('click', async ()=>{
    "consumo": lê direto de AM_TICKETS, que já é a fonte única de lançamentos. */
 const SB_LS_KEY = 'auditMaterial.sapStock.v1';
 let SB_STOCK = [];
+let sbStockAt = ''; // timestamp de sincronização — ver buildState()/applyState()/REMOTE_MERGE_SECTIONS
 
 (function sbInitStock(){
   try{
@@ -21897,7 +21973,14 @@ document.getElementById('sb-stockFile').addEventListener('change', (e)=>{
         return;
       }
       SB_STOCK = newStock;
+      sbStockAt = new Date().toISOString();
       sbSaveStockLS();
+      /* Bug real de sincronização: até aqui, SB_STOCK só existia em localStorage
+         (chave só deste dispositivo) — nunca fazia parte de buildState()/saveState(),
+         então a base de estoque anexada nunca saía do navegador que fez o upload.
+         saveState() (ver buildState()/applyState() e REMOTE_MERGE_SECTIONS) agora
+         sincroniza SB_STOCK/sbStockAt como qualquer outra base anexada. */
+      saveState();
       statusEl.textContent = 'Base carregada: '+f.name+' ('+SB_STOCK.length+' itens)';
       sbRenderTable();
     }catch(err){
