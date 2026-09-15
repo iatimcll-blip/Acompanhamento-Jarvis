@@ -677,6 +677,16 @@ async function runCycle() {
     return;
   }
 
+  /* Barra de progresso no painel (pedido do usuario): publica o andamento no meio do
+     ciclo, nao so no inicio/fim, pra o navegador saber quantos % faltam. Zera aqui
+     (nao no publishRunnerStatus de "running" acima) pra nao mostrar um numero de um
+     ciclo anterior enquanto o checkout/npm install/login ainda estao rolando. Throttle
+     a ~30 atualizacoes por ciclo (nao 1 por chamado) pra nao gastar 1 chamada de API do
+     GitHub por chamado processado - irrelevante pra suavidade visual da barra, mas
+     evita rate limit/sobrecarga sem necessidade. */
+  const progressStep = Math.max(1, Math.ceil(tickets.length / 30));
+  await publishRunnerStatus({ state: 'running', lastTicketsProgress: 0, lastTicketsTotal: tickets.length });
+
   const { updates, sha } = await loadUpdates();
   let changed = 0;
   let errors  = 0;
@@ -725,6 +735,10 @@ async function runCycle() {
         }
       } else {
         errors++;
+      }
+
+      if ((i + 1) % progressStep === 0 || i === tickets.length - 1) {
+        await publishRunnerStatus({ state: 'running', lastTicketsProgress: i + 1, lastTicketsTotal: tickets.length });
       }
 
       if (i < tickets.length - 1) await page.waitForTimeout(DELAY_MS);
