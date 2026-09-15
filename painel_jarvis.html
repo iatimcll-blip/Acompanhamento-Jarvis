@@ -13995,6 +13995,47 @@ function _atrixCheckMinInterval(){
   return confirm(`A última atualização via Atrix foi solicitada há ${Math.floor(minsAgo)} min (${lastStr}), menos de ${ATRIX_MIN_INTERVAL_MIN} min atrás.\n\nDisparar de novo agora mesmo assim? (Faltam ~${faltam} min pro intervalo recomendado — solicitações muito próximas sobrecarregam o Atrix sem necessidade.)`);
 }
 
+/* Extraído de dentro de triggerAtrixUpdateNow (mesmo polling, mesmo timeout de 18
+   tentativas) pra ser reaproveitado por _atrixResumeIfRunning() — pedido do usuário:
+   "o relógio não desaparecer quando atualizar a página, continuar a contagem". Sem
+   isso, um F5 no meio do ciclo (checkout+npm install+Playwright+varredura, ~15min)
+   perdia o cronômetro/barra de progresso/polling, mesmo com o ciclo remoto
+   continuando rodando normalmente — a página só não sabia mais disso.
+   `startTries` permite retomar já contando as tentativas que já teriam passado desde
+   o disparo original (calculado a partir de jarvis:atrix:lastTriggerAt), pra não
+   esticar o timeout total além dos ~18min pretendidos só porque a página recarregou. */
+function _atrixStartMonitoring(triggeredAtIso,startTries){
+  _atrixRunningNow=true;
+  _atrixStartRunningTimer();
+  _atrixStartProgressPolling();
+  clearInterval(_atrixPickupTimer);
+  let tries=startTries||0;
+  _atrixPickupTimer=setInterval(async()=>{
+    tries++;
+    const lastUpdate=await loadAtrixUpdates();
+    if((lastUpdate&&lastUpdate>triggeredAtIso)||tries>=18){
+      clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
+      _atrixRunningNow=false;
+      _atrixStopRunningTimer();
+      _atrixStopProgressPolling(!!(lastUpdate&&lastUpdate>triggeredAtIso));
+    }
+  },60000);
+}
+/* Retoma o cronômetro/barra de progresso ao carregar a página, se o último disparo
+   (jarvis:atrix:lastTriggerAt) ainda estiver dentro da janela plausível de um ciclo em
+   andamento (~18min, mesmo orçamento do polling) e o ciclo ainda não tiver sido
+   confirmado concluído (loadAtrixUpdates não achou nada mais novo que o disparo). */
+async function _atrixResumeIfRunning(){
+  let lastAt=0;
+  try{lastAt=Number(localStorage.getItem('jarvis:atrix:lastTriggerAt')||0);}catch(_){}
+  if(!lastAt)return;
+  const minsAgo=(Date.now()-lastAt)/60000;
+  if(minsAgo>=18)return;
+  const triggeredAtIso=new Date(lastAt).toISOString();
+  const lastUpdate=await loadAtrixUpdates();
+  if(lastUpdate&&lastUpdate>triggeredAtIso)return;
+  _atrixStartMonitoring(triggeredAtIso,Math.floor(minsAgo));
+}
 async function triggerAtrixUpdateNow(btn){
   if(!canEdit())return;
   if(!_atrixCheckMinInterval())return;
@@ -14009,26 +14050,9 @@ async function triggerAtrixUpdateNow(btn){
   try{
     await pushAtrixTicketsJson();
     await _dispatchAtrixWorkflow();
-    _atrixRunningNow=true;
-    _atrixStartRunningTimer();
-    _atrixStartProgressPolling();
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
     _ghToast('Atualização de substatus via Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
-    /* Polling periódico até o ciclo remoto terminar (checkout + npm install + Playwright
-       + varrer os chamados um a um no Atrix mede, na prática, ~15 min pra bases grandes). */
-    const triggeredAt=new Date().toISOString();
-    clearInterval(_atrixPickupTimer);
-    let tries=0;
-    _atrixPickupTimer=setInterval(async()=>{
-      tries++;
-      const lastUpdate=await loadAtrixUpdates();
-      if((lastUpdate&&lastUpdate>triggeredAt)||tries>=18){
-        clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
-        _atrixRunningNow=false;
-        _atrixStopRunningTimer();
-        _atrixStopProgressPolling(!!(lastUpdate&&lastUpdate>triggeredAt));
-      }
-    },60000);
+    _atrixStartMonitoring(new Date().toISOString(),0);
   }catch(e){
     done('atrix-start-err','<i class="ti ti-x"></i> Erro');
     _ghToast('Erro ao iniciar agente: '+e.message,'var(--red)',7000);
@@ -20782,6 +20806,10 @@ function rdeToggleExpurgoAtenuacao(i){
 loadAbAnnotations();loadAbResponsaveisCustom();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 _atrixRenderTimerBadge();
 setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},3000);
+/* Pedido do usuário: cronômetro/barra de progresso do Agente Atrix não devem
+   desaparecer ao atualizar a página — retoma a contagem/polling se um ciclo ainda
+   estiver plausivelmente em andamento (ver _atrixResumeIfRunning). */
+setTimeout(()=>{if(typeof _atrixResumeIfRunning==='function')_atrixResumeIfRunning();},3200);
 /* boot via URL params */
 const bootParams=new URLSearchParams(location.search);
 const bootSync=bootParams.get('sync')||bootParams.get('syncUrl');
