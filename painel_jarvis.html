@@ -1517,10 +1517,10 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rede-cnt{display:inline-block;background:rgba(0,0,0,.12);border-radius:99px;padding:0 5px;font-size:9px;font-weight:700;min-width:16px;text-align:center;margin-left:3px;line-height:15px;vertical-align:middle}
 .rede-sgbtn.on .rede-cnt{background:rgba(255,255,255,.22)}
 .rede-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
-/* #rde-kpis tem 4 cartões (MTTR, Prazo, Outlier, TME/TMR) — todos numa linha só em telas
-   largas; volta a quebrar em telas menores pra não espremer os números. --rde-kpi-cols é
-   setado via JS (renderRede) caso o número de cartões volte a mudar no futuro. */
-#rde-kpis{grid-template-columns:repeat(var(--rde-kpi-cols,4),1fr)}
+/* #rde-kpis tem 5 cartões (MTTR, Qtd Ocorrências, Prazo, Outlier, TME/TMR) — todos numa
+   linha só em telas largas; volta a quebrar em telas menores pra não espremer os números.
+   --rde-kpi-cols é setado via JS (renderRede) caso o número de cartões volte a mudar. */
+#rde-kpis{grid-template-columns:repeat(var(--rde-kpi-cols,5),1fr)}
 @media(max-width:1180px){#rde-kpis{grid-template-columns:repeat(3,1fr)}}
 .rede-kpi-card{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);padding:16px}
 .rede-kpi-card .rkl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:4px}
@@ -1531,6 +1531,14 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rede-kpi-card .rkgap.ok{color:#34c759}.rede-kpi-card .rkgap.wn{color:#ff9500}.rede-kpi-card .rkgap.bd{color:#ff3b30}
 .rede-kpi-card .rkbar{height:5px;border-radius:99px;background:var(--surface2);margin-top:10px;overflow:hidden}
 .rede-kpi-card .rkfill{height:100%;border-radius:99px;transition:width .3s}
+/* Card "Qtd Ocorrências" (Geral/Acesso/Backbone) — mesma casca .rede-kpi-card, layout
+   interno próprio (pedido do usuário, com uma imagem de referência: número geral grande
+   centralizado, Acesso e Backbone menores lado a lado abaixo). */
+.rkqty-geral{text-align:center;margin:2px 0 10px}
+.rkqty-geral .rkv{margin:2px 0 0}
+.rkqty-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center;border-top:.5px solid var(--bd);padding-top:10px}
+.rkqty-row .rkl{margin-bottom:2px}
+.rkqty-row .rkv{font-size:19px}
 .rede-section-title{font-size:13px;font-weight:700;margin:16px 0 4px;color:var(--tx)}
 .rede-charts-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
 .rede-chip{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600}
@@ -20058,48 +20066,51 @@ function rdeChaveExpurgo(r){
   return det.periodoAtendimento?(r._scope+':cx:'+composta):null;
 }
 function rdeCurrentMonthKey(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');}
-/* Mês efetivo do MTTR: segue o Mês selecionado no filtro de período (quando a granularidade
-   está em "mês" e só há UM mês marcado) — a pedido do usuário, que esperava o MTTR mudar ao
-   selecionar um mês diferente, igual aos outros cards (Prazo/Outlier/TME-TMR). Sem mês
-   selecionado (granularidade "Todos", em semana, ou mais de um mês marcado ao mesmo tempo),
-   cai de volta pro mês civil atual — o comportamento "contador ao vivo" original. */
-function rdeMttrMonthKey(){return(rdeGran==='m'&&rdePeriod.length===1)?rdePeriod[0]:rdeCurrentMonthKey();}
-/* Todos os chamados (Acesso+Backbone) do mês em questão (mês de abertura, mesma referência
-   já usada pelos gráficos "por mês" do painel), respeitando o cluster liberado pro usuário
-   e o filtro de Cluster selecionado na tela — mas NUNCA a aba ACESSO/BACKBONE/AMBOS, já que o
-   MTTR sempre unifica os dois tipos. */
-function rdeMttrFlat(mk){
-  mk=mk||rdeMttrMonthKey();
+/* Todos os chamados (Acesso+Backbone) dentro do filtro ATUAL da tela — Cluster, Ano e
+   Período (mês OU semana, um ou vários selecionados, ou "Todos" pra acumulado), exatamente
+   os mesmos filtros que já valem pra Prazo/Outlier/TME-TMR (ver rdeGetDisplayRecs) — mas
+   NUNCA a aba ACESSO/BACKBONE/AMBOS, já que o MTTR sempre unifica os dois tipos.
+   Antes disto, o MTTR só respeitava o filtro quando a granularidade era "mês" E havia
+   exatamente 1 mês marcado; em qualquer outro caso (semana, "Todos", ou vários meses
+   marcados) ele ignorava o período selecionado e caía sempre no mês civil atual — divergindo
+   silenciosamente do resto do painel. Corrigido a pedido do usuário: "medir o MTTR
+   corretamente de acordo com os filtros". */
+function rdeMttrFlat(){
   let out=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
   const cl=userAllowedClusters();
   if(cl)out=out.filter(r=>cl.includes(r.cl));
-  out=out.filter(r=>rdeClFilter(r.cl));
-  return out.filter(r=>r.m===mk);
+  if(rdeYear.length)out=out.filter(r=>rdeYear.includes(rdeRecYear(r)));
+  const gk=rdePKey();
+  if(rdeGran!=='all'&&rdePeriod.length)out=out.filter(r=>rdePeriod.includes(r[gk]));
+  if(rdeCluster.length)out=out.filter(r=>rdeClFilter(r.cl));
+  return out;
 }
 /* MTTR = tempo real decorrido entre Abertura e Fechamento (elapsedH, calculado em
-   rdeRowToRede), em horas corridas, do mês em questão (o selecionado no filtro, ou o mês
-   civil atual quando nenhum mês específico está selecionado) — unifica Acesso e Backbone
-   numa única média. Os chamados marcados como expurgo (rdeExpurgo) são excluídos tanto do
-   somatório quanto da contagem, exatamente como pedido: "quando estiver com a opção
-   expurgo marcada o TME ou TMR não entram no cálculo do MTTR".
+   rdeRowToRede), em horas corridas, dentro do recorte atual (ver rdeMttrFlat) — unifica
+   Acesso e Backbone numa única média. Os chamados marcados como expurgo (rdeExpurgo) são
+   excluídos tanto do somatório quanto da contagem, exatamente como pedido: "quando estiver
+   com a opção expurgo marcada o TME ou TMR não entram no cálculo do MTTR".
    Limiar RDE_MTTR_MIN_H (15min=0,25h): chamados fechados quase instantaneamente após
    aberto (prováveis duplicidade/erro de lançamento, não reparo real) ficam de fora do
-   MTTR — achado comparando contra a base oficial em 2 meses independentes: SEM esse
-   corte, Agosto/2026 dava 8,39h (oficial 8,63h, -2,8%) e Setembro/2026 dava 8,50h
-   (oficial 8,64h, -1,6%); a distribuição real de ambos os meses tem uma lacuna natural
-   bem em torno de 15min (nenhum chamado entre ~0,25h e ~0,37h nos dois meses), e cortando
-   exatamente aí os dois batem quase exato: Agosto 8,63h (diff -0,004h) e Setembro 8,67h
-   (diff +0,03h) — evidência forte de que é essa mesma regra que a base oficial usa. */
+   MTTR — achado comparando contra a base oficial em 2 meses independentes (cada um com
+   granularidade "mês" e 1 único mês selecionado, cenário que já respeitava o filtro mesmo
+   antes desta correção): SEM esse corte, Agosto/2026 dava 8,39h (oficial 8,63h, -2,8%) e
+   Setembro/2026 dava 8,50h (oficial 8,64h, -1,6%); a distribuição real de ambos os meses
+   tem uma lacuna natural bem em torno de 15min (nenhum chamado entre ~0,25h e ~0,37h nos
+   dois meses), e cortando exatamente aí os dois batem quase exato: Agosto 8,63h
+   (diff -0,004h) e Setembro 8,67h (diff +0,03h) — evidência forte de que é essa mesma
+   regra que a base oficial usa. */
 const RDE_MTTR_MIN_H=0.25;
 function rdeComputeMttr(){
-  const mk=rdeMttrMonthKey(),isCurrent=mk===rdeCurrentMonthKey();
-  const flat=rdeMttrFlat(mk);
+  const flat=rdeMttrFlat();
   const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
   const expurgados=flat.length-validos.length;
   const ts=validos.map(r=>r.elapsedH).filter(t=>t!==null&&t>RDE_MTTR_MIN_H);
   const instantaneos=validos.length-ts.length;
   const avg=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:0;
-  return{n:ts.length,total:flat.length,expurgados,instantaneos,avg:+avg.toFixed(2),mk,isCurrent};
+  const nAc=flat.filter(r=>r._scope==='ac').length;
+  const nBb=flat.filter(r=>r._scope==='bb').length;
+  return{n:ts.length,total:flat.length,expurgados,instantaneos,avg:+avg.toFixed(2),nAc,nBb};
 }
 function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
@@ -20649,23 +20660,27 @@ function renderRede(){
     const pGap=a.prazo>=RDE_M89?'✓ dentro da meta':'▼ '+(RDE_M89-a.prazo).toFixed(1)+' p.p. abaixo';
     const oGap=a.outlier<=RDE_MOUT?'✓ dentro da meta':'▲ '+(a.outlier-RDE_MOUT).toFixed(1)+' p.p. acima';
     const tGap=a.tAvg<=RDE_MTME?'✓ dentro da meta':'▲ '+(a.tAvg-RDE_MTME).toFixed(2)+'h acima';
-    // MTTR entra nos mesmos 4 cartões da linha, à esquerda dos 3 já existentes
-    // (Prazo/Outlier/TME-TMR) — mesmo visual (rkl/rkv/rkmeta/rkgap/rkbar). O card de
-    // "Projeção MTTR" foi retirado: ele sempre mostrava o mesmíssimo valor do card MTTR
-    // (não há como projetar uma média por volume/dias sem inventar peso arbitrário —
-    // multiplicar dias já cancela matematicamente numerador e denominador e devolve o
-    // mesmo valor), então era um card 100% duplicado, só com um rótulo diferente.
-    kpiEl.style.setProperty('--rde-kpi-cols','4');
+    // MTTR e Qtd Ocorrências entram na mesma linha de 5 cartões, à esquerda dos 3 já
+    // existentes (Prazo/Outlier/TME-TMR) — mesmo visual (rkl/rkv/rkmeta/rkgap/rkbar), Qtd
+    // Ocorrências com layout interno próprio (rkqty-*). O card de "Projeção MTTR" foi
+    // retirado: ele sempre mostrava o mesmíssimo valor do card MTTR (não há como projetar
+    // uma média por volume/dias sem inventar peso arbitrário — multiplicar dias já cancela
+    // matematicamente numerador e denominador e devolve o mesmo valor), então era um card
+    // 100% duplicado, só com um rótulo diferente.
+    kpiEl.style.setProperty('--rde-kpi-cols','5');
     const m=rdeComputeMttr();
     const mCls=m.n?(m.avg<=RDE_MTME?'ok':m.avg<=RDE_MTME*1.5?'wn':'bd'):'';
     const mGap=m.n?(m.avg<=RDE_MTME?'✓ dentro da meta':'▲ '+(m.avg-RDE_MTME).toFixed(2)+'h acima'):'';
     const mBar=m.n?`<div class="rkbar"><div class="rkfill" style="width:${Math.min(m.avg/RDE_MTME/2*100,100).toFixed(0)}%;background:${c3(mCls)}"></div></div>`:'';
-    const[mkY,mkM]=(m.mk||'').split('-').map(Number);
-    const mesNome=mkY&&mkM?new Date(mkY,mkM-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}):'';
-    const mttrLabel=m.isCurrent?'MTTR do mês':'MTTR — '+mesNome;
-    const mttrMeta=m.n?(m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+(m.instantaneos?' · '+m.instantaneos+' fechado'+(m.instantaneos!==1?'s':'')+' em <15min (ignorado'+(m.instantaneos!==1?'s':'')+')':'')+' · meta ≤'+RDE_MTME+'h'):('Sem chamados em '+mesNome+' ainda');
+    // Descrição do recorte atual (mesmo texto que Prazo/Outlier/TME-TMR já usam via `recs`,
+    // já que rdeMttrFlat segue os mesmos filtros de Cluster/Ano/Período) — em vez de sempre
+    // nomear um mês, que deixava de fazer sentido em granularidade semana/"Todos".
+    const mttrScope=rdeGran==='all'?'Acumulado':(rdePeriod.length?(gk==='w'?rdePeriod.map(p=>rdeWname(p,rdeWyears(rdePeriod).size>1)).join('+'):rdePeriod.map(rdeMname).join('+')):'');
+    const mttrLabel=mttrScope?'MTTR — '+mttrScope:'MTTR';
+    const mttrMeta=m.n?(m.n+' chamado'+(m.n!==1?'s':'')+(m.expurgados?' · '+m.expurgados+' expurgado'+(m.expurgados!==1?'s':''):'')+(m.instantaneos?' · '+m.instantaneos+' fechado'+(m.instantaneos!==1?'s':'')+' em <15min (ignorado'+(m.instantaneos!==1?'s':'')+')':'')+' · meta ≤'+RDE_MTME+'h'):'Sem chamados neste recorte ainda';
     kpiEl.innerHTML=
       `<div class="rede-kpi-card"><div class="rkl">${eh(mttrLabel)}</div><div class="rkv ${mCls}">${m.n?m.avg.toFixed(2)+'h':'–'}</div><div class="rkmeta">${mttrMeta}</div><div class="rkgap ${mCls}">${mGap}</div>${mBar}</div>`+
+      `<div class="rede-kpi-card"><div class="rkl">Qtd Ocorrências</div><div class="rkqty-geral"><div class="rkl">Qtd Geral</div><div class="rkv">${m.total}</div></div><div class="rkqty-row"><div><div class="rkl">Qtd Acesso</div><div class="rkv">${m.nAc}</div></div><div><div class="rkl">Qtd Backbone</div><div class="rkv">${m.nBb}</div></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">Prazo</div><div class="rkv ${pCls}">${a.prazo.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.p===1).length} de ${a.n} · meta ≥${RDE_M89}%</div><div class="rkgap ${pCls}">${pGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.prazo,100).toFixed(0)}%;background:${c3(pCls)}"></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">Outlier</div><div class="rkv ${oCls}">${a.outlier.toFixed(1)}%</div><div class="rkmeta">${recs.filter(r=>r.o===1).length} de ${a.n} · meta ≤${RDE_MOUT}%</div><div class="rkgap ${oCls}">${oGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.outlier/10*100,100).toFixed(0)}%;background:${c3(oCls)}"></div></div></div>`+
       `<div class="rede-kpi-card"><div class="rkl">${tl} médio</div><div class="rkv ${tCls}">${a.tAvg.toFixed(2)}h</div><div class="rkmeta">mediana ${a.tMed.toFixed(2)}h · meta ≤${RDE_MTME}h</div><div class="rkgap ${tCls}">${tGap}</div><div class="rkbar"><div class="rkfill" style="width:${Math.min(a.tAvg/RDE_MTME/2*100,100).toFixed(0)}%;background:${c3(tCls)}"></div></div></div>`;
