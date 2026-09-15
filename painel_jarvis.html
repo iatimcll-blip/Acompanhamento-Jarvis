@@ -13861,8 +13861,6 @@ function abAbrirELocalizarSubstatus(e,link,rowKey){
    dois painéis porque os dois leem do mesmo array. Versão enxuta da anterior: sem
    dock público, sem contador regressivo, sem ciclo separado de Ativações B2B — só
    o que foi pedido desta vez (um botão, atualiza tudo, só quando clicado). */
-const ATRIX_WORKFLOW_FILE='atrix-sync.yml';
-const ATRIX_TICKETS_FILE='data/atrix_tickets.json';
 const ATRIX_UPDATES_FILE='data/atrix_updates.json';
 let atrixUpdateMap={};
 let _atrixRunningNow=false;
@@ -13967,80 +13965,33 @@ function _atrixStopProgressPolling(finished){
   }
 }
 
-async function pushAtrixTicketsJson(){
-  const token=getGhToken();
-  if(!token||!dAb.length)return false;
+/* Dispara o ciclo do Agente Atrix via um Worker intermediário (Cloudflare) em vez de
+   chamar a API do GitHub direto do navegador — pedido do usuário: o botão deve funcionar
+   de QUALQUER dispositivo, não só no aparelho onde alguém colou um Token do GitHub nas
+   configurações de sincronização. O Worker guarda o token real como secret do lado do
+   servidor (nunca chega ao navegador) e só expõe essa ação fixa (cancelar execuções
+   presas + disparar o workflow), protegida por um segredo simples (ATRIX_WORKER_SECRET,
+   não é autenticação de usuário real — decisão consciente, o pior caso é alguém disparar
+   o ciclo sem precisar) e por um limite de frequência checado no servidor contra o
+   histórico real de execuções do GitHub Actions (vale pra todos os dispositivos ao mesmo
+   tempo, não só pra quem clicou). Ver worker/atrix-trigger.js. */
+const ATRIX_WORKER_URL='https://atrix-trigger.acompanhamento-jarvis.workers.dev';
+const ATRIX_WORKER_SECRET='VO_zOhXIvnPpkfPXhT5HX9HkmE1-7fsc';
+async function _atrixTriggerViaWorker(force){
   const tickets=dAb.map(d=>({rowKey:d.rowKey,id:d.id,ticketId:d.ticketId||'',cliente:d.cliente||'',link:d.link||'',substatus:d.substatus||'',uf:d.uf||'',cidade:d.cidade||''})).filter(t=>t.link);
-  if(!tickets.length)return false;
-  const apiUrl=`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/contents/${ATRIX_TICKETS_FILE}`;
-  const hdrs=ghHeaders({'Content-Type':'application/json'});
-  try{
-    let sha='';
-    const info=await fetch(apiUrl,{headers:hdrs,cache:'no-store'});
-    if(info.ok){const j=await info.json();sha=j.sha||'';}
-    const content=btoa(unescape(encodeURIComponent(JSON.stringify(tickets,null,2))));
-    const res=await fetch(apiUrl,{method:'PUT',headers:hdrs,body:JSON.stringify({message:`chore: exportar chamados B2B (${tickets.length})`,content,...(sha?{sha}:{})})});
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    console.log(`[Atrix Agent] ${tickets.length} chamado(s) exportados para GitHub.`);
-    return true;
-  }catch(e){console.warn('[Atrix Agent] Falha ao exportar chamados:',e);return false;}
-}
-
-async function _atrixReadGhError(res){
-  const txt=await res.text().catch(()=>'');
-  let body={};
-  try{body=txt?JSON.parse(txt):{};}catch(_){body={message:txt};}
-  return{status:res.status,message:body.message||txt||('HTTP '+res.status)};
-}
-function _atrixFriendlyGhError(err){
-  const msg=String(err&&err.message||'');
-  if(err&&err.status===401)return'Token GitHub inválido ou expirado. Gere/atualize o token nas configurações de sincronização.';
-  /* 403/404/422 nesse dispatch, na prática, quase sempre significam a mesma coisa:
-     .github/workflows/atrix-sync.yml ainda não foi publicado em main. O 422 é o mais
-     enganoso dos três — este repo já teve um workflow com esse MESMO nome de arquivo
-     antes (removido em 2026-07-25), então o GitHub reconhece o nome internamente e
-     devolve um erro de validação (422) em vez do 404 limpo que se esperaria pra um
-     workflow que nunca existiu. */
-  if(err&&[403,404,422].includes(err.status))return'O workflow .github/workflows/atrix-sync.yml provavelmente ainda não foi publicado em main (ou o token não tem permissão de Actions). Publique o arquivo do workflow e tente de novo.';
-  return msg||'Falha ao chamar a API do GitHub.';
-}
-/* Cancela execuções presas em fila (ex.: runner self-hosted offline) de tentativas
-   anteriores antes de disparar uma nova — sem isso, cada clique só empilhava mais
-   uma execução que nunca chegava a rodar. */
-async function _cancelarExecucoesPresasAtrix(token){
-  try{
-    const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/runs?status=queued&per_page=20`,{headers:ghHeaders({},token)});
-    if(!res.ok)return;
-    const data=await res.json();
-    const runs=data.workflow_runs||[];
-    for(const run of runs){
-      await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/runs/${run.id}/cancel`,{method:'POST',headers:ghHeaders({},token)}).catch(()=>{});
-    }
-    if(runs.length)console.log(`[Atrix Agent] ${runs.length} execução(ões) presa(s) em fila cancelada(s).`);
-  }catch(e){console.warn('[Atrix Agent] Falha ao cancelar execuções presas:',e);}
-}
-async function _dispatchAtrixWorkflow(){
-  const token=String(getGhToken()||'').trim();
-  if(!token)throw new Error('Configure o Token GitHub para iniciar o agente.');
-  await _cancelarExecucoesPresasAtrix(token);
-  const res=await fetch(`https://api.github.com/repos/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/actions/workflows/${ATRIX_WORKFLOW_FILE}/dispatches`,{
+  const res=await fetch(ATRIX_WORKER_URL,{
     method:'POST',
-    headers:ghHeaders({'Content-Type':'application/json'},token),
-    body:JSON.stringify({ref:'main'})
+    headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},
+    body:JSON.stringify({tickets,force:!!force})
   });
-  if(!res.ok)throw new Error(_atrixFriendlyGhError(await _atrixReadGhError(res)));
-}
-
-const ATRIX_MIN_INTERVAL_MIN=30;
-function _atrixCheckMinInterval(){
-  let lastAt=0;
-  try{lastAt=Number(localStorage.getItem('jarvis:atrix:lastTriggerAt')||0);}catch(_){}
-  if(!lastAt)return true;
-  const minsAgo=(Date.now()-lastAt)/60000;
-  if(minsAgo>=ATRIX_MIN_INTERVAL_MIN)return true;
-  const lastStr=new Date(lastAt).toLocaleString('pt-BR');
-  const faltam=Math.ceil(ATRIX_MIN_INTERVAL_MIN-minsAgo);
-  return confirm(`A última atualização via Atrix foi solicitada há ${Math.floor(minsAgo)} min (${lastStr}), menos de ${ATRIX_MIN_INTERVAL_MIN} min atrás.\n\nDisparar de novo agora mesmo assim? (Faltam ~${faltam} min pro intervalo recomendado — solicitações muito próximas sobrecarregam o Atrix sem necessidade.)`);
+  const body=await res.json().catch(()=>({}));
+  if(res.status===409&&body.error==='rate_limited'){
+    const ok=confirm(`A última atualização via Atrix foi solicitada há ${body.minsAgo} min, menos de 30 min atrás.\n\nDisparar de novo agora mesmo assim? (Faltam ~${body.minsRemaining} min pro intervalo recomendado — solicitações muito próximas sobrecarregam o Atrix sem necessidade.)`);
+    if(!ok)return{ok:false,cancelled:true};
+    return _atrixTriggerViaWorker(true);
+  }
+  if(!res.ok||!body.ok)throw new Error(body.error||('Falha ao chamar o Worker (HTTP '+res.status+')'));
+  return{ok:true};
 }
 
 /* Extraído de dentro de triggerAtrixUpdateNow (mesmo polling, mesmo timeout de 18
@@ -14086,8 +14037,6 @@ async function _atrixResumeIfRunning(){
 }
 async function triggerAtrixUpdateNow(btn){
   if(!canEdit())return;
-  if(!_atrixCheckMinInterval())return;
-  try{localStorage.setItem('jarvis:atrix:lastTriggerAt',String(Date.now()));}catch(_){}
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
     btn.classList.remove('atrix-start-ok','atrix-start-err');
@@ -14096,8 +14045,9 @@ async function triggerAtrixUpdateNow(btn){
   };
   btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Iniciando…';
   try{
-    await pushAtrixTicketsJson();
-    await _dispatchAtrixWorkflow();
+    const r=await _atrixTriggerViaWorker(false);
+    if(r.cancelled){btn.disabled=false;btn.innerHTML=orig;return;}
+    try{localStorage.setItem('jarvis:atrix:lastTriggerAt',String(Date.now()));}catch(_){}
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
     _ghToast('Atualização de substatus via Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
     _atrixStartMonitoring(new Date().toISOString(),0);
