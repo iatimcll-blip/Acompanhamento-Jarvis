@@ -11508,8 +11508,18 @@ function applyState(st,label){
        Material/Saldo SAP acima) — só os dados são restaurados aqui; a renderização
        acontece quando o usuário abre a aba (switchTab) ou via _mergeGhRemoteIntoLocal
        se a aba já estiver ativa no momento do merge remoto. */
-    if(Array.isArray(st.FAP_PLACAS)){FAP_PLACAS=st.FAP_PLACAS;changed=true;}
-    if(Array.isArray(st.FAP_APORTES)){FAP_APORTES=st.FAP_APORTES;changed=true;}
+    /* Merge por chave (id), não substituição direta — bug real reportado: com
+       FAP_PLACAS=st.FAP_PLACAS (substituição), uma placa/aporte cadastrado num
+       dispositivo podia ser apagado silenciosamente ao recarregar, se um pull remoto
+       mais recente (feito por OUTRO dispositivo, com dados diferentes) chegasse depois
+       — o registro do dispositivo A nunca tinha sido incluído no snapshot que o
+       dispositivo B publicou, e a substituição direta descartava tudo que não estava
+       nesse snapshot. _mergeArraysByKey (já usado por Audit Material/SB_STOCK/Fuel)
+       faz a união dos dois lados por id, preservando cadastros feitos em qualquer
+       dispositivo — só desaparecem se alguém excluir de propósito (fapDelPlaca/
+       fapDelAporte). */
+    if(Array.isArray(st.FAP_PLACAS)){FAP_PLACAS=_mergeArraysByKey(FAP_PLACAS,st.FAP_PLACAS,x=>x.id);changed=true;}
+    if(Array.isArray(st.FAP_APORTES)){FAP_APORTES=_mergeArraysByKey(FAP_APORTES,st.FAP_APORTES,x=>x.id);changed=true;}
     if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
     if(Object.prototype.hasOwnProperty.call(st,'fapAt'))fapAt=st.fapAt||'';
   }catch(e){console.warn('applyState: falha ao restaurar Aportes Combustível:',e);}
