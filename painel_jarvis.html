@@ -6948,7 +6948,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div class="fap-form-row"><label>Técnico responsável (opcional)</label><input type="text" id="fap-pTec" placeholder="nome do técnico"></div>
             <div class="fap-form-row"><label>Nome do GO (opcional)</label><input type="text" id="fap-pGo" placeholder="nome do Gestor Operacional"></div>
           </div>
-          <button type="submit" class="fap-submit-btn fap-secondary">Cadastrar placa</button>
+          <div style="display:flex;gap:8px">
+            <button type="submit" id="fap-pSubmitBtn" class="fap-submit-btn fap-secondary" style="flex:1">Cadastrar placa</button>
+            <button type="button" id="fap-pCancelBtn" class="fap-submit-btn" style="display:none;flex:0 0 auto;width:auto;background:var(--surface2);color:var(--tx);border:.5px solid var(--bd2)" onclick="fapCancelEditPlaca()">Cancelar</button>
+          </div>
         </form>
       </div>
 
@@ -19904,7 +19907,40 @@ function fapAportadoMesAtual(){
   return FAP_APORTES.filter(a=>a.data.slice(0,7)===mesAtual).reduce((s,a)=>s+a.valor,0);
 }
 
-function fapToggleNovaPlaca(){const f=document.getElementById('fap-formPlaca');f.style.display=f.style.display==='none'?'block':'none';}
+function fapToggleNovaPlaca(){
+  const f=document.getElementById('fap-formPlaca');
+  const willShow=f.style.display==='none';
+  f.style.display=willShow?'block':'none';
+  if(!willShow)fapCancelEditPlaca();
+}
+
+/* Editar placa (pedido do usuário): reaproveita o mesmo form/handler de cadastro —
+   fapEditingPlacaId marca o registro em edição; fapAddPlaca() decide entre push (novo)
+   ou atualizar no lugar (edição) sem trocar o id, então FAP_APORTES que referenciam
+   essa placa por placaId continuam íntegros. */
+let fapEditingPlacaId=null;
+function fapEditPlaca(id){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+  const p=fapPlacaById(id);
+  if(!p)return;
+  fapEditingPlacaId=id;
+  document.getElementById('fap-pPlaca').value=p.placa;
+  document.getElementById('fap-pUf').value=p.uf;
+  document.getElementById('fap-pTec').value=p.tecnico||'';
+  document.getElementById('fap-pGo').value=p.go||'';
+  document.getElementById('fap-pSubmitBtn').textContent='Salvar alterações';
+  document.getElementById('fap-pCancelBtn').style.display='inline-flex';
+  const f=document.getElementById('fap-formPlaca');
+  f.style.display='block';
+  f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function fapCancelEditPlaca(){
+  fapEditingPlacaId=null;
+  const f=document.getElementById('fap-formPlaca');
+  if(f)f.reset();
+  const btn=document.getElementById('fap-pSubmitBtn');if(btn)btn.textContent='Cadastrar placa';
+  const cancelBtn=document.getElementById('fap-pCancelBtn');if(cancelBtn)cancelBtn.style.display='none';
+}
 
 function fapAddPlaca(ev){
   ev.preventDefault();
@@ -19914,10 +19950,18 @@ function fapAddPlaca(ev){
   const tecnico=document.getElementById('fap-pTec').value.trim();
   const go=document.getElementById('fap-pGo').value.trim();
   if(!placa)return false;
-  FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico,go});
+  if(fapEditingPlacaId){
+    const idx=FAP_PLACAS.findIndex(x=>x.id===fapEditingPlacaId);
+    if(idx>=0)FAP_PLACAS[idx]={...FAP_PLACAS[idx],placa,uf,tecnico,go};
+    fapEditingPlacaId=null;
+  }else{
+    FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico,go});
+  }
   fapAt=new Date().toISOString();saveState();
   document.getElementById('fap-formPlaca').reset();
   document.getElementById('fap-formPlaca').style.display='none';
+  document.getElementById('fap-pSubmitBtn').textContent='Cadastrar placa';
+  document.getElementById('fap-pCancelBtn').style.display='none';
   fapRenderAll();
   return false;
 }
@@ -20072,7 +20116,7 @@ function fapRenderPlacaTable(){
       <td>${eh(p.go||'—')}</td>
       <td class="fap-saldo-val">${eh(fapFmtMoney(total))}</td>
       <td>${ult?eh(fapFmtDate(ult.data)+' às '+ult.hora):'—'}</td>
-      <td><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover">✕</button></td>
+      <td style="white-space:nowrap"><button class="fap-del-icon" onclick="fapEditPlaca('${eh(p.id)}')" title="Editar"><i class="ti ti-pencil"></i></button><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover">✕</button></td>
     </tr>`;
   }).join('');
 }
