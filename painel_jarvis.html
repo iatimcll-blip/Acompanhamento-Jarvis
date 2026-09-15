@@ -20811,7 +20811,7 @@ function amSaveCatalogLS(){
 })();
 
 let amSelectedItem = null;
-let amCurrentTicketId = null;
+let amCurrentTicketKey = null; // amTicketKey(t), não posição no array — ver comentário em amFindTicketByKey
 let amFilterText = '';
 let amFilterMat = 'todos';
 let amFilterClass = '';
@@ -21025,36 +21025,47 @@ function amRenderAnalytics(){
   }
 }
 
+/* data-key=amTicketKey(t) (não data-id=t._id): bug real de corrupção de dados
+   encontrado numa auditoria. t._id é reatribuído a cada normalização (posição no
+   array NAQUELE momento), mas o merge entre dispositivos (_mergeArraysByKey, ver
+   comentário lá) reordena AM_TICKETS por chave estável sem renormalizar _id — depois
+   de um merge, um ticket pode carregar um _id que não corresponde mais à sua posição
+   real no array. Como toda edição (classificação/observação/material) usava
+   `AM_TICKETS[id]` pra localizar o ticket, uma edição podia acabar gravada no chamado
+   errado. amTicketKey(t) (os+data+tecnico) já é a chave usada pelo próprio merge —
+   reaproveitada aqui pra nunca depender de posição no array. */
+function amFindTicketByKey(key){ return AM_TICKETS.find(t=>amTicketKey(t)===key); }
 function amRenderTable(){
   const tbody = document.getElementById('am-tbody');
   tbody.innerHTML = '';
   const visible = AM_TICKETS.filter(amTicketMatches);
   visible.forEach(t=>{
+    const key = eh(amTicketKey(t));
     const rowClass = t.mats.length>0 ? 'am-row-has-mat' : ((t.obs||'').trim() ? 'am-row-has-obs' : '');
-    const clsHtml = '<select class="am-cls-select" data-id="'+t._id+'">'
+    const clsHtml = '<select class="am-cls-select" data-key="'+key+'">'
       + '<option value=""'+(t.classificacao?'':' selected')+'>— Selecionar —</option>'
-      + AM_CLASSIFICACOES.map(c=>'<option value="'+c+'"'+(t.classificacao===c?' selected':'')+'>'+c+'</option>').join('')
+      + AM_CLASSIFICACOES.map(c=>'<option value="'+c+'"'+(t.classificacao===c?' selected':'')+'>'+eh(c)+'</option>').join('')
       + '</select>';
-    const obsHtml = '<input type="text" class="am-obs-input" data-id="'+t._id+'" value="'+amEscapeAttr(t.obs)+'" placeholder="Observações...">';
-    const matBadge = m => '<span class="am-badge">'+(m.cod||'—')+' — '+m.desc+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>';
-    const qtyCell = m => '<span class="am-qty-pill">'+m.qtd+'</span>';
+    const obsHtml = '<input type="text" class="am-obs-input" data-key="'+key+'" value="'+amEscapeAttr(t.obs)+'" placeholder="Observações...">';
+    const matBadge = m => '<span class="am-badge">'+eh(m.cod||'—')+' — '+eh(m.desc)+(m.manual?' <em>manual</em>':'')+amMatWarnIcon(t.mats,m)+'</span>';
+    const qtyCell = m => '<span class="am-qty-pill">'+eh(m.qtd)+'</span>';
     const n = t.mats.length;
 
     if(n<=1){
       const tr = document.createElement('tr');
       if(rowClass) tr.classList.add(rowClass);
       const matHtml = n===1
-        ? matBadge(t.mats[0]) + '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>'
+        ? matBadge(t.mats[0]) + '<br><button class="am-btn-add-mat" data-key="'+key+'" style="margin-top:4px;">Editar</button>'
         : '<span class="am-pill-empty">Nenhum material lançado</span>'
-          + '<button class="am-btn-add-mat" data-id="'+t._id+'">+ Materiais</button>';
+          + '<button class="am-btn-add-mat" data-key="'+key+'">+ Materiais</button>';
       const qtyHtml = n===1 ? qtyCell(t.mats[0]) : '';
       tr.innerHTML =
-        '<td>'+t.data+'</td>'+
-        '<td>'+t.os+'</td>'+
-        '<td>'+t.cliente+'</td>'+
-        '<td>'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
-        '<td>'+t.tecnico+'</td>'+
-        '<td>'+t.tipo+'</td>'+
+        '<td>'+eh(t.data)+'</td>'+
+        '<td>'+eh(t.os)+'</td>'+
+        '<td>'+eh(t.cliente)+'</td>'+
+        '<td>'+eh(t.cidade)+(t.uf?('/'+eh(t.uf)):'')+'</td>'+
+        '<td>'+eh(t.tecnico)+'</td>'+
+        '<td>'+eh(t.tipo)+'</td>'+
         '<td>'+clsHtml+'</td>'+
         '<td>'+obsHtml+'</td>'+
         '<td>'+matHtml+'</td>'+
@@ -21069,17 +21080,17 @@ function amRenderTable(){
         let rowHtml = '';
         if(idx===0){
           rowHtml +=
-            '<td rowspan="'+n+'">'+t.data+'</td>'+
-            '<td rowspan="'+n+'">'+t.os+'</td>'+
-            '<td rowspan="'+n+'">'+t.cliente+'</td>'+
-            '<td rowspan="'+n+'">'+t.cidade+(t.uf?('/'+t.uf):'')+'</td>'+
-            '<td rowspan="'+n+'">'+t.tecnico+'</td>'+
-            '<td rowspan="'+n+'">'+t.tipo+'</td>'+
+            '<td rowspan="'+n+'">'+eh(t.data)+'</td>'+
+            '<td rowspan="'+n+'">'+eh(t.os)+'</td>'+
+            '<td rowspan="'+n+'">'+eh(t.cliente)+'</td>'+
+            '<td rowspan="'+n+'">'+eh(t.cidade)+(t.uf?('/'+eh(t.uf)):'')+'</td>'+
+            '<td rowspan="'+n+'">'+eh(t.tecnico)+'</td>'+
+            '<td rowspan="'+n+'">'+eh(t.tipo)+'</td>'+
             '<td rowspan="'+n+'">'+clsHtml+'</td>'+
             '<td rowspan="'+n+'">'+obsHtml+'</td>';
         }
         let matCell = matBadge(m);
-        if(idx===n-1) matCell += '<br><button class="am-btn-add-mat" data-id="'+t._id+'" style="margin-top:4px;">Editar</button>';
+        if(idx===n-1) matCell += '<br><button class="am-btn-add-mat" data-key="'+key+'" style="margin-top:4px;">Editar</button>';
         rowHtml += '<td>'+matCell+'</td>'+'<td class="am-qty-col">'+qtyCell(m)+'</td>';
         tr.innerHTML = rowHtml;
         tbody.appendChild(tr);
@@ -21087,18 +21098,19 @@ function amRenderTable(){
     }
   });
   document.querySelectorAll('.am-btn-add-mat').forEach(b=>{
-    b.addEventListener('click', ()=>amOpenModal(parseInt(b.dataset.id)));
+    b.addEventListener('click', ()=>amOpenModal(b.dataset.key));
   });
   document.querySelectorAll('.am-cls-select').forEach(sel=>{
     sel.addEventListener('change', (e)=>{
-      AM_TICKETS[parseInt(sel.dataset.id)].classificacao = e.target.value;
+      const t=amFindTicketByKey(sel.dataset.key); if(!t)return;
+      t.classificacao = e.target.value;
       saveState();
       amRenderAnalytics();
     });
   });
   document.querySelectorAll('.am-obs-input').forEach(inp=>{
     inp.addEventListener('change', (e)=>{
-      const t = AM_TICKETS[parseInt(inp.dataset.id)];
+      const t = amFindTicketByKey(inp.dataset.key); if(!t)return;
       t.obs = e.target.value;
       saveState();
       const tr = inp.closest('tr');
@@ -21114,9 +21126,9 @@ function amRenderTable(){
   amRenderAnalytics();
 }
 
-function amOpenModal(id){
-  amCurrentTicketId = id;
-  const t = AM_TICKETS[id];
+function amOpenModal(key){
+  amCurrentTicketKey = key;
+  const t = amFindTicketByKey(key); if(!t)return;
   document.getElementById('am-modalSub').textContent = t.os + ' — ' + t.cliente;
   document.getElementById('am-acInput').value = '';
   document.getElementById('am-codBox').value = '';
@@ -21144,11 +21156,11 @@ function amSetManualMode(on){
 
 function amCloseModal(){
   document.getElementById('am-modalOverlay').classList.remove('am-open');
-  amCurrentTicketId = null;
+  amCurrentTicketKey = null;
 }
 
 function amRenderMatLines(){
-  const t = AM_TICKETS[amCurrentTicketId];
+  const t = amFindTicketByKey(amCurrentTicketKey); if(!t)return;
   const box = document.getElementById('am-matLines');
   box.innerHTML = '';
   if(t.mats.length===0){
@@ -21274,7 +21286,8 @@ document.getElementById('am-btnAddItem').addEventListener('click', ()=>{
     item = {cod:amSelectedItem.cod, desc:amSelectedItem.desc, qtd:qtd, grupo:amSelectedItem.grupo||''};
   }
   errEl.style.display = 'none';
-  AM_TICKETS[amCurrentTicketId].mats.push(item);
+  const t=amFindTicketByKey(amCurrentTicketKey); if(!t)return;
+  t.mats.push(item);
   saveState();
   amSelectedItem = null;
   document.getElementById('am-acInput').value = '';
@@ -21389,7 +21402,7 @@ document.getElementById('am-ticketsFile').addEventListener('change', (e)=>{
     saveState();
     statusEl.textContent = 'Base de chamados atualizada: '+files.length+' arquivo(s), '+AM_TICKETS.length+' chamados.'+(hadError?' (algum arquivo com erro foi ignorado)':'');
     amSelectedItem = null;
-    amCurrentTicketId = null;
+    amCurrentTicketKey = null;
     amRenderTable();
   }
 
