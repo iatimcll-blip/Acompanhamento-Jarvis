@@ -1597,7 +1597,6 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-hist-wrap{overflow-x:auto}
 .fap-val{color:var(--green-dk);font-weight:700}
 .fap-export-btn{border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx);border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer}
-.fap-saldo-select{border:.5px solid var(--bd2);border-radius:8px;padding:7px 9px;font-size:13px;color:var(--tx);background:var(--surface);font-family:inherit;min-width:150px}
 .fap-saldo-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:18px;margin-bottom:16px}
 @media(max-width:900px){.fap-saldo-grid{grid-template-columns:1fr}}
 .fap-saldo-display{background:var(--surface2);border:.5px solid var(--bd);border-radius:var(--rl);padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
@@ -1610,14 +1609,12 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-progress-fill.fap-warn{background:var(--orange)}
 .fap-progress-fill.fap-crit{background:var(--red)}
 .fap-saldo-sub{font-size:12px;color:var(--tx3)}
-.fap-saldo-forms{display:flex;flex-direction:column;gap:12px}
-.fap-saldo-forms .fap-mini-form{background:var(--surface2);border:.5px solid var(--bd);border-radius:10px;padding:13px 15px}
-.fap-saldo-forms .fap-mini-form h4{margin:0 0 9px;font-size:12.5px;font-weight:700;color:var(--tx)}
+.fap-mini-form{background:var(--surface2);border:.5px solid var(--bd);border-radius:10px;padding:13px 15px}
+.fap-mini-form h4{margin:0 0 9px;font-size:12.5px;font-weight:700;color:var(--tx)}
 .fap-mini-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .fap-mini-row .fap-form-row{flex:1;min-width:100px;margin-bottom:0}
 .fap-mini-btn{border:none;border-radius:8px;padding:8px 15px;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap}
 .fap-mini-btn.fap-set{background:var(--blue)}
-.fap-mini-btn.fap-rt{background:var(--red)}
 .fap-aporte-saldo-mini{display:none;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;font-size:12.5px;color:var(--tx3);margin:-2px 0 12px;background:var(--surface2);border:.5px solid var(--bd)}
 .fap-aporte-saldo-mini b{font-size:14.5px}
 .fap-aporte-saldo-mini.fap-ok b{color:var(--green-dk)}
@@ -6922,7 +6919,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button type="button" class="fap-submit-btn fap-secondary" style="width:auto;white-space:nowrap;margin-top:0" onclick="fapToggleNovaPlaca()"><i class="ti ti-plus" style="font-size:13px;vertical-align:-1px"></i> Cadastrar placa</button>
         </div>
         <form id="fap-formLanc" onsubmit="return fapAddLancamento(event)">
-          <div class="fap-form-row"><label>Placa</label><select id="fap-lPlaca" required onchange="fapRenderAporteSaldoMini()"></select></div>
+          <div class="fap-form-row"><label>Placa</label><select id="fap-lPlaca" required></select></div>
           <div id="fap-aporte-saldo-mini" class="fap-aporte-saldo-mini"></div>
           <div class="fap-form-two">
             <div class="fap-form-row"><label>Valor (R$)</label><input type="number" id="fap-lValor" step="0.01" min="0.01" placeholder="0,00" required></div>
@@ -6957,11 +6954,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
 
     <div class="fap-panel">
-      <div class="fap-hist-head">
-        <div><h3 style="margin-bottom:2px">Saldo Disponível</h3><p class="fap-desc" style="margin:0">Defina o saldo total da placa e registre as retiradas — o saldo vai abatendo automaticamente.</p></div>
-        <select id="fap-sPlaca" class="fap-saldo-select"><option value="">Selecione a placa</option></select>
-      </div>
-      <div id="fap-saldoContent"><div class="fap-empty">Selecione (ou cadastre) uma placa para controlar o saldo.</div></div>
+      <h3 style="margin-bottom:2px">Saldo do Mês</h3>
+      <p class="fap-desc" style="margin:0 0 14px">Saldo disponível pra trabalhar neste mês — é debitado automaticamente a cada aporte registrado.</p>
+      <div id="fap-saldoMesContent"></div>
     </div>
 
     <div class="fap-grid-2b">
@@ -10414,17 +10409,16 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         if(typeof activeTab!=='undefined'&&activeTab==='saldoSap'&&typeof sbRenderTable==='function')sbRenderTable();
       }
       /* Aportes Combustível: mesma técnica de merge por chave (id) já usada acima pra
-         Audit Material/Saldo SAP — placas/aportes/retiradas são registros de vida longa
-         que precisam mesclar entre dispositivos, não substituir por inteiro. FAP_SALDOS
-         é um objeto simples {placaId: valorTotal}, não array — merge direto de chaves
-         (quem definiu por último, ganha; sem timestamp por placa individual). */
-      if(Array.isArray(remoteSt.FAP_PLACAS)||Array.isArray(remoteSt.FAP_APORTES)||Array.isArray(remoteSt.FAP_RETIRADAS)||(remoteSt.FAP_SALDOS&&typeof remoteSt.FAP_SALDOS==='object')){
+         Audit Material/Saldo SAP — placas/aportes são registros de vida longa que
+         precisam mesclar entre dispositivos, não substituir por inteiro. fapSaldoMes é
+         um valor único (Saldo do Mês, editável, debitado pelos aportes) — troca só
+         quando o remoto for comprovadamente mais recente (fapAt). */
+      if(Array.isArray(remoteSt.FAP_PLACAS)||Array.isArray(remoteSt.FAP_APORTES)||Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes')){
         if(Array.isArray(remoteSt.FAP_PLACAS))FAP_PLACAS=_mergeArraysByKey(FAP_PLACAS,remoteSt.FAP_PLACAS,x=>x.id);
         if(Array.isArray(remoteSt.FAP_APORTES))FAP_APORTES=_mergeArraysByKey(FAP_APORTES,remoteSt.FAP_APORTES,x=>x.id);
-        if(Array.isArray(remoteSt.FAP_RETIRADAS))FAP_RETIRADAS=_mergeArraysByKey(FAP_RETIRADAS,remoteSt.FAP_RETIRADAS,x=>x.id);
-        if(remoteSt.FAP_SALDOS&&typeof remoteSt.FAP_SALDOS==='object')FAP_SALDOS={...FAP_SALDOS,...remoteSt.FAP_SALDOS};
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapAt')&&remoteSt.fapAt>(fapAt||'')){
           fapAt=remoteSt.fapAt;
+          if(Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes'))fapSaldoMes=Number(remoteSt.fapSaldoMes)||0;
         }
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
       }
@@ -11300,7 +11294,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'lastPreventAt',keys:['dPrevent','dPrevTecnicos','lastPreventAt']},
   {at:'amLastEditAt',keys:['amTickets','amTicketsClearedAt','amLastEditAt']},
   {at:'sbStockAt',keys:['SB_STOCK','sbStockAt']},
-  {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','FAP_RETIRADAS','FAP_SALDOS','fapAt']},
+  {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','fapAt','fapSaldoMes']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -11324,7 +11318,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
    normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_RETIRADAS,FAP_SALDOS,fapAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -11516,8 +11510,7 @@ function applyState(st,label){
        se a aba já estiver ativa no momento do merge remoto. */
     if(Array.isArray(st.FAP_PLACAS)){FAP_PLACAS=st.FAP_PLACAS;changed=true;}
     if(Array.isArray(st.FAP_APORTES)){FAP_APORTES=st.FAP_APORTES;changed=true;}
-    if(Array.isArray(st.FAP_RETIRADAS)){FAP_RETIRADAS=st.FAP_RETIRADAS;changed=true;}
-    if(st.FAP_SALDOS&&typeof st.FAP_SALDOS==='object'){FAP_SALDOS=st.FAP_SALDOS;changed=true;}
+    if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
     if(Object.prototype.hasOwnProperty.call(st,'fapAt'))fapAt=st.fapAt||'';
   }catch(e){console.warn('applyState: falha ao restaurar Aportes Combustível:',e);}
   try{
@@ -19849,7 +19842,7 @@ function downloadCurrentReport(){
    Todo nome (função/id/classe) leva o prefixo fap pra não colidir com o resto do app —
    o arquivo original usava nomes genéricos (uid, fmtMoney, #cTotal, .card...) que
    certamente colidiriam num arquivo com ~20 painéis. */
-let FAP_PLACAS=[],FAP_APORTES=[],FAP_RETIRADAS=[],FAP_SALDOS={},fapAt='';
+let FAP_PLACAS=[],FAP_APORTES=[],fapAt='',fapSaldoMes=0;
 let fapChDiario=null,fapChUf=null;
 
 function fapUid(){return Math.random().toString(36).slice(2,10);}
@@ -19861,8 +19854,14 @@ function fapFmtDate(iso){if(!iso)return'—';const[y,m,d]=String(iso).split('-')
 function fapPlacaById(id){return FAP_PLACAS.find(p=>p.id===id);}
 function fapTotalPlaca(id){return FAP_APORTES.filter(a=>a.placaId===id).reduce((s,a)=>s+a.valor,0);}
 function fapUltimoAporte(id){const list=FAP_APORTES.filter(a=>a.placaId===id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));return list[0]||null;}
-function fapRetiradoPlaca(id){return FAP_RETIRADAS.filter(r=>r.placaId===id).reduce((s,r)=>s+r.valor,0);}
-function fapRetiradasDaPlaca(id){return FAP_RETIRADAS.filter(r=>r.placaId===id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));}
+/* Total aportado NO MÊS CALENDÁRIO ATUAL, em todas as placas — mesmo recorte que o
+   card "Aportado no mês" já usa (fapRenderCards), mas sem respeitar os filtros de tela
+   (UF/placa/data): o Saldo do Mês é uma referência única do painel, não deveria mudar
+   só porque alguém aplicou um filtro pra olhar uma placa específica. */
+function fapAportadoMesAtual(){
+  const mesAtual=fapTodayIso().slice(0,7);
+  return FAP_APORTES.filter(a=>a.data.slice(0,7)===mesAtual).reduce((s,a)=>s+a.valor,0);
+}
 
 function fapToggleNovaPlaca(){const f=document.getElementById('fap-formPlaca');f.style.display=f.style.display==='none'?'block':'none';}
 
@@ -19907,11 +19906,9 @@ function fapDelAporte(id){
 }
 function fapDelPlaca(id){
   if(!canEdit())return;
-  if(!confirm('Remover esta placa e todo o seu histórico de aportes e retiradas?'))return;
+  if(!confirm('Remover esta placa e todo o seu histórico de aportes?'))return;
   FAP_PLACAS=FAP_PLACAS.filter(p=>p.id!==id);
   FAP_APORTES=FAP_APORTES.filter(a=>a.placaId!==id);
-  FAP_RETIRADAS=FAP_RETIRADAS.filter(r=>r.placaId!==id);
-  delete FAP_SALDOS[id];
   fapAt=new Date().toISOString();saveState();
   fapRenderAll();
 }
@@ -19924,105 +19921,52 @@ function fapPopulateSelects(){
   const fP=document.getElementById('fap-fPlaca');const curF=fP.value;
   fP.innerHTML='<option value="">Todas</option>'+FAP_PLACAS.map(p=>`<option value="${eh(p.id)}">${eh(p.placa)}</option>`).join('');
   fP.value=curF;
-  const sP=document.getElementById('fap-sPlaca');const curS=sP.value;
-  sP.innerHTML='<option value="">Selecione a placa</option>'+FAP_PLACAS.map(p=>`<option value="${eh(p.id)}">${eh(p.placa)} (${eh(p.uf)})</option>`).join('');
-  sP.value=curS;
 }
 
-function fapRenderSaldoCard(){
-  const sel=document.getElementById('fap-sPlaca').value;
-  const box=document.getElementById('fap-saldoContent');
-  if(!sel){box.innerHTML=`<div class="fap-empty">Selecione (ou cadastre) uma placa para controlar o saldo.</div>`;return;}
-  const p=fapPlacaById(sel);
-  if(!p){box.innerHTML=`<div class="fap-empty">Selecione (ou cadastre) uma placa para controlar o saldo.</div>`;return;}
-  const total=FAP_SALDOS[sel]||0;
-  const retirado=fapRetiradoPlaca(sel);
-  const restante=total-retirado;
-  const pct=total>0?Math.max(0,Math.min(100,(restante/total)*100)):0;
+/* Saldo do Mês (pedido do usuário): um único valor geral, editável, que representa
+   quanto há disponível pra trabalhar NESTE MÊS — é debitado automaticamente pela soma
+   de todos os aportes já lançados no mês calendário atual (qualquer placa). Substitui
+   o antigo "Saldo Disponível" por placa (debitado por retiradas) — nesse desenho novo,
+   retiradas não fazem mais sentido (não há mais um saldo por placa pra abater) e
+   saíram do painel a pedido do usuário. */
+function fapRenderSaldoMesCard(){
+  const box=document.getElementById('fap-saldoMesContent');
+  if(!box)return;
+  const aportado=fapAportadoMesAtual();
+  const restante=fapSaldoMes-aportado;
+  const pct=fapSaldoMes>0?Math.max(0,Math.min(100,(restante/fapSaldoMes)*100)):0;
   let state='';
-  if(total>0&&pct<=15)state='fap-crit';else if(total>0&&pct<=40)state='fap-warn';
-  const list=fapRetiradasDaPlaca(sel);
-  const rows=list.length?list.map(r=>`<tr>
-      <td>${eh(fapFmtDate(r.data))}</td><td>${eh(r.hora)}</td>
-      <td class="fap-val" style="color:var(--red)">− ${eh(fapFmtMoney(r.valor))}</td>
-      <td>${eh(r.obs||'—')}</td>
-      <td><button class="fap-del-icon" onclick="fapDelRetirada('${eh(r.id)}')" title="Excluir">✕</button></td>
-    </tr>`).join(''):`<tr><td colspan="5"><div class="fap-empty">Nenhuma retirada registrada para ${eh(p.placa)}.</div></td></tr>`;
+  if(fapSaldoMes>0&&pct<=15)state='fap-crit';else if(fapSaldoMes>0&&pct<=40)state='fap-warn';
   box.innerHTML=`
     <div class="fap-saldo-grid">
       <div class="fap-saldo-display">
         <div class="fap-saldo-big ${state}">${eh(fapFmtMoney(restante))}</div>
-        <div class="fap-saldo-label">saldo restante · ${eh(p.placa)}</div>
+        <div class="fap-saldo-label">saldo restante no mês</div>
         <div class="fap-progress-bar"><div class="fap-progress-fill ${state}" style="width:${pct}%"></div></div>
-        <div class="fap-saldo-sub">Total definido: ${eh(fapFmtMoney(total))} · Retirado: ${eh(fapFmtMoney(retirado))}</div>
+        <div class="fap-saldo-sub">Definido: ${eh(fapFmtMoney(fapSaldoMes))} · Aportado este mês: ${eh(fapFmtMoney(aportado))}</div>
       </div>
-      <div class="fap-saldo-forms">
-        <div class="fap-mini-form">
-          <h4>Definir saldo total</h4>
-          <form onsubmit="return fapSetSaldoTotal(event)">
-            <div class="fap-mini-row">
-              <div class="fap-form-row"><input type="number" id="fap-sValorTotal" step="0.01" min="0" placeholder="0,00" value="${total||''}" required></div>
-              <button type="submit" class="fap-mini-btn fap-set">Definir</button>
-            </div>
-          </form>
-        </div>
-        <div class="fap-mini-form">
-          <h4>Registrar retirada</h4>
-          <form onsubmit="return fapAddRetirada(event)">
-            <div class="fap-mini-row">
-              <div class="fap-form-row"><input type="number" id="fap-rValor" step="0.01" min="0.01" placeholder="Valor (R$)" required></div>
-              <div class="fap-form-row"><input type="date" id="fap-rData" value="${fapTodayIso()}" required></div>
-              <div class="fap-form-row"><input type="time" id="fap-rHora" value="${fapNowHora()}" required></div>
-            </div>
-            <div class="fap-mini-row" style="margin-top:8px">
-              <div class="fap-form-row"><input type="text" id="fap-rObs" placeholder="Observação (opcional)"></div>
-              <button type="submit" class="fap-mini-btn fap-rt">Abater</button>
-            </div>
-          </form>
-        </div>
+      <div class="fap-mini-form" style="align-self:center">
+        <h4>Definir/editar saldo do mês</h4>
+        <form onsubmit="return fapSetSaldoMes(event)">
+          <div class="fap-mini-row">
+            <div class="fap-form-row"><input type="number" id="fap-saldoMesValor" step="0.01" min="0" placeholder="0,00" value="${fapSaldoMes||''}" required></div>
+            <button type="submit" class="fap-mini-btn fap-set">Definir</button>
+          </div>
+        </form>
       </div>
-    </div>
-    <div class="fap-hist-wrap">
-      <table class="fap-table" style="min-width:520px">
-        <thead><tr><th>Data</th><th>Hora</th><th>Valor</th><th>Observação</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
     </div>`;
 }
 
-function fapSetSaldoTotal(ev){
+function fapSetSaldoMes(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
-  const sel=document.getElementById('fap-sPlaca').value;
-  const valor=parseFloat(document.getElementById('fap-sValorTotal').value);
-  if(!sel||isNaN(valor)||valor<0)return false;
-  FAP_SALDOS[sel]=valor;
+  const valor=parseFloat(document.getElementById('fap-saldoMesValor').value);
+  if(isNaN(valor)||valor<0)return false;
+  fapSaldoMes=valor;
   fapAt=new Date().toISOString();saveState();
-  fapRenderSaldoCard();
+  fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
   return false;
-}
-function fapAddRetirada(ev){
-  ev.preventDefault();
-  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
-  const sel=document.getElementById('fap-sPlaca').value;
-  const valor=parseFloat(document.getElementById('fap-rValor').value);
-  const data=document.getElementById('fap-rData').value;
-  const hora=document.getElementById('fap-rHora').value;
-  const obs=document.getElementById('fap-rObs').value.trim();
-  if(!sel||!valor||!data||!hora)return false;
-  FAP_RETIRADAS.push({id:fapUid(),placaId:sel,valor,data,hora,obs});
-  fapAt=new Date().toISOString();saveState();
-  fapRenderSaldoCard();
-  fapRenderAporteSaldoMini();
-  return false;
-}
-function fapDelRetirada(id){
-  if(!canEdit())return;
-  FAP_RETIRADAS=FAP_RETIRADAS.filter(r=>r.id!==id);
-  fapAt=new Date().toISOString();saveState();
-  fapRenderSaldoCard();
-  fapRenderAporteSaldoMini();
 }
 
 function fapGetFiltros(){
@@ -20156,29 +20100,21 @@ function fapPrefillForms(){
   if(lh&&!lh.value)lh.value=fapNowHora();
 }
 
-/* Mini-card de saldo disponível dentro do bloco "Novo aporte" (pedido do usuário) —
-   mostra o saldo da placa selecionada NO FORMULÁRIO DE APORTE, pra dar contexto na
-   hora de lançar sem precisar rolar até o bloco "Saldo Disponível" mais abaixo. Mesmo
-   cálculo/cores de fapRenderSaldoCard, só que compacto; atualiza ao trocar a placa do
-   select (onchange) e a cada fapRenderAll() — inclusive quando uma retirada é
-   registrada em outro lugar da tela, já que fapAddRetirada/fapDelRetirada chamam
-   fapRenderSaldoCard, que não passa por aqui, então este mini-card só reflete
-   retiradas depois do próximo fapRenderAll() (ex.: trocar de placa, novo aporte). */
+/* Mini-card de saldo dentro do bloco "Novo aporte" (pedido do usuário) — mostra o
+   Saldo do Mês geral (não mais por placa) — dá
+   contexto na hora de lançar um aporte sem precisar rolar até o card "Saldo do Mês"
+   mais abaixo. Atualiza a cada fapRenderAll() e diretamente em fapSetSaldoMes(). */
 function fapRenderAporteSaldoMini(){
   const box=document.getElementById('fap-aporte-saldo-mini');
   if(!box)return;
-  const sel=document.getElementById('fap-lPlaca').value;
-  const p=sel?fapPlacaById(sel):null;
-  if(!p){box.style.display='none';box.className='fap-aporte-saldo-mini';return;}
-  const total=FAP_SALDOS[sel]||0;
-  const retirado=fapRetiradoPlaca(sel);
-  const restante=total-retirado;
-  const pct=total>0?Math.max(0,Math.min(100,(restante/total)*100)):0;
+  const aportado=fapAportadoMesAtual();
+  const restante=fapSaldoMes-aportado;
+  const pct=fapSaldoMes>0?Math.max(0,Math.min(100,(restante/fapSaldoMes)*100)):0;
   let cls='fap-ok';
-  if(total>0&&pct<=15)cls='fap-crit';else if(total>0&&pct<=40)cls='fap-warn';
+  if(fapSaldoMes>0&&pct<=15)cls='fap-crit';else if(fapSaldoMes>0&&pct<=40)cls='fap-warn';
   box.className='fap-aporte-saldo-mini '+cls;
   box.style.display='flex';
-  box.innerHTML=`<span>Saldo disponível — ${eh(p.placa)}</span><b>${eh(fapFmtMoney(restante))}</b>`;
+  box.innerHTML=`<span>Saldo do mês restante</span><b>${eh(fapFmtMoney(restante))}</b>`;
 }
 
 function fapRenderAll(){
@@ -20187,7 +20123,7 @@ function fapRenderAll(){
   fapRenderHist();
   fapRenderCards();
   fapRenderCharts();
-  fapRenderSaldoCard();
+  fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
 }
 
@@ -21406,7 +21342,6 @@ function rdeToggleExpurgoAtenuacao(i){
 loadAbAnnotations();loadAbResponsaveisCustom();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 fapPrefillForms();
 ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',fapRenderAll);});
-(function(){const el=document.getElementById('fap-sPlaca');if(el)el.addEventListener('change',fapRenderSaldoCard);})();
 _atrixRenderTimerBadge();
 setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},3000);
 /* Pedido do usuário: cronômetro/barra de progresso do Agente Atrix não devem
