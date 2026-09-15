@@ -20428,7 +20428,14 @@ function _rde4AggMonth(recs){
 function _rde4AggDay(recs,mesKey){
   const map={};
   recs.forEach(r=>{
-    const det=r._raw&&r._raw[r._raw.length-1];
+    /* Bug real: `r._raw[r._raw.length-1]` pegava sempre o ÚLTIMO elemento da linha —
+       que hoje é elapsedH (número, adicionado depois pro MTTR), não mais o detail
+       (objeto com mesKey/dia). Como toda base atual já tem elapsedH nessa posição,
+       essa condição nunca era um objeto de verdade e os 4 gráficos "| Mês Selecionado"
+       do 4-Analytics ficavam sempre vazios. O detail está numa posição FIXA (8=AC,
+       7=BB), independente de elapsedH existir ou não — mesma convenção já usada em
+       rdeToFlat/rdeChaveExpurgo. */
+    const det=r._raw&&r._raw[r._scope==='ac'?8:7];
     if(!det||typeof det!=='object')return;
     const mk=det.mesKey||r.m||'';
     if(mk!==mesKey)return;
