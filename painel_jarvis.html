@@ -1597,6 +1597,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-hist-wrap{overflow-x:auto}
 .fap-val{color:var(--green-dk);font-weight:700}
 .fap-export-btn{border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx);border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer}
+.fap-email-preview{background:var(--surface2);border:.5px solid var(--bd);border-radius:10px;padding:16px 18px;font-size:13px;line-height:1.65;color:var(--tx);white-space:pre-wrap;font-family:inherit;max-height:420px;overflow-y:auto}
 .fap-saldo-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:18px;margin-bottom:16px}
 @media(max-width:900px){.fap-saldo-grid{grid-template-columns:1fr}}
 .fap-saldo-display{background:var(--surface2);border:.5px solid var(--bd);border-radius:var(--rl);padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
@@ -6943,7 +6944,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <select id="fap-pUf" required><option value="PI">PI</option><option value="MA">MA</option><option value="PA">PA</option><option value="AM">AM</option><option value="AP">AP</option></select>
             </div>
           </div>
-          <div class="fap-form-row"><label>Técnico responsável (opcional)</label><input type="text" id="fap-pTec" placeholder="nome do técnico"></div>
+          <div class="fap-form-two">
+            <div class="fap-form-row"><label>Técnico responsável (opcional)</label><input type="text" id="fap-pTec" placeholder="nome do técnico"></div>
+            <div class="fap-form-row"><label>Nome do GO (opcional)</label><input type="text" id="fap-pGo" placeholder="nome do Gestor Operacional"></div>
+          </div>
           <button type="submit" class="fap-submit-btn fap-secondary">Cadastrar placa</button>
         </form>
       </div>
@@ -6953,7 +6957,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <p class="fap-desc">Soma dos aportes registrados para cada placa.</p>
         <div style="max-height:400px;overflow-y:auto">
           <table class="fap-table" id="fap-placaTable">
-            <thead><tr><th>Placa</th><th>UF</th><th>Aportado</th><th>Último aporte</th><th></th></tr></thead>
+            <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>Aportado</th><th>Último aporte</th><th></th></tr></thead>
             <tbody id="fap-placaTableBody"></tbody>
           </table>
         </div>
@@ -6984,6 +6988,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <tbody id="fap-histBody"></tbody>
         </table>
       </div>
+    </div>
+
+    <div class="fap-panel">
+      <div class="fap-hist-head">
+        <div><h3 style="margin-bottom:2px">E-mail</h3><p class="fap-desc" style="margin:0">Modelo de mensagem pronto para envio — atualiza automaticamente conforme os filtros de UF/Placa/período aplicados acima.</p></div>
+        <button class="fap-export-btn" onclick="fapCopyEmailText()"><i class="ti ti-copy" style="font-size:13px;vertical-align:-1px"></i> Copiar texto do e-mail</button>
+      </div>
+      <div class="fap-email-preview" id="fap-emailPreview"></div>
     </div>
   </div>
 
@@ -19900,8 +19912,9 @@ function fapAddPlaca(ev){
   const placa=document.getElementById('fap-pPlaca').value.trim().toUpperCase();
   const uf=document.getElementById('fap-pUf').value;
   const tecnico=document.getElementById('fap-pTec').value.trim();
+  const go=document.getElementById('fap-pGo').value.trim();
   if(!placa)return false;
-  FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico});
+  FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico,go});
   fapAt=new Date().toISOString();saveState();
   document.getElementById('fap-formPlaca').reset();
   document.getElementById('fap-formPlaca').style.display='none';
@@ -20049,13 +20062,14 @@ function fapAportesFiltrados(){
 function fapRenderPlacaTable(){
   const body=document.getElementById('fap-placaTableBody');
   const list=fapPlacasFiltradas();
-  if(!list.length){body.innerHTML=`<tr><td colspan="5"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;return;}
+  if(!list.length){body.innerHTML=`<tr><td colspan="6"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;return;}
   body.innerHTML=list.map(p=>{
     const total=fapTotalPlaca(p.id);
     const ult=fapUltimoAporte(p.id);
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm">${eh(p.placa)}</div><div class="fap-sub">${eh(p.tecnico||'sem técnico vinculado')}</div></td>
       <td><span class="fap-uf-chip">${eh(p.uf)}</span></td>
+      <td>${eh(p.go||'—')}</td>
       <td class="fap-saldo-val">${eh(fapFmtMoney(total))}</td>
       <td>${ult?eh(fapFmtDate(ult.data)+' às '+ult.hora):'—'}</td>
       <td><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover">✕</button></td>
@@ -20139,6 +20153,68 @@ function fapExportCsv(){
   URL.revokeObjectURL(url);
 }
 
+/* Bloco "E-mail" (pedido do usuário): modelo de mensagem executiva pra envio, que
+   reaproveita fapAportesFiltrados() — o MESMO recorte já aplicado no Histórico/Total
+   por placa pelos filtros de UF/Placa/De/Até da tela — então o texto muda junto com o
+   filtro, sem duplicar lógica de filtragem. Inclui Placa e Nome do GO (Gestor
+   Operacional) por lançamento, sem o Saldo do Mês (fora do escopo pedido). */
+function fapEmailFiltroResumo(){
+  const f=fapGetFiltros();
+  const partes=[];
+  if(f.uf)partes.push('UF: '+f.uf);
+  if(f.placa){const p=fapPlacaById(f.placa);if(p)partes.push('Placa: '+p.placa);}
+  if(f.de)partes.push('De: '+fapFmtDate(f.de));
+  if(f.ate)partes.push('Até: '+fapFmtDate(f.ate));
+  return partes.length?partes.join(' · '):'Todo o período (sem filtro aplicado)';
+}
+function fapEmailText(){
+  const list=fapAportesFiltrados();
+  const total=list.reduce((s,a)=>s+a.valor,0);
+  const linhas=list.map(a=>{
+    const p=fapPlacaById(a.placaId);
+    const placa=p?p.placa:'—';
+    const uf=p?p.uf:'—';
+    const go=p&&p.go?p.go:'sem GO vinculado';
+    return`${placa} (${uf}) — GO: ${go} — ${fapFmtDate(a.data)} — ${fapFmtMoney(a.valor)}`;
+  });
+  const corpo=linhas.length?linhas.join('\n'):'Nenhum aporte no período/filtro selecionado.';
+  return`Assunto: Relatório de Aportes de Saldo — Frota e Combustível
+
+Prezados(as),
+
+Segue, para conhecimento e registro, o relatório dos aportes de saldo realizados por placa no período de referência.
+
+Filtro aplicado: ${fapEmailFiltroResumo()}
+
+RELAÇÃO DE APORTES
+
+${corpo}
+
+Total geral aportado no período: ${fapFmtMoney(total)}
+Total de lançamentos: ${list.length}
+
+Os valores acima refletem os aportes registrados no Painel de Controle de Aportes de Saldo, por placa, com data de cada lançamento e nome do Gestor Operacional (GO) responsável.
+
+Ficamos à disposição para esclarecimentos adicionais.
+
+Atenciosamente,`;
+}
+function fapRenderEmailBlock(){
+  const box=document.getElementById('fap-emailPreview');
+  if(!box)return;
+  box.textContent=fapEmailText();
+}
+function fapCopyEmailText(){
+  const texto=fapEmailText();
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto)
+      .then(()=>_ghToast('Texto do e-mail copiado ✓','var(--green-dk)',3000))
+      .catch(()=>alert('Não foi possível copiar automaticamente. Selecione o texto no bloco e copie manualmente.'));
+  }else{
+    alert('Cópia automática não suportada neste navegador. Selecione o texto no bloco e copie manualmente.');
+  }
+}
+
 function fapPrefillForms(){
   const ld=document.getElementById('fap-lData'),lh=document.getElementById('fap-lHora');
   if(ld&&!ld.value)ld.value=fapTodayIso();
@@ -20178,6 +20254,7 @@ function fapRenderAll(){
   fapRenderCharts();
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
+  fapRenderEmailBlock();
 }
 
 /* ─── REDE PANEL ─── */
