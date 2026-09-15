@@ -6923,7 +6923,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="fap-form-row"><label>Placa</label><select id="fap-lPlaca" required></select></div>
           <div id="fap-aporte-saldo-mini" class="fap-aporte-saldo-mini"></div>
           <div class="fap-form-two">
-            <div class="fap-form-row"><label>Valor (R$)</label><input type="number" id="fap-lValor" step="0.01" min="0.01" placeholder="0,00" required></div>
+            <div class="fap-form-row"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="fap-lValor" placeholder="0,00" required></div>
             <div class="fap-form-row"><label>Data</label><input type="date" id="fap-lData" required></div>
           </div>
           <div class="fap-form-row"><label>Hora</label><input type="time" id="fap-lHora" required></div>
@@ -19860,6 +19860,24 @@ function fapUid(){return Math.random().toString(36).slice(2,10);}
 function fapTodayIso(){return new Date().toISOString().slice(0,10);}
 function fapNowHora(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 function fapFmtMoney(v){return'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+/* Bug real reportado pelo usuário: os campos de valor eram <input type="number">, que
+   segue a regra do HTML de só aceitar "." como separador decimal e REJEITA vírgula —
+   digitar "1.000,00" (formato brasileiro comum pra mil reais) fazia o navegador
+   descartar a vírgula silenciosamente, sobrando "1.00000", que o parseFloat lê como 1
+   (um real!), não 1000. Confirmado testando a digitação real no campo. Os campos
+   agora são type="text" e passam por este parser em vez do parsing nativo do
+   number input, aceitando "1000", "1000,50", "1.000,50" e "1000.50" corretamente. */
+function fapParseValor(str){
+  str=String(str||'').trim().replace(/[^\d.,-]/g,'');
+  if(!str)return NaN;
+  if(str.includes(',')){
+    str=str.replace(/\./g,'').replace(',','.');
+  }else{
+    const partes=str.split('.');
+    if(partes.length>1&&partes[partes.length-1].length===3)str=partes.join('');
+  }
+  return parseFloat(str);
+}
 function fapFmtDate(iso){if(!iso)return'—';const[y,m,d]=String(iso).split('-');return`${d}/${m}/${y}`;}
 
 function fapPlacaById(id){return FAP_PLACAS.find(p=>p.id===id);}
@@ -19895,7 +19913,7 @@ function fapAddLancamento(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
   const placaId=document.getElementById('fap-lPlaca').value;
-  const valor=parseFloat(document.getElementById('fap-lValor').value);
+  const valor=fapParseValor(document.getElementById('fap-lValor').value);
   const data=document.getElementById('fap-lData').value;
   const hora=document.getElementById('fap-lHora').value;
   const obs=document.getElementById('fap-lObs').value.trim();
@@ -19976,7 +19994,7 @@ function fapRenderSaldoMesCard(){
         <h4>Definir/editar saldo do mês</h4>
         <form onsubmit="return fapSetSaldoMes(event)">
           <div class="fap-mini-row">
-            <div class="fap-form-row"><input type="number" id="fap-saldoMesValor" step="0.01" min="0" placeholder="0,00" value="${fapSaldoMes||''}" required></div>
+            <div class="fap-form-row"><input type="text" inputmode="decimal" id="fap-saldoMesValor" placeholder="0,00" value="${fapSaldoMes?fapFmtMoney(fapSaldoMes).replace('R\$ ',''):''}" required></div>
             <button type="submit" class="fap-mini-btn fap-set">Definir</button>
           </div>
         </form>
@@ -19987,7 +20005,7 @@ function fapRenderSaldoMesCard(){
 function fapSetSaldoMes(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
-  const valor=parseFloat(document.getElementById('fap-saldoMesValor').value);
+  const valor=fapParseValor(document.getElementById('fap-saldoMesValor').value);
   if(isNaN(valor)||valor<0)return false;
   fapSaldoMes=valor;
   fapAt=new Date().toISOString();saveState();
