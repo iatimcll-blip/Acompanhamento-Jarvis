@@ -19987,13 +19987,17 @@ function fapFmtDate(iso){if(!iso)return'—';const[y,m,d]=String(iso).split('-')
 function fapPlacaById(id){return FAP_PLACAS.find(p=>p.id===id);}
 function fapTotalPlaca(id){return FAP_APORTES.filter(a=>a.placaId===id).reduce((s,a)=>s+a.valor,0);}
 function fapUltimoAporte(id){const list=FAP_APORTES.filter(a=>a.placaId===id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));return list[0]||null;}
-/* Total aportado NO MÊS CALENDÁRIO ATUAL, em todas as placas — mesmo recorte que o
-   card "Aportado no mês" já usa (fapRenderCards), mas sem respeitar os filtros de tela
-   (UF/placa/data): o Saldo do Mês é uma referência única do painel, não deveria mudar
-   só porque alguém aplicou um filtro pra olhar uma placa específica. */
+/* Total aportado no CICLO DE COMPETÊNCIA 15→14 ATUAL (não mês de calendário — dia 15
+   é a renovação de base, dia 14 é o limite do ciclo anterior; mesma convenção já usada
+   no DSR Volante e na tabela "Consumo do GO por semana"), em todas as placas — mesmo
+   recorte que o card "Aportado no mês" já usa (fapRenderCards), mas sem respeitar os
+   filtros de tela (UF/placa/data): o Saldo do Mês é uma referência única do painel,
+   não deveria mudar só porque alguém aplicou um filtro pra olhar uma placa específica.
+   fapCicloAtualIso() é definida mais abaixo — hoisting de function declaration cobre a
+   ordem de chamada. */
 function fapAportadoMesAtual(){
-  const mesAtual=fapTodayIso().slice(0,7);
-  return FAP_APORTES.filter(a=>a.data.slice(0,7)===mesAtual).reduce((s,a)=>s+a.valor,0);
+  const{start,end}=fapCicloAtualIso();
+  return FAP_APORTES.filter(a=>a.data>=start&&a.data<=end).reduce((s,a)=>s+a.valor,0);
 }
 
 function fapToggleNovaPlaca(){
@@ -20237,10 +20241,10 @@ function fapRenderCards(){
   const doDia=list.filter(a=>a.data===hoje);
   document.getElementById('fap-cHoje').textContent=fapFmtMoney(doDia.reduce((s,a)=>s+a.valor,0));
   document.getElementById('fap-cHojeFoot').textContent=`${doDia.length} lançamento(s) hoje`;
-  const mesAtual=hoje.slice(0,7);
-  const doMes=list.filter(a=>a.data.slice(0,7)===mesAtual);
+  const{start:cicloStart,end:cicloEnd}=fapCicloAtualIso();
+  const doMes=list.filter(a=>a.data>=cicloStart&&a.data<=cicloEnd);
   document.getElementById('fap-cMes').textContent=fapFmtMoney(doMes.reduce((s,a)=>s+a.valor,0));
-  document.getElementById('fap-cMesFoot').textContent=`${doMes.length} lançamento(s) este mês`;
+  document.getElementById('fap-cMesFoot').textContent=`${doMes.length} lançamento(s) neste ciclo`;
   document.getElementById('fap-cPlacas').textContent=new Set(list.map(a=>a.placaId)).size;
 }
 
@@ -20393,6 +20397,18 @@ async function fapImportarBase(ev){
     ev.target.value='';
   }
 }
+/* Normaliza nome de condutor pra Primeira Maiúscula (pedido do usuário: a base vem com
+   capitalização inconsistente entre exports — tudo maiúsculo, tudo minúsculo, etc. —
+   sem normalizar, a MESMA pessoa gerava linhas separadas na lista por diferença de
+   caixa). Conectores comuns de nome próprio em português ficam minúsculos. Aplicado
+   ANTES de montar a chave de consolidação, então variantes de caixa da mesma pessoa
+   caem no mesmo grupo. */
+const FAP_CONECTORES_NOME=new Set(['de','da','do','das','dos','e']);
+function fapNomeProprio(nome){
+  return String(nome||'').trim().toLowerCase().split(/\s+/).filter(Boolean).map(w=>
+    FAP_CONECTORES_NOME.has(w)?w:w.charAt(0).toUpperCase()+w.slice(1)
+  ).join(' ');
+}
 function fapConsolidarImportacao(rows){
   const grupos=new Map();
   let ignoradas=0,processadas=0;
@@ -20402,7 +20418,7 @@ function fapConsolidarImportacao(rows){
     const dataHora=String(row[0]||'').trim();
     const placa=String(row[11]||'').trim().toUpperCase();
     const nomeVeiculo=String(row[12]||'').trim();
-    const motorista=String(row[19]||'').trim();
+    const motorista=fapNomeProprio(row[19]);
     const valorStr=String(row[31]||'').trim();
     if(!placa||!dataHora||!valorStr||!motorista){ignoradas++;continue;}
     const valor=fapParseValor(valorStr);
