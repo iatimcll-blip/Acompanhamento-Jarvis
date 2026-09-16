@@ -7053,10 +7053,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <canvas id="fap-chart-condutor"></canvas>
         </div>
         <h4 style="margin:16px 0 6px;font-size:13px">Veículos por categoria (Leve/Médio/Pesado)</h4>
-        <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por categoria — lida direto da coluna "Categoria do veículo" do Portal Alelo.</p>
+        <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por categoria — lida direto da coluna "Categoria do veículo" do Portal Alelo. Cota do mês e consumido no mês usam o ciclo de competência atual (dia 15 ao dia 14); Total consumido é histórico (todos os ciclos importados).</p>
         <div style="max-height:240px;overflow-y:auto">
           <table class="fap-table">
-            <thead><tr><th>Categoria</th><th>Qtd. de veículos</th><th>Total consumido</th></tr></thead>
+            <thead><tr><th>Categoria</th><th>Qtd. de veículos</th><th>Cota do mês</th><th>Consumido no mês</th><th>Total consumido</th></tr></thead>
             <tbody id="fap-tipoTableBody"></tbody>
           </table>
         </div>
@@ -20659,24 +20659,41 @@ function fapLimparBase(){
    base sem a coluna de categoria). Conta placas distintas, não linhas de
    FAP_CONSUMO_CONDUTOR (que tem 1 linha por condutor+placa+semana — a mesma placa
    pode aparecer várias vezes). */
+/* Cota mensal por categoria (pedido do usuário, 2026-09-16): valor de referência por
+   veículo daquela categoria, no ciclo de competência 15→14 (mesma convenção já usada
+   em todo o painel — Saldo do Mês, Consumo do GO por semana). Cota do mês = qtd. de
+   veículos da categoria × valor unitário; comparada contra o consumido só DENTRO do
+   ciclo atual (não o total histórico, que mistura ciclos passados). Categoria sem
+   valor definido (ex.: "Não informado") não tem cota — mostra "—" em vez de R$ 0,00,
+   que sugeriria cota zerada em vez de "não aplicável". */
+const FAP_COTA_CATEGORIA={Leve:750,'Médio':1050,Pesado:1500};
 function fapRenderTipoVeiculo(){
   const body=document.getElementById('fap-tipoTableBody');
   if(!body)return;
+  const ciclo=fapCicloAtualIso();
   const porTipo=new Map();
   FAP_CONSUMO_CONDUTOR.forEach(r=>{
     const cad=fapPlacaByPlaca(r.placa);
     const tipo=r.categoria||(cad&&cad.tipo)||'Não informado';
-    if(!porTipo.has(tipo))porTipo.set(tipo,{tipo,placas:new Set(),total:0});
+    if(!porTipo.has(tipo))porTipo.set(tipo,{tipo,placas:new Set(),total:0,noCiclo:0});
     const t=porTipo.get(tipo);
     t.placas.add(r.placa);
     t.total+=r.valor;
+    if(r.semanaStart>=ciclo.start&&r.semanaStart<=ciclo.end)t.noCiclo+=r.valor;
   });
   const lista=[...porTipo.values()].sort((a,b)=>b.placas.size-a.placas.size);
-  body.innerHTML=lista.map(t=>`<tr>
+  body.innerHTML=lista.map(t=>{
+    const valorUnit=FAP_COTA_CATEGORIA[t.tipo];
+    const cota=valorUnit?valorUnit*t.placas.size:null;
+    const dentro=cota!==null&&t.noCiclo<=cota;
+    return`<tr>
     <td class="fap-name-cell"><div class="fap-nm">${eh(t.tipo)}</div></td>
     <td>${t.placas.size}</td>
+    <td>${cota!==null?eh(fapFmtMoney(cota)):'—'}</td>
+    <td class="fap-val" style="${cota!==null?`color:${dentro?'var(--green-dk)':'var(--red)'}`:''}">${eh(fapFmtMoney(t.noCiclo))}</td>
     <td class="fap-val">${eh(fapFmtMoney(t.total))}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 }
 function fapRenderConsumoCondutor(){
   const box=document.getElementById('fap-condutorChartWrap'),body=document.getElementById('fap-condutorTableBody'),empty=document.getElementById('fap-condutorEmpty');
