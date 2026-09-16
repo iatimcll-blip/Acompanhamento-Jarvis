@@ -2403,6 +2403,9 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #gh-lastsync-badge.stale { border-color: rgba(249,115,22,.4); color: var(--orange); }
 #gh-lastsync-badge.stale i { color: var(--orange); }
 #gh-lastsync-badge.fresh i { color: var(--green); }
+#gh-lastsync-topbar.stale { color: var(--orange); }
+#gh-lastsync-topbar.stale i { color: var(--orange); }
+#gh-lastsync-topbar.fresh i { color: var(--green); }
 #stale-build-banner {
   display: none;
   position: fixed;
@@ -6744,6 +6747,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </label>
 
       <div class="nav-right">
+        <!-- Última sincronização entre dispositivos (pedido do usuário, 2026-09-16): mesma
+             fonte de dados do badge detalhado dentro do modal de sincronização
+             (gh-lastsync-badge/_renderGhLastSyncBadge) — visível aqui pra qualquer usuário
+             (viewer ou admin) ver a atualização sem precisar abrir o modal. -->
+        <div class="nav-btn" id="gh-lastsync-topbar" title="Última vez que este dispositivo confirmou estar em dia com o GitHub" style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--tx3);white-space:nowrap;width:auto;padding:0 8px"><i class="ti ti-history" style="font-size:12px"></i><span id="gh-lastsync-topbar-txt">—</span></div>
         <!-- Status chips -->
         <div class="nav-chips">
           <button class="nav-chip" id="chip-ab" onclick="openCentral('ab')" title="Abertos — clique para carregar"><span class="nc-dot off" id="chip-ab-dot"></span><span class="nc-text">Abertos</span></button>
@@ -7340,9 +7348,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="mop-ref-btn" onclick="abrirModalRegrasSla()" title="Como o relógio de SLA é calculado"><i class="ti ti-clock-hour-4"></i> Regras de SLA</button>
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')"><i class="ti ti-database"></i> Atualizar base</button>
           <label class="mop-ref-btn admin-only" style="cursor:pointer" title="Base nacional sem filtro prévio (aba Export) — separa automaticamente os chamados de PI/MA/PA/AM/AP, inferindo a cidade pelo Título quando a UF não vier preenchida. Vale para Abertos e SWAP juntos."><i class="ti ti-world-upload"></i> Anexar base geral<input type="file" id="file-ab-geral" accept=".xlsx,.xls" style="display:none"></label>
-          <button class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos"><i class="ti ti-refresh"></i> Atualizar substatus (Atrix)</button>
+          <button class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
           <span class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
-          <span class="ab-upd-badge admin-only" id="atrix-running-timer" title="Tempo decorrido desde o clique em Atualizar substatus — o ciclo completo leva ~15 min"><i class="ti ti-loader-2"></i><span id="atrix-running-timer-txt">Rodando há 00:00</span></span>
+          <span class="ab-upd-badge admin-only" id="atrix-running-timer" title="Tempo decorrido desde o clique em Atualizar — o ciclo completo leva ~15 min"><i class="ti ti-loader-2"></i><span id="atrix-running-timer-txt">Rodando há 00:00</span></span>
           <span class="atrix-progress-wrap" id="atrix-progress-wrap" title="% de chamados já verificados no ciclo do Agente Atrix em andamento">
             <span class="atrix-progress-bar"><span class="atrix-progress-fill" id="atrix-progress-fill" style="width:0%"></span></span>
             <span id="atrix-progress-txt">0%</span>
@@ -9987,16 +9995,26 @@ function _setLastKnownRemoteSavedAt(v){try{if(v)localStorage.setItem(GH_LAST_KNO
    pela última vez que está em dia com o GitHub", nas duas direções. */
 function _renderGhLastSyncBadge(){
   const el=document.getElementById('gh-lastsync-txt'),badge=document.getElementById('gh-lastsync-badge');
-  if(!el||!badge)return;
+  const elTop=document.getElementById('gh-lastsync-topbar-txt'),badgeTop=document.getElementById('gh-lastsync-topbar');
   const savedAt=_getLastKnownRemoteSavedAt();
-  if(!savedAt){el.textContent='Nunca sincronizado neste dispositivo';badge.classList.remove('fresh','stale');return;}
+  if(!savedAt){
+    if(el&&badge){el.textContent='Nunca sincronizado neste dispositivo';badge.classList.remove('fresh','stale');}
+    if(elTop&&badgeTop){elTop.textContent='Nunca sincronizado';badgeTop.classList.remove('fresh','stale');}
+    return;
+  }
   const d=new Date(savedAt);
   const dataHora=isNaN(d)?savedAt:d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const min=isNaN(d)?null:Math.floor((Date.now()-d.getTime())/60000);
   const relTxt=min===null?'':min<1?' (agora)':min<60?` (há ${min} min)`:(()=>{const h=Math.floor(min/60),m=min%60;return` (há ${h}h${m>0?m+'min':''})`})();
-  el.textContent='Última sincronização: '+dataHora+relTxt;
-  badge.classList.toggle('fresh',min!==null&&min<35);
-  badge.classList.toggle('stale',min!==null&&min>120);
+  const fresh=min!==null&&min<35,stale=min!==null&&min>120;
+  if(el&&badge){
+    el.textContent='Última sincronização: '+dataHora+relTxt;
+    badge.classList.toggle('fresh',fresh);badge.classList.toggle('stale',stale);
+  }
+  if(elTop&&badgeTop){
+    elTop.textContent=dataHora+relTxt;
+    badgeTop.classList.toggle('fresh',fresh);badgeTop.classList.toggle('stale',stale);
+  }
 }
 setInterval(_renderGhLastSyncBadge,30000);
 setTimeout(_checkAppBuildFreshness,4000);
@@ -10660,7 +10678,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();
+  hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -10679,7 +10697,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();
+      hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
       return;
     }
   }
@@ -11216,6 +11234,26 @@ function atualizarSlaDinamico(){
   });
 }
 let _slaLiveTimer=null;
+let _ghAutoSyncTimer=null;
+/* Sincronização automática periódica (pedido do usuário, 2026-09-16): sem isso, uma aba
+   aberta por muito tempo só via dados de outros dispositivos ao recarregar a página ou
+   clicar manualmente em "Importar do GitHub" — se ninguém fizesse isso, ficava com uma
+   cópia cada vez mais desatualizada em memória, mesmo com o GitHub já refletindo edições
+   recentes de outro aparelho. A cada 5 min, busca o estado publicado e aplica se for mais
+   novo (mesma lógica de shouldApplyRemoteState() já usada no boot e no botão manual —
+   não força nada por cima de uma edição local ainda não sincronizada). É só LEITURA
+   (restoreGhState) — a escrita já é reativa via saveState()/saveGhState() a cada edição,
+   então repetir o envio aqui a cada 5 min só geraria commits vazios sem necessidade.
+   Funciona pra qualquer usuário logado (viewer ou admin), já que puxar dados não exige
+   permissão de edição. Pausa quando a aba está em segundo plano, mesmo padrão do timer de
+   SLA acima. */
+function iniciarSincronizacaoAutomatica(){
+  clearInterval(_ghAutoSyncTimer);
+  _ghAutoSyncTimer=setInterval(()=>{
+    if(document.visibilityState!=='visible')return;
+    restoreGhState();
+  },5*60*1000);
+}
 function iniciarAtualizacaoAutomaticaSla(){
   clearInterval(_slaLiveTimer);
   _slaLiveTimer=setInterval(()=>{
