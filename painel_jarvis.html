@@ -6972,8 +6972,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div class="fap-form-row"><label>Técnico responsável (opcional)</label><input type="text" id="fap-pTec" placeholder="nome do técnico"></div>
             <div class="fap-form-row"><label>Nome do GO (opcional)</label><input type="text" id="fap-pGo" placeholder="nome do Gestor Operacional"></div>
           </div>
-          <div class="fap-form-row"><label>Tipo de veículo (opcional)</label>
-            <select id="fap-pTipo"><option value="">Não informado</option><option value="Carro">Carro</option><option value="Moto">Moto</option><option value="Caminhonete">Caminhonete</option><option value="Van/Utilitário">Van/Utilitário</option><option value="Caminhão">Caminhão</option><option value="Outro">Outro</option></select>
+          <div class="fap-form-row"><label>Categoria do veículo (opcional)</label>
+            <select id="fap-pTipo" title="Normalmente vem sozinho da base anexada (coluna &quot;Categoria do veículo&quot; do Portal Alelo) — escolha aqui só se a placa ainda não tiver transação importada."><option value="">Não informado</option><option value="Leve">Leve</option><option value="Médio">Médio</option><option value="Pesado">Pesado</option></select>
           </div>
           <div style="display:flex;gap:8px">
             <button type="submit" id="fap-pSubmitBtn" class="fap-submit-btn fap-secondary" style="flex:1">Cadastrar placa</button>
@@ -7052,11 +7052,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fap-chart-box" id="fap-condutorChartBox" style="height:260px">
           <canvas id="fap-chart-condutor"></canvas>
         </div>
-        <h4 style="margin:16px 0 6px;font-size:13px">Veículos por tipo</h4>
-        <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por tipo cadastrado na placa.</p>
+        <h4 style="margin:16px 0 6px;font-size:13px">Veículos por categoria (Leve/Médio/Pesado)</h4>
+        <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por categoria — lida direto da coluna "Categoria do veículo" do Portal Alelo.</p>
         <div style="max-height:240px;overflow-y:auto">
           <table class="fap-table">
-            <thead><tr><th>Tipo de veículo</th><th>Qtd. de veículos</th><th>Total consumido</th></tr></thead>
+            <thead><tr><th>Categoria</th><th>Qtd. de veículos</th><th>Total consumido</th></tr></thead>
             <tbody id="fap-tipoTableBody"></tbody>
           </table>
         </div>
@@ -20558,9 +20558,31 @@ function fapNomeProprio(nome){
     FAP_CONECTORES_NOME.has(w)?w:w.charAt(0).toUpperCase()+w.slice(1)
   ).join(' ');
 }
+/* Categoria do veículo (Leve/Médio/Pesado) — pedido do usuário: vem de uma coluna da
+   própria base anexada (Portal Alelo), não de escolha manual no cadastro da placa.
+   Ao contrário de Placa/Veículo/Motorista/Valor/Data (lidos por POSIÇÃO fixa — mais
+   robusto a variação de acentuação/encoding entre exports, ver comentário de
+   fapImportarBase), a posição exata dessa coluna não foi confirmada pelo usuário —
+   só o nome do cabeçalho ("Categoria do veículo"). Por isso, busca pelo CABEÇALHO
+   (rows[0]) em vez de uma posição chumbada, tolerando variação de acento/caixa. */
+function fapFindColIdx(headerRow,aliases){
+  if(!Array.isArray(headerRow))return-1;
+  const norm=s=>String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const normAliases=aliases.map(norm);
+  return headerRow.findIndex(h=>normAliases.includes(norm(h)));
+}
+function fapNormCategoria(raw){
+  const s=String(raw||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  if(!s)return'';
+  if(s.includes('leve'))return'Leve';
+  if(s.includes('medio'))return'Médio';
+  if(s.includes('pesado'))return'Pesado';
+  return String(raw).trim(); // categoria com nome diferente do esperado — preserva em vez de descartar
+}
 function fapConsolidarImportacao(rows){
   const grupos=new Map();
   let ignoradas=0,processadas=0;
+  const catIdx=fapFindColIdx(rows[0],['categoria do veiculo','categoria do veículo','categoria']);
   for(let i=1;i<rows.length;i++){
     const row=rows[i];
     if(!row||!row.length)continue;
@@ -20569,6 +20591,7 @@ function fapConsolidarImportacao(rows){
     const nomeVeiculo=String(row[12]||'').trim();
     const motorista=fapNomeProprio(row[19]);
     const valorStr=String(row[31]||'').trim();
+    const categoria=catIdx>=0?fapNormCategoria(row[catIdx]):'';
     if(!placa||!dataHora||!valorStr||!motorista){ignoradas++;continue;}
     const valor=fapParseValor(valorStr);
     if(isNaN(valor)||valor<=0){ignoradas++;continue;}
@@ -20580,13 +20603,14 @@ function fapConsolidarImportacao(rows){
     const semana=fapSemanasDoCiclo(cStart,cEnd).find(s=>dataIso>=s.start&&dataIso<=s.end);
     if(!semana){ignoradas++;continue;}
     const chave=motorista+'|'+placa+'|'+semana.start;
-    if(!grupos.has(chave))grupos.set(chave,{condutor:motorista,placa,veiculo:nomeVeiculo,valor:0,semanaStart:semana.start,transacoes:0,primeiraData:dataIso,ultimaData:dataIso});
+    if(!grupos.has(chave))grupos.set(chave,{condutor:motorista,placa,veiculo:nomeVeiculo,categoria,valor:0,semanaStart:semana.start,transacoes:0,primeiraData:dataIso,ultimaData:dataIso});
     const g=grupos.get(chave);
     g.valor+=valor;
     g.transacoes++;
     if(dataIso<g.primeiraData)g.primeiraData=dataIso;
     if(dataIso>g.ultimaData)g.ultimaData=dataIso;
     if(!g.veiculo&&nomeVeiculo)g.veiculo=nomeVeiculo;
+    if(!g.categoria&&categoria)g.categoria=categoria;
     processadas++;
   }
   return{grupos:[...grupos.values()],ignoradas,processadas};
@@ -20598,9 +20622,17 @@ function fapProcessarImportacao(rows){
   let novos=0,atualizados=0;
   grupos.forEach(g=>{
     const id='imp-cond-'+g.condutor+'-'+g.placa+'-'+g.semanaStart;
-    const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,valor:Math.round(g.valor*100)/100,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
+    const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,categoria:g.categoria||'',valor:Math.round(g.valor*100)/100,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
     const idx=FAP_CONSUMO_CONDUTOR.findIndex(a=>a.id===id);
     if(idx>=0)FAP_CONSUMO_CONDUTOR[idx]=registro;else FAP_CONSUMO_CONDUTOR.push(registro);
+    /* Mantém FAP_PLACAS.tipo em dia com a categoria vinda da base anexada (pedido do
+       usuário: classificação "conforme base anexada", não mais escolha manual) — só
+       atualiza se a placa já está cadastrada e a base trouxe uma categoria (nunca
+       apaga um tipo já definido por causa de um arquivo sem essa coluna). */
+    if(g.categoria){
+      const placaCad=fapPlacaByPlaca(g.placa);
+      if(placaCad&&placaCad.tipo!==g.categoria){placaCad.tipo=g.categoria;}
+    }
     idx>=0?atualizados++:novos++;
   });
   fapConsumoAt=new Date().toISOString();saveState();
@@ -20617,19 +20649,23 @@ function fapLimparBase(){
   _ghToast('Base de consumo por condutor limpa ✓','var(--green-dk)',4000);
 }
 /* "Veículos por tipo" (pedido do usuário): quantos veículos DISTINTOS realizaram
-   transações na base anexada, classificados pelo campo "Tipo de veículo" cadastrado
-   na placa (fap-pTipo) — campo novo, opcional; placa sem tipo informado (ou nem
-   cadastrada, já que fapProcessarImportacao não cria placa automaticamente) cai no
-   grupo "Não informado". Conta placas distintas, não linhas de FAP_CONSUMO_CONDUTOR
-   (que tem 1 linha por condutor+placa+semana — a mesma placa pode aparecer várias
-   vezes). */
+   transações na base anexada, classificados por categoria (Leve/Médio/Pesado) — vem
+   da própria base anexada (coluna "Categoria do veículo" do Portal Alelo, ver
+   fapConsolidarImportacao), não de escolha manual. Prioriza r.categoria (gravada na
+   importação); cai pro fap-pTipo cadastrado na placa só pra registros importados
+   ANTES desta correção (sem o campo categoria ainda) — nunca undefined, senão
+   quebraria o agrupamento. Sem nenhuma das duas fontes, cai em "Não informado" (placa
+   nem cadastrada, já que fapProcessarImportacao não cria placa automaticamente, ou
+   base sem a coluna de categoria). Conta placas distintas, não linhas de
+   FAP_CONSUMO_CONDUTOR (que tem 1 linha por condutor+placa+semana — a mesma placa
+   pode aparecer várias vezes). */
 function fapRenderTipoVeiculo(){
   const body=document.getElementById('fap-tipoTableBody');
   if(!body)return;
   const porTipo=new Map();
   FAP_CONSUMO_CONDUTOR.forEach(r=>{
     const cad=fapPlacaByPlaca(r.placa);
-    const tipo=cad&&cad.tipo?cad.tipo:'Não informado';
+    const tipo=r.categoria||(cad&&cad.tipo)||'Não informado';
     if(!porTipo.has(tipo))porTipo.set(tipo,{tipo,placas:new Set(),total:0});
     const t=porTipo.get(tipo);
     t.placas.add(r.placa);
