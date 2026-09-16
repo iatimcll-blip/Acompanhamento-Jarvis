@@ -6891,7 +6891,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <p>Aportes de saldo lançados por placa específica, com registro de dia, hora e valor de cada lançamento.</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-        <label class="dash-action admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF), consolidando por placa e semana do ciclo 15–14">
+        <label class="dash-action admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF) só pra análise de consumo por condutor, abaixo — não gera aporte nem mexe no Saldo do Mês">
           <i class="ti ti-file-upload"></i> Anexar base
           <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarBase(event)">
         </label>
@@ -7016,6 +7016,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <button class="fap-export-btn" onclick="fapCopyEmailText()"><i class="ti ti-copy" style="font-size:13px;vertical-align:-1px"></i> Copiar texto do e-mail</button>
       </div>
       <div class="fap-email-preview" id="fap-emailPreview"></div>
+    </div>
+
+    <div class="fap-panel">
+      <div class="fap-hist-head">
+        <div><h3 style="margin-bottom:2px">Consumo por Condutor</h3><p class="fap-desc" style="margin:0">Análise gerada a partir da base anexada (Portal Alelo) — não afeta placas, aportes nem o Saldo do Mês.</p></div>
+        <button class="fap-export-btn admin-only" style="background:var(--red-bg);color:var(--red);border-color:var(--red)" onclick="fapLimparBase()"><i class="ti ti-trash" style="font-size:13px;vertical-align:-1px"></i> Limpar base</button>
+      </div>
+      <div id="fap-condutorEmpty" class="fap-empty">Nenhuma base anexada ainda — use o botão "Anexar base" no topo do painel.</div>
+      <div id="fap-condutorChartWrap" style="display:none">
+        <div class="fap-chart-box" id="fap-condutorChartBox" style="height:260px">
+          <canvas id="fap-chart-condutor"></canvas>
+        </div>
+        <div style="max-height:360px;overflow-y:auto;margin-top:14px">
+          <table class="fap-table">
+            <thead><tr><th>Condutor</th><th>Placa(s)</th><th>Total consumido</th><th>Abastecimentos</th><th>Período</th></tr></thead>
+            <tbody id="fap-condutorTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -10455,6 +10474,11 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         }
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
       }
+      if(Array.isArray(remoteSt.FAP_CONSUMO_CONDUTOR)){
+        FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,remoteSt.FAP_CONSUMO_CONDUTOR,x=>x.id);
+        if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoAt')&&remoteSt.fapConsumoAt>(fapConsumoAt||''))fapConsumoAt=remoteSt.fapConsumoAt;
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
+      }
       /* B2C: cada upload recalcula o resumo inteiro (não são registros editados um a
          um) — mesmo padrão de Ativações/POP acima, troca por inteiro só quando o
          resumo remoto for comprovadamente mais recente que o calculado neste
@@ -11328,6 +11352,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'amLastEditAt',keys:['amTickets','amTicketsClearedAt','amLastEditAt']},
   {at:'sbStockAt',keys:['SB_STOCK','sbStockAt']},
   {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','fapAt','fapSaldoMes']},
+  {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -11360,7 +11385,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,FAP_CONSUMO_CONDUTOR,fapConsumoAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -11567,6 +11592,12 @@ function applyState(st,label){
     if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
     if(Object.prototype.hasOwnProperty.call(st,'fapAt'))fapAt=st.fapAt||'';
   }catch(e){console.warn('applyState: falha ao restaurar Aportes Combustível:',e);}
+  try{
+    /* Consumo por Condutor (base anexada) — sem relação com Saldo/aportes, timestamp
+       e merge por id próprios (fapConsumoAt), mesmo padrão do bloco acima. */
+    if(Array.isArray(st.FAP_CONSUMO_CONDUTOR)){FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,st.FAP_CONSUMO_CONDUTOR,x=>x.id);changed=true;}
+    if(Object.prototype.hasOwnProperty.call(st,'fapConsumoAt'))fapConsumoAt=st.fapConsumoAt||'';
+  }catch(e){console.warn('applyState: falha ao restaurar Consumo por Condutor:',e);}
   try{
     /* B2C: só o resumo agregado por indicador sincroniza (poucas dezenas de
        números) — as bases brutas (até ~50 mil linhas por arquivo) ficam só no
@@ -19922,7 +19953,12 @@ function downloadCurrentReport(){
    o arquivo original usava nomes genéricos (uid, fmtMoney, #cTotal, .card...) que
    certamente colidiriam num arquivo com ~20 painéis. */
 let FAP_PLACAS=[],FAP_APORTES=[],fapAt='',fapSaldoMes=0;
-let fapChDiario=null,fapChUf=null;
+/* Consumo por Condutor (pedido do usuário): dado de uma base anexada (export do
+   Portal Alelo), SEM relação nenhuma com Saldo do Mês/aportes — é só análise gráfica
+   de consumo por condutor, consolidada por condutor+placa+semana. Timestamp próprio
+   (fapConsumoAt) pra entrar no mesmo esquema de guarda por seção do resto do app. */
+let FAP_CONSUMO_CONDUTOR=[],fapConsumoAt='';
+let fapChDiario=null,fapChUf=null,fapChCondutor=null;
 
 function fapUid(){return Math.random().toString(36).slice(2,10);}
 function fapTodayIso(){return new Date().toISOString().slice(0,10);}
@@ -20317,20 +20353,22 @@ function fapRenderGoWeekTable(){
   }).join('');
 }
 
-/* Anexar base (pedido do usuário, modelo = export do Portal Alelo): NÃO entra em
-   buildState()/localStorage como planilha bruta — só serve de fonte pra gerar
-   FAP_APORTES consolidados, igual a como B2C_RAW/ofsRows tratam upload volumoso em
-   outros painéis. Colunas fixas por POSIÇÃO (0-based), não por nome de cabeçalho —
-   mais robusto contra variação de acentuação/encoding entre exports:
-   A(0)=Data/hora da transação, L(11)=Placa, M(12)=Nome do veículo,
-   T(19)=Nome do motorista, AF(31)=Valor da transação (R$).
-   Consolida por PLACA+SEMANA do ciclo 15→14 (mesma granularidade da tabela "Consumo
-   do GO por semana") em vez de 1 aporte por transação — a base tem várias transações
-   por placa por semana (cada abastecimento), importar cru inflaria o Histórico com
-   centenas de linhas. Motorista(s) distintos da semana entram na Observação (campo
-   já existente, reaproveitado, não um campo novo). Reimportar a mesma base/período
-   ATUALIZA o mesmo lançamento em vez de duplicar (id determinístico por placa+semana:
-   'imp-PLACA-AAAA-MM-DD'). */
+/* Anexar base (pedido do usuário, modelo = export do Portal Alelo): usada SÓ pra
+   análise gráfica de consumo por condutor — NÃO mexe em Saldo do Mês/aportes/placas
+   de jeito nenhum (correção de rumo do usuário: a primeira versão gerava aporte a
+   partir da base, foi descartada). A planilha bruta não entra em buildState()/
+   localStorage — só serve de fonte transitória pra popular FAP_CONSUMO_CONDUTOR
+   (mesmo princípio de B2C_RAW/ofsRows: dado bruto grande fica de fora do estado
+   sincronizado, só o resultado consolidado entra). Colunas fixas por POSIÇÃO
+   (0-based), não por nome de cabeçalho — mais robusto contra variação de
+   acentuação/encoding entre exports: A(0)=Data/hora da transação, L(11)=Placa,
+   M(12)=Nome do veículo, T(19)=Nome do motorista, AF(31)=Valor da transação (R$).
+   Consolida por CONDUTOR+PLACA+SEMANA do ciclo 15→14 — a base tem várias transações
+   por placa por semana (cada abastecimento); consolidar evita inflar o dado com uma
+   linha por transação, mas ainda preserva qtd de abastecimentos e período (primeira/
+   última data) por grupo pra tabela de detalhe. Reimportar a mesma base/período
+   ATUALIZA o mesmo grupo em vez de duplicar (id determinístico por
+   condutor+placa+semana). */
 async function fapImportarBase(ev){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
   const file=ev.target.files[0];
@@ -20366,7 +20404,7 @@ function fapConsolidarImportacao(rows){
     const nomeVeiculo=String(row[12]||'').trim();
     const motorista=String(row[19]||'').trim();
     const valorStr=String(row[31]||'').trim();
-    if(!placa||!dataHora||!valorStr){ignoradas++;continue;}
+    if(!placa||!dataHora||!valorStr||!motorista){ignoradas++;continue;}
     const valor=fapParseValor(valorStr);
     if(isNaN(valor)||valor<=0){ignoradas++;continue;}
     const dataParte=dataHora.split(' ')[0];
@@ -20376,23 +20414,17 @@ function fapConsolidarImportacao(rows){
     const{start:cStart,end:cEnd}=fapCicloParaData(dataIso);
     const semana=fapSemanasDoCiclo(cStart,cEnd).find(s=>dataIso>=s.start&&dataIso<=s.end);
     if(!semana){ignoradas++;continue;}
-    const chave=placa+'|'+semana.start;
-    if(!grupos.has(chave))grupos.set(chave,{placa,nomeVeiculo:'',valor:0,semanaStart:semana.start,motoristas:new Set()});
+    const chave=motorista+'|'+placa+'|'+semana.start;
+    if(!grupos.has(chave))grupos.set(chave,{condutor:motorista,placa,veiculo:nomeVeiculo,valor:0,semanaStart:semana.start,transacoes:0,primeiraData:dataIso,ultimaData:dataIso});
     const g=grupos.get(chave);
     g.valor+=valor;
-    if(motorista)g.motoristas.add(motorista);
-    if(!g.nomeVeiculo&&nomeVeiculo)g.nomeVeiculo=nomeVeiculo;
+    g.transacoes++;
+    if(dataIso<g.primeiraData)g.primeiraData=dataIso;
+    if(dataIso>g.ultimaData)g.ultimaData=dataIso;
+    if(!g.veiculo&&nomeVeiculo)g.veiculo=nomeVeiculo;
     processadas++;
   }
   return{grupos:[...grupos.values()],ignoradas,processadas};
-}
-function fapResolverPlacaImportada(placaStr){
-  let p=FAP_PLACAS.find(x=>x.placa.toUpperCase()===placaStr);
-  if(!p){
-    p={id:fapUid(),placa:placaStr,uf:'',tecnico:'',go:''};
-    FAP_PLACAS.push(p);
-  }
-  return p;
 }
 function fapProcessarImportacao(rows){
   if(!rows||rows.length<2){alert('Arquivo vazio ou em formato inesperado.');return;}
@@ -20400,19 +20432,63 @@ function fapProcessarImportacao(rows){
   if(!grupos.length){alert('Nenhuma transação válida encontrada nas colunas esperadas (L=Placa, T=Motorista, AF=Valor, A=Data/hora).');return;}
   let novos=0,atualizados=0;
   grupos.forEach(g=>{
-    const placa=fapResolverPlacaImportada(g.placa);
-    const id='imp-'+g.placa+'-'+g.semanaStart;
-    const obsPartes=[];
-    if(g.nomeVeiculo)obsPartes.push(g.nomeVeiculo);
-    if(g.motoristas.size)obsPartes.push('Motorista(s): '+[...g.motoristas].sort().join(', '));
-    const registro={id,placaId:placa.id,valor:Math.round(g.valor*100)/100,data:g.semanaStart,hora:'00:00',obs:obsPartes.join(' — '),importado:true};
-    const idx=FAP_APORTES.findIndex(a=>a.id===id);
-    if(idx>=0)FAP_APORTES[idx]=registro;else FAP_APORTES.push(registro);
+    const id='imp-cond-'+g.condutor+'-'+g.placa+'-'+g.semanaStart;
+    const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,valor:Math.round(g.valor*100)/100,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
+    const idx=FAP_CONSUMO_CONDUTOR.findIndex(a=>a.id===id);
+    if(idx>=0)FAP_CONSUMO_CONDUTOR[idx]=registro;else FAP_CONSUMO_CONDUTOR.push(registro);
     idx>=0?atualizados++:novos++;
   });
-  fapAt=new Date().toISOString();saveState();
-  fapRenderAll();
+  fapConsumoAt=new Date().toISOString();saveState();
+  fapRenderConsumoCondutor();
   _ghToast(`Base importada ✓ ${novos} novo(s), ${atualizados} atualizado(s), ${ignoradas} linha(s) ignorada(s) de ${processadas+ignoradas}`,'var(--green-dk)',6500);
+}
+function fapLimparBase(){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+  if(!FAP_CONSUMO_CONDUTOR.length){alert('Não há dados de base anexada pra limpar.');return;}
+  if(!confirm('Isso vai apagar TODA a análise de consumo por condutor gerada a partir da base anexada — em todos os dispositivos sincronizados.\n\nNão afeta placas, aportes nem o Saldo do Mês.\n\nEssa ação não pode ser desfeita. Continuar?'))return;
+  FAP_CONSUMO_CONDUTOR=[];
+  fapConsumoAt=new Date().toISOString();saveState();
+  fapRenderConsumoCondutor();
+  _ghToast('Base de consumo por condutor limpa ✓','var(--green-dk)',4000);
+}
+function fapRenderConsumoCondutor(){
+  const box=document.getElementById('fap-condutorChartWrap'),body=document.getElementById('fap-condutorTableBody'),empty=document.getElementById('fap-condutorEmpty');
+  if(!body)return;
+  if(!FAP_CONSUMO_CONDUTOR.length){
+    if(box)box.style.display='none';
+    if(empty)empty.style.display='block';
+    body.innerHTML='';
+    return;
+  }
+  if(box)box.style.display='block';
+  if(empty)empty.style.display='none';
+  const porCondutor=new Map();
+  FAP_CONSUMO_CONDUTOR.forEach(r=>{
+    if(!porCondutor.has(r.condutor))porCondutor.set(r.condutor,{condutor:r.condutor,total:0,transacoes:0,placas:new Set(),primeiraData:r.primeiraData,ultimaData:r.ultimaData});
+    const c=porCondutor.get(r.condutor);
+    c.total+=r.valor;
+    c.transacoes+=r.transacoes;
+    c.placas.add(r.placa);
+    if(r.primeiraData<c.primeiraData)c.primeiraData=r.primeiraData;
+    if(r.ultimaData>c.ultimaData)c.ultimaData=r.ultimaData;
+  });
+  const lista=[...porCondutor.values()].sort((a,b)=>b.total-a.total);
+  const cv=document.getElementById('fap-chart-condutor');
+  if(cv){
+    if(fapChCondutor){try{fapChCondutor.destroy();}catch(e){}}
+    const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
+    fapChCondutor=new Chart(cv,{type:'bar',data:{labels:lista.map(c=>c.condutor),datasets:[{label:'Total consumido (R$)',data:lista.map(c=>c.total),backgroundColor:'#007aff',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}},y:{ticks:{color:txC}}}}});
+  }
+  body.innerHTML=lista.map(c=>{
+    const periodo=c.primeiraData===c.ultimaData?fapFmtDate(c.primeiraData):`${fapFmtDate(c.primeiraData)} – ${fapFmtDate(c.ultimaData)}`;
+    return`<tr>
+      <td class="fap-name-cell"><div class="fap-nm">${eh(c.condutor)}</div></td>
+      <td>${[...c.placas].map(p=>`<span class="fap-uf-chip">${eh(p)}</span>`).join(' ')}</td>
+      <td class="fap-val">${eh(fapFmtMoney(c.total))}</td>
+      <td>${c.transacoes}</td>
+      <td>${eh(periodo)}</td>
+    </tr>`;
+  }).join('');
 }
 
 /* Bloco "E-mail" (pedido do usuário): modelo de mensagem executiva pra envio, que
@@ -20517,6 +20593,7 @@ function fapRenderAll(){
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
   fapRenderGoWeekTable();
+  fapRenderConsumoCondutor();
   fapRenderEmailBlock();
 }
 
