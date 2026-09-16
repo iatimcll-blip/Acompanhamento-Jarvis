@@ -112,6 +112,69 @@ async function dispatchWorkflow(env) {
   }
 }
 
+/*
+ * Ações de sincronização geral (pedido do usuário, 2026-09-16): reconstrução total
+ * do fluxo de sync — em vez de cada dispositivo precisar gerar/configurar um Personal
+ * Access Token do GitHub (fonte de uma sessão inteira de troubleshooting sem sucesso,
+ * mesmo com token aparentemente bem configurado), a ESCRITA do estado sincronizado
+ * (data/sync-state.json) passa a acontecer aqui, reaproveitando o MESMO GH_TOKEN que
+ * já escreve com sucesso em pushTicketsJson() acima (permissão Contents:write já
+ * comprovada funcionando neste repositório). A LEITURA nunca precisou de token (já
+ * lê via raw.githubusercontent.com público, direto do navegador) — só a escrita
+ * ganha esse proxy. `sync_get`/`sync_put` são deliberadamente burros (não fazem
+ * merge nenhum) — toda a lógica de merge por chave/união já existe e continua
+ * rodando no painel_jarvis.html; aqui só repassa sha+content pro GitHub.
+ */
+async function getSyncState(env) {
+  const path = env.SYNC_STATE_FILE;
+  const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/${path}?ref=${env.GH_BRANCH}`;
+  const res = await fetch(url, { headers: ghHeaders(env) });
+  if (!res.ok) {
+    if (res.status === 404) return { sha: null, content: null };
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`Falha ao ler sync-state (HTTP ${res.status}): ${errBody}`);
+  }
+  const j = await res.json();
+  const sha = j.sha || null;
+  if (!sha) return { sha: null, content: null };
+  if (j.content && j.encoding === 'base64') return { sha, content: j.content };
+  /* sync-state.json já passa de 1MB — a Contents API não inclui o conteúdo inline
+     nesse caso (volta content:"" encoding:"none"), só o sha. É preciso buscar o
+     blob direto pela Git Data API, que não tem esse limite (até 100MB). */
+  const blobUrl = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/git/blobs/${sha}`;
+  const blobRes = await fetch(blobUrl, { headers: ghHeaders(env) });
+  if (!blobRes.ok) {
+    const errBody = await blobRes.text().catch(() => '');
+    throw new Error(`Falha ao ler conteúdo do sync-state (HTTP ${blobRes.status}): ${errBody}`);
+  }
+  const blobJ = await blobRes.json();
+  return { sha, content: blobJ.content || null };
+}
+
+async function putSyncState(env, sha, content) {
+  const path = env.SYNC_STATE_FILE;
+  const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/${path}`;
+  const body = {
+    message: 'sync: painel (via worker) ' + new Date().toISOString().slice(0, 16).replace('T', ' '),
+    content,
+    branch: env.GH_BRANCH,
+  };
+  if (sha) body.sha = sha;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: ghHeaders(env, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  const respBody = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(respBody.message || `Falha ao salvar sync-state (HTTP ${res.status})`);
+    err.status = res.status;
+    err.ghBody = respBody;
+    throw err;
+  }
+  return respBody;
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -131,6 +194,27 @@ export default {
     const secret = request.headers.get('X-Atrix-Secret') || '';
     if (!env.APP_SHARED_SECRET || secret !== env.APP_SHARED_SECRET) {
       return json({ ok: false, error: 'Não autorizado.' }, 403, env);
+    }
+
+    /* Ações de sincronização geral — ver comentário grande antes de getSyncState().
+       Roteadas por payload.action; ausente = comportamento original (disparo do Atrix),
+       pra não quebrar o botão que já funciona. */
+    if (payload.action === 'sync_get') {
+      try {
+        const { sha, content } = await getSyncState(env);
+        return json({ ok: true, sha, content }, 200, env);
+      } catch (e) {
+        return json({ ok: false, error: e.message || 'Erro desconhecido.' }, 500, env);
+      }
+    }
+    if (payload.action === 'sync_put') {
+      try {
+        await putSyncState(env, payload.sha || null, payload.content);
+        return json({ ok: true }, 200, env);
+      } catch (e) {
+        const status = e.status === 409 ? 409 : 500;
+        return json({ ok: false, error: e.message || 'Erro desconhecido.', ghBody: e.ghBody }, status, env);
+      }
     }
 
     const minInterval = Number(env.MIN_INTERVAL_MIN || '30');
