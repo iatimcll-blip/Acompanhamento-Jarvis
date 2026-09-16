@@ -6663,18 +6663,19 @@ body.is-admin #panel-combustivel .fuel-management-row { display: grid; }
         <i class="ti ti-brand-github"></i> GitHub — Sincronização automática <span style="font-size:10px;background:var(--blue);color:#fff;padding:1px 6px;border-radius:20px;font-weight:500">Recomendado</span>
       </div>
       <p style="font-size:11px;color:var(--tx3);margin-bottom:10px;line-height:1.6">
-        Qualquer dispositivo lê as bases e atualizações publicadas sem token. Cole um <b>Personal Access Token</b> apenas nos dispositivos que precisam escrever dados.
+        Qualquer dispositivo lê <b>e escreve</b> as bases sincronizadas automaticamente — não precisa configurar nada, nem token, nem login especial.
       </p>
-      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <input id="gh-token-input" class="finput" type="password" style="flex:1;min-width:200px;font-family:monospace" placeholder="github_pat_... ou ghp_...">
-        <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveGhToken()">Salvar Token</button>
-      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="mini-btn admin-only" style="background:var(--green-dk);color:#fff;border-color:var(--green-dk);padding:0 14px" onclick="syncNow(true)"><i class="ti ti-cloud-upload" style="font-size:12px;margin-right:4px"></i>Sincronizar agora</button>
         <button class="mini-btn" style="padding:0 14px" onclick="restoreGhState().then(ok=>document.getElementById('sync-status').textContent=ok?'Base importada do GitHub!':'Nenhum dado remoto encontrado.')"><i class="ti ti-cloud-download" style="font-size:12px;margin-right:4px"></i>Importar do GitHub</button>
       </div>
       <details style="margin-top:10px;font-size:11px;color:var(--tx3)">
-        <summary style="cursor:pointer;font-weight:600;color:var(--tx2)">Como criar o Personal Access Token</summary>
+        <summary style="cursor:pointer;font-weight:600;color:var(--tx2)">Avançado: usar meu próprio Personal Access Token</summary>
+        <p style="margin:8px 0 10px">Não é necessário pro funcionamento normal — a sincronização já funciona em qualquer dispositivo sem token. Só preencha isso se quiser usar sua própria credencial em vez do proxy padrão (ex.: outras integrações que ainda dependem de token pessoal, como o upload da planilha OFS ou o áudio de alerta padrão).</p>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <input id="gh-token-input" class="finput" type="password" style="flex:1;min-width:200px;font-family:monospace" placeholder="github_pat_... ou ghp_...">
+          <button class="mini-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);white-space:nowrap;padding:0 14px" onclick="saveGhToken()">Salvar Token</button>
+        </div>
         <ol style="padding-left:16px;margin-top:8px;display:flex;flex-direction:column;gap:4px">
           <li>Acesse <b>github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens</b></li>
           <li>Clique em <b>"Generate new token"</b></li>
@@ -10133,12 +10134,10 @@ function showLogin(msg){
 function hideLogin(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('login-error').textContent='';
-  /* avisa admin se token GitHub não configurado */
-  setTimeout(()=>{
-    if(canEdit()&&!getGhToken()){
-      _ghToast('⚠ Token do GitHub não configurado neste aparelho — uploads e edições manuais não sincronizam a partir daqui. Clique em ☁ pra configurar. (Não afeta o botão "Atualizar substatus (Atrix)", que funciona sem esse token.)','var(--orange)',10000);
-    }
-  },1500);
+  /* Aviso de "token não configurado" removido (2026-09-16): sincronização de leitura
+     E escrita agora funciona em qualquer dispositivo via Worker, sem token pessoal —
+     ver saveGhState()/_syncGetViaWorker()/_syncPutViaWorker(). Nada pra avisar mais
+     aqui; o campo de token pessoal continua disponível só como opção avançada. */
 }
 async function syncRemoteUsers(){
   /* tenta carregar usuários do estado remoto (GitHub ou Sheets) */
@@ -10515,8 +10514,6 @@ function _isGhShaConflict(err){
    e roda a mesclagem contra ELE (não reenvia o mesmo conteúdo com só um sha novo, o que
    arriscaria descartar silenciosamente o que a escrita concorrente acabou de trazer). */
 async function saveGhState(manual=false){
-  const token=getGhToken();
-  if(!token){if(manual)alert('Configure o Token GitHub nas configurações de sincronização.');return false}
   /* Aba desatualizada = maior risco real de perda de dados deste app (sem backend,
      cada aba só tem a lógica de merge que baixou no load): uma aba aberta há dias,
      rodando um saveGhState() de uma versão anterior sem essa proteção (ou sem uma
@@ -10548,12 +10545,9 @@ async function saveGhState(manual=false){
          as bases que outros dispositivos já tinham anexado no GitHub. */
       let remoteSt=null,sha='';
       try{
-        const info=await fetch(GH_SYNC_API+'?t='+Date.now(),{headers:ghHeaders({},token),cache:'no-store'});
-        if(info.ok){
-          const j=await info.json();
-          sha=j.sha||'';
-          if(j.content)remoteSt=await _ghB64ToState(j.content);
-        }
+        const r=await _syncGetViaWorker();
+        sha=r.sha||'';
+        if(r.content)remoteSt=await _ghB64ToState(r.content);
       }catch(e){
         if(attempt===1)throw new Error('Não foi possível verificar o estado remoto antes de sincronizar (rede instável). Tente novamente para evitar sobrescrever dados de outro dispositivo.');
         throw e;
@@ -10563,25 +10557,23 @@ async function saveGhState(manual=false){
       renderPanelAtivacoes();renderAllPop();renderPreventAll();
       const builtState=buildState();
       const content=await _ghStateToB64(builtState);
-      const body=JSON.stringify({message:'sync: painel '+new Date().toISOString().slice(0,16).replace('T',' '),content,...(sha?{sha}:{})});
-      const res=await fetch(GH_SYNC_API,{method:'PUT',headers:ghHeaders({'Content-Type':'application/json'},token),body});
-      if(res.ok){
+      try{
+        await _syncPutViaWorker(sha,content);
         _setLastKnownRemoteSavedAt(builtState.savedAt);
         const msg='Sincronizado com GitHub em '+now2();
         if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
         _ghToast('Sync GitHub ✓ '+now2(),'var(--green-dk)');
         if(manual)alert(msg);
         return true;
+      }catch(err){
+        if(_isGhShaConflict(err)&&attempt<MAX_ATTEMPTS){
+          console.warn(`[sync] Conflito de concorrência (tentativa ${attempt}/${MAX_ATTEMPTS}) — buscando estado mais recente e tentando de novo.`);
+          if(el){el.textContent=`Outro dispositivo sincronizou ao mesmo tempo — tentando de novo (${attempt}/${MAX_ATTEMPTS})…`;el.style.color='var(--blue)'}
+          await new Promise(r=>setTimeout(r,400*attempt));
+          continue;
+        }
+        throw err;
       }
-      const err=await res.json().catch(()=>({status:res.status}));
-      err.status=res.status;
-      if(_isGhShaConflict(err)&&attempt<MAX_ATTEMPTS){
-        console.warn(`[sync] Conflito de concorrência (tentativa ${attempt}/${MAX_ATTEMPTS}) — buscando estado mais recente e tentando de novo.`);
-        if(el){el.textContent=`Outro dispositivo sincronizou ao mesmo tempo — tentando de novo (${attempt}/${MAX_ATTEMPTS})…`;el.style.color='var(--blue)'}
-        await new Promise(r=>setTimeout(r,400*attempt));
-        continue;
-      }
-      throw new Error(err.message||'HTTP '+res.status);
     }
     throw new Error('Não foi possível sincronizar após várias tentativas — outro dispositivo está sincronizando com muita frequência. Tente novamente em instantes.');
   }catch(e){
@@ -10626,10 +10618,7 @@ function _ghToast(msg,color,dur=3500){
 
 async function syncNow(manual=true){
   if(!canEdit()){alert('Apenas administradores podem sincronizar.');return}
-  const token=getGhToken();
-  if(token)await saveGhState(manual);
-  else if(getSheetsUrl())await saveToGoogleSheets(manual);
-  else alert('Configure a sincronização (GitHub Token ou Google Apps Script URL) nas configurações.');
+  await saveGhState(manual);
 }
 
 function openSyncSettings(){
@@ -11883,8 +11872,9 @@ function saveState(){
   if(canEdit()){
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer=setTimeout(()=>{
-      if(getGhToken()){saveGhState(false);}
-      else if(SHARED_STATE_URL||localStorage.getItem(SHEETS_AUTO_KEY)==='1'){saveSharedState(st,false);}
+      /* saveGhState() não precisa mais de token pessoal (via Worker) — passou a ser
+         sempre disponível, então não tem mais fallback condicional pro Sheets aqui. */
+      saveGhState(false);
     },800);
   }
 }
@@ -11896,17 +11886,8 @@ async function persistClearedBase(label){
   if(!canEdit())return false;
   const suffix=label?' ('+label+')':'';
   try{
-    if(getGhToken()){
-      _ghToast('Sincronizando exclusão'+suffix+'…','var(--blue)',3500);
-      return await saveGhState(false);
-    }
-    if(getSheetsUrl()){
-      _ghToast('Sincronizando exclusão'+suffix+'…','var(--blue)',3500);
-      const ok=await saveSharedState(st,false);
-      _ghToast(ok?'Exclusão sincronizada'+suffix+' ✓':'Falha ao sincronizar exclusão'+suffix,ok?'var(--green-dk)':'var(--red)',ok?3500:7000);
-      return ok;
-    }
-    _ghToast('Base excluída neste dispositivo. Configure a sincronização para refletir em todos.','var(--orange)',7000);
+    _ghToast('Sincronizando exclusão'+suffix+'…','var(--blue)',3500);
+    return await saveGhState(false);
   }catch(e){
     console.warn('Erro ao sincronizar exclusão:',e);
     _ghToast('Erro ao sincronizar exclusão: '+e.message,'var(--red)',7000);
@@ -11918,15 +11899,8 @@ function autoSyncAfterBaseUpload(label){
   clearTimeout(remoteSaveTimer);
   remoteSaveTimer=setTimeout(async()=>{
     const suffix=label?' ('+label+')':'';
-    if(getGhToken()){
-      _ghToast('Sincronizando base'+suffix+'…','var(--blue)',3500);
-      await saveGhState(false);
-    }else if(getSheetsUrl()){
-      _ghToast('Sincronizando base'+suffix+'…','var(--blue)',3500);
-      await saveToGoogleSheets(false);
-    }else{
-      _ghToast('Base anexada salva neste dispositivo. Configure a sincronização para compartilhar.','var(--orange)',7000);
-    }
+    _ghToast('Sincronizando base'+suffix+'…','var(--blue)',3500);
+    await saveGhState(false);
   },300);
 }
 async function restoreRemoteState(){
@@ -14303,6 +14277,43 @@ async function _atrixTriggerViaWorker(force){
   }
   if(!res.ok||!body.ok)throw new Error(body.error||('Falha ao chamar o Worker (HTTP '+res.status+')'));
   return{ok:true};
+}
+
+/* Sincronização geral via Worker (reconstrução total do fluxo, pedido do usuário
+   2026-09-16): mesmo Worker/segredo do Atrix acima, novas ações 'sync_get'/'sync_put'
+   — elimina a necessidade de QUALQUER dispositivo configurar um Personal Access
+   Token pessoal do GitHub pra ESCREVER dados (a leitura, via fetchGhRawState(), já
+   nunca precisou de token — só a escrita usava a API autenticada com token pessoal,
+   fonte de uma sessão inteira de troubleshooting sem sucesso mesmo com token bem
+   configurado). O Worker reaproveita o MESMO GH_TOKEN que já escreve com sucesso em
+   data/atrix_tickets.json (permissão Contents:write já comprovada nesse repo) — não
+   precisou criar nem configurar nenhum secret novo. Essas duas funções são
+   deliberadamente burras (não fazem merge nenhum, só repassam sha+content pro
+   GitHub) — toda a lógica de merge por chave/união continua em saveGhState() abaixo,
+   inalterada. */
+async function _syncGetViaWorker(){
+  const res=await fetch(ATRIX_WORKER_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},
+    body:JSON.stringify({action:'sync_get'})
+  });
+  const body=await res.json().catch(()=>({}));
+  if(!res.ok||!body.ok)throw new Error(body.error||('Falha ao ler estado (HTTP '+res.status+')'));
+  return{sha:body.sha||'',content:body.content||''};
+}
+async function _syncPutViaWorker(sha,content){
+  const res=await fetch(ATRIX_WORKER_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},
+    body:JSON.stringify({action:'sync_put',sha,content})
+  });
+  const body=await res.json().catch(()=>({}));
+  if(!res.ok||!body.ok){
+    const err=new Error(body.error||('Falha ao salvar estado (HTTP '+res.status+')'));
+    err.status=res.status;
+    throw err;
+  }
+  return true;
 }
 
 /* Extraído de dentro de triggerAtrixUpdateNow (mesmo polling, mesmo timeout de 18
@@ -17663,7 +17674,7 @@ async function monUploadAudio(input){
     }
     monSetAudioState(meta);
     saveState();
-    if(canEdit()){setTimeout(()=>{if(getGhToken())saveGhState(false);else saveSharedState(buildState(),false);},200);}
+    if(canEdit()){setTimeout(()=>saveGhState(false),200);}
     _ghToast('Áudio de alerta virou padrão para todos os acessos. Clique em Testar alerta para validar.','var(--green-dk)',7000);
     playMonitorSound();
   }catch(e){alert('Não foi possível anexar o áudio: '+(e&&e.message?e.message:e));}
