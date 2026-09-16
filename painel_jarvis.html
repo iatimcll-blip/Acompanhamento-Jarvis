@@ -7030,8 +7030,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="fap-panel">
       <div class="fap-hist-head">
-        <div><h3 style="margin-bottom:2px">E-mail</h3><p class="fap-desc" style="margin:0">Modelo de mensagem pronto para envio — atualiza automaticamente conforme os filtros de UF/Placa/período aplicados acima.</p></div>
+        <div><h3 style="margin-bottom:2px">E-mail</h3><p class="fap-desc" style="margin:0">Modelo de mensagem pronto para envio — atualiza automaticamente conforme os filtros de UF/Placa/período aplicados acima, e o filtro de GO abaixo (só para este e-mail).</p></div>
         <button class="fap-export-btn" onclick="fapCopyEmailText()"><i class="ti ti-copy" style="font-size:13px;vertical-align:-1px"></i> Copiar texto do e-mail</button>
+      </div>
+      <div class="fap-field" style="max-width:260px;margin-bottom:12px"><label>GO (Gestor Operacional)</label>
+        <select id="fap-fEmailGo" autocomplete="off"><option value="">Todos os GOs</option></select>
       </div>
       <div class="fap-email-preview" id="fap-emailPreview"></div>
     </div>
@@ -20235,6 +20238,19 @@ function fapPopulateSelects(){
   const fP=document.getElementById('fap-fPlaca');const curF=fP.value;
   fP.innerHTML='<option value="">Todas</option>'+FAP_PLACAS.map(p=>`<option value="${eh(p.id)}">${eh(p.placa)}</option>`).join('');
   fP.value=curF;
+  /* Filtro de GO no bloco E-mail (pedido do usuário): GO é texto livre digitado no
+     cadastro da placa (fap-pGo), não um enum fixo como UF — por isso a lista de opções
+     é montada dinamicamente a partir dos GOs realmente cadastrados, igual ao padrão já
+     usado pra Placa acima. "Sem GO vinculado" agrupa placas sem GO preenchido, mesmo
+     rótulo já usado em fapRenderGoWeekTable()/fapEmailText(). */
+  const fGo=document.getElementById('fap-fEmailGo');
+  if(fGo){
+    const curGo=fGo.value;
+    const gos=[...new Set(FAP_PLACAS.map(p=>p.go&&p.go.trim()?p.go.trim():''))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+    const temSemGo=FAP_PLACAS.some(p=>!(p.go&&p.go.trim()));
+    fGo.innerHTML='<option value="">Todos os GOs</option>'+gos.map(g=>`<option value="${eh(g)}">${eh(g)}</option>`).join('')+(temSemGo?'<option value="__sem_go__">Sem GO vinculado</option>':'');
+    fGo.value=curGo;
+  }
 }
 
 /* Saldo do Mês (pedido do usuário): um único valor geral, editável, que representa
@@ -20630,7 +20646,16 @@ function fapRenderConsumoCondutor(){
    reaproveita fapAportesFiltrados() — o MESMO recorte já aplicado no Histórico/Total
    por placa pelos filtros de UF/Placa/De/Até da tela — então o texto muda junto com o
    filtro, sem duplicar lógica de filtragem. Inclui Placa e Nome do GO (Gestor
-   Operacional) por lançamento, sem o Saldo do Mês (fora do escopo pedido). */
+   Operacional) por lançamento, sem o Saldo do Mês (fora do escopo pedido).
+   Filtro de GO (pedido do usuário, 2026-09-16): adicional, só deste bloco — não faz
+   parte de fapGetFiltros()/fapAportesFiltrados() (que continuam só com UF/Placa/De/
+   Até, compartilhados com Histórico/Total por placa) porque o usuário pediu
+   especificamente "no bloco E-mail", pra poder escolher um GO só pra gerar aquele
+   e-mail sem alterar o que o resto do painel mostra. */
+function fapEmailGoSelecionado(){
+  const el=document.getElementById('fap-fEmailGo');
+  return el?el.value:'';
+}
 function fapEmailFiltroResumo(){
   const f=fapGetFiltros();
   const partes=[];
@@ -20638,10 +20663,18 @@ function fapEmailFiltroResumo(){
   if(f.placa){const p=fapPlacaById(f.placa);if(p)partes.push('Placa: '+p.placa);}
   if(f.de)partes.push('De: '+fapFmtDate(f.de));
   if(f.ate)partes.push('Até: '+fapFmtDate(f.ate));
+  const go=fapEmailGoSelecionado();
+  if(go)partes.push('GO: '+(go==='__sem_go__'?'Sem GO vinculado':go));
   return partes.length?partes.join(' · '):'Todo o período (sem filtro aplicado)';
 }
 function fapEmailText(){
-  const list=fapAportesFiltrados();
+  const go=fapEmailGoSelecionado();
+  const list=fapAportesFiltrados().filter(a=>{
+    if(!go)return true;
+    const p=fapPlacaById(a.placaId);
+    const pGo=p&&p.go&&p.go.trim()?p.go.trim():'';
+    return go==='__sem_go__'?!pGo:pGo===go;
+  });
   const total=list.reduce((s,a)=>s+a.valor,0);
   const linhas=list.map(a=>{
     const p=fapPlacaById(a.placaId);
@@ -21947,6 +21980,10 @@ function rdeToggleExpurgoAtenuacao(i){
 loadAbAnnotations();loadAbResponsaveisCustom();loadSiAnnotations();loadPopAcAnnotations();loadPopParceirosCustom();loadAleloCardImage();ofsTecLoad();updateTabbarArrows();applyFuelZoneCollapse();
 fapPrefillForms();
 ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',fapRenderAll);});
+/* Filtro de GO é exclusivo do bloco E-mail — só re-renderiza esse bloco, não o painel
+   inteiro (Histórico/Total/Cards continuam refletindo só UF/Placa/De/Até, como já
+   descrito no texto de ajuda do bloco). */
+(function(){const el=document.getElementById('fap-fEmailGo');if(el)el.addEventListener('change',fapRenderEmailBlock);})();
 _atrixRenderTimerBadge();
 setTimeout(()=>{if(typeof loadAtrixUpdates==='function')loadAtrixUpdates();},3000);
 /* Pedido do usuário: cronômetro/barra de progresso do Agente Atrix não devem
