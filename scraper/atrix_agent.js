@@ -681,12 +681,16 @@ async function runCycle() {
      ciclo, nao so no inicio/fim, pra o navegador saber quantos % faltam. Zera aqui
      (nao no publishRunnerStatus de "running" acima) pra nao mostrar um numero de um
      ciclo anterior enquanto o checkout/npm install/login ainda estao rolando. Throttle
-     a ~80 atualizacoes por ciclo (nao 1 por chamado) pra a barra acompanhar o andamento
-     "ao vivo" (pedido do usuario) sem disparar 1 commit no repo por chamado processado
-     em bases muito grandes - com DELAY_SECONDS=1 e o polling do painel em 4s, 80 passos
-     já cobrem qualquer ciclo real com folga (a barra nunca fica "presa" mais que uns
-     poucos segundos entre atualizacoes). */
-  const progressStep = Math.max(1, Math.ceil(tickets.length / 80));
+     a ~200 atualizacoes por ciclo (nao 1 por chamado) pra a barra acompanhar o andamento
+     de forma gradual (pedido do usuario, 2026-09-16: a barra ficava "presa" por longos
+     trechos e pulava em blocos grandes em lotes maiores) sem disparar 1 commit no repo
+     por chamado processado em bases muito grandes. O throttle antigo (~80 passos totais)
+     piorava exatamente nos lotes maiores, onde a granularidade mais importa: pra 600
+     chamados isso significava atualizar só a cada 8 (~cada 15-30s de silencio, com
+     DELAY_SECONDS=2 default + tempo real de pagina). Com ~200 passos, lotes de até 200
+     chamados (a maioria dos ciclos reais deste app) atualizam a CADA chamado; só lotes
+     bem maiores que isso ganham um passo >1, ainda proporcional. */
+  const progressStep = Math.max(1, Math.ceil(tickets.length / 200));
   await publishRunnerStatus({ state: 'running', lastTicketsProgress: 0, lastTicketsTotal: tickets.length });
 
   const { updates, sha } = await loadUpdates();
