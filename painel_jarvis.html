@@ -9931,6 +9931,14 @@ let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAgi
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
 let activeTab='dashboard';
 let lastAbAt='',lastEncAt='',lastAbFile='',lastEncFile='',fuelBaseAt='',fuelBaseFile='',fuelVeiculosBaseAt='',fuelVeiculosBaseFile='',abLastUpd='';
+/* Timestamps ISO reais (ao contrário de lastAbAt/fuelBaseAt/fuelVeiculosBaseAt acima, que
+   são texto formatado em pt-BR só pra exibição — "DD/MM/AAAA HH:mm" não ordena
+   corretamente com `>` entre meses diferentes, ex.: "05/10/2026" < "16/09/2026" como
+   string, mesmo out/2026 sendo cronologicamente depois). Usados só pra decidir qual
+   dispositivo anexou a base mais recentemente (pedido do usuário, 2026-09-16: "sempre
+   sincronizar com a última anexada, independente de qual dispositivo"), nunca exibidos —
+   mesmo padrão já usado por lastEncBaseAt/lastAtivBaseAt/lastPopBaseAt/rdeBaseAt. */
+let lastAbBaseAt='',fuelVeiculosBaseAtIso='',fuelBaseAtIso='';
 /* Timestamp ISO (sortável) da última base de Encerrados anexada — lastEncAt é só pt-BR
    ("DD/MM/AAAA HH:MM") pra exibição, não dá pra comparar com `>` de forma confiável entre
    meses/anos diferentes. Usado por saveGhState() pra decidir, entre o dispositivo local e o
@@ -10311,10 +10319,23 @@ function _mergeGhRemoteIntoLocal(remoteSt){
       const _remoteDAbCleared=Object.prototype.hasOwnProperty.call(remoteSt,'dAbCleared')?!!remoteSt.dAbCleared:false;
       const _remoteDAbNewerThanClear=!!(dAbClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>dAbClearedAt);
       if(dAbCleared&&!_remoteDAbCleared&&_remoteDAbNewerThanClear&&Array.isArray(remoteSt.dAb)&&remoteSt.dAb.length){
-        dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.id);
+        dAb=normalizeAbState(remoteSt.dAb);
+        lastAbAt=remoteSt.lastAbAt||lastAbAt;lastAbBaseAt=remoteSt.lastAbBaseAt||lastAbBaseAt;
+        lastAbFile=remoteSt.lastAbFile||lastAbFile;abLastUpd=remoteSt.abLastUpd||abLastUpd;
         dAbCleared=false;dAbClearedAt='';
       }else if(dAbCleared){
         dAb=[];
+      }else if(remoteSt.lastAbBaseAt&&remoteSt.lastAbBaseAt>(lastAbBaseAt||'')){
+        /* Base mais recente anexada em outro dispositivo (pedido do usuário, 2026-09-16:
+           "sempre sincronizar com a última anexada, independente de qual dispositivo") —
+           substitui por inteiro, mesmo padrão de Encerrados/Rede/Ativações/POP abaixo.
+           lastAbBaseAt é ISO real (ao contrário de lastAbAt, texto pt-BR só de exibição) —
+           ver comentário na declaração das variáveis. Sem lastAbBaseAt no remoto
+           (sync-state.json de antes desta correção), cai no merge por chave de sempre,
+           como fallback seguro. */
+        dAb=normalizeAbState(remoteSt.dAb);
+        lastAbAt=remoteSt.lastAbAt||lastAbAt;lastAbBaseAt=remoteSt.lastAbBaseAt;
+        lastAbFile=remoteSt.lastAbFile||lastAbFile;abLastUpd=remoteSt.abLastUpd||abLastUpd;
       }else{
         dAb=_mergeArraysByKey(dAb,normalizeAbState(remoteSt.dAb),x=>x.id);
       }
@@ -10350,15 +10371,39 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         const _remoteFvCleared=!!(remoteSt.fuelVeiculosCleared);
         const _remoteFvNewerThanClear=!!(fuelVeiculosClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>fuelVeiculosClearedAt);
         if(fuelVeiculosCleared&&!_remoteFvCleared&&_remoteFvNewerThanClear&&Array.isArray(remoteSt.dFuelVehicles)&&remoteSt.dFuelVehicles.length){
-          dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
+          dFuelVehicles=normalizeFuelVehicles(remoteSt.dFuelVehicles);
+          fuelVeiculosBaseAt=remoteSt.fuelVeiculosBaseAt||fuelVeiculosBaseAt;fuelVeiculosBaseAtIso=remoteSt.fuelVeiculosBaseAtIso||fuelVeiculosBaseAtIso;
+          fuelVeiculosBaseFile=remoteSt.fuelVeiculosBaseFile||fuelVeiculosBaseFile;
           fuelVeiculosCleared=false;fuelVeiculosClearedAt='';
         }else if(fuelVeiculosCleared){
           dFuelVehicles=[];
+        }else if(remoteSt.fuelVeiculosBaseAtIso&&remoteSt.fuelVeiculosBaseAtIso>(fuelVeiculosBaseAtIso||'')){
+          /* Base de Veículos e condutores mais recente anexada em outro dispositivo
+             (pedido do usuário, 2026-09-16) — substitui por inteiro. fuelVeiculosBaseAtIso
+             é ISO real; fuelVeiculosBaseAt (existente) é texto pt-BR só de exibição, não
+             confiável pra comparação `>` entre meses diferentes. */
+          dFuelVehicles=normalizeFuelVehicles(remoteSt.dFuelVehicles);
+          fuelVeiculosBaseAt=remoteSt.fuelVeiculosBaseAt||fuelVeiculosBaseAt;fuelVeiculosBaseAtIso=remoteSt.fuelVeiculosBaseAtIso;
+          fuelVeiculosBaseFile=remoteSt.fuelVeiculosBaseFile||fuelVeiculosBaseFile;
         }else{
           dFuelVehicles=_mergeArraysByKey(dFuelVehicles,normalizeFuelVehicles(remoteSt.dFuelVehicles),x=>x.placa);
         }
       }
-      dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
+      if(remoteSt.fuelBaseAtIso&&remoteSt.fuelBaseAtIso>(fuelBaseAtIso||'')){
+        /* Base Alelo mais recente anexada em outro dispositivo (pedido do usuário,
+           2026-09-16) — substitui só o subconjunto importado da base (source==='alelo-base'),
+           igual ao que importFuelAlelo() já faz localmente; solicitações manuais (fora da
+           base) continuam mescladas por chave normalmente, nunca descartadas. */
+        const _remoteReqs=normalizeFuelRequests(remoteSt.dFuelRequests);
+        const _localManualReqs=normalizeFuelRequests(dFuelRequests).filter(r=>!fuelIsAleloImport(r));
+        const _remoteManualReqs=_remoteReqs.filter(r=>!fuelIsAleloImport(r));
+        const _remoteAleloReqs=_remoteReqs.filter(fuelIsAleloImport);
+        dFuelRequests=[..._mergeArraysByKey(_localManualReqs,_remoteManualReqs,x=>x.id),..._remoteAleloReqs];
+        fuelBaseAt=remoteSt.fuelBaseAt||fuelBaseAt;fuelBaseAtIso=remoteSt.fuelBaseAtIso;
+        fuelBaseFile=remoteSt.fuelBaseFile||fuelBaseFile;
+      }else{
+        dFuelRequests=_mergeArraysByKey(dFuelRequests,normalizeFuelRequests(remoteSt.dFuelRequests),x=>x.id);
+      }
       dFuelWithdrawals=_mergeArraysByKey(dFuelWithdrawals,normalizeFuelWithdrawals(remoteSt.dFuelWithdrawals),x=>x.id);
       dFuelAportes=_mergeArraysByKey(dFuelAportes,normalizeFuelAportes(remoteSt.dFuelAportes),x=>x.id);
       /* OFS: mesma família de bug — ofsMeta.cleared/clearedAt já existiam no modelo de
@@ -10373,11 +10418,22 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         const _remoteOfsMeta=remoteSt.ofsMeta||{};
         const _remoteOfsCleared=!!_remoteOfsMeta.cleared;
         const _remoteOfsNewerThanClear=!!(_localOfsClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>_localOfsClearedAt);
+        const _localOfsUploadedAtIso=(ofsMeta&&ofsMeta.uploadedAtIso)||'';
+        const _remoteOfsUploadedAtIso=_remoteOfsMeta.uploadedAtIso||'';
         if(_localOfsCleared&&!_remoteOfsCleared&&_remoteOfsNewerThanClear&&Array.isArray(remoteSt.ofsRows)&&remoteSt.ofsRows.length){
-          ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
+          ofsRows=ofsSanitizeRows(remoteSt.ofsRows);
           ofsMeta={..._remoteOfsMeta};
         }else if(_localOfsCleared){
           ofsRows=[];
+        }else if(_remoteOfsUploadedAtIso&&_remoteOfsUploadedAtIso>_localOfsUploadedAtIso&&Array.isArray(remoteSt.ofsRows)){
+          /* Base OFS mais recente anexada em outro dispositivo (pedido do usuário,
+             2026-09-16) — substitui por inteiro, mesmo padrão de Encerrados/Rede/
+             Ativações/POP. uploadedAtIso é ISO real; uploadedAt (existente) é texto
+             pt-BR só de exibição, não confiável pra comparação `>` entre meses
+             diferentes. Sem uploadedAtIso no remoto (sync-state.json de antes desta
+             correção), cai no merge por chave de sempre, como fallback seguro. */
+          ofsRows=ofsSanitizeRows(remoteSt.ofsRows);
+          ofsMeta={..._remoteOfsMeta};
         }else if(Array.isArray(remoteSt.ofsRows)){
           ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
         }
@@ -11376,10 +11432,10 @@ function shouldApplyRemoteState(st){
    Filtros do Painel Executivo continuam sem guarda própria (não são dado, são só
    preferência de tela — risco bem menor que os outros). */
 const REMOTE_MERGE_SECTIONS=[
-  {at:'lastAbAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf']},
+  {at:'lastAbAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbBaseAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf']},
   {at:'lastEncAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
-  {at:'fuelBaseAt',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseFile','fuelRFilter']},
-  {at:'fuelVeiculosBaseAt',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
+  {at:'fuelBaseAt',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseAtIso','fuelBaseFile','fuelRFilter']},
+  {at:'fuelVeiculosBaseAt',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseAtIso','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
   {at:'rdeState.at',keys:['rdeState']},
   {at:'lastAtivAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
   {at:'lastPopAt',keys:['dPop','lastPopAt','lastPopBaseAt','lastPopFile']},
@@ -11421,7 +11477,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,FAP_CONSUMO_CONDUTOR,fapConsumoAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,FAP_CONSUMO_CONDUTOR,fapConsumoAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -11473,6 +11529,7 @@ function applyState(st,label){
       if(Object.prototype.hasOwnProperty.call(st,'dAbClearedAt'))dAbClearedAt=st.dAbClearedAt||'';
       refreshAbBadge();refreshSwapBadge();
       if(Object.prototype.hasOwnProperty.call(st,'lastAbAt'))lastAbAt=st.lastAbAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'lastAbBaseAt'))lastAbBaseAt=st.lastAbBaseAt||'';
       if(Object.prototype.hasOwnProperty.call(st,'lastAbFile'))lastAbFile=st.lastAbFile||'';
       abLastUpd=Object.prototype.hasOwnProperty.call(st,'abLastUpd')&&st.abLastUpd?st.abLastUpd:lastAbAt;
       const _abMops=[...new Set(dAb.map(d=>d.mop).filter(Boolean))];
@@ -11796,8 +11853,10 @@ function applyState(st,label){
       fuelCycleStartDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleStartDate||'')?st.fuelCycleStartDate:'';
       fuelCycleEndDate=/^\d{4}-\d{2}-\d{2}$/.test(st.fuelCycleEndDate||'')?st.fuelCycleEndDate:'';
       if(Object.prototype.hasOwnProperty.call(st,'fuelBaseAt'))fuelBaseAt=st.fuelBaseAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'fuelBaseAtIso'))fuelBaseAtIso=st.fuelBaseAtIso||'';
       if(Object.prototype.hasOwnProperty.call(st,'fuelBaseFile'))fuelBaseFile=st.fuelBaseFile||'';
       if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseAt'))fuelVeiculosBaseAt=st.fuelVeiculosBaseAt||'';
+      if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseAtIso'))fuelVeiculosBaseAtIso=st.fuelVeiculosBaseAtIso||'';
       if(Object.prototype.hasOwnProperty.call(st,'fuelVeiculosBaseFile'))fuelVeiculosBaseFile=st.fuelVeiculosBaseFile||'';
       const fvTsEl=document.getElementById('fv-base-ts');if(fvTsEl)fvTsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
       if(st.fuelRFilter&&typeof st.fuelRFilter==='object')fuelRFilter={q:st.fuelRFilter.q||'',tipo:asArr(st.fuelRFilter.tipo),tipoCartao:asArr(st.fuelRFilter.tipoCartao),dataIni:st.fuelRFilter.dataIni||'',dataFim:st.fuelRFilter.dataFim||''};
@@ -12111,7 +12170,7 @@ function clienteAbertoNome(r){
 async function clearAb(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Abertos? Essa ação não pode ser desfeita.'))return;
-  dAb=[];dAbCleared=true;dAbClearedAt=new Date().toISOString();lastAbAt='';lastAbFile='';abLastUpd='';updateUploadTimes();
+  dAb=[];dAbCleared=true;dAbClearedAt=new Date().toISOString();lastAbAt='';lastAbBaseAt='';lastAbFile='';abLastUpd='';updateUploadTimes();
   const nb=document.getElementById('nb-ab');if(nb)nb.textContent='0';
   const empty=document.getElementById('empty-ab');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ab');if(dash)dash.style.display='none';
@@ -12463,7 +12522,7 @@ function finishAbUpload(fname){
   const srchSwap0=document.getElementById('f-srch-swap');if(srchSwap0)srchSwap0.value='';
   refreshAbBadge();
   lastAbFile=fname||'';
-  lastAbAt=now2();abLastUpd=lastAbAt;updateUploadTimes();
+  lastAbAt=now2();lastAbBaseAt=new Date().toISOString();abLastUpd=lastAbAt;updateUploadTimes();
   podaAbAnnotations(); // apaga anotações de tickets que saíram da base
   refreshSwapBadge();
   fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();
@@ -16097,7 +16156,7 @@ function procFuelVeiculos(raw,fname){
   });
   dFuelVehicles=normalizeFuelVehicles([...map.values()]);
   fuelVeiculosCleared=false;fuelVeiculosClearedAt='';
-  fuelVeiculosBaseAt=now2();fuelVeiculosBaseFile=fname||'';
+  fuelVeiculosBaseAt=now2();fuelVeiculosBaseAtIso=new Date().toISOString();fuelVeiculosBaseFile=fname||'';
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
   renderFuel();saveState();
   alert(`Base de veículos processada: ${adicionados} adicionado(s), ${atualizados} atualizado(s). Os demais veículos já cadastrados foram mantidos.`);
@@ -16131,7 +16190,7 @@ function exportFuelVeiculosXlsx(){
 async function clearFuelVeiculos(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de Veículos e condutores? Essa ação não pode ser desfeita.'))return;
-  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosClearedAt=new Date().toISOString();fuelVeiculosBaseAt='';fuelVeiculosBaseFile='';
+  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosClearedAt=new Date().toISOString();fuelVeiculosBaseAt='';fuelVeiculosBaseAtIso='';fuelVeiculosBaseFile='';
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent='';
   renderFuel();
   await persistClearedBase('Veículos e condutores');
@@ -16302,7 +16361,7 @@ function importFuelAlelo(text,fname){
   dFuelAportes=normalizeFuelAportes(dFuelAportes);
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   fuelBaseFile=fname||'Base Alelo.csv';
-  fuelBaseAt=now2();
+  fuelBaseAt=now2();fuelBaseAtIso=new Date().toISOString();
   renderFuel();saveState();autoSyncAfterBaseUpload('Alelo');updateCentralStatus();
   alert(`Base Alelo importada: ${compras} compras aprovadas, ${creditos} créditos emergenciais, ${debitos} débitos emergenciais. Ignoradas: ${ignored} sem placa/valor, ${ignoredPlate} placa fora da aba Placa, ${ignoredStatus} compras não aprovadas.`);
 }
@@ -16318,7 +16377,7 @@ async function deleteFuelAleloBase(){
   dFuelAportes=dFuelAportes.filter(a=>a.source!=='alelo-base');
   fuelBalanceTotal=dFuelAportes.reduce((s,a)=>s+a.valor,0);
   fuelBaseFile='';
-  fuelBaseAt='';
+  fuelBaseAt='';fuelBaseAtIso='';
   renderFuel();await persistClearedBase('Alelo');
   alert(`Base Alelo excluída: ${before-dFuelRequests.length} registro${before-dFuelRequests.length!==1?'s':''} removido${before-dFuelRequests.length!==1?'s':''}.`);
 }
@@ -18416,7 +18475,7 @@ function applyOfsRows(out,fname,opts={}){
   const dates=clean.filter(r=>r.dtStr).map(r=>r.dtStr).sort();
   ofsFilter={uf:[],grupo:[],dtStart:dates[0]||'',dtEnd:dates[dates.length-1]||'',months:[],weeks:[]};
   const _uat=new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-  ofsMeta={fname,loaded:true,uploadedAt:_uat,cleared:false,clearedAt:''};
+  ofsMeta={fname,loaded:true,uploadedAt:_uat,uploadedAtIso:new Date().toISOString(),cleared:false,clearedAt:''};
   saveOfsState();
   renderOfs();
   const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=clean.length;nb.style.display=clean.length?'':'none';}
@@ -18531,7 +18590,7 @@ async function autoLoadOfsDefault(){
 async function clearOfs(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar base OFS? Os dados serão removidos.'))return;
-  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:''};ofsFilter={uf:[],grupo:[],dtStart:'',dtEnd:'',months:[],weeks:[]};
+  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:'',uploadedAtIso:''};ofsFilter={uf:[],grupo:[],dtStart:'',dtEnd:'',months:[],weeks:[]};
   saveOfsState();
   [ofsChRank,ofsChStatus,ofsChTaxa,ofsChTipo,ofsChDia].forEach(c=>{try{if(c)c.destroy();}catch(e){}});
   ofsChRank=ofsChStatus=ofsChTaxa=ofsChTipo=ofsChDia=null;
