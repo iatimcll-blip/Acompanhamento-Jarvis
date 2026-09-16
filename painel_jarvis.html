@@ -6890,7 +6890,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <h2>Controle de Aportes de Saldo</h2>
         <p>Aportes de saldo lançados por placa específica, com registro de dia, hora e valor de cada lançamento.</p>
       </div>
-      <button class="dash-action admin-only" style="background:var(--red);border-color:var(--red);color:#fff" onclick="fapResetTudo()"><i class="ti ti-trash"></i> Limpar todos os dados</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+        <label class="dash-action admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF), consolidando por placa e semana do ciclo 15–14">
+          <i class="ti ti-file-upload"></i> Anexar base
+          <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarBase(event)">
+        </label>
+        <button class="dash-action admin-only" style="background:var(--red);border-color:var(--red);color:#fff" onclick="fapResetTudo()"><i class="ti ti-trash"></i> Limpar todos os dados</button>
+      </div>
     </div>
 
     <div class="fap-filterbar">
@@ -20257,8 +20263,11 @@ function fapIsoFromParts(y,m,d){const dt=new Date(y,m-1,d);return dt.getFullYear
 function fapIsoAddDays(iso,n){const{y,m,d}=fapIsoParts(iso);return fapIsoFromParts(y,m,d+n);}
 function fapIsoDiffDays(isoA,isoB){const a=fapIsoParts(isoA),b=fapIsoParts(isoB);return Math.round((new Date(b.y,b.m-1,b.d)-new Date(a.y,a.m-1,a.d))/86400000);}
 function fapFmtDiaMesIso(iso){const{m,d}=fapIsoParts(iso);return String(d).padStart(2,'0')+'/'+String(m).padStart(2,'0');}
-function fapCicloAtualIso(){
-  const{y,m,d}=fapIsoParts(fapTodayIso());
+/* fapCicloParaData/fapSemanasDoCiclo aceitam uma data ISO qualquer (não só "hoje") —
+   necessário pra importação de base histórica (fapProcessarImportacao), que precisa
+   achar o ciclo/semana de transações de meses passados, não só do ciclo atual. */
+function fapCicloParaData(iso){
+  const{y,m,d}=fapIsoParts(iso);
   let cy=y,cm=m;
   if(d<15){cm=m-1;if(cm<1){cm=12;cy=y-1;}}
   const start=fapIsoFromParts(cy,cm,15);
@@ -20266,8 +20275,8 @@ function fapCicloAtualIso(){
   const end=fapIsoFromParts(ey,em,14);
   return{start,end};
 }
-function fapSemanasDoCicloIso(){
-  const{start,end}=fapCicloAtualIso();
+function fapCicloAtualIso(){return fapCicloParaData(fapTodayIso());}
+function fapSemanasDoCiclo(start,end){
   const semanas=[];
   let cursor=start;
   while(cursor<=end){
@@ -20278,6 +20287,7 @@ function fapSemanasDoCicloIso(){
   }
   return semanas;
 }
+function fapSemanasDoCicloIso(){const{start,end}=fapCicloAtualIso();return fapSemanasDoCiclo(start,end);}
 function fapRenderGoWeekTable(){
   const head=document.getElementById('fap-goWeekHead'),body=document.getElementById('fap-goWeekBody');
   if(!head||!body)return;
@@ -20305,6 +20315,104 @@ function fapRenderGoWeekTable(){
     }).join('');
     return`<tr><td class="fap-name-cell"><div class="fap-nm">${eh(go)}</div></td>${cels}</tr>`;
   }).join('');
+}
+
+/* Anexar base (pedido do usuário, modelo = export do Portal Alelo): NÃO entra em
+   buildState()/localStorage como planilha bruta — só serve de fonte pra gerar
+   FAP_APORTES consolidados, igual a como B2C_RAW/ofsRows tratam upload volumoso em
+   outros painéis. Colunas fixas por POSIÇÃO (0-based), não por nome de cabeçalho —
+   mais robusto contra variação de acentuação/encoding entre exports:
+   A(0)=Data/hora da transação, L(11)=Placa, M(12)=Nome do veículo,
+   T(19)=Nome do motorista, AF(31)=Valor da transação (R$).
+   Consolida por PLACA+SEMANA do ciclo 15→14 (mesma granularidade da tabela "Consumo
+   do GO por semana") em vez de 1 aporte por transação — a base tem várias transações
+   por placa por semana (cada abastecimento), importar cru inflaria o Histórico com
+   centenas de linhas. Motorista(s) distintos da semana entram na Observação (campo
+   já existente, reaproveitado, não um campo novo). Reimportar a mesma base/período
+   ATUALIZA o mesmo lançamento em vez de duplicar (id determinístico por placa+semana:
+   'imp-PLACA-AAAA-MM-DD'). */
+async function fapImportarBase(ev){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
+  const file=ev.target.files[0];
+  if(!file)return;
+  try{
+    const buf=await file.arrayBuffer();
+    let rows;
+    if(/\.(xlsx|xls)$/i.test(file.name)){
+      const wb=XLSX.read(buf,{type:'array'});
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:false,defval:''});
+    }else{
+      let text=new TextDecoder('utf-8').decode(buf);
+      const invalidas=(text.match(/�/g)||[]).length;
+      if(invalidas>5)text=new TextDecoder('windows-1252').decode(buf);
+      rows=text.split(/\r?\n/).filter(l=>l.trim()).map(l=>l.split(';'));
+    }
+    fapProcessarImportacao(rows);
+  }catch(e){
+    alert('Erro ao ler o arquivo: '+e.message);
+  }finally{
+    ev.target.value='';
+  }
+}
+function fapConsolidarImportacao(rows){
+  const grupos=new Map();
+  let ignoradas=0,processadas=0;
+  for(let i=1;i<rows.length;i++){
+    const row=rows[i];
+    if(!row||!row.length)continue;
+    const dataHora=String(row[0]||'').trim();
+    const placa=String(row[11]||'').trim().toUpperCase();
+    const nomeVeiculo=String(row[12]||'').trim();
+    const motorista=String(row[19]||'').trim();
+    const valorStr=String(row[31]||'').trim();
+    if(!placa||!dataHora||!valorStr){ignoradas++;continue;}
+    const valor=fapParseValor(valorStr);
+    if(isNaN(valor)||valor<=0){ignoradas++;continue;}
+    const dataParte=dataHora.split(' ')[0];
+    const partesData=dataParte.split('/');
+    if(partesData.length!==3){ignoradas++;continue;}
+    const dataIso=fapIsoFromParts(Number(partesData[2]),Number(partesData[1]),Number(partesData[0]));
+    const{start:cStart,end:cEnd}=fapCicloParaData(dataIso);
+    const semana=fapSemanasDoCiclo(cStart,cEnd).find(s=>dataIso>=s.start&&dataIso<=s.end);
+    if(!semana){ignoradas++;continue;}
+    const chave=placa+'|'+semana.start;
+    if(!grupos.has(chave))grupos.set(chave,{placa,nomeVeiculo:'',valor:0,semanaStart:semana.start,motoristas:new Set()});
+    const g=grupos.get(chave);
+    g.valor+=valor;
+    if(motorista)g.motoristas.add(motorista);
+    if(!g.nomeVeiculo&&nomeVeiculo)g.nomeVeiculo=nomeVeiculo;
+    processadas++;
+  }
+  return{grupos:[...grupos.values()],ignoradas,processadas};
+}
+function fapResolverPlacaImportada(placaStr){
+  let p=FAP_PLACAS.find(x=>x.placa.toUpperCase()===placaStr);
+  if(!p){
+    p={id:fapUid(),placa:placaStr,uf:'',tecnico:'',go:''};
+    FAP_PLACAS.push(p);
+  }
+  return p;
+}
+function fapProcessarImportacao(rows){
+  if(!rows||rows.length<2){alert('Arquivo vazio ou em formato inesperado.');return;}
+  const{grupos,ignoradas,processadas}=fapConsolidarImportacao(rows);
+  if(!grupos.length){alert('Nenhuma transação válida encontrada nas colunas esperadas (L=Placa, T=Motorista, AF=Valor, A=Data/hora).');return;}
+  let novos=0,atualizados=0;
+  grupos.forEach(g=>{
+    const placa=fapResolverPlacaImportada(g.placa);
+    const id='imp-'+g.placa+'-'+g.semanaStart;
+    const obsPartes=[];
+    if(g.nomeVeiculo)obsPartes.push(g.nomeVeiculo);
+    if(g.motoristas.size)obsPartes.push('Motorista(s): '+[...g.motoristas].sort().join(', '));
+    const registro={id,placaId:placa.id,valor:Math.round(g.valor*100)/100,data:g.semanaStart,hora:'00:00',obs:obsPartes.join(' — '),importado:true};
+    const idx=FAP_APORTES.findIndex(a=>a.id===id);
+    if(idx>=0)FAP_APORTES[idx]=registro;else FAP_APORTES.push(registro);
+    idx>=0?atualizados++:novos++;
+  });
+  fapAt=new Date().toISOString();saveState();
+  fapRenderAll();
+  _ghToast(`Base importada ✓ ${novos} novo(s), ${atualizados} atualizado(s), ${ignoradas} linha(s) ignorada(s) de ${processadas+ignoradas}`,'var(--green-dk)',6500);
 }
 
 /* Bloco "E-mail" (pedido do usuário): modelo de mensagem executiva pra envio, que
