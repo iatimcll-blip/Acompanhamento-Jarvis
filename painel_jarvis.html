@@ -11304,7 +11304,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fuelBaseAt',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseFile','fuelRFilter']},
   {at:'fuelVeiculosBaseAt',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
   {at:'rdeState.at',keys:['rdeState']},
-  {at:'lastAtivAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivSrch','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
+  {at:'lastAtivAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
   {at:'lastPopAt',keys:['dPop','lastPopAt','lastPopBaseAt','lastPopFile']},
   {at:'b2cSummaryAt',keys:['b2cSummary','b2cSummaryAt','b2cMetaOverrides','selB2cCluster','selB2cAno','selB2cMes','selB2cSemana']},
   {at:'lastPreventAt',keys:['dPrevent','dPrevTecnicos','lastPreventAt']},
@@ -11333,8 +11333,17 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    "Veículos e Condutores" ficou mostrando só 5 dos 13 veículos reais pra todo mundo, até
    a página ser recarregada — o filtro salvo persistia mesmo sem ninguém mais tê-lo digitado.
    Os filtros de dropdown (setor/superior/tipoCartao/status/tipo) continuam sincronizados
-   normalmente — só o texto livre é zerado antes de salvar. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selRepSrch,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivSrch,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+   normalmente — só o texto livre é zerado antes de salvar.
+   MESMO bug real encontrado depois numa auditoria geral de sincronização (2026-09-16)
+   em MAIS DOIS painéis: selRepSrch (busca de B2B Repetidos, #rep-srch) e selAtivSrch
+   (busca de Ativações B2B, #ativ-srch) também eram guardadas em variável global e
+   entravam aqui sem nunca zerar o texto — removidas do buildState()/applyState() por
+   completo (a busca continua funcionando normalmente, só deixou de ser sincronizada
+   entre dispositivos). Todos os OUTROS campos de busca livre do app (#f-srch-ab,
+   #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
+   já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
+   conferido nesta mesma auditoria, não têm esse problema. */
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -11451,7 +11460,9 @@ function applyState(st,label){
       selAtivYear=asArr(st.selAtivYear).filter(v=>_ativYears.includes(v));
       ativGran=['all','m','w'].includes(st.ativGran)?st.ativGran:'all';
       ativPeriod=asArr(st.ativPeriod);
-      selAtivSrch=st.selAtivSrch||'';
+      /* selAtivSrch (busca livre) não é mais restaurada do estado sincronizado — ver
+         comentário grande em buildState() sobre o bug de busca livre vazando entre
+         dispositivos. */
       renderPanelAtivacoes();
       _lastApplyRenderedTabs.add('ativacoes');
       document.getElementById('empty-ativ').style.display=dAtiv.length?'none':'block';
@@ -11616,7 +11627,10 @@ function applyState(st,label){
          renderPanelRepetidos() abaixo) auto-poda qualquer valor que não exista mais */
       selRepMes=asArr(st.selRepMes);selRepSemana=asArr(st.selRepSemana);
       selRepCluster=asArr(st.selRepCluster);selRepCausa=asArr(st.selRepCausa);
-      selRepSeg=asArr(st.selRepSeg);selRepSrch=st.selRepSrch||'';
+      selRepSeg=asArr(st.selRepSeg);
+      /* selRepSrch (busca livre) não é mais restaurada do estado sincronizado — ver
+         comentário grande em buildState() sobre o bug de busca livre vazando entre
+         dispositivos. */
       /* restaura filtros do painel B2B S/Intervenção — mesmo padrão do Repetidos
          acima: recorte derivado de dEnc, sem base própria */
       const _siBase=dEnc.filter(d=>fmtCausaRaiz(d.causaRaiz)===SI_CAUSA);
