@@ -14179,13 +14179,26 @@ function _atrixRenderProgress(pct,visible){
     txt.textContent=p+'%';
   }
 }
-function _atrixStartProgressPolling(){
+/* Bug real corrigido: ao clicar em "Atualizar substatus", a barra pulava direto pra
+   ~100% em vez de começar do zero e crescer aos poucos. Causa: data/atrix-runner-
+   status.json só zera lastTicketsProgress DEPOIS de carregar a lista de chamados
+   (runCycle() em scraper/atrix_agent.js) — entre o clique e esse momento (fila do
+   runner + checkout + npm install + login no Atrix, pode levar minutos), o arquivo
+   ainda tinha lastTicketsProgress===lastTicketsTotal do ciclo ANTERIOR já concluído,
+   e a barra lia isso como "100% concluído" imediatamente. Fix: só confiar no
+   progresso do arquivo remoto se `lastRunStartedAt` for igual ou posterior ao
+   instante em que ESTE clique disparou o ciclo (triggeredAtIso) — senão é lixo do
+   ciclo anterior, mostra 0% até o runner realmente começar a publicar o ciclo novo. */
+function _atrixStartProgressPolling(triggeredAtIso){
   clearInterval(_atrixProgressTimer);
   _atrixRenderProgress(0,true);
   const tick=async()=>{
     const st=await loadAtrixRunnerStatus();
-    if(st&&st.lastTicketsTotal){
+    const belongsToThisCycle=st&&st.lastTicketsTotal&&st.lastRunStartedAt&&(!triggeredAtIso||st.lastRunStartedAt>=triggeredAtIso);
+    if(belongsToThisCycle){
       _atrixRenderProgress((st.lastTicketsProgress||0)/st.lastTicketsTotal*100,true);
+    }else{
+      _atrixRenderProgress(0,true);
     }
   };
   tick();
@@ -14242,17 +14255,26 @@ async function _atrixTriggerViaWorker(force){
 function _atrixStartMonitoring(triggeredAtIso,startTries){
   _atrixRunningNow=true;
   _atrixStartRunningTimer();
-  _atrixStartProgressPolling();
+  _atrixStartProgressPolling(triggeredAtIso);
   clearInterval(_atrixPickupTimer);
   let tries=startTries||0;
   _atrixPickupTimer=setInterval(async()=>{
     tries++;
     const lastUpdate=await loadAtrixUpdates();
-    if((lastUpdate&&lastUpdate>triggeredAtIso)||tries>=18){
+    const finished=!!(lastUpdate&&lastUpdate>triggeredAtIso);
+    if(finished||tries>=18){
       clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
       _atrixRunningNow=false;
       _atrixStopRunningTimer();
-      _atrixStopProgressPolling(!!(lastUpdate&&lastUpdate>triggeredAtIso));
+      _atrixStopProgressPolling(finished);
+      /* Pedido do usuário: ao concluir a atualização de substatus, recarregar a
+         página automaticamente (F5) em vez de confiar só na mesclagem em memória —
+         garante que a tela reflita 100% o que foi salvo no GitHub, em qualquer
+         dispositivo com a aba aberta no momento em que o ciclo termina. */
+      if(finished){
+        _ghToast('Atualização de substatus concluída — recarregando a página…','var(--green-dk)',2400);
+        setTimeout(()=>window.location.reload(),2500);
+      }
     }
   },60000);
 }
