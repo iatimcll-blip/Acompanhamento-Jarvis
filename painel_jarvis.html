@@ -6967,6 +6967,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
     </div>
 
+    <div class="fap-panel">
+      <h3 style="margin-bottom:2px">Consumo do GO por semana</h3>
+      <p class="fap-desc" style="margin:0 0 14px">Total aportado por Gestor Operacional em cada semana do ciclo atual (15 a 14 do mês seguinte), com projeção de fechamento para a semana em andamento.</p>
+      <div class="fap-hist-wrap">
+        <table class="fap-table" id="fap-goWeekTable" style="min-width:640px">
+          <thead><tr id="fap-goWeekHead"></tr></thead>
+          <tbody id="fap-goWeekBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="fap-grid-2b">
       <div class="fap-panel">
         <h3>Aportes por dia — últimos 14 dias</h3>
@@ -20233,6 +20244,69 @@ function fapExportCsv(){
   URL.revokeObjectURL(url);
 }
 
+/* Consumo do GO por semana (pedido do usuário): agrupa os aportes por Gestor
+   Operacional (campo `go` de FAP_PLACAS) em semanas do CICLO 15→14 (mesma convenção
+   de competência já usada no DSR Volante — não é semana/mês de calendário), com
+   projeção de fechamento pra semana em andamento baseada no ritmo diário já aportado
+   (run-rate: consumido até hoje / dias decorridos × dias totais da semana). Todo o
+   cálculo de data usa strings ISO 'YYYY-MM-DD' e comparação lexicográfica (mesmo
+   truque já usado em fapAportesFiltrados/f.de/f.ate) para não misturar Date local com
+   Date parseado como UTC — fonte clássica de bug de fuso horário. */
+function fapIsoParts(iso){const[y,m,d]=iso.split('-').map(Number);return{y,m,d};}
+function fapIsoFromParts(y,m,d){const dt=new Date(y,m-1,d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+function fapIsoAddDays(iso,n){const{y,m,d}=fapIsoParts(iso);return fapIsoFromParts(y,m,d+n);}
+function fapIsoDiffDays(isoA,isoB){const a=fapIsoParts(isoA),b=fapIsoParts(isoB);return Math.round((new Date(b.y,b.m-1,b.d)-new Date(a.y,a.m-1,a.d))/86400000);}
+function fapFmtDiaMesIso(iso){const{m,d}=fapIsoParts(iso);return String(d).padStart(2,'0')+'/'+String(m).padStart(2,'0');}
+function fapCicloAtualIso(){
+  const{y,m,d}=fapIsoParts(fapTodayIso());
+  let cy=y,cm=m;
+  if(d<15){cm=m-1;if(cm<1){cm=12;cy=y-1;}}
+  const start=fapIsoFromParts(cy,cm,15);
+  let ey=cy,em=cm+1;if(em>12){em=1;ey=cy+1;}
+  const end=fapIsoFromParts(ey,em,14);
+  return{start,end};
+}
+function fapSemanasDoCicloIso(){
+  const{start,end}=fapCicloAtualIso();
+  const semanas=[];
+  let cursor=start;
+  while(cursor<=end){
+    let fim=fapIsoAddDays(cursor,6);
+    if(fim>end)fim=end;
+    semanas.push({start:cursor,end:fim});
+    cursor=fapIsoAddDays(fim,1);
+  }
+  return semanas;
+}
+function fapRenderGoWeekTable(){
+  const head=document.getElementById('fap-goWeekHead'),body=document.getElementById('fap-goWeekBody');
+  if(!head||!body)return;
+  const semanas=fapSemanasDoCicloIso();
+  const hoje=fapTodayIso();
+  head.innerHTML='<th>GO</th>'+semanas.map((s,i)=>`<th>Semana ${i+1}<br><span style="font-weight:400;color:var(--tx3);font-size:10px">${eh(fapFmtDiaMesIso(s.start))}–${eh(fapFmtDiaMesIso(s.end))}</span></th>`).join('');
+  const gruposMap=new Map();
+  FAP_PLACAS.forEach(p=>{
+    const chave=p.go&&p.go.trim()?p.go.trim():'Sem GO vinculado';
+    if(!gruposMap.has(chave))gruposMap.set(chave,[]);
+    gruposMap.get(chave).push(p.id);
+  });
+  if(!gruposMap.size){body.innerHTML=`<tr><td colspan="${semanas.length+1}"><div class="fap-empty">Nenhuma placa cadastrada ainda.</div></td></tr>`;return;}
+  body.innerHTML=[...gruposMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([go,placaIds])=>{
+    const cels=semanas.map(s=>{
+      const consumido=FAP_APORTES.filter(a=>placaIds.includes(a.placaId)&&a.data>=s.start&&a.data<=s.end).reduce((sum,a)=>sum+a.valor,0);
+      const emAndamento=hoje>=s.start&&hoje<=s.end;
+      if(emAndamento){
+        const diasTotais=fapIsoDiffDays(s.start,s.end)+1;
+        const diasDecorridos=Math.min(diasTotais,fapIsoDiffDays(s.start,hoje)+1);
+        const projecao=diasDecorridos>0?(consumido/diasDecorridos)*diasTotais:0;
+        return`<td><div class="fap-nm">${eh(fapFmtMoney(consumido))}</div><div class="fap-sub">proj.: ${eh(fapFmtMoney(projecao))}</div></td>`;
+      }
+      return`<td>${eh(fapFmtMoney(consumido))}</td>`;
+    }).join('');
+    return`<tr><td class="fap-name-cell"><div class="fap-nm">${eh(go)}</div></td>${cels}</tr>`;
+  }).join('');
+}
+
 /* Bloco "E-mail" (pedido do usuário): modelo de mensagem executiva pra envio, que
    reaproveita fapAportesFiltrados() — o MESMO recorte já aplicado no Histórico/Total
    por placa pelos filtros de UF/Placa/De/Até da tela — então o texto muda junto com o
@@ -20334,6 +20408,7 @@ function fapRenderAll(){
   fapRenderCharts();
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
+  fapRenderGoWeekTable();
   fapRenderEmailBlock();
 }
 
