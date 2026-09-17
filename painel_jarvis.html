@@ -6909,7 +6909,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <p>Aportes de saldo lançados por placa específica, com registro de dia, hora e valor de cada lançamento.</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-        <label class="dash-action admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF) só pra análise de consumo por condutor, abaixo — não gera aporte nem mexe no Saldo do Mês">
+        <label class="dash-action admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF) só pra análise de consumo por condutor, abaixo — nunca gera aporte, nem mexe no Saldo do Mês, no Total aportado ou no Total por Placa. Anexar uma base nova SUBSTITUI a análise anterior por inteiro (não acumula).">
           <i class="ti ti-file-upload"></i> Anexar base
           <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarBase(event)">
         </label>
@@ -7054,7 +7054,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <canvas id="fap-chart-condutor"></canvas>
         </div>
         <h4 style="margin:16px 0 6px;font-size:13px">Veículos por categoria (Leve/Médio/Pesado)</h4>
-        <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por categoria — lida direto da coluna "Categoria do veículo" do Portal Alelo (com fallback pelo modelo do veículo). Cota do mês e consumido no mês usam o ciclo de competência atual (dia 15 ao dia 14); Total consumido é histórico (todos os ciclos importados).</p>
+        <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por categoria — lida direto da coluna "Categoria do veículo" do Portal Alelo (com fallback pelo modelo do veículo). Reflete só a base anexada mais recente — anexar uma base nova substitui esta análise por inteiro. Cota do mês e consumido no mês usam o ciclo de competência atual (dia 15 ao dia 14).</p>
         <div class="fap-chart-box" id="fap-tipoChartBox" style="height:220px;margin-bottom:12px">
           <canvas id="fap-chart-tipo"></canvas>
         </div>
@@ -7070,33 +7070,34 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <tbody id="fap-condutorTableBody"></tbody>
           </table>
         </div>
+        <h4 style="margin:16px 0 6px;font-size:13px">Valor médio de abastecimento (base anexada)</h4>
+        <p class="fap-desc" style="margin:0 0 8px">Quebra por UF e Tipo de Combustível, a partir da base anexada atual (colunas "UF" e "Tipo de Combustível" do Portal Alelo, quando presentes no arquivo) — análise independente, não afeta Saldo/Aportes.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <h5 style="margin:0 0 6px;font-size:12px;color:var(--tx2)">Por UF</h5>
+            <table class="fap-table"><thead><tr><th>UF</th><th>Valor médio</th><th>Abastecimentos</th></tr></thead><tbody id="fap-base-ufBody"></tbody></table>
+          </div>
+          <div style="min-width:0">
+            <h5 style="margin:0 0 6px;font-size:12px;color:var(--tx2)">Por Tipo de Combustível</h5>
+            <table class="fap-table"><thead><tr><th>Tipo</th><th>Valor médio</th><th>Abastecimentos</th></tr></thead><tbody id="fap-base-combBody"></tbody></table>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="fap-panel">
       <div class="fap-hist-head">
-        <div><h3 style="margin-bottom:2px">Consumo Mês Corrente</h3><p class="fap-desc" style="margin:0">Consumo do ciclo de competência em andamento (dia 15 até hoje), com projeção de fechamento (dia 14 do mês seguinte) e comparação com o ciclo anterior completo.</p></div>
+        <div><h3 style="margin-bottom:2px">Consumo Mês Corrente</h3><p class="fap-desc" style="margin:0">Aportado no ciclo de competência em andamento (dia 15 até hoje) — mesmo valor do card "Aportado no mês" acima — com projeção de fechamento (dia 14 do mês seguinte) e comparação com o ciclo anterior completo. Não usa a base anexada (que é análise independente, ver acima).</p></div>
       </div>
-      <div id="fap-mesCorrenteEmpty" class="fap-empty">Nenhuma base anexada ainda — use o botão "Anexar base" no topo do painel.</div>
-      <div id="fap-mesCorrenteWrap" style="display:none">
+      <div id="fap-mesCorrenteWrap">
         <div class="fap-cards" style="margin-bottom:16px">
-          <div class="fap-card fap-accent-blue"><div class="fap-label">Consumido no ciclo atual</div><div class="fap-value" id="fap-mc-total">R$ 0,00</div><div class="fap-foot" id="fap-mc-totalFoot">—</div></div>
+          <div class="fap-card fap-accent-blue"><div class="fap-label">Aportado no ciclo atual</div><div class="fap-value" id="fap-mc-total">R$ 0,00</div><div class="fap-foot" id="fap-mc-totalFoot">—</div></div>
           <div class="fap-card"><div class="fap-label">Projeção de fechamento</div><div class="fap-value" id="fap-mc-projecao">R$ 0,00</div><div class="fap-foot" id="fap-mc-projecaoFoot">—</div></div>
-          <div class="fap-card"><div class="fap-label">Placas que abasteceram</div><div class="fap-value" id="fap-mc-placas">0</div><div class="fap-foot">no ciclo atual</div></div>
-          <div class="fap-card"><div class="fap-label">Valor médio por abastecimento</div><div class="fap-value" id="fap-mc-media">R$ 0,00</div><div class="fap-foot" id="fap-mc-mediaFoot">—</div></div>
+          <div class="fap-card"><div class="fap-label">Placas com aporte</div><div class="fap-value" id="fap-mc-placas">0</div><div class="fap-foot">no ciclo atual</div></div>
+          <div class="fap-card"><div class="fap-label">Valor médio por aporte</div><div class="fap-value" id="fap-mc-media">R$ 0,00</div><div class="fap-foot" id="fap-mc-mediaFoot">—</div></div>
         </div>
         <div class="fap-chart-box" id="fap-mcChartBox" style="height:260px">
           <canvas id="fap-chart-mescorrente"></canvas>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;flex-wrap:wrap">
-          <div style="min-width:0">
-            <h4 style="margin:0 0 6px;font-size:13px">Valor médio por UF</h4>
-            <table class="fap-table"><thead><tr><th>UF</th><th>Valor médio</th><th>Abastecimentos</th></tr></thead><tbody id="fap-mc-ufBody"></tbody></table>
-          </div>
-          <div style="min-width:0">
-            <h4 style="margin:0 0 6px;font-size:13px">Valor médio por Tipo de Combustível</h4>
-            <table class="fap-table"><thead><tr><th>Tipo</th><th>Valor médio</th><th>Abastecimentos</th></tr></thead><tbody id="fap-mc-combBody"></tbody></table>
-          </div>
         </div>
       </div>
     </div>
@@ -20151,16 +20152,6 @@ function fapFmtDate(iso){if(!iso)return'—';const[y,m,d]=String(iso).split('-')
 
 function fapPlacaById(id){return FAP_PLACAS.find(p=>p.id===id);}
 function fapPlacaByPlaca(placa){return FAP_PLACAS.find(p=>p.placa===placa);}
-/* Categoria de uma placa pra cruzamento (pedido do usuário): prioriza a categoria já
-   vista na base importada pra essa placa (mais confiável — vem direto do arquivo);
-   cai pro fap-pTipo cadastrado manualmente só se a placa nunca apareceu com
-   categoria numa importação. Mesma prioridade já usada em fapRenderTipoVeiculo(). */
-function fapCategoriaDaPlaca(placa){
-  const r=FAP_CONSUMO_CONDUTOR.find(x=>x.placa===placa&&x.categoria);
-  if(r)return r.categoria;
-  const cad=fapPlacaByPlaca(placa);
-  return cad&&cad.tipo?cad.tipo:'';
-}
 function fapTotalPlaca(id){return FAP_APORTES.filter(a=>a.placaId===id).reduce((s,a)=>s+a.valor,0);}
 function fapUltimoAporte(id){const list=FAP_APORTES.filter(a=>a.placaId===id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));return list[0]||null;}
 /* Total aportado no CICLO DE COMPETÊNCIA 15→14 ATUAL (não mês de calendário — dia 15
@@ -20561,9 +20552,13 @@ function fapRenderGoWeekTable(){
    Consolida por CONDUTOR+PLACA+SEMANA do ciclo 15→14 — a base tem várias transações
    por placa por semana (cada abastecimento); consolidar evita inflar o dado com uma
    linha por transação, mas ainda preserva qtd de abastecimentos e período (primeira/
-   última data) por grupo pra tabela de detalhe. Reimportar a mesma base/período
-   ATUALIZA o mesmo grupo em vez de duplicar (id determinístico por
-   condutor+placa+semana). */
+   última data) por grupo pra tabela de detalhe.
+   SUBSTITUIÇÃO, não acumulação (pedido do usuário, 2026-09-16: "sempre que anexar
+   uma base nova a antiga é apagada") — cada "Anexar base" limpa FAP_CONSUMO_CONDUTOR
+   por inteiro antes de consolidar (ver fapProcessarImportacao), então a análise
+   reflete só o arquivo mais recente, nunca acumula histórico entre uploads
+   diferentes. Decisão revista nesta mesma sessão — versão anterior era
+   acumulativa/idempotente entre importações. */
 async function fapImportarBase(ev){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
   const file=ev.target.files[0];
@@ -20686,33 +20681,22 @@ function fapProcessarImportacao(rows){
   if(!rows||rows.length<2){alert('Arquivo vazio ou em formato inesperado.');return;}
   const{grupos,ignoradas,processadas}=fapConsolidarImportacao(rows);
   if(!grupos.length){alert('Nenhuma transação válida encontrada nas colunas esperadas (L=Placa, T=Motorista, AF=Valor, A=Data/hora).');return;}
-  let novos=0,atualizados=0;
-  /* Índice id→posição construído UMA VEZ antes do loop (pedido do usuário,
-     2026-09-16: "verificar os travamentos ao anexar base"). Antes, cada grupo
-     importado fazia FAP_CONSUMO_CONDUTOR.findIndex() — uma busca percorrendo o
-     array INTEIRO — e esse array só CRESCE a cada importação (nunca encolhe
-     sozinho, só via "Limpar base"). Medido: com ~5.000 registros já acumulados
-     (realista depois de meses de uso real), importar 800 linhas novas travava a
-     aba por quase 1s SÓ nesse loop (892ms medido em teste), sem contar o
-     re-render em seguida — o gargalo piora a cada importação futura, nunca
-     melhora sozinho. Com o índice, cada grupo passa a ser O(1) em vez de O(n);
-     mesmo padrão de otimização, resultado idêntico. */
-  const indicePorId=new Map();
-  FAP_CONSUMO_CONDUTOR.forEach((r,i)=>indicePorId.set(r.id,i));
-  /* fapPlacaByPlaca(g.placa) também é uma busca O(n) em FAP_PLACAS a cada grupo —
-     bem menor que FAP_CONSUMO_CONDUTOR (limitada ao tamanho da frota), mas ainda
-     assim indexada aqui pelo mesmo motivo, já que roda uma vez por grupo. */
+  /* Cada "Anexar base" SUBSTITUI a análise anterior por inteiro (pedido do usuário,
+     2026-09-16: "sempre que anexar uma base nova a antiga é apagada para dar lugar
+     as novas informações") — decisão explícita revendo o comportamento anterior
+     (acumulativo/idempotente entre importações diferentes). FAP_CONSUMO_CONDUTOR
+     passa a conter só o que está na base anexada MAIS RECENTE, nunca histórico de
+     uploads anteriores. */
+  FAP_CONSUMO_CONDUTOR=[];
+  let novos=0;
+  /* fapPlacaByPlaca(g.placa) é uma busca O(n) em FAP_PLACAS a cada grupo — indexada
+     aqui (mesmo motivo de performance já documentado nesta sessão: roda uma vez
+     por grupo, mais barato pré-computar um Map do que buscar repetidamente). */
   const placasPorPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   grupos.forEach(g=>{
     const id='imp-cond-'+g.condutor+'-'+g.placa+'-'+g.semanaStart;
     const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,categoria:g.categoria||'',uf:g.uf||'',tipoCombustivel:g.tipoCombustivel||'',valor:Math.round(g.valor*100)/100,valorAbastecimento:Math.round((g.valorAbastecimento||0)*100)/100,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
-    const idx=indicePorId.has(id)?indicePorId.get(id):-1;
-    if(idx>=0){
-      FAP_CONSUMO_CONDUTOR[idx]=registro;
-    }else{
-      FAP_CONSUMO_CONDUTOR.push(registro);
-      indicePorId.set(id,FAP_CONSUMO_CONDUTOR.length-1);
-    }
+    FAP_CONSUMO_CONDUTOR.push(registro);
     /* Mantém FAP_PLACAS.tipo em dia com a categoria vinda da base anexada (pedido do
        usuário: classificação "conforme base anexada", não mais escolha manual) — só
        atualiza se a placa já está cadastrada e a base trouxe uma categoria (nunca
@@ -20721,11 +20705,11 @@ function fapProcessarImportacao(rows){
       const placaCad=placasPorPlaca.get(g.placa);
       if(placaCad&&placaCad.tipo!==g.categoria){placaCad.tipo=g.categoria;}
     }
-    idx>=0?atualizados++:novos++;
+    novos++;
   });
   fapConsumoAt=new Date().toISOString();saveState();
   fapRenderConsumoCondutor();
-  _ghToast(`Base importada ✓ ${novos} novo(s), ${atualizados} atualizado(s), ${ignoradas} linha(s) ignorada(s) de ${processadas+ignoradas}`,'var(--green-dk)',6500);
+  _ghToast(`Base importada ✓ ${novos} registro(s) consolidado(s) (substituiu a análise anterior), ${ignoradas} linha(s) ignorada(s) de ${processadas+ignoradas}`,'var(--green-dk)',6500);
 }
 function fapLimparBase(){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
@@ -20808,12 +20792,15 @@ function fapRenderConsumoCondutor(){
     if(empty)empty.style.display='block';
     body.innerHTML='';
     const tipoBody=document.getElementById('fap-tipoTableBody');if(tipoBody)tipoBody.innerHTML='';
+    const baseUfBody=document.getElementById('fap-base-ufBody');if(baseUfBody)baseUfBody.innerHTML='';
+    const baseCombBody=document.getElementById('fap-base-combBody');if(baseCombBody)baseCombBody.innerHTML='';
     fapRenderMesCorrente();
     return;
   }
   if(box)box.style.display='block';
   if(empty)empty.style.display='none';
   fapRenderTipoVeiculo();
+  fapRenderAnaliseBaseAnexada();
   fapRenderMesCorrente();
   /* Map placa→categoria construído numa ÚNICA passada por FAP_CONSUMO_CONDUTOR
      (pedido do usuário, 2026-09-16: "verificar os travamentos ao anexar base") —
@@ -20870,9 +20857,9 @@ function fapRenderConsumoCondutor(){
   }
   /* "Cota do mês" por condutor (pedido do usuário): soma a cota mensal (Leve/Médio/
      Pesado) de cada placa DISTINTA que o condutor dirigiu, cruzando pela categoria
-     daquela placa (fapCategoriaDaPlaca — primeiro tenta a categoria vinda da própria
-     base importada pra aquela placa, senão cai no fap-pTipo cadastrado). Um condutor
-     que dirigiu 2 placas Leve tem cota somada (2×750), não a de 1 só. */
+     daquela placa (categoriaDaPlacaRapido — primeiro tenta a categoria vinda da
+     própria base importada pra aquela placa, senão cai no fap-pTipo cadastrado). Um
+     condutor que dirigiu 2 placas Leve tem cota somada (2×750), não a de 1 só. */
   body.innerHTML=lista.map(c=>{
     const periodo=c.primeiraData===c.ultimaData?fapFmtDate(c.primeiraData):`${fapFmtDate(c.primeiraData)} – ${fapFmtDate(c.ultimaData)}`;
     const cotaMes=[...c.placas].reduce((soma,p)=>soma+(FAP_COTA_CATEGORIA[categoriaDaPlacaRapido(p)]||0),0);
@@ -20887,36 +20874,59 @@ function fapRenderConsumoCondutor(){
   }).join('');
 }
 
-/* "Consumo Mês Corrente" (pedido do usuário, 2026-09-16): visão GERAL (todas as
-   categorias/veículos somados) do ciclo de competência 15→14 EM ANDAMENTO, com
-   projeção de fechamento e comparação contra o ciclo anterior completo — mesma
-   convenção 15→14 de todo o painel (fapCicloAtualIso/fapCicloParaData). Granularidade
-   SEMANAL, não diária: FAP_CONSUMO_CONDUTOR consolida por semana
-   (fapConsolidarImportacao), sem valor isolado por dia — a projeção usa run-rate por
-   DIA (dias decorridos do ciclo até hoje / dias totais do ciclo × total já
-   consumido), mesmo princípio já usado em fapRenderGoWeekTable(), aplicado ao ciclo
-   inteiro em vez de a 1 semana só. O gráfico de linha usa a MESMA taxa diária do
-   card de projeção, pra os dois números nunca divergirem entre si. */
-function fapRenderMesCorrente(){
-  const empty=document.getElementById('fap-mesCorrenteEmpty'),wrap=document.getElementById('fap-mesCorrenteWrap');
-  if(!wrap)return;
-  if(!FAP_CONSUMO_CONDUTOR.length){
-    if(empty)empty.style.display='block';
-    wrap.style.display='none';
-    return;
+/* "Valor médio de abastecimento" por UF e Tipo de Combustível (pedido do usuário,
+   2026-09-16) — análise INDEPENDENTE a partir da base anexada mais recente
+   (colunas "UF"/"Tipo de Combustível" do Portal Alelo, ver fapConsolidarImportacao),
+   nunca de Aportes/Saldo. Sem escopo de ciclo — reflete a base anexada inteira (que
+   agora é sempre só o arquivo mais recente, já que anexar substitui, não acumula). */
+function fapRenderAnaliseBaseAnexada(){
+  const placasPorPlacaAn=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  const porUf=new Map();
+  const porComb=new Map();
+  FAP_CONSUMO_CONDUTOR.forEach(r=>{
+    const cad=placasPorPlacaAn.get(r.placa);
+    const uf=(cad&&cad.uf)||r.uf||'—';
+    if(!porUf.has(uf))porUf.set(uf,{soma:0,qtd:0});
+    const u=porUf.get(uf);u.soma+=r.valorAbastecimento||0;u.qtd+=r.transacoes;
+    const tipo=r.tipoCombustivel||'Não informado';
+    if(!porComb.has(tipo))porComb.set(tipo,{soma:0,qtd:0});
+    const c=porComb.get(tipo);c.soma+=r.valorAbastecimento||0;c.qtd+=r.transacoes;
+  });
+  const ufBody=document.getElementById('fap-base-ufBody');
+  if(ufBody){
+    const listaUf=[...porUf.entries()].sort((a,b)=>b[1].qtd-a[1].qtd);
+    ufBody.innerHTML=listaUf.length?listaUf.map(([uf,d])=>`<tr><td>${eh(uf)}</td><td class="fap-val">${eh(fapFmtMoney(d.qtd?d.soma/d.qtd:0))}</td><td>${d.qtd}</td></tr>`).join(''):'<tr><td colspan="3"><div class="fap-empty">Sem dados na base anexada.</div></td></tr>';
   }
-  if(empty)empty.style.display='none';
-  wrap.style.display='block';
+  const combBody=document.getElementById('fap-base-combBody');
+  if(combBody){
+    const listaComb=[...porComb.entries()].sort((a,b)=>b[1].qtd-a[1].qtd);
+    combBody.innerHTML=listaComb.length?listaComb.map(([tipo,d])=>`<tr><td>${eh(tipo)}</td><td class="fap-val">${eh(fapFmtMoney(d.qtd?d.soma/d.qtd:0))}</td><td>${d.qtd}</td></tr>`).join(''):'<tr><td colspan="3"><div class="fap-empty">Sem dados na base anexada.</div></td></tr>';
+  }
+}
+
+/* "Consumo Mês Corrente" (pedido do usuário, 2026-09-16, CORRIGIDO no mesmo dia):
+   ao contrário da v1 (que usava a base anexada), esse bloco usa APORTES
+   (FAP_APORTES) — pedido explícito do usuário: "o Consumo Mês Corrente será igual
+   ao Valor de Saldo do Total aportado". "Aportado no ciclo atual" reaproveita
+   fapAportadoMesAtual() — a MESMA função já usada pelo card "Aportado no mês"
+   (fap-cMes) — garantindo que os dois NUNCA divirjam, por vir da mesma fonte.
+   A base anexada nunca entra aqui (ver fapRenderAnaliseBaseAnexada() acima, que é a
+   análise independente). Projeção usa run-rate por DIA (mesmo princípio de
+   fapRenderGoWeekTable(), aplicado ao ciclo inteiro); o gráfico de linha usa a
+   MESMA taxa diária do card de projeção, pra os dois nunca divergirem entre si. */
+function fapRenderMesCorrente(){
+  const wrap=document.getElementById('fap-mesCorrenteWrap');
+  if(!wrap)return;
 
   const ciclo=fapCicloAtualIso();
   const cicloAnterior=fapCicloParaData(fapIsoAddDays(ciclo.start,-1));
   const hoje=fapTodayIso();
 
-  const rowsCiclo=FAP_CONSUMO_CONDUTOR.filter(r=>r.semanaStart>=ciclo.start&&r.semanaStart<=ciclo.end);
-  const rowsAnterior=FAP_CONSUMO_CONDUTOR.filter(r=>r.semanaStart>=cicloAnterior.start&&r.semanaStart<=cicloAnterior.end);
+  const aportesCiclo=FAP_APORTES.filter(a=>a.data>=ciclo.start&&a.data<=ciclo.end);
+  const aportesAnterior=FAP_APORTES.filter(a=>a.data>=cicloAnterior.start&&a.data<=cicloAnterior.end);
 
-  const totalAtual=rowsCiclo.reduce((s,r)=>s+r.valor,0);
-  const totalAnterior=rowsAnterior.reduce((s,r)=>s+r.valor,0);
+  const totalAtual=fapAportadoMesAtual();
+  const totalAnterior=aportesAnterior.reduce((s,a)=>s+a.valor,0);
   const variacaoPct=totalAnterior>0?((totalAtual-totalAnterior)/totalAnterior*100):null;
 
   const diasTotaisCiclo=fapIsoDiffDays(ciclo.start,ciclo.end)+1;
@@ -20924,10 +20934,8 @@ function fapRenderMesCorrente(){
   const taxaDiaria=totalAtual/diasDecorridos;
   const projecaoCiclo=taxaDiaria*diasTotaisCiclo;
 
-  const placasSet=new Set(rowsCiclo.map(r=>r.placa));
-  const transacoesTotais=rowsCiclo.reduce((s,r)=>s+r.transacoes,0);
-  const somaAbastecimento=rowsCiclo.reduce((s,r)=>s+(r.valorAbastecimento||0),0);
-  const mediaAbastecimento=transacoesTotais>0?somaAbastecimento/transacoesTotais:0;
+  const placasSet=new Set(aportesCiclo.map(a=>a.placaId));
+  const mediaAporte=aportesCiclo.length>0?totalAtual/aportesCiclo.length:0;
 
   const elTotal=document.getElementById('fap-mc-total');if(elTotal)elTotal.textContent=fapFmtMoney(totalAtual);
   const elTotalFoot=document.getElementById('fap-mc-totalFoot');
@@ -20935,49 +20943,15 @@ function fapRenderMesCorrente(){
   const elProj=document.getElementById('fap-mc-projecao');if(elProj)elProj.textContent=fapFmtMoney(projecaoCiclo);
   const elProjFoot=document.getElementById('fap-mc-projecaoFoot');if(elProjFoot)elProjFoot.textContent=`Ciclo: ${fapFmtDate(ciclo.start)} – ${fapFmtDate(ciclo.end)}`;
   const elPlacas=document.getElementById('fap-mc-placas');if(elPlacas)elPlacas.textContent=String(placasSet.size);
-  const elMedia=document.getElementById('fap-mc-media');if(elMedia)elMedia.textContent=fapFmtMoney(mediaAbastecimento);
-  const elMediaFoot=document.getElementById('fap-mc-mediaFoot');if(elMediaFoot)elMediaFoot.textContent=`${transacoesTotais} abastecimento${transacoesTotais!==1?'s':''} no ciclo`;
+  const elMedia=document.getElementById('fap-mc-media');if(elMedia)elMedia.textContent=fapFmtMoney(mediaAporte);
+  const elMediaFoot=document.getElementById('fap-mc-mediaFoot');if(elMediaFoot)elMediaFoot.textContent=`${aportesCiclo.length} lançamento${aportesCiclo.length!==1?'s':''} no ciclo`;
 
-  /* Valor médio por UF: cruza pela placa cadastrada — só cai pro uf gravado na
-     importação (r.uf) se a placa nunca foi cadastrada. Map construído uma vez
-     (mesmo motivo de performance do restante deste arquivo, 2026-09-16) em vez de
-     fapPlacaByPlaca() por linha. */
-  const placasPorPlacaUf=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
-  const porUf=new Map();
-  rowsCiclo.forEach(r=>{
-    const cad=placasPorPlacaUf.get(r.placa);
-    const uf=(cad&&cad.uf)||r.uf||'—';
-    if(!porUf.has(uf))porUf.set(uf,{soma:0,qtd:0});
-    const u=porUf.get(uf);
-    u.soma+=r.valorAbastecimento||0;
-    u.qtd+=r.transacoes;
-  });
-  const ufBody=document.getElementById('fap-mc-ufBody');
-  if(ufBody){
-    const listaUf=[...porUf.entries()].sort((a,b)=>b[1].qtd-a[1].qtd);
-    ufBody.innerHTML=listaUf.length?listaUf.map(([uf,d])=>`<tr><td>${eh(uf)}</td><td class="fap-val">${eh(fapFmtMoney(d.qtd?d.soma/d.qtd:0))}</td><td>${d.qtd}</td></tr>`).join(''):'<tr><td colspan="3"><div class="fap-empty">Sem dados no ciclo atual.</div></td></tr>';
-  }
-
-  const porComb=new Map();
-  rowsCiclo.forEach(r=>{
-    const tipo=r.tipoCombustivel||'Não informado';
-    if(!porComb.has(tipo))porComb.set(tipo,{soma:0,qtd:0});
-    const c=porComb.get(tipo);
-    c.soma+=r.valorAbastecimento||0;
-    c.qtd+=r.transacoes;
-  });
-  const combBody=document.getElementById('fap-mc-combBody');
-  if(combBody){
-    const listaComb=[...porComb.entries()].sort((a,b)=>b[1].qtd-a[1].qtd);
-    combBody.innerHTML=listaComb.length?listaComb.map(([tipo,d])=>`<tr><td>${eh(tipo)}</td><td class="fap-val">${eh(fapFmtMoney(d.qtd?d.soma/d.qtd:0))}</td><td>${d.qtd}</td></tr>`).join(''):'<tr><td colspan="3"><div class="fap-empty">Sem dados no ciclo atual.</div></td></tr>';
-  }
-
-  /* Gráfico de linha: consumo semanal ACUMULADO real (sólido) + projeção (tracejado)
-     pra semana em andamento e fechamento do ciclo. Ponto de partida da projeção é o
-     último acumulado real conhecido, pra a linha tracejada "continuar" a sólida sem
-     salto visual. */
+  /* Gráfico de linha: aportes semanais ACUMULADOS reais (sólido) + projeção
+     (tracejado) pra semana em andamento e fechamento do ciclo. Ponto de partida da
+     projeção é o último acumulado real conhecido, pra a linha tracejada "continuar"
+     a sólida sem salto visual. */
   const semanas=fapSemanasDoCiclo(ciclo.start,ciclo.end);
-  const porSemana=semanas.map(s=>rowsCiclo.filter(r=>r.semanaStart===s.start).reduce((sum,r)=>sum+r.valor,0));
+  const porSemana=semanas.map(s=>aportesCiclo.filter(a=>a.data>=s.start&&a.data<=s.end).reduce((sum,a)=>sum+a.valor,0));
   const semanaEmAndamentoIdx=semanas.findIndex(s=>hoje>=s.start&&hoje<=s.end);
   let acumulado=0;
   const realAcumulado=[];
@@ -20999,7 +20973,7 @@ function fapRenderMesCorrente(){
     if(fapChMesCorrente){try{fapChMesCorrente.destroy();}catch(e){}}
     const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
     fapChMesCorrente=new Chart(cv,{type:'line',data:{labels:semanas.map((s,i)=>`Semana ${i+1}`),datasets:[
-      {label:'Consumido (acumulado)',data:realAcumulado,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,.12)',fill:true,tension:.25,spanGaps:false},
+      {label:'Aportado (acumulado)',data:realAcumulado,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,.12)',fill:true,tension:.25,spanGaps:false},
       {label:'Projeção',data:projAcumulado,borderColor:'#ff9500',borderDash:[6,4],pointRadius:3,fill:false,tension:.25,spanGaps:false}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
   }
