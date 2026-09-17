@@ -1596,6 +1596,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-hist-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .fap-hist-wrap{overflow-x:auto}
 .fap-val{color:var(--green-dk);font-weight:700}
+.fap-cat-link{color:var(--blue);font-weight:600;text-decoration:none;cursor:pointer}
+.fap-cat-link:hover{text-decoration:underline}
 .fap-export-btn{border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx);border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer}
 .fap-email-preview{background:var(--surface2);border:.5px solid var(--bd);border-radius:10px;padding:16px 18px;font-size:13px;line-height:1.65;color:var(--tx);white-space:pre-wrap;font-family:inherit;max-height:420px;overflow-y:auto}
 .fap-saldo-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:18px;margin-bottom:16px}
@@ -7098,6 +7100,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="fap-chart-box" id="fap-mcChartBox" style="height:260px">
           <canvas id="fap-chart-mescorrente"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: veículos de uma categoria (Leve/Médio/Pesado) — editar categoria (pedido do usuário, 2026-09-17) -->
+  <div class="modal-overlay" id="fap-modal-categoria" style="display:none" onclick="if(event.target===this)fapFecharModalCategoria()">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-hd">
+        <span class="modal-title" id="fap-modal-categoria-title"><i class="ti ti-car"></i> Veículos</span>
+        <button class="modal-close" onclick="fapFecharModalCategoria()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="fap-desc" style="margin:0 0 10px">Corrija a categoria de um veículo se a base anexada (ou o modelo detectado) classificou errado — a correção fica salva pra esse veículo, mesmo anexando uma base nova depois.</p>
+        <div style="max-height:50vh;overflow-y:auto">
+          <table class="fap-table">
+            <thead><tr><th>Placa</th><th>Nome do veículo</th><th>Categoria</th></tr></thead>
+            <tbody id="fap-modal-categoria-body"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -20152,6 +20173,22 @@ function fapFmtDate(iso){if(!iso)return'—';const[y,m,d]=String(iso).split('-')
 
 function fapPlacaById(id){return FAP_PLACAS.find(p=>p.id===id);}
 function fapPlacaByPlaca(placa){return FAP_PLACAS.find(p=>p.placa===placa);}
+/* Prioridade EFETIVA de categoria por placa (pedido do usuário, 2026-09-17: poder
+   corrigir a categoria quando a base anexada classificou errado). Ordem:
+   1) correção MANUAL (fap-pTipo com placaCad.tipoManual=true — usuário editou via
+      o novo link "Veículos por categoria" → editar); 2) categoria vinda da base
+      anexada (coluna dedicada ou fallback por modelo, ver fapConsolidarImportacao);
+   3) fap-pTipo cadastrado sem ser correção manual (registro antigo, de antes desta
+      feature); 4) '' (cai em "Não informado" em quem chama). Correção manual
+   PERSISTE entre reimportações — fapProcessarImportacao() pula a atualização
+   automática de tipo pra placas com tipoManual=true (ver lá). */
+function fapCategoriaEfetiva(placa,categoriaDaBase,placasMap){
+  const cad=placasMap?placasMap.get(placa):fapPlacaByPlaca(placa);
+  if(cad&&cad.tipoManual&&cad.tipo)return cad.tipo;
+  if(categoriaDaBase)return categoriaDaBase;
+  if(cad&&cad.tipo)return cad.tipo;
+  return'';
+}
 function fapTotalPlaca(id){return FAP_APORTES.filter(a=>a.placaId===id).reduce((s,a)=>s+a.valor,0);}
 function fapUltimoAporte(id){const list=FAP_APORTES.filter(a=>a.placaId===id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));return list[0]||null;}
 /* Total aportado no CICLO DE COMPETÊNCIA 15→14 ATUAL (não mês de calendário — dia 15
@@ -20700,10 +20737,14 @@ function fapProcessarImportacao(rows){
     /* Mantém FAP_PLACAS.tipo em dia com a categoria vinda da base anexada (pedido do
        usuário: classificação "conforme base anexada", não mais escolha manual) — só
        atualiza se a placa já está cadastrada e a base trouxe uma categoria (nunca
-       apaga um tipo já definido por causa de um arquivo sem essa coluna). */
+       apaga um tipo já definido por causa de um arquivo sem essa coluna).
+       EXCETO se o usuário corrigiu manualmente essa placa (placaCad.tipoManual,
+       pedido do usuário 2026-09-17: "editar a categoria caso esteja errado") — a
+       correção manual precisa SOBREVIVER a reimportações futuras da base, senão o
+       próximo anexo simplesmente desfaria a correção de volta. */
     if(g.categoria){
       const placaCad=placasPorPlaca.get(g.placa);
-      if(placaCad&&placaCad.tipo!==g.categoria){placaCad.tipo=g.categoria;}
+      if(placaCad&&!placaCad.tipoManual&&placaCad.tipo!==g.categoria){placaCad.tipo=g.categoria;}
     }
     novos++;
   });
@@ -20753,8 +20794,7 @@ function fapRenderTipoVeiculo(){
   const placasPorPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   const porTipo=new Map();
   FAP_CONSUMO_CONDUTOR.forEach(r=>{
-    const cad=r.categoria?null:placasPorPlaca.get(r.placa);
-    const tipo=r.categoria||(cad&&cad.tipo)||'Não informado';
+    const tipo=fapCategoriaEfetiva(r.placa,r.categoria,placasPorPlaca)||'Não informado';
     if(!porTipo.has(tipo))porTipo.set(tipo,{tipo,placas:new Set(),total:0,noCiclo:0});
     const t=porTipo.get(tipo);
     t.placas.add(r.placa);
@@ -20771,18 +20811,93 @@ function fapRenderTipoVeiculo(){
       {label:'Cota do mês',data:lista.map(t=>FAP_COTA_CATEGORIA[t.tipo]?FAP_COTA_CATEGORIA[t.tipo]*t.placas.size:0),backgroundColor:'#8fb3e0',borderRadius:4}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
   }
+  /* Link pra abrir a lista de veículos daquela categoria (pedido do usuário,
+     2026-09-17), com placa escapada dentro do atributo onclick — nomes de
+     categoria são um conjunto fixo (Leve/Médio/Pesado/Não informado ou o texto
+     bruto de fapNormCategoria), nunca texto de usuário livre, então aspas simples
+     bastam sem precisar de eh() dentro do onclick. */
   body.innerHTML=lista.map(t=>{
     const valorUnit=FAP_COTA_CATEGORIA[t.tipo];
     const cota=valorUnit?valorUnit*t.placas.size:null;
     const dentro=cota!==null&&t.noCiclo<=cota;
     return`<tr>
-    <td class="fap-name-cell"><div class="fap-nm">${eh(t.tipo)}</div></td>
+    <td class="fap-name-cell"><a href="javascript:void(0)" class="fap-cat-link" onclick="fapAbrirModalCategoria('${t.tipo.replace(/'/g,"\\'")}')">${eh(t.tipo)}</a></td>
     <td>${t.placas.size}</td>
     <td>${cota!==null?eh(fapFmtMoney(cota)):'—'}</td>
     <td class="fap-val" style="${cota!==null?`color:${dentro?'var(--green-dk)':'var(--red)'}`:''}">${eh(fapFmtMoney(t.noCiclo))}</td>
     <td class="fap-val">${eh(fapFmtMoney(t.total))}</td>
   </tr>`;
   }).join('');
+}
+
+/* Modal "Veículos" por categoria — editar (pedido do usuário, 2026-09-17): clicar
+   numa categoria em "Veículos por categoria" abre a lista de placas + nome do
+   veículo (col M da base anexada, ver fapConsolidarImportacao) classificadas
+   naquela categoria, com um select pra corrigir. fapModalCategoriaAtual guarda
+   qual categoria está aberta, só pra poder re-renderizar a lista depois de uma
+   correção (o veículo corrigido "sai" da lista atual e passa a aparecer na
+   categoria nova). */
+let fapModalCategoriaAtual='';
+function fapVeiculosPorCategoria(categoria){
+  const placasPorPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  const porPlaca=new Map();
+  FAP_CONSUMO_CONDUTOR.forEach(r=>{
+    const efetiva=fapCategoriaEfetiva(r.placa,r.categoria,placasPorPlaca)||'Não informado';
+    if(efetiva!==categoria)return;
+    if(!porPlaca.has(r.placa))porPlaca.set(r.placa,{placa:r.placa,veiculo:r.veiculo||''});
+    else if(!porPlaca.get(r.placa).veiculo&&r.veiculo)porPlaca.get(r.placa).veiculo=r.veiculo;
+  });
+  return[...porPlaca.values()].sort((a,b)=>a.placa.localeCompare(b.placa));
+}
+function fapAbrirModalCategoria(categoria){
+  fapModalCategoriaAtual=categoria;
+  const title=document.getElementById('fap-modal-categoria-title');
+  if(title)title.innerHTML=`<i class="ti ti-car"></i> Veículos — ${eh(categoria)}`;
+  fapRenderModalCategoriaBody();
+  const modal=document.getElementById('fap-modal-categoria');
+  if(modal)modal.style.display='flex';
+}
+function fapFecharModalCategoria(){
+  const modal=document.getElementById('fap-modal-categoria');
+  if(modal)modal.style.display='none';
+  fapModalCategoriaAtual='';
+}
+function fapRenderModalCategoriaBody(){
+  const body=document.getElementById('fap-modal-categoria-body');
+  if(!body)return;
+  const lista=fapVeiculosPorCategoria(fapModalCategoriaAtual);
+  const opcoes=['','Leve','Médio','Pesado'];
+  body.innerHTML=lista.length?lista.map(v=>`<tr>
+    <td><span class="fap-uf-chip">${eh(v.placa)}</span></td>
+    <td>${eh(v.veiculo||'—')}</td>
+    <td><select onchange="fapAlterarCategoriaManual('${v.placa.replace(/'/g,"\\'")}',this.value)" ${canEdit()?'':'disabled'}>
+      ${opcoes.map(o=>`<option value="${eh(o)}" ${o===fapModalCategoriaAtual?'selected':(o===''&&fapModalCategoriaAtual==='Não informado'?'selected':'')}>${eh(o||'Não informado')}</option>`).join('')}
+    </select></td>
+  </tr>`).join(''):'<tr><td colspan="3"><div class="fap-empty">Nenhum veículo nesta categoria.</div></td></tr>';
+}
+/* Corrige a categoria de UMA placa (pedido do usuário: "editar a categoria caso
+   esteja errado"). Grava em FAP_PLACAS.tipo + marca tipoManual=true, pra a correção
+   SOBREVIVER a uma reimportação futura da base (fapProcessarImportacao() respeita
+   esse flag, ver lá) — sem isso, a próxima base anexada sobrescreveria a correção
+   de volta pro valor (talvez errado) que ela trouxer, exatamente o comportamento
+   que motivou este pedido. Selecionar "Não informado" limpa tipo/tipoManual, o que
+   automaticamente volta a deixar a base decidir (fapCategoriaEfetiva só usa o
+   override quando tipoManual E tipo são truthy). Cria a placa em FAP_PLACAS se
+   ela só existia na base importada (nunca foi cadastrada) — sem isso a correção
+   não teria onde ser salva. */
+function fapAlterarCategoriaManual(placa,novaCategoria){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');fapRenderModalCategoriaBody();return;}
+  let cad=fapPlacaByPlaca(placa);
+  if(!cad){
+    cad={id:fapUid(),placa,uf:'',tecnico:'',go:'',tipo:''};
+    FAP_PLACAS.push(cad);
+  }
+  cad.tipo=novaCategoria;
+  cad.tipoManual=!!novaCategoria;
+  fapAt=new Date().toISOString();saveState();
+  fapRenderAll();
+  fapRenderModalCategoriaBody();
+  _ghToast(`Categoria de ${placa} atualizada ✓`,'var(--green-dk)',3000);
 }
 function fapRenderConsumoCondutor(){
   const box=document.getElementById('fap-condutorChartWrap'),body=document.getElementById('fap-condutorTableBody'),empty=document.getElementById('fap-condutorEmpty');
@@ -20811,7 +20926,7 @@ function fapRenderConsumoCondutor(){
      apareceu com categoria numa importação (mesma prioridade de antes). */
   const categoriaPorPlaca=new Map();
   const placasPorPlacaCota=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
-  const categoriaDaPlacaRapido=p=>categoriaPorPlaca.get(p)||(placasPorPlacaCota.get(p)&&placasPorPlacaCota.get(p).tipo)||'';
+  const categoriaDaPlacaRapido=p=>fapCategoriaEfetiva(p,categoriaPorPlaca.get(p),placasPorPlacaCota);
   const porCondutor=new Map();
   FAP_CONSUMO_CONDUTOR.forEach(r=>{
     if(!categoriaPorPlaca.has(r.placa)&&r.categoria)categoriaPorPlaca.set(r.placa,r.categoria);
