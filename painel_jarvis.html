@@ -7101,6 +7101,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fap-chart-box" id="fap-mcChartBox" style="height:260px">
           <canvas id="fap-chart-mescorrente"></canvas>
         </div>
+        <div id="fap-mcVeicWrap" style="margin-top:20px">
+          <h4 style="margin:0 0 4px;font-size:13px">Consumo confirmado por veículo (base anexada)</h4>
+          <p class="fap-desc" style="margin:0 0 8px">Consumo do ciclo atual (dia 15 até hoje) por veículo, somando só abastecimentos com Compra/Aprovada/Confirmado na base anexada, com tendência semanal e projeção de fechamento. Adicionado junto aos cards de Aportes acima (não os substitui) — requer uma base anexada.</p>
+          <p class="fap-desc" id="fap-mcVeicTruncNote" style="display:none;margin:0 0 8px;color:var(--orange)"></p>
+          <div id="fap-mcVeicEmpty" class="fap-empty">Nenhum abastecimento confirmado (Compra/Aprovada/Confirmado) no ciclo atual, na base anexada.</div>
+          <div id="fap-mcVeicTableWrap" style="display:none;max-height:520px;overflow-y:auto">
+            <table class="fap-table">
+              <thead><tr><th>Placa</th><th>Veículo</th><th>Consumo confirmado</th><th>Projeção de fechamento</th><th style="min-width:160px">Tendência semanal</th></tr></thead>
+              <tbody id="fap-mcVeicBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -20145,7 +20157,7 @@ let FAP_PLACAS=[],FAP_APORTES=[],fapAt='',fapSaldoMes=0;
    de consumo por condutor, consolidada por condutor+placa+semana. Timestamp próprio
    (fapConsumoAt) pra entrar no mesmo esquema de guarda por seção do resto do app. */
 let FAP_CONSUMO_CONDUTOR=[],fapConsumoAt='';
-let fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null;
+let fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null,fapChVeicList=[];
 
 function fapUid(){return Math.random().toString(36).slice(2,10);}
 function fapTodayIso(){return new Date().toISOString().slice(0,10);}
@@ -20673,9 +20685,21 @@ function fapConsolidarImportacao(rows){
   const grupos=new Map();
   let ignoradas=0,processadas=0;
   const catIdx=fapFindColIdx(rows[0],['categoria do veiculo','categoria do veículo','categoria']);
-  const ufIdx=fapFindColIdx(rows[0],['uf']);
-  const combIdx=fapFindColIdx(rows[0],['tipo de combustivel','tipo de combustível']);
-  const abastIdx=fapFindColIdx(rows[0],['valor do abastecimento']);
+  /* UF/Tipo de Combustível/Valor Médio (Valor do Abastecimento) — posições FIXAS
+     confirmadas pelo usuário (2026-09-17: "são as posições exatas — usar por posição
+     fixa, como Placa/Veículo/Motorista/Valor"), substituindo a busca por nome de
+     cabeçalho (fapFindColIdx) usada antes pra esses 3 campos — mesmo princípio já
+     usado pras colunas A/L/M/T/AF (mais robusto a variação de cabeçalho entre exports
+     do Portal Alelo). "Categoria do veículo" continua por busca de nome (posição não
+     confirmada pelo usuário). */
+  const TIPO_COMBUSTIVEL_IDX=28,VALOR_MEDIO_IDX=30,UF_IDX=35;
+  /* Validade do abastecimento (pedido do usuário, 2026-09-17): só conta como
+     "confirmado" — usado no novo consumo por veículo do ciclo atual — quando as 3
+     colunas batem: Y=Compra, Z=Aprovada, AA=Confirmado (mesmo padrão de status já
+     usado em importFuelAlelo(), no painel Combustível). Não afeta os campos
+     valor/transacoes (sem filtro), usados pelas análises já existentes. */
+  const COMPRA_IDX=24,APROVADA_IDX=25,CONFIRMADO_IDX=26;
+  const normTxt=s=>String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   for(let i=1;i<rows.length;i++){
     const row=rows[i];
     if(!row||!row.length)continue;
@@ -20685,9 +20709,10 @@ function fapConsolidarImportacao(rows){
     const motorista=fapNomeProprio(row[19]);
     const valorStr=String(row[31]||'').trim();
     const categoria=(catIdx>=0?fapNormCategoria(row[catIdx]):'')||fapCategoriaPorModelo(nomeVeiculo);
-    const ufLinha=ufIdx>=0?String(row[ufIdx]||'').trim().toUpperCase():'';
-    const tipoCombustivel=combIdx>=0?String(row[combIdx]||'').trim():'';
-    const valorAbast=abastIdx>=0?fapParseValor(String(row[abastIdx]||'').trim()):NaN;
+    const ufLinha=String(row[UF_IDX]||'').trim().toUpperCase();
+    const tipoCombustivel=String(row[TIPO_COMBUSTIVEL_IDX]||'').trim();
+    const valorAbast=fapParseValor(String(row[VALOR_MEDIO_IDX]||'').trim());
+    const isConfirmado=normTxt(row[COMPRA_IDX]).includes('compra')&&normTxt(row[APROVADA_IDX]).includes('aprovada')&&normTxt(row[CONFIRMADO_IDX]).includes('confirmado');
     if(!placa||!dataHora||!valorStr||!motorista){ignoradas++;continue;}
     const valor=fapParseValor(valorStr);
     if(isNaN(valor)||valor<=0){ignoradas++;continue;}
@@ -20699,10 +20724,11 @@ function fapConsolidarImportacao(rows){
     const semana=fapSemanasDoCiclo(cStart,cEnd).find(s=>dataIso>=s.start&&dataIso<=s.end);
     if(!semana){ignoradas++;continue;}
     const chave=motorista+'|'+placa+'|'+semana.start;
-    if(!grupos.has(chave))grupos.set(chave,{condutor:motorista,placa,veiculo:nomeVeiculo,categoria,uf:ufLinha,tipoCombustivel,valor:0,valorAbastecimento:0,semanaStart:semana.start,transacoes:0,primeiraData:dataIso,ultimaData:dataIso});
+    if(!grupos.has(chave))grupos.set(chave,{condutor:motorista,placa,veiculo:nomeVeiculo,categoria,uf:ufLinha,tipoCombustivel,valor:0,valorAbastecimento:0,valorConfirmado:0,transacoesConfirmadas:0,semanaStart:semana.start,transacoes:0,primeiraData:dataIso,ultimaData:dataIso});
     const g=grupos.get(chave);
     g.valor+=valor;
     if(!isNaN(valorAbast))g.valorAbastecimento+=valorAbast;
+    if(isConfirmado){g.valorConfirmado+=valor;g.transacoesConfirmadas++;}
     g.transacoes++;
     if(dataIso<g.primeiraData)g.primeiraData=dataIso;
     if(dataIso>g.ultimaData)g.ultimaData=dataIso;
@@ -20732,7 +20758,7 @@ function fapProcessarImportacao(rows){
   const placasPorPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   grupos.forEach(g=>{
     const id='imp-cond-'+g.condutor+'-'+g.placa+'-'+g.semanaStart;
-    const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,categoria:g.categoria||'',uf:g.uf||'',tipoCombustivel:g.tipoCombustivel||'',valor:Math.round(g.valor*100)/100,valorAbastecimento:Math.round((g.valorAbastecimento||0)*100)/100,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
+    const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,categoria:g.categoria||'',uf:g.uf||'',tipoCombustivel:g.tipoCombustivel||'',valor:Math.round(g.valor*100)/100,valorAbastecimento:Math.round((g.valorAbastecimento||0)*100)/100,valorConfirmado:Math.round((g.valorConfirmado||0)*100)/100,transacoesConfirmadas:g.transacoesConfirmadas||0,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
     FAP_CONSUMO_CONDUTOR.push(registro);
     /* Mantém FAP_PLACAS.tipo em dia com a categoria vinda da base anexada (pedido do
        usuário: classificação "conforme base anexada", não mais escolha manual) — só
@@ -21092,6 +21118,94 @@ function fapRenderMesCorrente(){
       {label:'Projeção',data:projAcumulado,borderColor:'#ff9500',borderDash:[6,4],pointRadius:3,fill:false,tension:.25,spanGaps:false}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
   }
+  fapRenderConsumoVeiculoCiclo();
+}
+
+/* Consumo confirmado por veículo, ADICIONADO ao "Consumo Mês Corrente" (pedido do
+   usuário, 2026-09-17: "adicionar junto — mantém os cards de Aportes"), sem alterar
+   nada dos cards/gráfico de Aportes acima (fapRenderMesCorrente() permanece intacto).
+   Fonte: FAP_CONSUMO_CONDUTOR (base anexada), campo valorConfirmado — só soma
+   abastecimentos com Compra/Aprovada/Confirmado (ver fapConsolidarImportacao), do dia
+   15 do ciclo atual até hoje (semanaStart já é calculado no ciclo 15→14 na
+   importação; aqui filtra pelas semanas do ciclo ATUAL especificamente, já que a
+   base anexada pode conter dados de ciclos passados). Tendência semanal + projeção
+   por veículo usa o MESMO princípio de run-rate diário já usado no gráfico de Aportes
+   acima, mas calculado por veículo (taxa diária própria de cada placa). Capado aos 20
+   veículos de maior consumo confirmado (mesmo padrão de "top N" já usado em
+   fapRenderConsumoCondutor, por performance/legibilidade — um Chart.js por linha). */
+function fapRenderConsumoVeiculoCiclo(){
+  const body=document.getElementById('fap-mcVeicBody');
+  if(!body)return;
+  fapChVeicList.forEach(ch=>{try{ch.destroy();}catch(e){}});
+  fapChVeicList=[];
+  const ciclo=fapCicloAtualIso();
+  const semanas=fapSemanasDoCiclo(ciclo.start,ciclo.end);
+  const hoje=fapTodayIso();
+  const diasTotaisCiclo=fapIsoDiffDays(ciclo.start,ciclo.end)+1;
+  const diasDecorridos=Math.min(diasTotaisCiclo,Math.max(1,fapIsoDiffDays(ciclo.start,hoje)+1));
+  const semanaEmAndamentoIdx=semanas.findIndex(s=>hoje>=s.start&&hoje<=s.end);
+  const semanasAtuaisSet=new Set(semanas.map(s=>s.start));
+
+  const porVeiculo=new Map();
+  FAP_CONSUMO_CONDUTOR.forEach(r=>{
+    if(!(r.valorConfirmado>0))return;
+    if(!semanasAtuaisSet.has(r.semanaStart))return;
+    if(!porVeiculo.has(r.placa))porVeiculo.set(r.placa,{placa:r.placa,veiculo:r.veiculo||'',total:0,porSemana:new Map()});
+    const v=porVeiculo.get(r.placa);
+    v.total+=r.valorConfirmado;
+    if(!v.veiculo&&r.veiculo)v.veiculo=r.veiculo;
+    v.porSemana.set(r.semanaStart,(v.porSemana.get(r.semanaStart)||0)+r.valorConfirmado);
+  });
+
+  const emptyEl=document.getElementById('fap-mcVeicEmpty');
+  const tableWrap=document.getElementById('fap-mcVeicTableWrap');
+  const truncNote=document.getElementById('fap-mcVeicTruncNote');
+  const lista=[...porVeiculo.values()].sort((a,b)=>b.total-a.total);
+  if(!lista.length){
+    body.innerHTML='';
+    if(emptyEl)emptyEl.style.display='block';
+    if(tableWrap)tableWrap.style.display='none';
+    if(truncNote)truncNote.style.display='none';
+    return;
+  }
+  if(emptyEl)emptyEl.style.display='none';
+  if(tableWrap)tableWrap.style.display='block';
+  const LIMITE=20;
+  const listaMostrada=lista.slice(0,LIMITE);
+  if(truncNote){
+    if(lista.length>LIMITE){truncNote.style.display='block';truncNote.textContent=`Mostrando os ${LIMITE} veículos com maior consumo confirmado, de ${lista.length} no total.`;}
+    else truncNote.style.display='none';
+  }
+  body.innerHTML=listaMostrada.map((v,idx)=>{
+    const taxaDiariaV=v.total/diasDecorridos;
+    const projecaoV=taxaDiariaV*diasTotaisCiclo;
+    return `<tr><td>${eh(v.placa)}</td><td>${eh(v.veiculo||'—')}</td><td class="fap-val">${eh(fapFmtMoney(v.total))}</td><td>${eh(fapFmtMoney(projecaoV))}</td><td><div style="height:40px;width:150px"><canvas id="fap-chart-mcveic-${idx}"></canvas></div></td></tr>`;
+  }).join('');
+  listaMostrada.forEach((v,idx)=>{
+    const cv=document.getElementById(`fap-chart-mcveic-${idx}`);
+    if(!cv)return;
+    const taxaDiariaV=v.total/diasDecorridos;
+    let acumulado=0;
+    const realAcumulado=[];
+    for(let i=0;i<semanas.length;i++){
+      if(semanaEmAndamentoIdx>=0&&i>semanaEmAndamentoIdx){realAcumulado.push(null);continue;}
+      acumulado+=v.porSemana.get(semanas[i].start)||0;
+      realAcumulado.push(acumulado);
+    }
+    const projAcumulado=semanas.map(()=>null);
+    if(semanaEmAndamentoIdx>=0){
+      for(let i=semanaEmAndamentoIdx;i<semanas.length;i++){
+        const diasAteFimSemanaI=fapIsoDiffDays(ciclo.start,semanas[i].end)+1;
+        projAcumulado[i]=taxaDiariaV*diasAteFimSemanaI;
+      }
+      if(semanaEmAndamentoIdx>0)projAcumulado[semanaEmAndamentoIdx-1]=realAcumulado[semanaEmAndamentoIdx-1];
+    }
+    const ch=new Chart(cv,{type:'line',data:{labels:semanas.map((s,i)=>'S'+(i+1)),datasets:[
+      {data:realAcumulado,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,.12)',fill:true,tension:.25,spanGaps:false,pointRadius:0,borderWidth:1.5},
+      {data:projAcumulado,borderColor:'#ff9500',borderDash:[4,3],pointRadius:0,fill:false,tension:.25,spanGaps:false,borderWidth:1.5}
+    ]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}}}});
+    fapChVeicList.push(ch);
+  });
 }
 
 /* Bloco "E-mail" (pedido do usuário): modelo de mensagem executiva pra envio, que
