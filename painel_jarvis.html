@@ -7049,6 +7049,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div id="fap-condutorEmpty" class="fap-empty">Nenhuma base anexada ainda — use o botão "Anexar base" no topo do painel.</div>
       <div id="fap-condutorChartWrap" style="display:none">
+        <p class="fap-desc" id="fap-condutorTruncNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
         <div class="fap-chart-box" id="fap-condutorChartBox" style="height:260px">
           <canvas id="fap-chart-condutor"></canvas>
         </div>
@@ -20686,17 +20687,38 @@ function fapProcessarImportacao(rows){
   const{grupos,ignoradas,processadas}=fapConsolidarImportacao(rows);
   if(!grupos.length){alert('Nenhuma transação válida encontrada nas colunas esperadas (L=Placa, T=Motorista, AF=Valor, A=Data/hora).');return;}
   let novos=0,atualizados=0;
+  /* Índice id→posição construído UMA VEZ antes do loop (pedido do usuário,
+     2026-09-16: "verificar os travamentos ao anexar base"). Antes, cada grupo
+     importado fazia FAP_CONSUMO_CONDUTOR.findIndex() — uma busca percorrendo o
+     array INTEIRO — e esse array só CRESCE a cada importação (nunca encolhe
+     sozinho, só via "Limpar base"). Medido: com ~5.000 registros já acumulados
+     (realista depois de meses de uso real), importar 800 linhas novas travava a
+     aba por quase 1s SÓ nesse loop (892ms medido em teste), sem contar o
+     re-render em seguida — o gargalo piora a cada importação futura, nunca
+     melhora sozinho. Com o índice, cada grupo passa a ser O(1) em vez de O(n);
+     mesmo padrão de otimização, resultado idêntico. */
+  const indicePorId=new Map();
+  FAP_CONSUMO_CONDUTOR.forEach((r,i)=>indicePorId.set(r.id,i));
+  /* fapPlacaByPlaca(g.placa) também é uma busca O(n) em FAP_PLACAS a cada grupo —
+     bem menor que FAP_CONSUMO_CONDUTOR (limitada ao tamanho da frota), mas ainda
+     assim indexada aqui pelo mesmo motivo, já que roda uma vez por grupo. */
+  const placasPorPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   grupos.forEach(g=>{
     const id='imp-cond-'+g.condutor+'-'+g.placa+'-'+g.semanaStart;
     const registro={id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,categoria:g.categoria||'',uf:g.uf||'',tipoCombustivel:g.tipoCombustivel||'',valor:Math.round(g.valor*100)/100,valorAbastecimento:Math.round((g.valorAbastecimento||0)*100)/100,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData};
-    const idx=FAP_CONSUMO_CONDUTOR.findIndex(a=>a.id===id);
-    if(idx>=0)FAP_CONSUMO_CONDUTOR[idx]=registro;else FAP_CONSUMO_CONDUTOR.push(registro);
+    const idx=indicePorId.has(id)?indicePorId.get(id):-1;
+    if(idx>=0){
+      FAP_CONSUMO_CONDUTOR[idx]=registro;
+    }else{
+      FAP_CONSUMO_CONDUTOR.push(registro);
+      indicePorId.set(id,FAP_CONSUMO_CONDUTOR.length-1);
+    }
     /* Mantém FAP_PLACAS.tipo em dia com a categoria vinda da base anexada (pedido do
        usuário: classificação "conforme base anexada", não mais escolha manual) — só
        atualiza se a placa já está cadastrada e a base trouxe uma categoria (nunca
        apaga um tipo já definido por causa de um arquivo sem essa coluna). */
     if(g.categoria){
-      const placaCad=fapPlacaByPlaca(g.placa);
+      const placaCad=placasPorPlaca.get(g.placa);
       if(placaCad&&placaCad.tipo!==g.categoria){placaCad.tipo=g.categoria;}
     }
     idx>=0?atualizados++:novos++;
@@ -20737,9 +20759,17 @@ function fapRenderTipoVeiculo(){
   const body=document.getElementById('fap-tipoTableBody');
   if(!body)return;
   const ciclo=fapCicloAtualIso();
+  /* Map placa→placa construído UMA VEZ (pedido do usuário, 2026-09-16: "verificar
+     os travamentos ao anexar base") — antes, fapPlacaByPlaca() rodava um
+     FAP_PLACAS.find() por LINHA de FAP_CONSUMO_CONDUTOR (que só cresce a cada
+     importação), toda vez que este render rodava (inclusive logo depois de anexar
+     uma base nova). Só usado quando r.categoria está vazio (fallback), então nem
+     sempre é consultado — mas o Map em si (O(1) por consulta) substitui o
+     .find() (O(n)) nos casos em que é. */
+  const placasPorPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   const porTipo=new Map();
   FAP_CONSUMO_CONDUTOR.forEach(r=>{
-    const cad=fapPlacaByPlaca(r.placa);
+    const cad=r.categoria?null:placasPorPlaca.get(r.placa);
     const tipo=r.categoria||(cad&&cad.tipo)||'Não informado';
     if(!porTipo.has(tipo))porTipo.set(tipo,{tipo,placas:new Set(),total:0,noCiclo:0});
     const t=porTipo.get(tipo);
@@ -20785,8 +20815,19 @@ function fapRenderConsumoCondutor(){
   if(empty)empty.style.display='none';
   fapRenderTipoVeiculo();
   fapRenderMesCorrente();
+  /* Map placa→categoria construído numa ÚNICA passada por FAP_CONSUMO_CONDUTOR
+     (pedido do usuário, 2026-09-16: "verificar os travamentos ao anexar base") —
+     antes, fapCategoriaDaPlaca() rodava um FAP_CONSUMO_CONDUTOR.find() (O(n)) POR
+     PLACA de CADA condutor, toda vez que essa tabela renderizava (inclusive logo
+     depois de anexar uma base nova) — quadrático em relação ao tamanho do array
+     que só cresce. Fallback pro fap-pTipo cadastrado só quando a placa nunca
+     apareceu com categoria numa importação (mesma prioridade de antes). */
+  const categoriaPorPlaca=new Map();
+  const placasPorPlacaCota=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  const categoriaDaPlacaRapido=p=>categoriaPorPlaca.get(p)||(placasPorPlacaCota.get(p)&&placasPorPlacaCota.get(p).tipo)||'';
   const porCondutor=new Map();
   FAP_CONSUMO_CONDUTOR.forEach(r=>{
+    if(!categoriaPorPlaca.has(r.placa)&&r.categoria)categoriaPorPlaca.set(r.placa,r.categoria);
     /* fapNomeProprio() reaplicado aqui de propósito (pedido do usuário, 2026-09-16:
        "nomes... deverão todos usar apenas a primeira letra maiuscula") — já é
        aplicado na importação (fapConsolidarImportacao), então é idempotente pra
@@ -20801,7 +20842,26 @@ function fapRenderConsumoCondutor(){
     if(r.primeiraData<c.primeiraData)c.primeiraData=r.primeiraData;
     if(r.ultimaData>c.ultimaData)c.ultimaData=r.ultimaData;
   });
-  const lista=[...porCondutor.values()].sort((a,b)=>b.total-a.total);
+  /* Limita gráfico + tabela aos 100 condutores de MAIOR consumo (pedido do usuário,
+     2026-09-16: "verificar os travamentos ao anexar base") — achado real durante o
+     diagnóstico: uma base com muitos nomes de condutor DISTINTOS acumulados (ex.:
+     variações de grafia não normalizadas por fapNomeProprio, ou anos de histórico
+     com alta rotatividade) faz o gráfico de barras tentar desenhar uma barra por
+     condutor — testado com 5.000 nomes distintos: sozinho, isso já levava ~850ms
+     (bem mais lento que a leitura/consolidação da base em si, sempre <150ms). Um
+     gráfico com milhares de barras também não seria legível de qualquer forma —
+     100 já é mais do que qualquer análise visual real usaria. */
+  const listaCompleta=[...porCondutor.values()].sort((a,b)=>b.total-a.total);
+  const lista=listaCompleta.slice(0,100);
+  const truncNote=document.getElementById('fap-condutorTruncNote');
+  if(truncNote){
+    if(listaCompleta.length>lista.length){
+      truncNote.style.display='block';
+      truncNote.textContent=`Mostrando os 100 condutores com maior consumo, de ${listaCompleta.length} no total.`;
+    }else{
+      truncNote.style.display='none';
+    }
+  }
   const cv=document.getElementById('fap-chart-condutor');
   if(cv){
     if(fapChCondutor){try{fapChCondutor.destroy();}catch(e){}}
@@ -20815,7 +20875,7 @@ function fapRenderConsumoCondutor(){
      que dirigiu 2 placas Leve tem cota somada (2×750), não a de 1 só. */
   body.innerHTML=lista.map(c=>{
     const periodo=c.primeiraData===c.ultimaData?fapFmtDate(c.primeiraData):`${fapFmtDate(c.primeiraData)} – ${fapFmtDate(c.ultimaData)}`;
-    const cotaMes=[...c.placas].reduce((soma,p)=>soma+(FAP_COTA_CATEGORIA[fapCategoriaDaPlaca(p)]||0),0);
+    const cotaMes=[...c.placas].reduce((soma,p)=>soma+(FAP_COTA_CATEGORIA[categoriaDaPlacaRapido(p)]||0),0);
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm">${eh(c.condutor)}</div></td>
       <td>${[...c.placas].map(p=>`<span class="fap-uf-chip">${eh(p)}</span>`).join(' ')}</td>
@@ -20878,11 +20938,14 @@ function fapRenderMesCorrente(){
   const elMedia=document.getElementById('fap-mc-media');if(elMedia)elMedia.textContent=fapFmtMoney(mediaAbastecimento);
   const elMediaFoot=document.getElementById('fap-mc-mediaFoot');if(elMediaFoot)elMediaFoot.textContent=`${transacoesTotais} abastecimento${transacoesTotais!==1?'s':''} no ciclo`;
 
-  /* Valor médio por UF: cruza pela placa cadastrada (fapPlacaByPlaca) — só cai pro uf
-     gravado na importação (r.uf) se a placa nunca foi cadastrada. */
+  /* Valor médio por UF: cruza pela placa cadastrada — só cai pro uf gravado na
+     importação (r.uf) se a placa nunca foi cadastrada. Map construído uma vez
+     (mesmo motivo de performance do restante deste arquivo, 2026-09-16) em vez de
+     fapPlacaByPlaca() por linha. */
+  const placasPorPlacaUf=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   const porUf=new Map();
   rowsCiclo.forEach(r=>{
-    const cad=fapPlacaByPlaca(r.placa);
+    const cad=placasPorPlacaUf.get(r.placa);
     const uf=(cad&&cad.uf)||r.uf||'—';
     if(!porUf.has(uf))porUf.set(uf,{soma:0,qtd:0});
     const u=porUf.get(uf);
