@@ -20695,11 +20695,18 @@ function fapConsolidarImportacao(rows){
   const TIPO_COMBUSTIVEL_IDX=28,VALOR_MEDIO_IDX=30,UF_IDX=35;
   /* Validade do abastecimento (pedido do usuário, 2026-09-17): só conta como
      "confirmado" — usado no novo consumo por veículo do ciclo atual — quando as 3
-     colunas batem: Y=Compra, Z=Aprovada, AA=Confirmado (mesmo padrão de status já
-     usado em importFuelAlelo(), no painel Combustível). Não afeta os campos
-     valor/transacoes (sem filtro), usados pelas análises já existentes. */
+     colunas batem: Y=Compra, Z=Aprovada, AA=Confirmado. BUG CORRIGIDO no mesmo dia:
+     a 1ª versão verificava se a CÉLULA continha o texto "compra"/"aprovada"/
+     "confirmado" (nome da própria etapa) — errado; o usuário confirmou que cada
+     coluna é um flag independente "Sim"/"Não" (ou vazio) indicando se a transação
+     passou por aquela etapa, então o valor esperado na célula é sempre "Sim" nas 3,
+     nunca o nome da etapa. Isso fazia TODA transação cair fora do filtro (nunca
+     "confirmado"), e por isso nada projetava no novo bloco de consumo por veículo.
+     Não afeta os campos valor/transacoes (sem filtro), usados pelas análises que já
+     existiam antes deste pedido. */
   const COMPRA_IDX=24,APROVADA_IDX=25,CONFIRMADO_IDX=26;
   const normTxt=s=>String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const ehSim=s=>normTxt(s)==='sim';
   for(let i=1;i<rows.length;i++){
     const row=rows[i];
     if(!row||!row.length)continue;
@@ -20712,7 +20719,7 @@ function fapConsolidarImportacao(rows){
     const ufLinha=String(row[UF_IDX]||'').trim().toUpperCase();
     const tipoCombustivel=String(row[TIPO_COMBUSTIVEL_IDX]||'').trim();
     const valorAbast=fapParseValor(String(row[VALOR_MEDIO_IDX]||'').trim());
-    const isConfirmado=normTxt(row[COMPRA_IDX]).includes('compra')&&normTxt(row[APROVADA_IDX]).includes('aprovada')&&normTxt(row[CONFIRMADO_IDX]).includes('confirmado');
+    const isConfirmado=ehSim(row[COMPRA_IDX])&&ehSim(row[APROVADA_IDX])&&ehSim(row[CONFIRMADO_IDX]);
     if(!placa||!dataHora||!valorStr||!motorista){ignoradas++;continue;}
     const valor=fapParseValor(valorStr);
     if(isNaN(valor)||valor<=0){ignoradas++;continue;}
