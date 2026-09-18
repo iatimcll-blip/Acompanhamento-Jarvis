@@ -25173,18 +25173,31 @@ function b2cRenderMissingBanner(){
 /* Contador dedicado da Planta Média (pedido do usuário, 2026-09-18): fica sempre
    visível no topo do painel, ao lado do anexo geral — mostra a qtd. de linhas
    anexadas ou "não anexada" em vermelho, pra nunca mais passar despercebido que
-   essa base específica (denominador do IRT) ainda falta. */
+   essa base específica (denominador do IRT) ainda falta.
+   BUG corrigido (pedido do usuário, mesmo dia: "os contadores deverão ser
+   ajustados conforme filtros"): mostrava sempre f.rowCount, o total bruto do
+   arquivo no momento do upload — nunca mudava ao trocar o filtro de Cluster,
+   diferente de todo o resto do painel (que recalcula ao vivo). Planta Média só
+   tem filtro de Cluster (não tem data — ver b2cFilterRowsClusterOnly, mesma
+   função usada no cálculo real do IRT), então agora mostra a contagem já
+   recortada pelo Cluster selecionado, com o total entre parênteses quando os
+   dois valores divergem (senão o usuário via um número "bater" no card mas
+   diferente do que realmente entrou na conta do IRT ao lado). */
 function b2cRenderPlantaMediaCounter(){
   const el=document.getElementById('b2c-planta-value');
   if(!el)return;
   const f=B2C_FILES.plantaMedia;
-  if(f){
-    el.textContent=f.rowCount.toLocaleString('pt-BR')+' registro(s) anexado(s)';
-    el.classList.add('b2c-planta-ok');
-  }else{
+  if(!f){
     el.textContent='não anexada';
     el.classList.remove('b2c-planta-ok');
+    return;
   }
+  const total=B2C_RAW.plantaMedia.length;
+  const filtrado=b2cFilterRowsClusterOnly(B2C_RAW.plantaMedia).length;
+  el.textContent=filtrado===total
+    ?filtrado.toLocaleString('pt-BR')+' registro(s) anexado(s)'
+    :filtrado.toLocaleString('pt-BR')+' de '+total.toLocaleString('pt-BR')+' registro(s) no filtro atual';
+  el.classList.add('b2c-planta-ok');
 }
 /* Anexo dedicado SÓ da Planta Média — reaproveita 100% do pipeline padrão
    (b2cParseXlsxRows/b2cDetectFileType/b2cProcessFilesSequential), só adiciona uma
