@@ -11362,7 +11362,15 @@ function normCluster(c){return(c==='AM INT'||c==='AP'||c==='AP / AM'||c==='AP/AM
    contagens e distorcendo os gráficos de WoW/meta semanal. Mesma fórmula ISO de rdeIsoWeek()
    (Painel Rede), pra tratar corretamente o ano de virada (semana de dez/jan). */
 function calcSemana(d){if(!d||isNaN(d))return'';const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));dt.setUTCDate(dt.getUTCDate()+4-(dt.getUTCDay()||7));const y0=new Date(Date.UTC(dt.getUTCFullYear(),0,1));return dt.getUTCFullYear()+'-S'+String(Math.ceil((((dt-y0)/86400000)+1)/7)).padStart(2,'0')}
-function normSemana(s){return s?s.replace(/^[Ss](\d+)$/,(_,n)=>'S'+String(n).padStart(2,'0')):s}
+/* Base B2B Encerrados pode trazer sua própria coluna "semana" pré-calculada, mas em
+   várias bases reais (ex. BASE_B2B_ENCERRADOS.xlsx) ela vem SEM o ano ("S1", "S2"...),
+   diferente do formato "AAAA-Sxx" que o resto do app usa (calcSemana, seletor de semana
+   do Painel Executivo, fillFiltersExec). Sem o ano, a comparação de semana quebra (mesma
+   classe de bug do comentário acima, só que nesse ponto específico) e a coluna Semana/
+   Fechamento do drill-down do Baremo mostra valor errado. `ref` é a data de fechamento já
+   parseada — usada só pra completar o ano que falta, sem sobrescrever o número da semana
+   que já veio pronto da planilha. */
+function normSemana(s,ref){if(!s)return s;const m=s.match(/^[Ss](\d+)$/);if(!m)return s;const wk='S'+String(Number(m[1])).padStart(2,'0');const y=(ref instanceof Date&&!isNaN(ref))?ref.getFullYear():null;return y?y+'-'+wk:wk}
 function normClusterByCity(uf,cidade){
   const u=String(uf||'').toUpperCase().trim(),c=nk(cidade);
   // c==='SAOLUIS'/c==='SANTAREM' (não .includes()) — mesmo bug real e mesmo motivo de normMopByCity acima.
@@ -11922,7 +11930,7 @@ function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt
    na restauração do estado, pra sumir mesmo sem precisar reanexar a base. */
 const AB_CLIENTE_JUNK_RE=/^(coluna\s|inferido\s)/i;
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);const cliente=AB_CLIENTE_JUNK_RE.test(String(d.cliente||'').trim())?'':d.cliente;return{...d,rowKey:d.rowKey??i,mop,cliente,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
-function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semana=d.semana||calcSemana(parseOpeningDate(d.dataFechamento))||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
+function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semanaParsed=parseOpeningDate(d.dataFechamento);const semana=normSemana(d.semana,semanaParsed)||calcSemana(semanaParsed)||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){
   if(!s)return s;
   s=String(s);
@@ -13150,7 +13158,7 @@ function procEnc(raw,fname){
     const dataAbertura=gv(r,['data_abertura','Data Abertura','Data de Abertura','abertura']);
     const dataFechamento=gv(r,['data_fechamento','Data Fechamento','Data de Fechamento','fechamento','encerramento','Data_Fechamento','DATA FECHAMENTO','data fechamento'])||String(_vals[13]||'');
     const dataFechamentoParsed=parseOpeningDate(dataFechamento);
-    const semanaBase=normSemana(String(gv(r,['semana','Semana','SEMANA','semana_calc','SEMANA_CALC','semana_ccs'])||'').trim());
+    const semanaBase=normSemana(String(gv(r,['semana','Semana','SEMANA','semana_calc','SEMANA_CALC','semana_ccs'])||'').trim(),dataFechamentoParsed);
     const semana=semanaBase||calcSemana(dataFechamentoParsed)||'';
     const numplan=String(colVal(r,5,['numplan','NUMPLAN','Num Plan','num_plan','NumPlan','num plan'])||'').trim();
     const clienteId=String(colVal(r,9,['cliente_id','CLIENTE_ID','cliente id','ID Cliente','clienteid','ClienteId'])||'').trim();
