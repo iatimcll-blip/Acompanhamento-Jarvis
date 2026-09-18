@@ -25907,7 +25907,7 @@ function execEncSnapshot(){
       if(wRef){
         const rowsSemana=scopeForWow.filter(x=>x.semana===wRef.semana);
         const off=i.key==='prazo'?rowsSemana.filter(x=>!x.dentro8h):rowsSemana.filter(x=>x.outlier24h);
-        casosDesvio={total:off.length,amostra:off.map(x=>({os:x.os||x.protocolo||'—',protocolo:x.protocolo||'—',cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',tempo:x.tempoTotal}))};
+        casosDesvio={total:off.length,amostra:off.map(x=>({os:x.os||x.protocolo||'—',protocolo:x.protocolo||'—',cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',tempo:x.tempoTotal,semana:x.semana||'—',fechamento:x.dataFechamento||'—'}))};
       }
       return{...i,status:execIndicatorStatus(i.resultado,i.meta,i.dir),semAtual,semAnterior,diffSem,casosDesvio};
     });
@@ -26173,8 +26173,12 @@ function execCasosDesvioLabelsRows(prefix,casosDesvio){
     labels=['OS/Chamado','Cidade','Cluster','Tempo (SLA)','Causa'];
     rows=casosDesvio.amostra.map(r=>[r.os,r.cidade,r.cluster,typeof r.tempo==='number'?r.tempo.toFixed(1)+'h':r.tempo,r.causa]);
   }else{
-    labels=['OS','Protocolo','Cidade','Causa','Tempo (SLA)'];
-    rows=casosDesvio.amostra.map(r=>[r.os,r.protocolo,r.cidade,r.causa,typeof r.tempo==='number'?r.tempo.toFixed(1)+'h':r.tempo]);
+    /* Semana e Fechamento (pedido do usuário, 2026-09-18: "colunas com SEMANA e
+       Fechamento (data que a OS foi encerrada)") — já vêm prontos em cada registro
+       de dEnc (x.semana/x.dataFechamento, ver normalizeEncState), só precisavam
+       entrar na amostra do casosDesvio (execEncSnapshot) e aqui na lista de colunas. */
+    labels=['OS','Protocolo','Cidade','Causa','Semana','Fechamento','Tempo (SLA)'];
+    rows=casosDesvio.amostra.map(r=>[r.os,r.protocolo,r.cidade,r.causa,r.semana,r.fechamento,typeof r.tempo==='number'?r.tempo.toFixed(1)+'h':r.tempo]);
   }
   return{labels,rows};
 }
