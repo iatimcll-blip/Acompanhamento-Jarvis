@@ -7738,6 +7738,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-b2c label.b2c-file-btn{height:30px;display:inline-flex;align-items:center;gap:6px;border:.5px solid var(--b2c-border);border-radius:var(--r);box-shadow:var(--shadow-sm);padding:0 14px;font-size:11.5px;font-weight:500;color:#fff;cursor:pointer;background:var(--b2c-blue);transition:opacity .13s;}
   #panel-b2c label.b2c-file-btn:hover{opacity:.85;}
   #panel-b2c .b2c-db-status{font-size:11px;color:var(--b2c-text-muted);}
+  #panel-b2c .b2c-planta-card{background:var(--surface2);border:.5px solid var(--b2c-border);border-radius:var(--r);padding:4px 10px;}
+  #panel-b2c .b2c-planta-label{font-size:11px;color:var(--b2c-text-muted);display:inline-flex;align-items:center;gap:5px;}
+  #panel-b2c .b2c-planta-label i{font-size:13px;}
+  #panel-b2c .b2c-planta-label b{color:var(--red-dk);font-weight:700;}
+  #panel-b2c .b2c-planta-label b.b2c-planta-ok{color:var(--green-dk);}
+  #panel-b2c .b2c-planta-card label.b2c-file-btn{height:24px;padding:0 10px;font-size:10.5px;background:var(--surface3);color:var(--b2c-text);border-color:var(--b2c-border);}
   #panel-b2c .b2c-files-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
   #panel-b2c .b2c-progress{display:flex;}
   #panel-b2c .b2c-progress-track{flex:1;height:6px;border-radius:4px;overflow:hidden;background:var(--surface2);}
@@ -7846,6 +7852,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <span class="b2c-db-status" id="b2c-status">Nenhuma base anexada</span>
         <label class="b2c-file-btn"><i class="ti ti-upload" style="font-size:12px"></i> Anexar bases (B2C)
           <input type="file" id="b2c-filesInput" accept=".xlsx,.xls" multiple style="display:none;">
+        </label>
+      </div>
+      <!-- Contador dedicado da Planta Média (pedido do usuário, 2026-09-18): "IRT não
+           está subindo" era Planta Média faltando — o usuário só percebia isso lendo o
+           aviso no meio da tela. Botão + contador PRÓPRIO aqui no topo, ao lado do
+           anexo geral, pra ficar impossível de esquecer/perder de vista essa base
+           específica (só ela é usada como denominador do IRT). -->
+      <div class="b2c-toolbar-left b2c-planta-card" id="b2c-planta-card">
+        <span class="b2c-planta-label" title="Base instalada média por cluster — usada como denominador do indicador IRT (Media Base Media)">
+          <i class="ti ti-antenna"></i> Planta Média (denominador do IRT):
+          <b id="b2c-planta-value">não anexada</b>
+        </span>
+        <label class="b2c-file-btn" style="cursor:pointer"><i class="ti ti-upload" style="font-size:12px"></i> Anexar Planta Média
+          <input type="file" id="b2c-plantaMediaInput" accept=".xlsx,.xls" style="display:none;">
         </label>
       </div>
       <div class="b2c-toolbar-left">
@@ -25150,6 +25170,53 @@ function b2cRenderMissingBanner(){
   el.innerHTML='<i class="ti ti-alert-triangle"></i><span><b>'+faltando.length+' indicador'+(faltando.length!==1?'es':'')+' sem base anexada:</b> '
     +detalhe+'</span>';
 }
+/* Contador dedicado da Planta Média (pedido do usuário, 2026-09-18): fica sempre
+   visível no topo do painel, ao lado do anexo geral — mostra a qtd. de linhas
+   anexadas ou "não anexada" em vermelho, pra nunca mais passar despercebido que
+   essa base específica (denominador do IRT) ainda falta. */
+function b2cRenderPlantaMediaCounter(){
+  const el=document.getElementById('b2c-planta-value');
+  if(!el)return;
+  const f=B2C_FILES.plantaMedia;
+  if(f){
+    el.textContent=f.rowCount.toLocaleString('pt-BR')+' registro(s) anexado(s)';
+    el.classList.add('b2c-planta-ok');
+  }else{
+    el.textContent='não anexada';
+    el.classList.remove('b2c-planta-ok');
+  }
+}
+/* Anexo dedicado SÓ da Planta Média — reaproveita 100% do pipeline padrão
+   (b2cParseXlsxRows/b2cDetectFileType/b2cProcessFilesSequential), só adiciona uma
+   checagem PRÉVIA de tipo antes de processar: se o arquivo escolhido nesta caixa
+   dedicada não for reconhecido como Planta Média, avisa qual tipo foi detectado em
+   vez de anexar silenciosamente a base errada nesse slot — evita o usuário achar
+   que anexou a Planta Média quando na verdade escolheu outro arquivo por engano. */
+async function b2cImportarPlantaMedia(ev){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
+  const file=ev.target.files&&ev.target.files[0];
+  ev.target.value='';
+  if(!file)return;
+  try{
+    const rawRows=await b2cParseXlsxRows(file);
+    const headerKeys=rawRows.length?Object.keys(rawRows[0]):[];
+    const type=b2cDetectFileType(file.name,headerKeys);
+    if(!type){
+      alert('Não reconheci "'+file.name+'" como nenhuma base do B2C. A Planta Média precisa ser a aba "Export" com a coluna "Media Base Media".');
+      return;
+    }
+    if(type.key!=='plantaMedia'){
+      alert('"'+file.name+'" foi reconhecido como "'+type.label+'", não como Planta Média — confira se selecionou o arquivo certo. Se for mesmo outro indicador, anexe pelo botão "Anexar bases (B2C)" no topo do painel.');
+      return;
+    }
+  }catch(err){
+    alert('Erro ao ler o arquivo: '+err.message);
+    return;
+  }
+  document.getElementById('b2c-status').textContent='Lendo Planta Média...';
+  b2cProcessFilesSequential([file]);
+}
+document.getElementById('b2c-plantaMediaInput').addEventListener('change',b2cImportarPlantaMedia);
 /* Botão-contador por indicador: clicar abre o modal com todo o detalhamento (Meta/
    Resultado/Desvio/Status, base(s) de origem, motivo dominante, quebra por cluster) —
    substitui a antiga expansão de linha da tabela (b2cToggleDetail), que só mostrava
@@ -25342,6 +25409,7 @@ function b2cRenderAll(){
   b2cFillFilters();
   b2cRenderKpis();
   b2cRenderMissingBanner();
+  b2cRenderPlantaMediaCounter();
   b2cRenderIndicatorCards();
   b2cRenderTable();
   b2cRenderCharts();
@@ -25430,6 +25498,7 @@ function b2cRecomputeAndRender(){
   saveState();
   b2cRenderKpis();
   b2cRenderMissingBanner();
+  b2cRenderPlantaMediaCounter();
   b2cRenderIndicatorCards();
   b2cRenderTable();
   b2cRenderCharts();
