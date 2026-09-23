@@ -8575,22 +8575,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <tbody id="rde-atenuacao-body"></tbody>
         </table>
       </div>
-      <!-- Ofensor MTTR (bloco fixo, sempre visível — mostra quais chamados têm tempo de
-           reparo acima da meta, puxando o MTTR pra cima; mesmo checkbox de Expurgo dos
-           outros blocos) -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
-        <div class="rede-section-title" style="margin:0">Ofensor MTTR</div>
-        <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-mttr-of-box'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      <!-- Ofensor MTTR — só aparece com Cluster e/ou Período selecionado, mesmo critério
+           de visibilidade do painel de chamados (rde-calls) logo abaixo; mostra quais
+           chamados têm tempo de reparo acima da meta, puxando o MTTR pra cima, com o
+           mesmo checkbox de Expurgo dos outros blocos. -->
+      <div id="rde-mttr-of-section" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+          <div class="rede-section-title" style="margin:0">Ofensor MTTR</div>
+          <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-mttr-of-box'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+        </div>
+        <div class="rede-sub" id="rde-mttr-of-sub">Chamados com tempo de reparo acima da meta, puxando o MTTR pra cima.</div>
+        <div class="rede-cbx" id="rde-mttr-of-box" style="padding:0;overflow-x:auto;max-height:360px;overflow-y:auto">
+          <table class="rede-dtable" style="font-size:11px">
+            <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th>Data Fechamento</th><th class="rede-num" title="Tempo decorrido entre Abertura e Fechamento — a mesma base de cálculo do card MTTR">Tempo (MTTR)</th><th class="rede-num">Excedente</th><th>Causa</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
+            <tbody id="rde-mttr-of-body"></tbody>
+          </table>
+        </div>
+        <div class="rede-section-title" style="margin-top:10px;font-size:12px">FCA — Ofensores MTTR</div>
+        <div class="rede-report-box" id="rde-mttr-of-fca"><span style="color:var(--tx3);font-size:11px">Carregue uma base para calcular.</span></div>
       </div>
-      <div class="rede-sub" id="rde-mttr-of-sub">Chamados com tempo de reparo acima da meta, puxando o MTTR pra cima.</div>
-      <div class="rede-cbx" id="rde-mttr-of-box" style="padding:0;overflow-x:auto;max-height:360px;overflow-y:auto">
-        <table class="rede-dtable" style="font-size:11px">
-          <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th>Data Fechamento</th><th class="rede-num" title="Tempo decorrido entre Abertura e Fechamento — a mesma base de cálculo do card MTTR">Tempo (MTTR)</th><th class="rede-num">Excedente</th><th>Causa</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
-          <tbody id="rde-mttr-of-body"></tbody>
-        </table>
-      </div>
-      <div class="rede-section-title" style="margin-top:10px;font-size:12px">FCA — Ofensores MTTR</div>
-      <div class="rede-report-box" id="rde-mttr-of-fca"><span style="color:var(--tx3);font-size:11px">Carregue uma base para calcular.</span></div>
       <!-- Executive Report -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
         <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
@@ -23325,6 +23328,17 @@ function rdeMttrOfensorRowHtml(r,i){
   return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.elapsedH.toFixed(2)}h</td><td class="rede-num" style="color:#ff3b30">+${excedente.toFixed(2)}h</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td style="text-align:center">${expCell}</td></tr>`;
 }
 function rdeRenderMttrOfensores(){
+  const secEl=document.getElementById('rde-mttr-of-section');
+  /* Só aparece com Cluster e/ou Período selecionado — mesmo critério de rde-calls logo
+     abaixo (ver renderRede()) — a pedido do usuário: "a visão Ofensor MTTR irá ser
+     visível conforme seleção de filtro". Sem filtro (recorte "Acumulado" da base
+     inteira), a lista tende a ficar longa demais pra ser realmente acionável. */
+  if(!(rdeCluster.length||rdePeriod.length)){
+    if(secEl)secEl.style.display='none';
+    rdeMttrOfensoresShown=[];
+    return;
+  }
+  if(secEl)secEl.style.display='';
   const tbody=document.getElementById('rde-mttr-of-body'),sub=document.getElementById('rde-mttr-of-sub'),fcaEl=document.getElementById('rde-mttr-of-fca');
   if(!tbody)return;
   const ofensores=rdeMttrOfensores();
