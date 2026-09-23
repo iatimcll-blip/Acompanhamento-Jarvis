@@ -8585,6 +8585,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-mttr-of-box'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
         </div>
         <div class="rede-sub" id="rde-mttr-of-sub">Chamados com tempo de reparo acima da meta, puxando o MTTR pra cima.</div>
+        <div class="rede-charts-2">
+          <div class="rede-cbx" style="min-height:240px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-mttr-of-ch-top"></canvas></div>
+          <div class="rede-cbx" style="min-height:240px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-mttr-of-ch-cause"></canvas></div>
+        </div>
         <div class="rede-cbx" id="rde-mttr-of-box" style="padding:0;overflow-x:auto;max-height:360px;overflow-y:auto">
           <table class="rede-dtable" style="font-size:11px">
             <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th>Data Fechamento</th><th class="rede-num" title="Tempo decorrido entre Abertura e Fechamento — a mesma base de cálculo do card MTTR">Tempo (MTTR)</th><th class="rede-num">Excedente</th><th>Causa</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
@@ -23322,6 +23326,7 @@ function rdeMttrOfensoresFcaText(ofensores,m){
   return['▸ FATO','Fato: '+fato,'','▸ CAUSA','Causa: '+causa,'','▸ AÇÃO','Ação: '+acao].join('\n');
 }
 let rdeMttrOfensoresShown=[];
+let rdeMttrOfCh1=null,rdeMttrOfCh2=null;
 function rdeMttrOfensorRowHtml(r,i){
   const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
   const os=String(det.os||det.id||'—'),uf=String(det.uf||'—'),dataFechamento=String(det.dataFechamento||'—');
@@ -23356,6 +23361,25 @@ function rdeRenderMttrOfensores(){
   const expurgadosCount=todos.length-ativos.length;
   const m=rdeComputeMttr();
   if(sub)sub.textContent=todos.length+' chamado'+(todos.length!==1?'s':'')+' com tempo de reparo acima da meta de '+RDE_MTME+'h'+(expurgadosCount?' ('+ativos.length+' ainda no cálculo, '+expurgadosCount+' simulado'+(expurgadosCount!==1?'s':'')+' fora)':'')+', no filtro atual. Marque Expurgo pra simular a remoção do tempo de um chamado do MTTR — a linha continua aqui.';
+  /* Gráficos: "Top chamados ofensores" mostra os 10 com maior tempo decorrido (todos os
+     candidatos — cor cinza pros já simulados fora, pra bater visualmente com a tabela
+     logo abaixo); "Causas dos ofensores" só considera os ATIVOS, mesmo escopo do FCA. */
+  const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
+  const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
+  if(rdeMttrOfCh1){try{rdeMttrOfCh1.destroy();}catch(e){}rdeMttrOfCh1=null;}
+  const topCv=document.getElementById('rde-mttr-of-ch-top');
+  const top10=todos.slice(0,10);
+  if(topCv&&top10.length){
+    const ativoSet=new Set(ativos);
+    rdeMttrOfCh1=new Chart(topCv,{type:'bar',data:{labels:top10.map(r=>{const det=r._raw&&typeof r._raw[r._scope==='ac'?8:7]==='object'?r._raw[r._scope==='ac'?8:7]:{};return String(det.os||det.id||r.cidade||'—');}),datasets:[{label:'Tempo decorrido',data:top10.map(r=>+r.elapsedH.toFixed(2)),backgroundColor:top10.map(r=>ativoSet.has(r)?'rgba(255,59,48,.8)':'rgba(142,142,147,.4)'),borderRadius:4},{label:'Meta '+RDE_MTME+'h',data:top10.map(()=>RDE_MTME),type:'line',borderColor:'rgba(255,149,0,.6)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{title:{display:true,text:'Top chamados ofensores (h)',color:txC,font:{size:12,weight:'600'}},legend:{labels:{boxWidth:12,color:txC,filter:i=>!i.text.startsWith('Meta')}},tooltip:{callbacks:{label:c=>c.dataset.type==='line'?null:c.dataset.label+': '+c.parsed.x+'h'}}},scales:{x:{grid:{color:gdC},ticks:{color:txC,callback:v=>v+'h'}},y:{grid:{display:false},ticks:{color:txC,font:{size:10}}}}}});
+  }else if(topCv){const ctx=topCv.getContext('2d');ctx.clearRect(0,0,topCv.width,topCv.height);}
+  if(rdeMttrOfCh2){try{rdeMttrOfCh2.destroy();}catch(e){}rdeMttrOfCh2=null;}
+  const causeCv=document.getElementById('rde-mttr-of-ch-cause');
+  const causeMapCh={};ativos.forEach(r=>{const c=String(r.c||'Não informado').trim()||'Não informado';causeMapCh[c]=(causeMapCh[c]||0)+1;});
+  const topCausesCh=Object.entries(causeMapCh).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  if(causeCv&&topCausesCh.length){
+    rdeMttrOfCh2=new Chart(causeCv,{type:'bar',data:{labels:topCausesCh.map(c=>c[0]),datasets:[{label:'Chamados',data:topCausesCh.map(c=>c[1]),backgroundColor:'rgba(255,149,0,.8)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{title:{display:true,text:'Causas dos ofensores ativos',color:txC,font:{size:12,weight:'600'}},legend:{display:false}},scales:{x:{grid:{color:gdC},ticks:{color:txC,precision:0}},y:{grid:{display:false},ticks:{color:txC,font:{size:10}}}}}});
+  }else if(causeCv){const ctx=causeCv.getContext('2d');ctx.clearRect(0,0,causeCv.width,causeCv.height);}
   tbody.innerHTML=todos.map((r,i)=>rdeMttrOfensorRowHtml(r,i)).join('')||`<tr><td colspan="9" class="rede-dmuted">Nenhum chamado acima da meta de MTTR no filtro atual.</td></tr>`;
   if(fcaEl){
     if(!ativos.length){
