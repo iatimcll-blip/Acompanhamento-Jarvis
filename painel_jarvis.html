@@ -23286,14 +23286,19 @@ function rdeToggleExpurgoAtenuacao(i){
    pra estes chamados". Usa rdeMttrFlat() — não `recs` do topo de renderRede() — porque
    o MTTR SEMPRE unifica Acesso+Backbone, independente da aba (rdeTab) selecionada na
    tela; é o mesmo escopo que o card MTTR em si usa (rdeComputeMttr). "Ofensor" = chamado
-   que de fato ENTRA no cálculo do MTTR (não expurgado, acima do limiar de 15min que já
-   filtra prováveis erros de lançamento — RDE_MTTR_MIN_H) e cujo tempo decorrido excede a
-   meta (RDE_MTME) — ou seja, está fazendo a média piorar. Ordenado do pior pro melhor. */
+   com tempo decorrido acima da meta (RDE_MTME) e acima do limiar de 15min que já filtra
+   prováveis erros de lançamento (RDE_MTTR_MIN_H) — candidato a estar piorando a média.
+   Ordenado do pior pro melhor.
+   IMPORTANTE: a lista devolve TODOS os candidatos, marcados como Expurgo ou não — a
+   pedido do usuário, "quando clicar em expurgo não é pra excluir a linha, é só pra tirar
+   o tempo do chamado, como simulador": marcar o checkbox aqui não faz a linha sumir da
+   lista (só do CÁLCULO do MTTR, que já respeitava expurgo antes disso), justamente pra
+   dar pra comparar o antes/depois e desmarcar de volta com um clique, sem precisar caçar
+   o chamado em outra lista. Quem decide o que de fato "conta" pro impacto/FCA é o filtro
+   de `ativos` dentro de rdeRenderMttrOfensores/rdeMttrOfensoresFcaText, não esta função. */
 function rdeMttrOfensores(){
   const flat=rdeMttrFlat();
-  const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
-  const elegiveis=validos.filter(r=>r.elapsedH!==null&&r.elapsedH>RDE_MTTR_MIN_H);
-  return elegiveis.filter(r=>r.elapsedH>RDE_MTME).sort((a,b)=>b.elapsedH-a.elapsedH);
+  return flat.filter(r=>r.elapsedH!==null&&r.elapsedH>RDE_MTTR_MIN_H&&r.elapsedH>RDE_MTME).sort((a,b)=>b.elapsedH-a.elapsedH);
 }
 /* FCA dos ofensores: quantifica o impacto real (quanto o MTTR cairia sem eles — soma dos
    elegíveis já é conhecida via m.avg*m.n, subtrai a soma dos ofensores e redivide pelo
@@ -23341,16 +23346,22 @@ function rdeRenderMttrOfensores(){
   if(secEl)secEl.style.display='';
   const tbody=document.getElementById('rde-mttr-of-body'),sub=document.getElementById('rde-mttr-of-sub'),fcaEl=document.getElementById('rde-mttr-of-fca');
   if(!tbody)return;
-  const ofensores=rdeMttrOfensores();
-  rdeMttrOfensoresShown=ofensores;
+  const todos=rdeMttrOfensores();
+  rdeMttrOfensoresShown=todos;
+  /* `ativos` = ainda contam no MTTR atual (não expurgados) — são estes que de fato
+     "ofendem" o número mostrado agora e entram no FCA/simulação de impacto; os já
+     marcados continuam na tabela (ver comentário em rdeMttrOfensores), só não pesam
+     mais no cálculo, exatamente como o resto do painel já trata expurgo. */
+  const ativos=todos.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
+  const expurgadosCount=todos.length-ativos.length;
   const m=rdeComputeMttr();
-  if(sub)sub.textContent=ofensores.length+' chamado'+(ofensores.length!==1?'s':'')+' com tempo de reparo acima da meta de '+RDE_MTME+'h (dos '+m.n+' que entram no cálculo do MTTR), no filtro atual.';
-  tbody.innerHTML=ofensores.map((r,i)=>rdeMttrOfensorRowHtml(r,i)).join('')||`<tr><td colspan="9" class="rede-dmuted">Nenhum chamado acima da meta de MTTR no filtro atual.</td></tr>`;
+  if(sub)sub.textContent=todos.length+' chamado'+(todos.length!==1?'s':'')+' com tempo de reparo acima da meta de '+RDE_MTME+'h'+(expurgadosCount?' ('+ativos.length+' ainda no cálculo, '+expurgadosCount+' simulado'+(expurgadosCount!==1?'s':'')+' fora)':'')+', no filtro atual. Marque Expurgo pra simular a remoção do tempo de um chamado do MTTR — a linha continua aqui.';
+  tbody.innerHTML=todos.map((r,i)=>rdeMttrOfensorRowHtml(r,i)).join('')||`<tr><td colspan="9" class="rede-dmuted">Nenhum chamado acima da meta de MTTR no filtro atual.</td></tr>`;
   if(fcaEl){
-    if(!ofensores.length){
-      fcaEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem chamados ofensores no filtro atual — MTTR dentro da meta.</span>';
+    if(!ativos.length){
+      fcaEl.innerHTML='<span style="color:var(--tx3);font-size:11px">'+(todos.length?'Todos os chamados ofensores estão simulados fora do cálculo — o MTTR atual já reflete essa simulação.':'Sem chamados ofensores no filtro atual — MTTR dentro da meta.')+'</span>';
     }else{
-      fcaEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(rdeMttrOfensoresFcaText(ofensores,m))+'</pre>';
+      fcaEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(rdeMttrOfensoresFcaText(ativos,m))+'</pre>';
     }
   }
 }
