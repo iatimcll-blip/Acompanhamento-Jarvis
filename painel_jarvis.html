@@ -8575,6 +8575,22 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <tbody id="rde-atenuacao-body"></tbody>
         </table>
       </div>
+      <!-- Ofensor MTTR (bloco fixo, sempre visível — mostra quais chamados têm tempo de
+           reparo acima da meta, puxando o MTTR pra cima; mesmo checkbox de Expurgo dos
+           outros blocos) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+        <div class="rede-section-title" style="margin:0">Ofensor MTTR</div>
+        <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-mttr-of-box'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
+      <div class="rede-sub" id="rde-mttr-of-sub">Chamados com tempo de reparo acima da meta, puxando o MTTR pra cima.</div>
+      <div class="rede-cbx" id="rde-mttr-of-box" style="padding:0;overflow-x:auto;max-height:360px;overflow-y:auto">
+        <table class="rede-dtable" style="font-size:11px">
+          <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th>Data Fechamento</th><th class="rede-num" title="Tempo decorrido entre Abertura e Fechamento — a mesma base de cálculo do card MTTR">Tempo (MTTR)</th><th class="rede-num">Excedente</th><th>Causa</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
+          <tbody id="rde-mttr-of-body"></tbody>
+        </table>
+      </div>
+      <div class="rede-section-title" style="margin-top:10px;font-size:12px">FCA — Ofensores MTTR</div>
+      <div class="rede-report-box" id="rde-mttr-of-fca"><span style="color:var(--tx3);font-size:11px">Carregue uma base para calcular.</span></div>
       <!-- Executive Report -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
         <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
@@ -23176,6 +23192,7 @@ function renderRede(){
     rptEl.innerHTML=`<pre id="rde-report-text" style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">${eh(rdeTexto)}</pre>`;
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem dados para o período selecionado.</span>';}
   rdeRenderAtenuacao(recs);
+  rdeRenderMttrOfensores();
   // Calls panel: sempre visível enquanto houver cluster e/ou período selecionado
   const _ce=document.getElementById('rde-calls');
   if(rdeCluster.length||rdePeriod.length){
@@ -23255,6 +23272,76 @@ function rdeRenderAtenuacao(recs){
 }
 function rdeToggleExpurgoAtenuacao(i){
   const r=rdeAtenuacaoShown&&rdeAtenuacaoShown[i];if(!r)return;
+  const chave=rdeChaveExpurgo(r);if(!chave)return;
+  if(rdeExpurgo[chave])delete rdeExpurgo[chave];else rdeExpurgo[chave]=true;
+  renderRede();
+  saveState();
+}
+/* ================= BLOCO FIXO: OFENSOR MTTR =================
+   A pedido do usuário: "criar uma visão de quais chamados estão Ofensor MTTR... qual
+   chamado está ofendendo o indicador puxando para baixo [o desempenho] e criar um FCA
+   pra estes chamados". Usa rdeMttrFlat() — não `recs` do topo de renderRede() — porque
+   o MTTR SEMPRE unifica Acesso+Backbone, independente da aba (rdeTab) selecionada na
+   tela; é o mesmo escopo que o card MTTR em si usa (rdeComputeMttr). "Ofensor" = chamado
+   que de fato ENTRA no cálculo do MTTR (não expurgado, acima do limiar de 15min que já
+   filtra prováveis erros de lançamento — RDE_MTTR_MIN_H) e cujo tempo decorrido excede a
+   meta (RDE_MTME) — ou seja, está fazendo a média piorar. Ordenado do pior pro melhor. */
+function rdeMttrOfensores(){
+  const flat=rdeMttrFlat();
+  const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
+  const elegiveis=validos.filter(r=>r.elapsedH!==null&&r.elapsedH>RDE_MTTR_MIN_H);
+  return elegiveis.filter(r=>r.elapsedH>RDE_MTME).sort((a,b)=>b.elapsedH-a.elapsedH);
+}
+/* FCA dos ofensores: quantifica o impacto real (quanto o MTTR cairia sem eles — soma dos
+   elegíveis já é conhecida via m.avg*m.n, subtrai a soma dos ofensores e redivide pelo
+   resto) + cluster/causa mais concentrados entre eles, mesmo padrão de FCA já usado no
+   resto do painel (Relatório Executivo, rdeBuildReportText) e no Painel Executivo
+   (execRedeFca). */
+function rdeMttrOfensoresFcaText(ofensores,m){
+  const clMap={};ofensores.forEach(r=>{if(!r.cl)return;(clMap[r.cl]=clMap[r.cl]||[]).push(r);});
+  const worstCl=Object.entries(clMap).map(([cl,rows])=>({cl,n:rows.length})).sort((a,b)=>b.n-a.n)[0];
+  const causeMap={};ofensores.forEach(r=>{const c=String(r.c||'Não informado').trim()||'Não informado';causeMap[c]=(causeMap[c]||0)+1;});
+  const topCause=Object.entries(causeMap).sort((a,b)=>b[1]-a[1])[0];
+  const somaOfensores=ofensores.reduce((s,r)=>s+r.elapsedH,0);
+  const somaTotal=m.avg*m.n;
+  const nSemOfensores=m.n-ofensores.length;
+  const mttrSemOfensores=nSemOfensores>0?(somaTotal-somaOfensores)/nSemOfensores:0;
+  const clNome=worstCl?(RDE_CL_NM[worstCl.cl]||worstCl.cl):'';
+  const fato='Sem os '+ofensores.length+' chamado(s) ofensor(es), o MTTR cairia de '+m.avg.toFixed(2)+'h para '+mttrSemOfensores.toFixed(2)+'h ('+(m.avg-mttrSemOfensores).toFixed(2)+'h de diferença)'+(worstCl?', concentrados sobretudo no cluster '+clNome+' ('+worstCl.n+' de '+ofensores.length+' chamados)':'')+'.';
+  const causa=topCause?('Causa mais recorrente entre os ofensores: '+topCause[0]+' ('+topCause[1]+' de '+ofensores.length+' chamados).'):'Sem causa concentrada entre os ofensores.';
+  const top5=ofensores.slice(0,5).map(r=>{const det=r._raw&&typeof r._raw[r._scope==='ac'?8:7]==='object'?r._raw[r._scope==='ac'?8:7]:{};return String(det.os||det.id||'—');}).join(', ');
+  const acao='Priorizar investigação dos chamados '+top5+(worstCl?' (concentração no cluster '+clNome+')':'')+', revisando o motivo da demora acima da meta de '+RDE_MTME+'h e reforçando o acompanhamento até normalizar.';
+  return['▸ FATO','Fato: '+fato,'','▸ CAUSA','Causa: '+causa,'','▸ AÇÃO','Ação: '+acao].join('\n');
+}
+let rdeMttrOfensoresShown=[];
+function rdeMttrOfensorRowHtml(r,i){
+  const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
+  const os=String(det.os||det.id||'—'),uf=String(det.uf||'—'),dataFechamento=String(det.dataFechamento||'—');
+  const chave=rdeChaveExpurgo(r),marcado=!!(chave&&rdeExpurgo[chave]);
+  const excedente=r.elapsedH-RDE_MTME;
+  const expCell=chave
+    ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="rdeToggleExpurgoMttrOfensor(${i})"></label>`
+    :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
+  return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.elapsedH.toFixed(2)}h</td><td class="rede-num" style="color:#ff3b30">+${excedente.toFixed(2)}h</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td style="text-align:center">${expCell}</td></tr>`;
+}
+function rdeRenderMttrOfensores(){
+  const tbody=document.getElementById('rde-mttr-of-body'),sub=document.getElementById('rde-mttr-of-sub'),fcaEl=document.getElementById('rde-mttr-of-fca');
+  if(!tbody)return;
+  const ofensores=rdeMttrOfensores();
+  rdeMttrOfensoresShown=ofensores;
+  const m=rdeComputeMttr();
+  if(sub)sub.textContent=ofensores.length+' chamado'+(ofensores.length!==1?'s':'')+' com tempo de reparo acima da meta de '+RDE_MTME+'h (dos '+m.n+' que entram no cálculo do MTTR), no filtro atual.';
+  tbody.innerHTML=ofensores.map((r,i)=>rdeMttrOfensorRowHtml(r,i)).join('')||`<tr><td colspan="9" class="rede-dmuted">Nenhum chamado acima da meta de MTTR no filtro atual.</td></tr>`;
+  if(fcaEl){
+    if(!ofensores.length){
+      fcaEl.innerHTML='<span style="color:var(--tx3);font-size:11px">Sem chamados ofensores no filtro atual — MTTR dentro da meta.</span>';
+    }else{
+      fcaEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(rdeMttrOfensoresFcaText(ofensores,m))+'</pre>';
+    }
+  }
+}
+function rdeToggleExpurgoMttrOfensor(i){
+  const r=rdeMttrOfensoresShown&&rdeMttrOfensoresShown[i];if(!r)return;
   const chave=rdeChaveExpurgo(r);if(!chave)return;
   if(rdeExpurgo[chave])delete rdeExpurgo[chave];else rdeExpurgo[chave]=true;
   renderRede();
