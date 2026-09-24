@@ -1560,6 +1560,9 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-filterbar .fap-field{display:flex;flex-direction:column;gap:5px}
 .fap-filterbar label{font-size:11px;color:var(--tx3);font-weight:600}
 .fap-filterbar select,.fap-filterbar input{border:.5px solid var(--bd2);border-radius:8px;padding:7px 9px;font-size:13px;color:var(--tx);background:var(--surface);font-family:inherit;min-width:120px}
+.fap-ciclo-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.fap-ciclo-bar label{font-size:11px;color:var(--tx3);font-weight:600}
+.fap-ciclo-bar select{border:.5px solid var(--bd2);border-radius:8px;padding:6px 9px;font-size:12.5px;color:var(--tx);background:var(--surface);font-family:inherit;max-width:240px}
 .fap-filterbar .fap-spacer{flex:1}
 .fap-reset-btn{border:none;background:transparent;color:var(--blue);font-size:12.5px;font-weight:600;cursor:pointer;padding:7px 2px}
 .fap-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
@@ -7235,7 +7238,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div id="fap-condutorEmpty" class="fap-empty">Nenhuma base anexada ainda — use o botão "Anexar base" no topo do painel.</div>
       <div id="fap-condutorChartWrap" style="display:none">
+        <div class="fap-ciclo-bar">
+          <label for="fap-condutorCiclo"><i class="ti ti-calendar-time" style="font-size:12px;vertical-align:-1px"></i> Ciclo (dia 15 ao dia 14)</label>
+          <select id="fap-condutorCiclo" onchange="fapSetCondutorCiclo(this.value)"><option value="">Todos os ciclos</option></select>
+        </div>
         <p class="fap-desc" id="fap-condutorTruncNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
+        <div id="fap-condutorCicloVazio" class="fap-empty" style="display:none">Nenhum consumo registrado neste ciclo.</div>
         <div class="fap-chart-box" id="fap-condutorChartBox" style="height:260px">
           <canvas id="fap-chart-condutor"></canvas>
         </div>
@@ -7250,7 +7258,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <tbody id="fap-tipoTableBody"></tbody>
           </table>
         </div>
-        <div style="max-height:360px;overflow-y:auto;margin-top:14px">
+        <div id="fap-condutorTableWrap" style="max-height:360px;overflow-y:auto;margin-top:14px">
           <table class="fap-table">
             <thead><tr><th>Condutor</th><th>Placa(s)</th><th>Total consumido</th><th>Abastecimentos</th><th>Período</th><th>Cota do mês</th></tr></thead>
             <tbody id="fap-condutorTableBody"></tbody>
@@ -21662,6 +21670,46 @@ function fapAlterarCategoriaManual(placa,novaCategoria){
   fapRenderModalCategoriaBody();
   _ghToast(`Categoria de ${placa} atualizada ✓`,'var(--green-dk)',3000);
 }
+/* Ciclo de competência (pedido do usuário): dia 15 de um mês até dia 14 do mês
+   seguinte, mesma janela já usada em "Cota do mês"/"Consumo Mês Corrente" (ver
+   fapRenderTipoVeiculo/fapRenderMesCorrente), mas aqui vira um FILTRO pro bloco
+   "Consumo por Condutor" (gráfico + tabela de condutores) — antes só existia "a base
+   inteira" ou "o ciclo atual" (hardcoded), sem como olhar um ciclo específico do
+   passado. `dataIso` = "AAAA-MM-DD" (primeiraData de cada registro consolidado). A
+   chave do ciclo é o mês em que ele COMEÇA (dia>=15 → mês atual; dia<15 → mês anterior),
+   pra ficar estável e ordenável como string "AAAA-MM". Escopo só deste bloco — "Veículos
+   por categoria" e "Valor médio de abastecimento" continuam usando a base inteira/ciclo
+   atual, exatamente como já documentado nas próprias descrições deles. */
+let fapCondutorCicloSel='';
+function fapCicloKey(dataIso){
+  if(!dataIso)return'';
+  const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(dataIso);
+  if(!m)return'';
+  let y=+m[1],mo=+m[2];const d=+m[3];
+  if(d<15){mo--;if(mo<1){mo=12;y--;}}
+  return y+'-'+String(mo).padStart(2,'0');
+}
+function fapCicloLabel(key){
+  if(!key)return'';
+  const[y,mo]=key.split('-').map(Number);
+  let ey=y,em=mo+1;if(em>12){em=1;ey++;}
+  return'15/'+String(mo).padStart(2,'0')+' a 14/'+String(em).padStart(2,'0')+'/'+ey;
+}
+function fapCondutorFiltrados(){
+  if(!fapCondutorCicloSel)return FAP_CONSUMO_CONDUTOR;
+  return FAP_CONSUMO_CONDUTOR.filter(r=>fapCicloKey(r.primeiraData)===fapCondutorCicloSel);
+}
+function fapFillCondutorCicloSelect(){
+  const sel=document.getElementById('fap-condutorCiclo');
+  if(!sel)return;
+  const ciclos=[...new Set(FAP_CONSUMO_CONDUTOR.map(r=>fapCicloKey(r.primeiraData)).filter(Boolean))].sort().reverse();
+  if(fapCondutorCicloSel&&!ciclos.includes(fapCondutorCicloSel))fapCondutorCicloSel='';
+  sel.innerHTML='<option value="">Todos os ciclos</option>'+ciclos.map(k=>`<option value="${k}"${k===fapCondutorCicloSel?' selected':''}>${eh(fapCicloLabel(k))}</option>`).join('');
+}
+function fapSetCondutorCiclo(v){
+  fapCondutorCicloSel=v||'';
+  fapRenderConsumoCondutor();
+}
 function fapRenderConsumoCondutor(){
   const box=document.getElementById('fap-condutorChartWrap'),body=document.getElementById('fap-condutorTableBody'),empty=document.getElementById('fap-condutorEmpty');
   if(!body)return;
@@ -21677,9 +21725,25 @@ function fapRenderConsumoCondutor(){
   }
   if(box)box.style.display='block';
   if(empty)empty.style.display='none';
+  fapFillCondutorCicloSelect();
   fapRenderTipoVeiculo();
   fapRenderAnaliseBaseAnexada();
   fapRenderMesCorrente();
+  const registrosCiclo=fapCondutorFiltrados();
+  const cicloVazio=document.getElementById('fap-condutorCicloVazio');
+  const chartBox=document.getElementById('fap-condutorChartBox');
+  const tabelaCondutorWrap=document.getElementById('fap-condutorTableWrap');
+  const truncNote=document.getElementById('fap-condutorTruncNote');
+  const semDadosNoCiclo=fapCondutorCicloSel&&!registrosCiclo.length;
+  if(cicloVazio)cicloVazio.style.display=semDadosNoCiclo?'block':'none';
+  if(chartBox)chartBox.style.display=semDadosNoCiclo?'none':'';
+  if(tabelaCondutorWrap)tabelaCondutorWrap.style.display=semDadosNoCiclo?'none':'';
+  if(semDadosNoCiclo){
+    if(fapChCondutor){try{fapChCondutor.destroy();}catch(e){}fapChCondutor=null;}
+    body.innerHTML='';
+    if(truncNote)truncNote.style.display='none';
+    return;
+  }
   /* Map placa→categoria construído numa ÚNICA passada por FAP_CONSUMO_CONDUTOR
      (pedido do usuário, 2026-09-16: "verificar os travamentos ao anexar base") —
      antes, fapCategoriaDaPlaca() rodava um FAP_CONSUMO_CONDUTOR.find() (O(n)) POR
@@ -21691,7 +21755,7 @@ function fapRenderConsumoCondutor(){
   const placasPorPlacaCota=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   const categoriaDaPlacaRapido=p=>fapCategoriaEfetiva(p,categoriaPorPlaca.get(p),placasPorPlacaCota);
   const porCondutor=new Map();
-  FAP_CONSUMO_CONDUTOR.forEach(r=>{
+  registrosCiclo.forEach(r=>{
     if(!categoriaPorPlaca.has(r.placa)&&r.categoria)categoriaPorPlaca.set(r.placa,r.categoria);
     /* fapNomeProprio() reaplicado aqui de propósito (pedido do usuário, 2026-09-16:
        "nomes... deverão todos usar apenas a primeira letra maiuscula") — já é
@@ -21718,7 +21782,6 @@ function fapRenderConsumoCondutor(){
      100 já é mais do que qualquer análise visual real usaria. */
   const listaCompleta=[...porCondutor.values()].sort((a,b)=>b.total-a.total);
   const lista=listaCompleta.slice(0,100);
-  const truncNote=document.getElementById('fap-condutorTruncNote');
   if(truncNote){
     if(listaCompleta.length>lista.length){
       truncNote.style.display='block';
