@@ -1590,6 +1590,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-table td{padding:9px 10px;border-bottom:.5px solid var(--bd);vertical-align:middle}
 .fap-table tr:last-child td{border-bottom:none}
 .fap-name-cell .fap-nm{font-weight:700;letter-spacing:.02em}
+.fap-nm-click{cursor:pointer;color:var(--blue)}
+.fap-nm-click:hover{text-decoration:underline}
 .fap-name-cell .fap-sub{font-size:11px;color:var(--tx3)}
 .fap-uf-chip{display:inline-block;background:var(--blue-bg);color:var(--blue);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px}
 .fap-saldo-val{font-weight:700;color:var(--green-dk)}
@@ -7329,6 +7331,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <table class="fap-table">
             <thead><tr><th>Placa</th><th>Nome do veículo</th><th>Categoria</th></tr></thead>
             <tbody id="fap-modal-categoria-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: consumo e datas de transação de um condutor (pedido do usuário) -->
+  <div class="modal-overlay" id="fap-modal-condutor" style="display:none" onclick="if(event.target===this)fapFecharModalCondutor()">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-hd">
+        <span class="modal-title" id="fap-modal-condutor-title"><i class="ti ti-user"></i> Condutor</span>
+        <button class="modal-close" onclick="fapFecharModalCondutor()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="fap-desc" id="fap-modal-condutor-resumo" style="margin:0 0 10px"></p>
+        <div style="max-height:50vh;overflow-y:auto">
+          <table class="fap-table">
+            <thead><tr><th>Período</th><th>Placa</th><th>Veículo</th><th>Valor</th><th>Abastecimentos</th></tr></thead>
+            <tbody id="fap-modal-condutor-body"></tbody>
           </table>
         </div>
       </div>
@@ -21670,6 +21691,47 @@ function fapAlterarCategoriaManual(placa,novaCategoria){
   fapRenderModalCategoriaBody();
   _ghToast(`Categoria de ${placa} atualizada ✓`,'var(--green-dk)',3000);
 }
+/* Modal "consumo e datas de transação" de um condutor (pedido do usuário): clicar no
+   nome na tabela de Consumo por Condutor abre o detalhamento — cada lançamento
+   consolidado (placa+semana) que soma naquele total, com o período (primeiraData–
+   ultimaData) daquele lançamento. Respeita o filtro de Ciclo já selecionado no bloco
+   (fapCondutorFiltrados()) — abrir o modal com um ciclo específico escolhido só mostra
+   os lançamentos daquele ciclo, consistente com o total exibido na tabela por trás. */
+let fapModalCondutorAtual='';
+function fapCondutorRegistros(condutorNome){
+  return fapCondutorFiltrados().filter(r=>fapNomeProprio(r.condutor)===condutorNome).sort((a,b)=>a.primeiraData.localeCompare(b.primeiraData));
+}
+function fapAbrirModalCondutor(condutorNome){
+  fapModalCondutorAtual=condutorNome;
+  const title=document.getElementById('fap-modal-condutor-title');
+  if(title)title.innerHTML=`<i class="ti ti-user"></i> ${eh(condutorNome)}`;
+  fapRenderModalCondutorBody();
+  const modal=document.getElementById('fap-modal-condutor');
+  if(modal)modal.style.display='flex';
+}
+function fapFecharModalCondutor(){
+  const modal=document.getElementById('fap-modal-condutor');
+  if(modal)modal.style.display='none';
+  fapModalCondutorAtual='';
+}
+function fapRenderModalCondutorBody(){
+  const body=document.getElementById('fap-modal-condutor-body'),resumoEl=document.getElementById('fap-modal-condutor-resumo');
+  if(!body)return;
+  const regs=fapCondutorRegistros(fapModalCondutorAtual);
+  const total=regs.reduce((s,r)=>s+r.valor,0);
+  const transacoes=regs.reduce((s,r)=>s+r.transacoes,0);
+  if(resumoEl)resumoEl.textContent=`Total consumido: ${fapFmtMoney(total)} · ${transacoes} abastecimento(s) em ${regs.length} lançamento(s)`+(fapCondutorCicloSel?` — ciclo ${fapCicloLabel(fapCondutorCicloSel)}.`:'.');
+  body.innerHTML=regs.length?regs.map(r=>{
+    const periodo=r.primeiraData===r.ultimaData?fapFmtDate(r.primeiraData):`${fapFmtDate(r.primeiraData)} – ${fapFmtDate(r.ultimaData)}`;
+    return`<tr>
+      <td>${eh(periodo)}</td>
+      <td><span class="fap-uf-chip">${eh(r.placa)}</span></td>
+      <td>${eh(r.veiculo||'—')}</td>
+      <td class="fap-val">${eh(fapFmtMoney(r.valor))}</td>
+      <td>${r.transacoes}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="5"><div class="fap-empty">Nenhum lançamento encontrado.</div></td></tr>';
+}
 /* Ciclo de competência (pedido do usuário): dia 15 de um mês até dia 14 do mês
    seguinte, mesma janela já usada em "Cota do mês"/"Consumo Mês Corrente" (ver
    fapRenderTipoVeiculo/fapRenderMesCorrente), mas aqui vira um FILTRO pro bloco
@@ -21805,7 +21867,7 @@ function fapRenderConsumoCondutor(){
     const periodo=c.primeiraData===c.ultimaData?fapFmtDate(c.primeiraData):`${fapFmtDate(c.primeiraData)} – ${fapFmtDate(c.ultimaData)}`;
     const cotaMes=[...c.placas].reduce((soma,p)=>soma+(FAP_COTA_CATEGORIA[categoriaDaPlacaRapido(p)]||0),0);
     return`<tr>
-      <td class="fap-name-cell"><div class="fap-nm">${eh(c.condutor)}</div></td>
+      <td class="fap-name-cell"><div class="fap-nm fap-nm-click" title="Ver consumo e datas de transação" onclick="fapAbrirModalCondutor('${c.condutor.replace(/'/g,"\\'")}')">${eh(c.condutor)}</div></td>
       <td>${[...c.placas].map(p=>`<span class="fap-uf-chip">${eh(p)}</span>`).join(' ')}</td>
       <td class="fap-val">${eh(fapFmtMoney(c.total))}</td>
       <td>${c.transacoes}</td>
