@@ -7339,7 +7339,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
   <!-- MODAL: consumo e datas de transação de um condutor (pedido do usuário) -->
   <div class="modal-overlay" id="fap-modal-condutor" style="display:none" onclick="if(event.target===this)fapFecharModalCondutor()">
-    <div class="modal-box" style="max-width:640px">
+    <div class="modal-box" style="max-width:760px">
       <div class="modal-hd">
         <span class="modal-title" id="fap-modal-condutor-title"><i class="ti ti-user"></i> Condutor</span>
         <button class="modal-close" onclick="fapFecharModalCondutor()"><i class="ti ti-x"></i></button>
@@ -7348,7 +7348,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <p class="fap-desc" id="fap-modal-condutor-resumo" style="margin:0 0 10px"></p>
         <div style="max-height:50vh;overflow-y:auto">
           <table class="fap-table">
-            <thead><tr><th>Período</th><th>Placa</th><th>Veículo</th><th>Valor</th><th>Abastecimentos</th></tr></thead>
+            <thead><tr><th>Período</th><th>Placa</th><th>Veículo</th><th>Valor</th><th>Abastecimentos</th><th>Categoria</th></tr></thead>
             <tbody id="fap-modal-condutor-body"></tbody>
           </table>
         </div>
@@ -21678,7 +21678,7 @@ function fapRenderModalCategoriaBody(){
    ela só existia na base importada (nunca foi cadastrada) — sem isso a correção
    não teria onde ser salva. */
 function fapAlterarCategoriaManual(placa,novaCategoria){
-  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');fapRenderModalCategoriaBody();return;}
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');fapRenderModalCategoriaBody();fapRenderModalCondutorBody();return;}
   let cad=fapPlacaByPlaca(placa);
   if(!cad){
     cad={id:fapUid(),placa,uf:'',tecnico:'',go:'',tipo:''};
@@ -21688,7 +21688,12 @@ function fapAlterarCategoriaManual(placa,novaCategoria){
   cad.tipoManual=!!novaCategoria;
   fapAt=new Date().toISOString();saveState();
   fapRenderAll();
+  /* Reaproveitada agora por 2 telas (modal "Veículos por categoria" E o novo modal de
+     detalhamento do condutor) — atualiza as duas sempre; cada render* checa se o
+     próprio elemento existe/tem dado e sai cedo, então chamar a que não está aberta
+     não tem efeito visível nenhum, é seguro e barato. */
   fapRenderModalCategoriaBody();
+  fapRenderModalCondutorBody();
   _ghToast(`Categoria de ${placa} atualizada ✓`,'var(--green-dk)',3000);
 }
 /* Modal "consumo e datas de transação" de um condutor (pedido do usuário): clicar no
@@ -21721,16 +21726,29 @@ function fapRenderModalCondutorBody(){
   const total=regs.reduce((s,r)=>s+r.valor,0);
   const transacoes=regs.reduce((s,r)=>s+r.transacoes,0);
   if(resumoEl)resumoEl.textContent=`Total consumido: ${fapFmtMoney(total)} · ${transacoes} abastecimento(s) em ${regs.length} lançamento(s)`+(fapCondutorCicloSel?` — ciclo ${fapCicloLabel(fapCondutorCicloSel)}.`:'.');
+  /* Categoria editável direto no detalhamento do condutor (pedido do usuário: "criar
+     opção de modificar a categoria do veículo do condutor ao identificar que está
+     errada, e ficar gravada para posteriores atualizações de bases") — reaproveita
+     fapAlterarCategoriaManual() (mesma função do modal "Veículos por categoria"),
+     não duplica a lógica de correção/persistência (tipoManual sobrevive a reimportações
+     futuras da base, ver o comentário grande em fapAlterarCategoriaManual). */
+  const placasMapCond=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  const opcoesCategoria=['','Leve','Médio','Pesado','Gerador'];
   body.innerHTML=regs.length?regs.map(r=>{
     const periodo=r.primeiraData===r.ultimaData?fapFmtDate(r.primeiraData):`${fapFmtDate(r.primeiraData)} – ${fapFmtDate(r.ultimaData)}`;
+    const categoriaAtual=fapCategoriaEfetiva(r.placa,r.categoria,placasMapCond);
+    const placaEsc=r.placa.replace(/'/g,"\\'");
     return`<tr>
       <td>${eh(periodo)}</td>
       <td><span class="fap-uf-chip">${eh(r.placa)}</span></td>
       <td>${eh(r.veiculo||'—')}</td>
       <td class="fap-val">${eh(fapFmtMoney(r.valor))}</td>
       <td>${r.transacoes}</td>
+      <td><select onchange="fapAlterarCategoriaManual('${placaEsc}',this.value)" ${canEdit()?'':'disabled'}>
+        ${opcoesCategoria.map(o=>`<option value="${eh(o)}" ${o===categoriaAtual?'selected':(o===''&&categoriaAtual===''?'selected':'')}>${eh(o||'Não informado')}</option>`).join('')}
+      </select></td>
     </tr>`;
-  }).join(''):'<tr><td colspan="5"><div class="fap-empty">Nenhum lançamento encontrado.</div></td></tr>';
+  }).join(''):'<tr><td colspan="6"><div class="fap-empty">Nenhum lançamento encontrado.</div></td></tr>';
 }
 /* Ciclo de competência (pedido do usuário): dia 15 de um mês até dia 14 do mês
    seguinte, mesma janela já usada em "Cota do mês"/"Consumo Mês Corrente" (ver
