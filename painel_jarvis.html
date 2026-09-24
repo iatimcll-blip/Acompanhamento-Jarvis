@@ -1592,6 +1592,11 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-name-cell .fap-nm{font-weight:700;letter-spacing:.02em}
 .fap-nm-click{cursor:pointer;color:var(--blue)}
 .fap-nm-click:hover{text-decoration:underline}
+.fap-cota-label{font-size:11px;color:var(--tx3);font-weight:600;margin-bottom:6px}
+.fap-cota-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.fap-cota-item{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--tx2)}
+.fap-cota-item input{border:.5px solid var(--bd2);border-radius:8px;padding:6px 8px;font-size:12.5px;color:var(--tx);background:var(--surface);font-family:inherit;width:100%}
+@media(max-width:600px){.fap-cota-grid{grid-template-columns:repeat(2,1fr)}}
 .fap-name-cell .fap-sub{font-size:11px;color:var(--tx3)}
 .fap-uf-chip{display:inline-block;background:var(--blue-bg);color:var(--blue);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px}
 .fap-saldo-val{font-weight:700;color:var(--green-dk)}
@@ -7346,6 +7351,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div class="modal-body">
         <p class="fap-desc" id="fap-modal-condutor-resumo" style="margin:0 0 10px"></p>
+        <div id="fap-modal-condutor-cotas"></div>
         <div style="max-height:50vh;overflow-y:auto">
           <table class="fap-table">
             <thead><tr><th>Período</th><th>Placa</th><th>Veículo</th><th>Valor</th><th>Abastecimentos</th><th>Categoria</th></tr></thead>
@@ -11038,6 +11044,13 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         }
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
       }
+      /* Cota por categoria: mesmo padrão "override simples sem timestamp próprio" de
+         b2cMetaOverrides logo abaixo — aplica sempre que o remoto trouxer. */
+      if(typeof FAP_COTA_CATEGORIA!=='undefined'&&remoteSt.fapCotaOverrides&&typeof remoteSt.fapCotaOverrides==='object'){
+        Object.keys(remoteSt.fapCotaOverrides).forEach(k=>{
+          if(typeof remoteSt.fapCotaOverrides[k]==='number')FAP_COTA_CATEGORIA[k]=remoteSt.fapCotaOverrides[k];
+        });
+      }
       if(Array.isArray(remoteSt.FAP_CONSUMO_CONDUTOR)){
         FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,remoteSt.FAP_CONSUMO_CONDUTOR,x=>x.id);
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoAt')&&remoteSt.fapConsumoAt>(fapConsumoAt||''))fapConsumoAt=remoteSt.fapConsumoAt;
@@ -11974,7 +11987,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -12189,6 +12202,13 @@ function applyState(st,label){
     if(Array.isArray(st.FAP_APORTES)){FAP_APORTES=_mergeArraysByKey(FAP_APORTES,st.FAP_APORTES,x=>x.id);changed=true;}
     if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
     if(Object.prototype.hasOwnProperty.call(st,'fapAt'))fapAt=st.fapAt||'';
+    /* Cota por categoria: mesmo padrão "override simples" de b2cMetaOverrides logo
+       abaixo — sem timestamp próprio, aplica sempre que o estado restaurado trouxer. */
+    if(st.fapCotaOverrides&&typeof st.fapCotaOverrides==='object'){
+      Object.keys(st.fapCotaOverrides).forEach(k=>{
+        if(typeof st.fapCotaOverrides[k]==='number')FAP_COTA_CATEGORIA[k]=st.fapCotaOverrides[k];
+      });
+    }
   }catch(e){console.warn('applyState: falha ao restaurar Aportes Combustível:',e);}
   try{
     /* Consumo por Condutor (base anexada) — sem relação com Saldo/aportes, timestamp
@@ -21571,7 +21591,14 @@ function fapLimparBaseMesCorrente(){
    ciclo atual (não o total histórico, que mistura ciclos passados). Categoria sem
    valor definido (ex.: "Não informado") não tem cota — mostra "—" em vez de R$ 0,00,
    que sugeriria cota zerada em vez de "não aplicável". */
-const FAP_COTA_CATEGORIA={Leve:750,'Médio':1050,Pesado:1500};
+/* Cota mensal por categoria — a pedido do usuário (2026-09-24), passou de constante
+   fixa pra editável: "adicionar opção de edição de cota caso esteja errada para a
+   categoria". Gerador entrou com 0 (antes nem existia na tabela — cota "não aplicável"
+   por padrão, igual já era o comportamento de fato pra qualquer categoria ausente
+   daqui). Sincroniza pelo mesmo mecanismo "override simples sem timestamp próprio" já
+   usado em b2cMetaOverrides() (ver buildState/applyState/_mergeGhRemoteIntoLocal). */
+let FAP_COTA_CATEGORIA={Leve:750,'Médio':1050,Pesado:1500,Gerador:0};
+const FAP_CATEGORIAS_COTA=['Leve','Médio','Pesado','Gerador'];
 function fapRenderTipoVeiculo(){
   const body=document.getElementById('fap-tipoTableBody');
   if(!body)return;
@@ -21696,6 +21723,29 @@ function fapAlterarCategoriaManual(placa,novaCategoria){
   fapRenderModalCondutorBody();
   _ghToast(`Categoria de ${placa} atualizada ✓`,'var(--green-dk)',3000);
 }
+/* Edição da cota mensal POR CATEGORIA (pedido do usuário, 2026-09-24: "adicionar opção
+   de edição de cota caso esteja errada para a categoria") — diferente da correção de
+   categoria acima (que é por PLACA), aqui o valor vale pra todos os veículos daquela
+   categoria de uma vez, exatamente como FAP_COTA_CATEGORIA já era usada em todo o
+   painel (Cota do mês por condutor, Veículos por categoria, Consumo Mês Corrente). */
+function fapRenderCotaCategoriaInputs(){
+  const el=document.getElementById('fap-modal-condutor-cotas');
+  if(!el)return;
+  el.innerHTML='<div class="fap-cota-label">Cota mensal por categoria — edite se estiver errada:</div>'
+    +'<div class="fap-cota-grid">'
+    +FAP_CATEGORIAS_COTA.map(cat=>`<label class="fap-cota-item"><span>${eh(cat)}</span><input type="number" min="0" step="1" inputmode="decimal" value="${FAP_COTA_CATEGORIA[cat]||0}" ${canEdit()?'':'disabled'} onchange="fapAlterarCotaCategoria('${cat}',this.value)"></label>`).join('')
+    +'</div>';
+}
+function fapAlterarCotaCategoria(categoria,novoValor){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');fapRenderCotaCategoriaInputs();return;}
+  const v=Math.max(0,Math.round((Number(novoValor)||0)*100)/100);
+  FAP_COTA_CATEGORIA[categoria]=v;
+  fapAt=new Date().toISOString();saveState();
+  fapRenderAll();
+  fapRenderModalCategoriaBody();
+  fapRenderModalCondutorBody();
+  _ghToast(`Cota de ${categoria} atualizada para ${fapFmtMoney(v)} ✓`,'var(--green-dk)',3000);
+}
 /* Modal "consumo e datas de transação" de um condutor (pedido do usuário): clicar no
    nome na tabela de Consumo por Condutor abre o detalhamento — cada lançamento
    consolidado (placa+semana) que soma naquele total, com o período (primeiraData–
@@ -21722,6 +21772,7 @@ function fapFecharModalCondutor(){
 function fapRenderModalCondutorBody(){
   const body=document.getElementById('fap-modal-condutor-body'),resumoEl=document.getElementById('fap-modal-condutor-resumo');
   if(!body)return;
+  fapRenderCotaCategoriaInputs();
   const regs=fapCondutorRegistros(fapModalCondutorAtual);
   const total=regs.reduce((s,r)=>s+r.valor,0);
   const transacoes=regs.reduce((s,r)=>s+r.transacoes,0);
