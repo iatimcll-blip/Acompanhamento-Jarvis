@@ -1582,6 +1582,10 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .redir-table td.redir-warn{color:var(--orange) !important}
 .redir-table td.redir-bad{color:var(--red) !important}
 .redir-table td.redir-na{color:var(--tx3) !important}
+.redir-group-row:hover td{background:var(--surface2) !important}
+.redir-child-row td{background:rgba(0,0,0,.015) !important}
+.redir-child-row td.redir-cluster-cell{color:var(--tx3) !important;font-weight:400}
+[data-theme=dark] .redir-child-row td{background:rgba(255,255,255,.03) !important}
 @media(max-width:600px){.rede-krow{grid-template-columns:1fr}.rede-sgrid{grid-template-columns:1fr}.rede-meta-info{grid-template-columns:1fr}}
 
 /* ─── APORTES COMBUSTÍVEL (fap-*) ─── */
@@ -6846,6 +6850,7 @@ body.is-admin #panel-combustivel .fuel-management-row { display: grid; }
     </div>
     <div class="login-error" id="login-error"></div>
     <button class="login-action" type="submit">Entrar</button>
+    <button type="button" class="login-action" style="margin-top:8px;background:var(--surface2);color:var(--tx2);border:.5px solid var(--bd2)" onclick="loginAsGuest()"><i class="ti ti-eye"></i> Continuar sem login (visão padrão)</button>
     <div style="margin-top:12px;text-align:center">
       <a id="login-reset-link" href="#" onclick="resetAuthData();return false" style="font-size:11px;color:var(--tx3);text-decoration:none;opacity:.6">Problemas de acesso? Redefinir dados de autenticação</a>
     </div>
@@ -10610,6 +10615,16 @@ async function hashPass(v){
 }
 function normRole(role){return role==='admin'?'admin':'viewer'}
 function roleLabel(role){return normRole(role)==='admin'?'Admin - permissões totais':'Usuário - apenas leitura'}
+/* Usuário Padrão (pedido do usuário: "visão para usuário padrão... não precisará de
+   acesso ou senha, porém o admin definirá quais painéis"). É uma entrada FIXA na lista
+   de usuários (mesmo padrão do 'admin' acima — sempre garantida/reforçada aqui), com
+   isGuest:true pra: (1) loginUser() nunca aceitar login por usuário/senha nessa conta
+   (sem campo `pass`, e matchUser() já exclui isGuest explicitamente por segurança), (2)
+   deleteUser() recusar excluir, (3) renderUsers() mostrar como "fixo" em vez de
+   Excluir. panels começa vazio — ninguém vê nada até o admin liberar explicitamente em
+   "Configurar" (mesmo modal já usado pra qualquer usuário Viewer, reaproveitado sem
+   mudança nenhuma). */
+const GUEST_USERNAME='Padrão';
 function getUsers(){
   let users=[];
   try{users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]')}catch{users=[]}
@@ -10622,6 +10637,9 @@ function getUsers(){
   else users[ai]={...users[ai],username:'admin',pass:encPass('atrix@2026'),role:'admin',passType:'b64'};
   if(!users.some(u=>u.username.toLowerCase()==='moises'))
     users.push({username:'Moises',pass:encPass('Alloha@2026'),role:'viewer',passType:'b64'});
+  const gi=users.findIndex(u=>u.username===GUEST_USERNAME);
+  if(gi<0)users.push({username:GUEST_USERNAME,role:'viewer',isGuest:true,perms:{panels:[]}});
+  else users[gi]={...users[gi],username:GUEST_USERNAME,role:'viewer',isGuest:true,pass:undefined,passType:undefined};
   saveUsers(users);
   return users;
 }
@@ -10631,7 +10649,13 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
    por padrão excluem Combustíveis/Monitor/WhatsApp (comportamento já existente). */
-const ALL_PANEL_KEYS=['aportes','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
+/* Auditoria pedida pelo usuário: 3 painéis standalone (mesmo padrão de link direto do
+   DSR Volante/Sobreaviso, ver PANEL_NAV_MAP) nunca tinham entrado aqui — os botões
+   ntab-banco-horas/ntab-ip-acomp/ntab-ampli ficavam SEMPRE visíveis pra qualquer usuário,
+   sem nenhum controle de permissão possível (applyPanelVisibility() só esconde o que está
+   em ALL_PANEL_KEYS). Bug real, não só falta de opção — o admin não conseguia restringir
+   o acesso a esses 3 painéis de jeito nenhum. */
+const ALL_PANEL_KEYS=['aportes','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap','bancoHoras','investigacaoIp','ampli'];
 const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
@@ -10685,6 +10709,14 @@ function slnRdeCount(){
 }
 function initials(name){return String(name||'--').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase()||'--'}
 const PANEL_NAV_MAP={
+  /* Auditoria pedida pelo usuário: 'executivo' tinha entrada em ALL_PANEL_KEYS/
+     PANEL_LABELS mas nunca em PANEL_NAV_MAP — applyPanelVisibility() usa
+     `PANEL_NAV_MAP[tab]||[]`, então o botão ntab-exec NUNCA era escondido, mesmo se um
+     admin desmarcasse "Painel Executivo" pra um usuário/visitante específico. Só não
+     dava pra perceber no dia a dia porque 'executivo' já vem marcado por padrão em
+     DEFAULT_VIEWER_PANELS pra qualquer Viewer novo — o buraco só aparecia se alguém
+     desmarcasse manualmente. */
+  executivo:['ntab-exec'],
   aportes:['ntab-aportes','dash-mod-aportes'],
   abertos:['ntab-ab','dash-mod-abertos'],
   b2c:['ntab-b2c','dash-mod-b2c'],
@@ -10706,6 +10738,9 @@ const PANEL_NAV_MAP={
   pop:['ntab-pop','dash-mod-pop'],
   auditMaterial:['ntab-audit-material','dash-mod-audit-material'],
   saldoSap:['ntab-saldo-sap','dash-mod-saldo-sap'],
+  bancoHoras:['ntab-banco-horas','dash-mod-banco-horas'],
+  investigacaoIp:['ntab-ip-acomp','dash-mod-ip-acomp'],
+  ampli:['ntab-ampli','dash-mod-ampli'],
 };
 function applyPanelVisibility(){
   ALL_PANEL_KEYS.forEach(tab=>{
@@ -11316,6 +11351,7 @@ async function loginUser(ev){
   const passSha=await hashPass(passRaw);
   const passB64=encPass(passRaw);
   function matchUser(u){
+    if(u.isGuest)return false;/* Padrão nunca loga por usuário/senha — só via loginAsGuest() */
     if(u.username.toLowerCase()!==username.toLowerCase())return false;
     return u.passType==='sha256'?u.pass===passSha:u.pass===passB64;
   }
@@ -11330,6 +11366,19 @@ async function loginUser(ev){
   }
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
+  document.getElementById('login-pass').value='';
+  hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+}
+/* Visão do usuário Padrão (pedido do usuário): "não precisará de acesso ou senha" — um
+   clique, sem formulário. Não persiste SESSION_KEY de propósito: ao recarregar a
+   página, volta pra tela de login (evita deixar uma sessão sem senha "grudada" no
+   navegador de um computador compartilhado); quem quiser entrar como Padrão de novo
+   clica de novo. Os painéis visíveis vêm de perms.panels, configurado pelo admin no
+   mesmo modal "Configurar" usado pra qualquer usuário Viewer (ver openUserPermsModal). */
+function loginAsGuest(){
+  const guest=getUsers().find(u=>u.isGuest);
+  if(!guest)return;
+  currentUser=guest;
   document.getElementById('login-pass').value='';
   hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
 }
@@ -11382,12 +11431,18 @@ async function createSecondaryUser(){
   renderUsers();
 }
 function deleteUser(username){
-  if(!canEdit()||username==='admin')return;
+  if(!canEdit()||username==='admin'||username===GUEST_USERNAME)return;
   saveUsers(getUsers().filter(u=>u.username!==username));
   saveState();
   renderUsers();
 }
-const PANEL_LABELS={aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP'};
+/* Auditoria pedida pelo usuário: 3 painéis já existiam em ALL_PANEL_KEYS (portanto já
+   gerenciáveis por permissão) mas faltavam aqui — o checkbox deles no modal "Configurar
+   visualização" (uperms-panels) renderizava a label como o texto literal "undefined",
+   já que `${PANEL_LABELS[k]}` não tinha entrada pra essas 3 chaves. Bug real, não só
+   falta de nome bonito — o admin não conseguia nem saber qual painel aquele checkbox
+   controlava. */
+const PANEL_LABELS={aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -11431,7 +11486,9 @@ function renderUsers(){
   document.getElementById('users-list').innerHTML=users.map(u=>{
     const isViewer=normRole(u.role)==='viewer';
     const cfgBtn=isViewer?`<button class="mini-btn" title="Configurar o que este usuário pode visualizar" onclick="openUserPermsModal('${eh(u.username)}')"><i class="ti ti-adjustments"></i> Configurar</button>`:'';
-    return`<div class="user-row"><div><b>${eh(u.username)}</b><div class="user-role">${eh(roleLabel(u.role))}</div></div>${cfgBtn}${u.username==='admin'?'<span class="user-role">fixo</span>':`<button class="mini-btn" onclick="deleteUser('${eh(u.username)}')">Excluir</button>`}</div>`;
+    const roleTxt=u.isGuest?'Visitante — sem login, painéis definidos pelo admin':eh(roleLabel(u.role));
+    const tailBtn=u.username==='admin'?'<span class="user-role">fixo</span>':(u.isGuest?'<span class="user-role">fixo — sem senha</span>':`<button class="mini-btn" onclick="deleteUser('${eh(u.username)}')">Excluir</button>`);
+    return`<div class="user-row"><div><b>${eh(u.username)}</b><div class="user-role">${roleTxt}</div></div>${cfgBtn}${tailBtn}</div>`;
   }).join('');
 }
 
@@ -11872,16 +11929,21 @@ function redirStatsFor(rows,metric){
   const n=metric==='prazo'?rows.filter(x=>x.dentro8h).length:rows.filter(x=>x.outlier24h).length;
   return{total,pct:total?n/total*100:null};
 }
-function redirSeries(periods,periodKeyFn,metric){
+/* `groups` opcional (pedido do usuário: clicar num cluster do Redir revela as UFs por
+   trás dele) — por padrão usa REDIR_GROUPS (as 3 regionais), mas a mesma função também
+   monta a série de um único cluster bruto (ex.: só "PA CAP") quando chamada com um
+   "grupo" de 1 membro só, ver redirChildGroups()/redirRenderTable(). */
+function redirSeries(periods,periodKeyFn,metric,groups){
+  groups=groups||REDIR_GROUPS;
   const base=slnEnc();
   const byGroupPeriod={};
-  REDIR_GROUPS.forEach(g=>byGroupPeriod[g.key]={});
+  groups.forEach(g=>byGroupPeriod[g.key]={});
   base.forEach(x=>{
-    const g=redirGroupOf(x.cluster);if(!g)return;
+    const g=groups.find(g=>g.clusters.includes(x.cluster));if(!g)return;
     const pk=periodKeyFn(x);if(!periods.includes(pk))return;
-    (byGroupPeriod[g][pk]=byGroupPeriod[g][pk]||[]).push(x);
+    (byGroupPeriod[g.key][pk]=byGroupPeriod[g.key][pk]||[]).push(x);
   });
-  return REDIR_GROUPS.map(g=>{
+  return groups.map(g=>{
     const cells=periods.map(pk=>redirStatsFor(byGroupPeriod[g.key][pk]||[],metric));
     const last=cells[cells.length-1],prev=cells[cells.length-2];
     const delta=(last&&last.pct!==null&&prev&&prev.pct!==null)?+(last.pct-prev.pct).toFixed(1):null;
@@ -11936,6 +11998,17 @@ function redirProjecao(cells,diasDecorridos,diasTotais){
   const pesoAtual=Math.min(1,Math.max(0,diasDecorridos/Math.max(1,diasTotais)));
   return pesoAtual*atual.pct+(1-pesoAtual)*mediaHist;
 }
+/* Expandir/recolher UFs por trás de cada regional (pedido do usuário: "ao clicar em
+   cada cluster do painel Redir ele mostrará as linhas ocultas dos clusters" — ex.: C.28
+   | Norte revela PA CAP/PA INT/AM-AP como linhas abaixo dela). Estado por metric
+   (Prazo/Outlier expandem independente um do outro) — não precisa persistir entre
+   sessões, é só um estado de UI. */
+let redirExpandedGroups={prazo:new Set(),outlier:new Set()};
+function redirToggleGroup(metric,groupKey){
+  const s=redirExpandedGroups[metric];
+  if(s.has(groupKey))s.delete(groupKey);else s.add(groupKey);
+  redirRenderTable('redir-table-'+metric,metric);
+}
 function redirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
   const monthPeriods=redirYearMonths();
@@ -11945,6 +12018,7 @@ function redirRenderTable(elId,metric){
   const diaMes=redirRefDateFim().getDate(),diasMes=redirDiasNoMesAtual();
   const diaSemana=redirDiaSemanaDecorrido();
   const anoAtual=redirAnoEfetivo()===redirAnoAtualNum();
+  const expandedSet=redirExpandedGroups[metric];
   const monthHead=monthPeriods.map((k,i)=>{
     return`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
   }).join('');
@@ -11952,15 +12026,27 @@ function redirRenderTable(elId,metric){
     const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
     return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
+  function buildRowHtml(row,wrow,clusterLabelHtml,extraCls,onclickAttr){
+    const monthCells=row.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+    const weekCells=wrow.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+    const projMes=redirProjecao(row.cells,diaMes,diasMes);
+    const projSem=redirProjecao(wrow.cells,diaSemana,7);
+    const projCell=p=>`<td class="redir-proj-col ${redirPctColor(metric,p)}">${p===null?'—':pp(p)+'%'}</td>`;
+    return`<tr class="${extraCls}"${onclickAttr||''}><td class="redir-cluster-cell">${clusterLabelHtml}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
+  }
   el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Mês)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Semana)</span></th></tr></thead><tbody>${
     monthSeries.map((row,i)=>{
       const wrow=weekSeries[i];
-      const monthCells=row.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
-      const weekCells=wrow.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
-      const projMes=redirProjecao(row.cells,diaMes,diasMes);
-      const projSem=redirProjecao(wrow.cells,diaSemana,7);
-      const projCell=p=>`<td class="redir-proj-col ${redirPctColor(metric,p)}">${p===null?'—':pp(p)+'%'}</td>`;
-      return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
+      const isExpanded=expandedSet.has(row.group.key);
+      const chevron=`<i class="ti ${isExpanded?'ti-chevron-down':'ti-chevron-right'}" style="font-size:11px;vertical-align:-1px;margin-right:3px;color:var(--tx3)"></i>`;
+      const parentLabel=`${chevron}${eh(row.group.code)} | ${eh(row.group.key)}`;
+      const parentHtml=buildRowHtml(row,wrow,parentLabel,'redir-group-row',` onclick="redirToggleGroup('${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} as UFs de ${eh(row.group.key)}" style="cursor:pointer"`);
+      if(!isExpanded)return parentHtml;
+      const childGroups=row.group.clusters.map(c=>({key:c,code:'',clusters:[c]}));
+      const childMonthSeries=redirSeries(monthPeriods,x=>x.mes,metric,childGroups);
+      const childWeekSeries=redirSeries(weekPeriods,x=>x.semana,metric,childGroups);
+      const childHtml=childGroups.map((cg,ci)=>buildRowHtml(childMonthSeries[ci],childWeekSeries[ci],`<span style="padding-left:18px">${eh(cg.key)}</span>`,'redir-child-row','')).join('');
+      return parentHtml+childHtml;
     }).join('')
   }</tbody></table>`;
 }
