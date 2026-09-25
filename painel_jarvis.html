@@ -10337,6 +10337,37 @@ const CLUSTER_INFO={
   'AM/AP' :{clr:'#34c759',desc:'AM / Amapá'},
 };
 const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/AP'];
+/* "Norte" (pedido do usuário): opção adicional no filtro de Cluster que compatibiliza
+   PA CAP + PA INT + AM/AP — NÃO entra em CLUSTER_ORDER (que orienta a ORDEM/lista das
+   linhas de detalhamento por cluster nas tabelas — por decisão do usuário, essas
+   tabelas continuam mostrando as 3 UFs separadas mesmo com "Norte" selecionado). Só
+   afeta o ESCOPO dos KPIs/gráficos principais: qualquer lugar que hoje faz
+   `selX.includes(d.cluster)` passa a usar clusterRowMatches(selX,d.cluster), e os
+   lugares que decidem QUAIS clusters aparecem como card/linha de detalhamento (cardOrder)
+   usam clusterCardOrder(selX) pra expandir "Norte" nos 3 membros reais na hora de
+   montar a lista, sem duplicar/inventar uma linha "Norte" nessas tabelas. */
+const CLUSTER_NORTE_MEMBERS=['PA CAP','PA INT','AM/AP'];
+function clusterOptionsComNorte(allC){
+  const opts=CLUSTER_ORDER.filter(c=>allC.includes(c)).map(c=>({value:c,label:c}));
+  if(CLUSTER_NORTE_MEMBERS.some(c=>allC.includes(c)))opts.push({value:'Norte',label:'Norte (PA+AP+AM)'});
+  return opts;
+}
+function clusterRowMatches(selArr,rawCluster){
+  if(!selArr||!selArr.length)return true;
+  return selArr.includes(rawCluster)||(selArr.includes('Norte')&&CLUSTER_NORTE_MEMBERS.includes(rawCluster));
+}
+/* Mesma lista de "clusters com dados" de clusterOptionsComNorte, mas só os valores
+   (sem {value,label}) — usada pra validar uma seleção restaurada de applyState()
+   (ex.: selEncCluster de um sync antigo) sem podar "Norte" por engano. */
+function clusterValidValues(arr){
+  const vals=CLUSTER_ORDER.filter(c=>arr.some(d=>d.cluster===c));
+  if(CLUSTER_NORTE_MEMBERS.some(c=>arr.some(d=>d.cluster===c)))vals.push('Norte');
+  return vals;
+}
+function clusterCardOrder(selArr){
+  if(!selArr||!selArr.length)return CLUSTER_ORDER;
+  return CLUSTER_ORDER.filter(c=>selArr.includes(c)||(selArr.includes('Norte')&&CLUSTER_NORTE_MEMBERS.includes(c)));
+}
 
 let dAb=[],dEnc=[],dAtiv=[],dAbCleared=false,dAbClearedAt='';
 let aleloCardImage=null,aleloCardImageAt='';
@@ -12283,7 +12314,7 @@ function applyState(st,label){
       if(Object.prototype.hasOwnProperty.call(st,'lastEncBaseAt'))lastEncBaseAt=st.lastEncBaseAt||'';
       /* restaura filtros de tabela do Encerrados (fe-*) antes de popular, para que
          fillFiltersEnc() já renderize os checkboxes com a seleção correta */
-      const _encClusters=CLUSTER_ORDER.filter(c=>dEnc.some(d=>d.cluster===c));
+      const _encClusters=clusterValidValues(dEnc);
       const _encCausas=[...new Set(dEnc.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))];
       const _encUfs=[...new Set(dEnc.map(d=>d.uf).filter(Boolean))];
       const _encSemanas=[...new Set(dEnc.map(d=>d.semana).filter(Boolean))];
@@ -12300,7 +12331,7 @@ function applyState(st,label){
          auto-podam qualquer valor que não exista mais na base restaurada */
       const _topMeses=[...new Set(dEnc.map(d=>d.mes).filter(Boolean))];
       const _topAnos=[...new Set(_topMeses.map(m=>m.slice(0,4)))];
-      const _topClusters=CLUSTER_ORDER.filter(c=>dEnc.some(d=>d.cluster===c));
+      const _topClusters=clusterValidValues(dEnc);
       selYear=asArr(st.selYear).filter(y=>_topAnos.includes(y));
       selMes=asArr(st.selMes).filter(m=>_topMeses.includes(m));
       selCluster=asArr(st.selCluster).filter(c=>_topClusters.includes(c));
@@ -12320,7 +12351,7 @@ function applyState(st,label){
       /* restaura filtros do painel B2B S/Intervenção — mesmo padrão do Repetidos
          acima: recorte derivado de dEnc, sem base própria */
       const _siBase=dEnc.filter(d=>fmtCausaRaiz(d.causaRaiz)===SI_CAUSA);
-      const _siClusters=CLUSTER_ORDER.filter(c=>_siBase.some(d=>d.cluster===c));
+      const _siClusters=clusterValidValues(_siBase);
       const _siCausas=[...new Set(_siBase.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))];
       const _siUfs=[...new Set(_siBase.map(d=>d.uf).filter(Boolean))];
       const _siSemanas=[...new Set(_siBase.map(d=>d.semana).filter(Boolean))];
@@ -12336,7 +12367,7 @@ function applyState(st,label){
       /* restaura filtros do painel B2B Prefeitura — mesmo padrão do S/Intervenção acima:
          recorte derivado de dEnc pelo Cliente (Município de São Luís), sem base própria */
       const _prefBase=dEnc.filter(prefIsCliente);
-      const _prefClusters=CLUSTER_ORDER.filter(c=>_prefBase.some(d=>d.cluster===c));
+      const _prefClusters=clusterValidValues(_prefBase);
       const _prefCausas=[...new Set(_prefBase.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))];
       const _prefUfs=[...new Set(_prefBase.map(d=>d.uf).filter(Boolean))];
       const _prefSemanas=[...new Set(_prefBase.map(d=>d.semana).filter(Boolean))];
@@ -14478,8 +14509,9 @@ function fillWeekSelector(){
 }
 function fillClusterSelector(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
-  const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
-  selCluster=selCluster.filter(c=>clusters.includes(c));
+  const clusters=clusterOptionsComNorte(allC);
+  const clusterVals=clusters.map(c=>c.value);
+  selCluster=selCluster.filter(c=>clusterVals.includes(c));
   mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];selSiCluster=[];selPrefCluster=[];fillFiltersEnc();fillFiltersSi();fillFiltersPref();renderAllEnc();renderAllSi();renderAllPref();saveState();}});
 }
 /* Filtro de Ano — pedido do usuário: só ADICIONAR um filtro de Ano, sem alterar em nada
@@ -14542,7 +14574,7 @@ function selectClusterCard(cluster){
 /* filtered enc by global selectors */
 function encBase(){let base=slnEnc();if(selYear.length)base=base.filter(d=>selYear.includes(String(d.mes||'').slice(0,4)));return selMes.length?base.filter(d=>selMes.includes(d.mes)):base}
 function encWeek(){const b=encBase();return selWeek.length?b.filter(d=>selWeek.includes(d.semana)):b}
-function encScope(){let f=encWeek();if(selCluster.length)f=f.filter(d=>selCluster.includes(d.cluster));return f}
+function encScope(){let f=encWeek();if(selCluster.length)f=f.filter(d=>clusterRowMatches(selCluster,d.cluster));return f}
 
 /* ─── RENDER ABERTOS ─── */
 function abScope(){const base=slnAb();return selAbMop.length?base.filter(d=>selAbMop.includes(d.mop)):base}
@@ -15919,7 +15951,7 @@ function rClusterCards(d){
     if(!grp[k])grp[k]={total:0,dentro:0,outlier:0};
     grp[k].total++;if(x.dentro8h)grp[k].dentro++;if(x.outlier24h)grp[k].outlier++;
   });
-  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
+  const cardOrder=clusterCardOrder(selCluster);
   document.getElementById('cluster-cards').innerHTML=cardOrder.map(k=>{
     const g=grp[k]||{total:0,dentro:0,outlier:0};
     const pct=g.total?Math.round(g.dentro/g.total*100):0;
@@ -15995,7 +16027,7 @@ function rChEnc(d){
 
 function rChSem(){
   /* show weekly evolution for the selected cluster, highlighting selected week */
-  const base=selCluster.length?dEnc.filter(d=>selCluster.includes(d.cluster)):dEnc;
+  const base=selCluster.length?dEnc.filter(d=>clusterRowMatches(selCluster,d.cluster)):dEnc;
   const semD=cnt(base,'semana');
   const labels=Object.keys(semD).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const vals=labels.map(k=>semD[k]);
@@ -16012,7 +16044,7 @@ function rChSem(){
    mesmo "base" (escopado por selCluster) e o mesmo agrupamento por "semana" que Volume/Semana,
    então também respeita a seleção de Cluster automaticamente. */
 function rChMetaEnc(){
-  const base=selCluster.length?dEnc.filter(d=>selCluster.includes(d.cluster)):dEnc;
+  const base=selCluster.length?dEnc.filter(d=>clusterRowMatches(selCluster,d.cluster)):dEnc;
   const porSemana={};
   base.forEach(x=>{if(!x.semana)return;(porSemana[x.semana]=porSemana[x.semana]||[]).push(x)});
   const labels=Object.keys(porSemana).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
@@ -16073,12 +16105,13 @@ function clearEncFilters(){
 }
 function fillFiltersEnc(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
-  const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
+  const clusters=clusterOptionsComNorte(allC);
+  const clusterVals=clusters.map(c=>c.value);
   const causas=[...new Set(dEnc.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
   const ufs=[...new Set(dEnc.map(d=>d.uf).filter(Boolean))].sort();
   const semanas=[...new Set(dEnc.map(d=>d.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const segs=[...new Set(dEnc.map(d=>repairPtBR(d.segmento)).filter(Boolean))].sort();
-  selEncCluster=selEncCluster.filter(c=>clusters.includes(c));
+  selEncCluster=selEncCluster.filter(c=>clusterVals.includes(c));
   selEncCausa=selEncCausa.filter(c=>causas.includes(c));
   selEncUf=selEncUf.filter(u=>ufs.includes(u));
   selEncSemana=selEncSemana.filter(s=>semanas.includes(s));
@@ -16095,7 +16128,7 @@ function fillFiltersEnc(){
 function gFEnc(){
   const srch=(document.getElementById('f-srch-enc').value||'').toLowerCase();
   let f=encScope();
-  if(selEncCluster.length)f=f.filter(d=>selEncCluster.includes(d.cluster));if(selEncAging.length)f=f.filter(d=>selEncAging.includes(d.faixa));
+  if(selEncCluster.length)f=f.filter(d=>clusterRowMatches(selEncCluster,d.cluster));if(selEncAging.length)f=f.filter(d=>selEncAging.includes(d.faixa));
   if(selEncCausa.length)f=f.filter(d=>selEncCausa.includes(fmtCausaRaiz(d.causaRaiz)));if(selEncUf.length)f=f.filter(d=>selEncUf.includes(d.uf));
   if(selEncSemana.length)f=f.filter(d=>selEncSemana.includes(d.semana));if(selEncSeg.length)f=f.filter(d=>selEncSeg.includes(repairPtBR(d.segmento)));
   if(srch)f=f.filter(d=>d.cliente.toLowerCase().includes(srch)||d.protocolo.toLowerCase().includes(srch)||(d.titulo||'').toLowerCase().includes(srch));
@@ -16305,7 +16338,7 @@ function rClusterCardsSi(d){
     if(!grp[k])grp[k]={total:0,dentro:0,outlier:0};
     grp[k].total++;if(x.dentro8h)grp[k].dentro++;if(x.outlier24h)grp[k].outlier++;
   });
-  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
+  const cardOrder=clusterCardOrder(selCluster);
   document.getElementById('cluster-cards-si').innerHTML=cardOrder.map(k=>{
     const g=grp[k]||{total:0,dentro:0,outlier:0};
     const pct=g.total?Math.round(g.dentro/g.total*100):0;
@@ -16400,12 +16433,13 @@ function rUfSi(d){
 function fillFiltersSi(){
   const base=slnSi();
   const allC=[...new Set(base.map(d=>d.cluster).filter(Boolean))];
-  const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
+  const clusters=clusterOptionsComNorte(allC);
+  const clusterVals=clusters.map(c=>c.value);
   const causas=[...new Set(base.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
   const ufs=[...new Set(base.map(d=>d.uf).filter(Boolean))].sort();
   const semanas=[...new Set(base.map(d=>d.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const segs=[...new Set(base.map(d=>repairPtBR(d.segmento)).filter(Boolean))].sort();
-  selSiCluster=selSiCluster.filter(c=>clusters.includes(c));
+  selSiCluster=selSiCluster.filter(c=>clusterVals.includes(c));
   selSiCausa=selSiCausa.filter(c=>causas.includes(c));
   selSiUf=selSiUf.filter(u=>ufs.includes(u));
   selSiSemana=selSiSemana.filter(s=>semanas.includes(s));
@@ -16423,7 +16457,7 @@ function gFSi(){
   const srchEl=document.getElementById('f-srch-si');
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   let f=siScope();
-  if(selSiCluster.length)f=f.filter(d=>selSiCluster.includes(d.cluster));if(selSiAging.length)f=f.filter(d=>selSiAging.includes(d.faixa));
+  if(selSiCluster.length)f=f.filter(d=>clusterRowMatches(selSiCluster,d.cluster));if(selSiAging.length)f=f.filter(d=>selSiAging.includes(d.faixa));
   if(selSiCausa.length)f=f.filter(d=>selSiCausa.includes(fmtCausaRaiz(d.causaRaiz)));
   if(selSiUf.length)f=f.filter(d=>selSiUf.includes(d.uf));
   if(selSiSemana.length)f=f.filter(d=>selSiSemana.includes(d.semana));if(selSiSeg.length)f=f.filter(d=>selSiSeg.includes(repairPtBR(d.segmento)));
@@ -16511,7 +16545,7 @@ function renderAllPref(){
 function prefMoMSeries(){
   let base=slnPref();
   const clusterFiltro=selPrefCluster.length?selPrefCluster:selCluster;
-  if(clusterFiltro.length)base=base.filter(x=>clusterFiltro.includes(x.cluster));
+  if(clusterFiltro.length)base=base.filter(x=>clusterRowMatches(clusterFiltro,x.cluster));
   if(selPrefCausa.length)base=base.filter(x=>selPrefCausa.includes(fmtCausaRaiz(x.causaRaiz)));
   if(selPrefUf.length)base=base.filter(x=>selPrefUf.includes(x.uf));
   if(selPrefSeg.length)base=base.filter(x=>selPrefSeg.includes(repairPtBR(x.segmento)));
@@ -16613,7 +16647,7 @@ function rClusterCardsPref(d){
     if(!grp[k])grp[k]={total:0,dentro:0,outlier:0};
     grp[k].total++;if(x.dentro8h)grp[k].dentro++;if(x.outlier24h)grp[k].outlier++;
   });
-  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
+  const cardOrder=clusterCardOrder(selCluster);
   document.getElementById('cluster-cards-pref').innerHTML=cardOrder.map(k=>{
     const g=grp[k]||{total:0,dentro:0,outlier:0};
     const pct=g.total?Math.round(g.dentro/g.total*100):0;
@@ -16714,12 +16748,13 @@ function clearPrefFilters(){
 function fillFiltersPref(){
   const base=slnPref();
   const allC=[...new Set(base.map(d=>d.cluster).filter(Boolean))];
-  const clusters=CLUSTER_ORDER.filter(c=>allC.includes(c));
+  const clusters=clusterOptionsComNorte(allC);
+  const clusterVals=clusters.map(c=>c.value);
   const causas=[...new Set(base.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
   const ufs=[...new Set(base.map(d=>d.uf).filter(Boolean))].sort();
   const semanas=[...new Set(base.map(d=>d.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const segs=[...new Set(base.map(d=>repairPtBR(d.segmento)).filter(Boolean))].sort();
-  selPrefCluster=selPrefCluster.filter(c=>clusters.includes(c));
+  selPrefCluster=selPrefCluster.filter(c=>clusterVals.includes(c));
   selPrefCausa=selPrefCausa.filter(c=>causas.includes(c));
   selPrefUf=selPrefUf.filter(u=>ufs.includes(u));
   selPrefSemana=selPrefSemana.filter(s=>semanas.includes(s));
@@ -16737,7 +16772,7 @@ function gFPref(){
   const srchEl=document.getElementById('f-srch-pref');
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   let f=prefScope();
-  if(selPrefCluster.length)f=f.filter(d=>selPrefCluster.includes(d.cluster));if(selPrefAging.length)f=f.filter(d=>selPrefAging.includes(d.faixa));
+  if(selPrefCluster.length)f=f.filter(d=>clusterRowMatches(selPrefCluster,d.cluster));if(selPrefAging.length)f=f.filter(d=>selPrefAging.includes(d.faixa));
   if(selPrefCausa.length)f=f.filter(d=>selPrefCausa.includes(fmtCausaRaiz(d.causaRaiz)));
   if(selPrefUf.length)f=f.filter(d=>selPrefUf.includes(d.uf));
   if(selPrefSemana.length)f=f.filter(d=>selPrefSemana.includes(d.semana));if(selPrefSeg.length)f=f.filter(d=>selPrefSeg.includes(repairPtBR(d.segmento)));
@@ -20213,7 +20248,7 @@ function computeExecAgingData(){
     else if(x.outlier24h)grp[k].outlier++;
     else grp[k].fora++;
   });
-  const cardOrder=selCluster.length?CLUSTER_ORDER.filter(c=>selCluster.includes(c)):CLUSTER_ORDER;
+  const cardOrder=clusterCardOrder(selCluster);
   const clusters=cardOrder.map(k=>{
     const g=grp[k]||{total:0,dentro:0,fora:0,outlier:0};
     const pPrazo=g.total?g.dentro/g.total*100:0;
@@ -20386,7 +20421,7 @@ function computeEncPptxData(){
     else grp[k].fora++;
   });
   const clusterFiltro=selEncCluster.length?selEncCluster:selCluster;
-  const cardOrder=clusterFiltro.length?CLUSTER_ORDER.filter(c=>clusterFiltro.includes(c)):CLUSTER_ORDER;
+  const cardOrder=clusterCardOrder(clusterFiltro);
   const clusters=cardOrder.map(k=>{
     const g=grp[k]||{total:0,dentro:0,fora:0,outlier:0};
     const pPrazo=g.total?g.dentro/g.total*100:0;
@@ -20433,7 +20468,7 @@ function encPptxDecisionTxt(info){
 function encWoWSeries(){
   let base=encWeek();
   const clusterFiltro=selEncCluster.length?selEncCluster:selCluster;
-  if(clusterFiltro.length)base=base.filter(x=>clusterFiltro.includes(x.cluster));
+  if(clusterFiltro.length)base=base.filter(x=>clusterRowMatches(clusterFiltro,x.cluster));
   if(selEncAging.length)base=base.filter(x=>selEncAging.includes(x.faixa));
   if(selEncCausa.length)base=base.filter(x=>selEncCausa.includes(fmtCausaRaiz(x.causaRaiz)));
   if(selEncUf.length)base=base.filter(x=>selEncUf.includes(x.uf));
@@ -26477,8 +26512,9 @@ function fillFiltersExec(){
   mselRender('exec-rede-cluster-selector',redeClOpts,selExecRedeCluster,{allLabel:'Todos os clusters',labelFn:c=>RDE_CLUSTER_LABELS[c]||c,onChange:(v)=>{selExecRedeCluster=v;renderExecutivo();saveState();}});
 
   const encAllC=[...new Set(encFlat.map(d=>d.cluster).filter(Boolean))];
-  const encClOpts=CLUSTER_ORDER.filter(c=>encAllC.includes(c));
-  selExecEncCluster=selExecEncCluster.filter(c=>encClOpts.includes(c));
+  const encClOpts=clusterOptionsComNorte(encAllC);
+  const encClOptsVals=encClOpts.map(c=>c.value);
+  selExecEncCluster=selExecEncCluster.filter(c=>encClOptsVals.includes(c));
   mselRender('exec-enc-cluster-selector',encClOpts,selExecEncCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selExecEncCluster=v;renderExecutivo();saveState();}});
 
   const b2cAllC=[...new Set(b2cFlat.map(r=>r.novoCluster).filter(Boolean))];
