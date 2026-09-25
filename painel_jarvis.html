@@ -10359,36 +10359,42 @@ const CLUSTER_INFO={
   'AM/AP' :{clr:'#34c759',desc:'AM / Amapá'},
 };
 const CLUSTER_ORDER=['MA CAP','MA INT','PA CAP','PA INT','PI CAP','PI INT','AM/AP'];
-/* "Norte" (pedido do usuário): opção adicional no filtro de Cluster que compatibiliza
-   PA CAP + PA INT + AM/AP — NÃO entra em CLUSTER_ORDER (que orienta a ORDEM/lista das
-   linhas de detalhamento por cluster nas tabelas — por decisão do usuário, essas
-   tabelas continuam mostrando as 3 UFs separadas mesmo com "Norte" selecionado). Só
-   afeta o ESCOPO dos KPIs/gráficos principais: qualquer lugar que hoje faz
+/* "Norte"/"Maranhão"/"Piauí" (pedido do usuário): opções adicionais no filtro de Cluster
+   que compatibilizam as UFs de cada regional — NÃO entram em CLUSTER_ORDER (que orienta a
+   ORDEM/lista das linhas de detalhamento por cluster nas tabelas — por decisão do usuário,
+   essas tabelas continuam mostrando as UFs separadas mesmo com uma regional selecionada).
+   Só afetam o ESCOPO dos KPIs/gráficos principais: qualquer lugar que hoje faz
    `selX.includes(d.cluster)` passa a usar clusterRowMatches(selX,d.cluster), e os
    lugares que decidem QUAIS clusters aparecem como card/linha de detalhamento (cardOrder)
-   usam clusterCardOrder(selX) pra expandir "Norte" nos 3 membros reais na hora de
-   montar a lista, sem duplicar/inventar uma linha "Norte" nessas tabelas. */
+   usam clusterCardOrder(selX) pra expandir a regional nos membros reais na hora de montar
+   a lista, sem duplicar/inventar uma linha "Norte"/"Maranhão"/"Piauí" nessas tabelas. */
 const CLUSTER_NORTE_MEMBERS=['PA CAP','PA INT','AM/AP'];
-function clusterOptionsComNorte(allC){
+const CLUSTER_REGIOES=[
+  {value:'Maranhão',label:'Maranhão (MA CAP+MA INT)',members:['MA CAP','MA INT']},
+  {value:'Piauí',label:'Piauí (PI CAP+PI INT)',members:['PI CAP','PI INT']},
+  {value:'Norte',label:'Norte (PA+AP+AM)',members:CLUSTER_NORTE_MEMBERS},
+];
+function clusterOptionsComRegioes(allC){
   const opts=CLUSTER_ORDER.filter(c=>allC.includes(c)).map(c=>({value:c,label:c}));
-  if(CLUSTER_NORTE_MEMBERS.some(c=>allC.includes(c)))opts.push({value:'Norte',label:'Norte (PA+AP+AM)'});
+  CLUSTER_REGIOES.forEach(r=>{if(r.members.some(c=>allC.includes(c)))opts.push({value:r.value,label:r.label});});
   return opts;
 }
 function clusterRowMatches(selArr,rawCluster){
   if(!selArr||!selArr.length)return true;
-  return selArr.includes(rawCluster)||(selArr.includes('Norte')&&CLUSTER_NORTE_MEMBERS.includes(rawCluster));
+  if(selArr.includes(rawCluster))return true;
+  return CLUSTER_REGIOES.some(r=>selArr.includes(r.value)&&r.members.includes(rawCluster));
 }
-/* Mesma lista de "clusters com dados" de clusterOptionsComNorte, mas só os valores
+/* Mesma lista de "clusters com dados" de clusterOptionsComRegioes, mas só os valores
    (sem {value,label}) — usada pra validar uma seleção restaurada de applyState()
-   (ex.: selEncCluster de um sync antigo) sem podar "Norte" por engano. */
+   (ex.: selEncCluster de um sync antigo) sem podar "Norte"/"Maranhão"/"Piauí" por engano. */
 function clusterValidValues(arr){
   const vals=CLUSTER_ORDER.filter(c=>arr.some(d=>d.cluster===c));
-  if(CLUSTER_NORTE_MEMBERS.some(c=>arr.some(d=>d.cluster===c)))vals.push('Norte');
+  CLUSTER_REGIOES.forEach(r=>{if(r.members.some(c=>arr.some(d=>d.cluster===c)))vals.push(r.value);});
   return vals;
 }
 function clusterCardOrder(selArr){
   if(!selArr||!selArr.length)return CLUSTER_ORDER;
-  return CLUSTER_ORDER.filter(c=>selArr.includes(c)||(selArr.includes('Norte')&&CLUSTER_NORTE_MEMBERS.includes(c)));
+  return CLUSTER_ORDER.filter(c=>selArr.includes(c)||CLUSTER_REGIOES.some(r=>selArr.includes(r.value)&&r.members.includes(c)));
 }
 
 let dAb=[],dEnc=[],dAtiv=[],dAbCleared=false,dAbClearedAt='';
@@ -14740,7 +14746,7 @@ function fillWeekSelector(){
 }
 function fillClusterSelector(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
-  const clusters=clusterOptionsComNorte(allC);
+  const clusters=clusterOptionsComRegioes(allC);
   const clusterVals=clusters.map(c=>c.value);
   selCluster=selCluster.filter(c=>clusterVals.includes(c));
   mselRender('cluster-selector',clusters,selCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selCluster=v;selEncCluster=[];selSiCluster=[];selPrefCluster=[];fillFiltersEnc();fillFiltersSi();fillFiltersPref();renderAllEnc();renderAllSi();renderAllPref();saveState();}});
@@ -16337,7 +16343,7 @@ function clearEncFilters(){
 }
 function fillFiltersEnc(){
   const allC=[...new Set(dEnc.map(d=>d.cluster).filter(Boolean))];
-  const clusters=clusterOptionsComNorte(allC);
+  const clusters=clusterOptionsComRegioes(allC);
   const clusterVals=clusters.map(c=>c.value);
   const causas=[...new Set(dEnc.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
   const ufs=[...new Set(dEnc.map(d=>d.uf).filter(Boolean))].sort();
@@ -16665,7 +16671,7 @@ function rUfSi(d){
 function fillFiltersSi(){
   const base=slnSi();
   const allC=[...new Set(base.map(d=>d.cluster).filter(Boolean))];
-  const clusters=clusterOptionsComNorte(allC);
+  const clusters=clusterOptionsComRegioes(allC);
   const clusterVals=clusters.map(c=>c.value);
   const causas=[...new Set(base.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
   const ufs=[...new Set(base.map(d=>d.uf).filter(Boolean))].sort();
@@ -16980,7 +16986,7 @@ function clearPrefFilters(){
 function fillFiltersPref(){
   const base=slnPref();
   const allC=[...new Set(base.map(d=>d.cluster).filter(Boolean))];
-  const clusters=clusterOptionsComNorte(allC);
+  const clusters=clusterOptionsComRegioes(allC);
   const clusterVals=clusters.map(c=>c.value);
   const causas=[...new Set(base.map(d=>fmtCausaRaiz(d.causaRaiz)).filter(Boolean))].sort();
   const ufs=[...new Set(base.map(d=>d.uf).filter(Boolean))].sort();
@@ -26744,7 +26750,7 @@ function fillFiltersExec(){
   mselRender('exec-rede-cluster-selector',redeClOpts,selExecRedeCluster,{allLabel:'Todos os clusters',labelFn:c=>RDE_CLUSTER_LABELS[c]||c,onChange:(v)=>{selExecRedeCluster=v;renderExecutivo();saveState();}});
 
   const encAllC=[...new Set(encFlat.map(d=>d.cluster).filter(Boolean))];
-  const encClOpts=clusterOptionsComNorte(encAllC);
+  const encClOpts=clusterOptionsComRegioes(encAllC);
   const encClOptsVals=encClOpts.map(c=>c.value);
   selExecEncCluster=selExecEncCluster.filter(c=>encClOptsVals.includes(c));
   mselRender('exec-enc-cluster-selector',encClOpts,selExecEncCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selExecEncCluster=v;renderExecutivo();saveState();}});
