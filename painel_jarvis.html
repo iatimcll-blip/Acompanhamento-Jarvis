@@ -11913,6 +11913,19 @@ function encMetaSave(){
   renderAllEnc();renderAllSi();renderAllPref();
   _ghToast(`Metas atualizadas: Prazo ≥${pp(ENC_META_PRAZO)}% · Outlier ≤${pp(ENC_META_OUTLIER)}%`,'var(--green-dk)',3000);
 }
+function encMetaInline(key,value){
+  const v=parseFloat(String(value).replace(',','.'));
+  if(key==='prazo'){
+    if(isNaN(v)||v<=0||v>100)return;
+    ENC_META_PRAZO=+v.toFixed(2);
+  }else{
+    if(isNaN(v)||v<=0||v>=100)return;
+    ENC_META_OUTLIER=+v.toFixed(2);
+  }
+  try{localStorage.setItem(ENC_META_KEY,JSON.stringify({prazo:ENC_META_PRAZO,outlier:ENC_META_OUTLIER}));}catch(e){}
+  encMetaFill();
+  renderAllEnc();renderAllSi();renderAllPref();
+}
 function encMetaReset(){
   ENC_META_PRAZO=ENC_META_PRAZO_DEF;ENC_META_OUTLIER=ENC_META_OUTLIER_DEF;
   try{localStorage.removeItem(ENC_META_KEY);}catch(e){}
@@ -16491,9 +16504,9 @@ function rMetEnc(d){
   const tc=se(cnt(d,'cluster'))[0]||['-',0];
   document.getElementById('mrow-enc').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total encerrados</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
-    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div></div>
+    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>
     <div class="mc c-blue"><div class="mc-label">Cluster líder</div><div class="mc-val" style="color:var(--blue)"><b>${eh(tc[0])}</b></div><div class="mc-sub">${tc[1]} chamados · maior volume</div></div>`;
 }
@@ -16517,7 +16530,7 @@ function rClusterCards(d){
       <div class="cc-desc">${eh(ci.desc)}</div>
       <div class="cc-pct"><b>${pct}%</b></div>
       <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
-      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span>≥${pp(ENC_META_PRAZO)}%</span></div>
+      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</span></div>
       ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
     </div>`;
   }).join('');
@@ -16861,9 +16874,9 @@ function rMetSi(d){
   const avg=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;
   document.getElementById('mrow-si').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total s/ intervenção</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
-    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div></div>
+    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>`;
 }
 
@@ -16904,7 +16917,7 @@ function rClusterCardsSi(d){
       <div class="cc-desc">${eh(ci.desc)}</div>
       <div class="cc-pct"><b>${pct}%</b></div>
       <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
-      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span>≥${pp(ENC_META_PRAZO)}%</span></div>
+      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</span></div>
       ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
     </div>`;
   }).join('');
@@ -17170,9 +17183,9 @@ function rMetPref(d){
   const avg=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;
   document.getElementById('mrow-pref').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total Prefeitura</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
-    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div></div>
+    <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>`;
 }
 
@@ -17213,7 +17226,7 @@ function rClusterCardsPref(d){
       <div class="cc-desc">${eh(ci.desc)}</div>
       <div class="cc-pct"><b>${pct}%</b></div>
       <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
-      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span>≥${pp(ENC_META_PRAZO)}%</span></div>
+      <div class="cc-info"><span>${g.dentro}/${g.total}</span><span onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</span></div>
       ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
     </div>`;
   }).join('');
@@ -21297,6 +21310,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .mc-label{font-size:9.5px;color:#8e8e93;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;font-weight:600}
 .mc-val{font-size:19px;font-weight:700;line-height:1.1;color:#1c1c1e}
 .mc-sub{font-size:10px;color:#8e8e93;margin-top:2px}
+.mc-meta-edit{font-size:10px;color:#8e8e93;margin-top:4px;display:flex;align-items:center;gap:3px}
+.mc-meta-input{width:44px;height:20px;border:.5px solid rgba(0,0,0,.12);border-radius:5px;background:#fff;color:#1c1c1e;font-family:inherit;font-size:10.5px;text-align:right;padding:0 3px}
+.mc-meta-input:focus{border-color:var(--blue);outline:none}
+.cc-info .mc-meta-input{width:40px;height:18px}
 .c-blue{color:#007aff}.c-green{color:#34c759}.c-red{color:#ff3b30}.c-orange{color:#ff9500}.c-purple{color:#af52de}
 /* ─ prow / pc / pills ─ */
 .prow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
