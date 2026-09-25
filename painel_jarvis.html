@@ -8558,6 +8558,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button class="rede-sgbtn" data-cl="I" onclick="rdeSetCluster('I')">MA INT <span class="rede-cnt" id="rde-cnt-I">0</span></button>
             <button class="rede-sgbtn" data-cl="P" onclick="rdeSetCluster('P')">PI <span class="rede-cnt" id="rde-cnt-P">0</span></button>
             <button class="rede-sgbtn" data-cl="N" onclick="rdeSetCluster('N')">NORTE <span class="rede-cnt" id="rde-cnt-N">0</span></button>
+            <!-- Pedido do usuário: filtros que consolidam os resultados no cluster regional
+                 — "Maranhão" soma MA CAP+MA INT (2 clusters brutos distintos, ver
+                 RDE_CLUSTER_AGGREGATES); "Piauí" é o nome completo do cluster "PI" já
+                 existente (que já é atômico no Rede, sem CAP/INT separado) — mantido como
+                 opção própria a pedido explícito, sem remover o botão "PI" original. -->
+            <button class="rede-sgbtn" data-cl="MA" onclick="rdeSetCluster('MA')">Maranhão <span class="rede-cnt" id="rde-cnt-MA">0</span></button>
+            <button class="rede-sgbtn" data-cl="PIA" onclick="rdeSetCluster('PIA')">Piauí <span class="rede-cnt" id="rde-cnt-PIA">0</span></button>
           </div>
           <span class="rede-clbl">Ano</span>
           <div class="rede-seg" id="rde-year-seg"></div>
@@ -23420,7 +23427,16 @@ function rdeComputeMttr(){
      "Meta" do Painel Rede.
    - Volume de Eventos/Volume de Outlier são contagens, não taxas — sem meta/cor por
      definição (sem "certo ou errado" fixo pra um volume), só ΔMoM/ΔWoW neutro. */
-const RDE_REDIR_GROUPS=RDE_CLUSTER_KEYS.map(k=>({key:RDE_CLUSTER_LABELS[k],clusters:[k]}));
+/* Pedido do usuário: "transformar a tabela com as mesmas características do Painel B2B
+   Encerrados Bloco Redir" — linhas REGIONAIS (Norte/Piauí/Maranhão, mesmo agrupamento do
+   novo filtro "Maranhão"/"Piauí" do painel), com Maranhão expansível revelando MA CAP/MA
+   INT como linhas ocultas (mesmo padrão redirToggleGroup do Encerrados) — Norte e Piauí
+   não expandem porque já são atômicos no Rede (N e P não têm sub-cluster por trás). */
+const RDE_REDIR_GROUPS=[
+  {key:'Norte',clusters:['N']},
+  {key:'Piauí',clusters:['P']},
+  {key:'Maranhão',clusters:['C','I']},
+];
 const RDE_REDIR_METRICS={
   mttr:{label:'MTTR',unit:'h',metaGetter:()=>RDE_MTME,better:'lower'},
   prazo:{label:'Prazo',unit:'%',metaGetter:()=>RDE_M89,better:'higher'},
@@ -23498,16 +23514,21 @@ function rdeRedirStatsFor(rows,metric){
   /* volOutlier */
   return{total:rows.length,val:rows.length?rows.filter(r=>r.o===1).length:null};
 }
-function rdeRedirSeries(periods,periodKeyFn,metric){
+/* `groups` opcional (pedido do usuário: expandir "Maranhão" revela MA CAP/MA INT) —
+   mesmo mecanismo do redirSeries() do Encerrados: por padrão usa RDE_REDIR_GROUPS (as 3
+   regionais), mas a mesma função monta a série de um cluster bruto isolado quando
+   chamada com um "grupo" de 1 membro só (ver rdeRedirRenderTable). */
+function rdeRedirSeries(periods,periodKeyFn,metric,groups){
+  groups=groups||RDE_REDIR_GROUPS;
   const base=rdeRedirBase();
   const byGroupPeriod={};
-  RDE_REDIR_GROUPS.forEach(g=>byGroupPeriod[g.key]={});
+  groups.forEach(g=>byGroupPeriod[g.key]={});
   base.forEach(r=>{
-    const g=RDE_REDIR_GROUPS.find(g=>g.clusters.includes(r.cl));if(!g)return;
+    const g=groups.find(g=>g.clusters.includes(r.cl));if(!g)return;
     const pk=periodKeyFn(r);if(!periods.includes(pk))return;
     (byGroupPeriod[g.key][pk]=byGroupPeriod[g.key][pk]||[]).push(r);
   });
-  return RDE_REDIR_GROUPS.map(g=>{
+  return groups.map(g=>{
     const cells=periods.map(pk=>rdeRedirStatsFor(byGroupPeriod[g.key][pk]||[],metric));
     const last=cells[cells.length-1],prev=cells[cells.length-2];
     const delta=(last&&last.val!==null&&prev&&prev.val!==null)?+(last.val-prev.val).toFixed(2):null;
@@ -23560,6 +23581,16 @@ function rdeRedirProjecao(cells,diasDecorridos,diasTotais){
   const peso=Math.min(1,Math.max(0,diasDecorridos/Math.max(1,diasTotais)));
   return peso*atual.val+(1-peso)*mediaHist;
 }
+/* Expandir/recolher MA CAP/MA INT por trás da linha "Maranhão" — mesmo padrão
+   redirToggleGroup/redirExpandedGroups do Encerrados (estado por elId, não só por
+   metric, pra cada cópia — Painel Rede e Painel Executivo — ter seu próprio estado). */
+let rdeRedirExpandedGroups={};
+function rdeRedirToggleGroup(elId,metric,groupKey){
+  if(!rdeRedirExpandedGroups[elId])rdeRedirExpandedGroups[elId]=new Set();
+  const s=rdeRedirExpandedGroups[elId];
+  if(s.has(groupKey))s.delete(groupKey);else s.add(groupKey);
+  rdeRedirRenderTable(elId,metric);
+}
 function rdeRedirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
   const monthPeriods=rdeRedirYearMonths();
@@ -23569,22 +23600,36 @@ function rdeRedirRenderTable(elId,metric){
   const diaMes=rdeRedirRefDateFim().getDate(),diasMes=rdeRedirDiasNoMesAtual();
   const diaSemana=rdeRedirDiaSemanaDecorrido();
   const anoAtual=rdeRedirAnoEfetivo()===rdeRedirAnoAtualNum();
+  const expandedSet=rdeRedirExpandedGroups[elId]||new Set();
+  const unitSuf=RDE_REDIR_METRICS[metric].unit==='qtd'?'(un.)':RDE_REDIR_METRICS[metric].unit==='h'?'(h)':'(p.p.)';
   const monthHead=monthPeriods.map((k,i)=>`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`).join('');
   const weekHead=weekPeriods.map((k,i)=>{
     const num=(/-W(\d{2})$/.exec(k)||[])[1]||'';
     return`<th>S${num}<br><span class="redir-th-sub">${eh(rdeRedirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
-  const buildRow=(row,wrow)=>{
+  const buildRow=(row,wrow,clusterLabelHtml,extraCls,onclickAttr)=>{
     const monthCells=row.cells.map(c=>`<td class="${rdeRedirValColor(metric,c.val)}">${rdeRedirFmtVal(metric,c.val)}</td>`).join('');
     const weekCells=wrow.cells.map(c=>`<td class="${rdeRedirValColor(metric,c.val)}">${rdeRedirFmtVal(metric,c.val)}</td>`).join('');
     const projMes=rdeRedirProjecao(row.cells,diaMes,diasMes);
     const projSem=rdeRedirProjecao(wrow.cells,diaSemana,7);
     const projCell=v=>`<td class="redir-proj-col ${rdeRedirValColor(metric,v)}">${rdeRedirFmtVal(metric,v)}</td>`;
-    return`<tr><td class="redir-cluster-cell">${eh(row.group.key)}</td>${monthCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
+    return`<tr class="${extraCls||''}"${onclickAttr||''}><td class="redir-cluster-cell">${clusterLabelHtml}</td>${monthCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
   };
-  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">${RDE_REDIR_METRICS[metric].unit==='qtd'?'(un.)':RDE_REDIR_METRICS[metric].unit==='h'?'(h)':'(p.p.)'}</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Mês)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">${RDE_REDIR_METRICS[metric].unit==='qtd'?'(un.)':RDE_REDIR_METRICS[metric].unit==='h'?'(h)':'(p.p.)'}</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Semana)</span></th></tr></thead><tbody>${
-    monthSeries.map((row,i)=>buildRow(row,weekSeries[i])).join('')
-  }</tbody></table>`;
+  const bodyHtml=monthSeries.map((row,i)=>{
+    const wrow=weekSeries[i];
+    const expandivel=row.group.clusters.length>1;
+    if(!expandivel)return buildRow(row,wrow,eh(row.group.key),'redir-group-row','');
+    const isExpanded=expandedSet.has(row.group.key);
+    const chevron=`<i class="ti ${isExpanded?'ti-chevron-down':'ti-chevron-right'}" style="font-size:11px;vertical-align:-1px;margin-right:3px;color:var(--tx3)"></i>`;
+    const parentHtml=buildRow(row,wrow,chevron+eh(row.group.key),'redir-group-row',` onclick="rdeRedirToggleGroup('${elId}','${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} os clusters de ${eh(row.group.key)}" style="cursor:pointer"`);
+    if(!isExpanded)return parentHtml;
+    const childGroups=row.group.clusters.map(c=>({key:RDE_CLUSTER_LABELS[c]||c,clusters:[c]}));
+    const childMonthSeries=rdeRedirSeries(monthPeriods,r=>r.m,metric,childGroups);
+    const childWeekSeries=rdeRedirSeries(weekPeriods,r=>r.w,metric,childGroups);
+    const childHtml=childGroups.map((cg,ci)=>buildRow(childMonthSeries[ci],childWeekSeries[ci],`<span style="padding-left:18px">${eh(cg.key)}</span>`,'redir-child-row','')).join('');
+    return parentHtml+childHtml;
+  }).join('');
+  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">${unitSuf}</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Mês)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">${unitSuf}</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Semana)</span></th></tr></thead><tbody>${bodyHtml}</tbody></table>`;
 }
 /* FCA por métrica — mesmo padrão Fato/Causa/Ação do Redir (Encerrados), usando r.cidade
    e r.c (causa/motivo, já achatados por rdeToFlat) do mês/semana corrente. "Ruim" (bad)
@@ -23685,7 +23730,15 @@ function rdeRedirRenderAll(){
 function rdeSetTab(tab){rdeTab=tab;rdePeriod=[];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}document.querySelectorAll('#panel-rede .rede-tab-btn').forEach(b=>b.classList.toggle('on',b.dataset.rdetab===tab));rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetGran(gran){rdeGran=gran;if(gran==='all'){rdePeriod=[];}else{const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
 function rdePeriodClick(p){rdePeriod=rdePeriod.includes(p)?rdePeriod.filter(x=>x!==p):[...rdePeriod,p];rdeSyncControls();renderRede();rdeSaveUI();}
-function rdeClFilter(cl){if(!rdeCluster.length)return true;return rdeCluster.some(c=>c===cl);}
+/* "Maranhão"/"Piauí" (pedido do usuário): filtros que consolidam os clusters brutos do
+   Painel Rede (C=MA CAP, I=MA INT, P=PI, N=NORTE) nas regionais correspondentes — mesmo
+   espírito do CLUSTER_REGIOES já usado no filtro de Cluster do B2B Encerrados. */
+const RDE_CLUSTER_AGGREGATES={MA:['C','I'],PIA:['P']};
+function rdeClFilter(cl){
+  if(!rdeCluster.length)return true;
+  if(rdeCluster.includes(cl))return true;
+  return rdeCluster.some(sel=>RDE_CLUSTER_AGGREGATES[sel]&&RDE_CLUSTER_AGGREGATES[sel].includes(cl));
+}
 function rdeSetCluster(cl){if(!cl)rdeCluster=[];else rdeCluster=rdeCluster.includes(cl)?rdeCluster.filter(c=>c!==cl):[...rdeCluster,cl];rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeSetYear(y){if(!y)rdeYear=[];else rdeYear=rdeYear.includes(y)?rdeYear.filter(v=>v!==y):[...rdeYear,y];if(rdeGran!=='all'){const flat=rdeGetAllFlat();const keys=[...new Set(flat.map(r=>r[rdePKey()]))].filter(Boolean).sort();rdePeriod=keys.length?[keys[keys.length-1]]:[];}rdeSyncControls();renderRede();rdeSaveUI();}
 function rdeCopiarGrafico(el,btn){
@@ -23763,7 +23816,8 @@ function rdeSyncControls(){
   document.querySelectorAll('#rde-cl-seg .rede-sgbtn').forEach(b=>{
     const cl=b.dataset.cl;b.classList.toggle('on',cl===''?!rdeCluster.length:rdeCluster.includes(cl));
     const cnt=b.querySelector('.rede-cnt');
-    if(cnt)cnt.textContent=cl===''?preRecs.length:(clCnts[cl]||0);
+    const agg=RDE_CLUSTER_AGGREGATES[cl];
+    if(cnt)cnt.textContent=cl===''?preRecs.length:(agg?agg.reduce((s,c)=>s+(clCnts[c]||0),0):(clCnts[cl]||0));
   });
   // Year buttons: built dynamically from years present in the current tab's data
   const yearSeg=document.getElementById('rde-year-seg');
