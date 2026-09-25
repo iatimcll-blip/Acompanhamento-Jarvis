@@ -1582,7 +1582,13 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .redir-table td.redir-warn{color:var(--orange) !important}
 .redir-table td.redir-bad{color:var(--red) !important}
 .redir-table td.redir-na{color:var(--tx3) !important}
-.redir-group-row:hover td{background:var(--surface2) !important}
+/* Pedido do usuário: deixar a linha do cluster REGIONAL (Norte/Piauí/Maranhão) sempre
+   em destaque em relação às linhas ocultas (UFs) que ela revela ao expandir — fundo
+   levemente tintado + borda inferior mais forte, pra ficar óbvio visualmente qual linha
+   é a "pai" mesmo quando está recolhida (sem depender só do clique/estado). */
+.redir-group-row td{background:var(--surface2) !important;border-bottom:1px solid var(--bd2) !important}
+.redir-group-row:hover td{background:var(--blue-bg,rgba(0,122,255,.08)) !important}
+.redir-group-row td.redir-cluster-cell{font-weight:700}
 .redir-child-row td{background:rgba(0,0,0,.015) !important}
 .redir-child-row td.redir-cluster-cell{color:var(--tx3) !important;font-weight:400}
 [data-theme=dark] .redir-child-row td{background:rgba(255,255,255,.03) !important}
@@ -7647,6 +7653,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <span class="card-action" id="exec-report-encerrados-copy-btn" onclick="execCopiarRelatorioSub('exec-report-encerrados',this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
       </div>
       <div class="rede-report-box" id="exec-report-encerrados"><span style="color:var(--tx3);font-size:11px">Sem dados de B2B Encerrados no filtro atual.</span></div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span class="card-title">Redir</span>
+          <div class="redir-ano-bar"><label for="exec-redir-ano-sel">Ano</label><select id="exec-redir-ano-sel" onchange="redirSetAno(this.value)"></select></div>
+        </div>
+        <div class="redir-desc">Cópia do bloco Redir do B2B Encerrados — Regional R7.2 (MA, PA, PI e AP), mesma regra/meta e mesmo ano selecionado (o filtro de Ano é compartilhado entre as duas telas). Não reage aos demais filtros do Painel Executivo.</div>
+        <div class="redir-sub-title">Prazo &lt;8h</div>
+        <div style="overflow-x:auto;margin-bottom:18px" id="exec-redir-table-prazo"></div>
+        <div class="redir-sub-title">Outlier &gt;24h</div>
+        <div style="overflow-x:auto" id="exec-redir-table-outlier"></div>
+        <div class="redir-sub-title" style="margin-top:18px">FCA — Prazo &lt;8h</div>
+        <div class="rede-report-box" id="exec-redir-fca-prazo"></div>
+        <div class="redir-sub-title" style="margin-top:14px">FCA — Outlier &gt;24h</div>
+        <div class="rede-report-box" id="exec-redir-fca-outlier"></div>
+      </div>
     </div>
 
     <div class="exec-section" id="exec-tab-b2c">
@@ -12000,14 +12021,16 @@ function redirProjecao(cells,diasDecorridos,diasTotais){
 }
 /* Expandir/recolher UFs por trás de cada regional (pedido do usuário: "ao clicar em
    cada cluster do painel Redir ele mostrará as linhas ocultas dos clusters" — ex.: C.28
-   | Norte revela PA CAP/PA INT/AM-AP como linhas abaixo dela). Estado por metric
-   (Prazo/Outlier expandem independente um do outro) — não precisa persistir entre
-   sessões, é só um estado de UI. */
-let redirExpandedGroups={prazo:new Set(),outlier:new Set()};
-function redirToggleGroup(metric,groupKey){
-  const s=redirExpandedGroups[metric];
+   | Norte revela PA CAP/PA INT/AM-AP como linhas abaixo dela). Estado por elId (não só
+   metric) — a cópia do Redir no Painel Executivo (pedido do usuário) tem sua própria
+   tabela na tela, com seu próprio estado de expandir/recolher, independente da tabela
+   original no B2B Encerrados. Não precisa persistir entre sessões, é só estado de UI. */
+let redirExpandedGroups={};
+function redirToggleGroup(elId,metric,groupKey){
+  if(!redirExpandedGroups[elId])redirExpandedGroups[elId]=new Set();
+  const s=redirExpandedGroups[elId];
   if(s.has(groupKey))s.delete(groupKey);else s.add(groupKey);
-  redirRenderTable('redir-table-'+metric,metric);
+  redirRenderTable(elId,metric);
 }
 function redirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
@@ -12018,7 +12041,7 @@ function redirRenderTable(elId,metric){
   const diaMes=redirRefDateFim().getDate(),diasMes=redirDiasNoMesAtual();
   const diaSemana=redirDiaSemanaDecorrido();
   const anoAtual=redirAnoEfetivo()===redirAnoAtualNum();
-  const expandedSet=redirExpandedGroups[metric];
+  const expandedSet=redirExpandedGroups[elId]||new Set();
   const monthHead=monthPeriods.map((k,i)=>{
     return`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
   }).join('');
@@ -12040,7 +12063,7 @@ function redirRenderTable(elId,metric){
       const isExpanded=expandedSet.has(row.group.key);
       const chevron=`<i class="ti ${isExpanded?'ti-chevron-down':'ti-chevron-right'}" style="font-size:11px;vertical-align:-1px;margin-right:3px;color:var(--tx3)"></i>`;
       const parentLabel=`${chevron}${eh(row.group.code)} | ${eh(row.group.key)}`;
-      const parentHtml=buildRowHtml(row,wrow,parentLabel,'redir-group-row',` onclick="redirToggleGroup('${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} as UFs de ${eh(row.group.key)}" style="cursor:pointer"`);
+      const parentHtml=buildRowHtml(row,wrow,parentLabel,'redir-group-row',` onclick="redirToggleGroup('${elId}','${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} as UFs de ${eh(row.group.key)}" style="cursor:pointer"`);
       if(!isExpanded)return parentHtml;
       const childGroups=row.group.clusters.map(c=>({key:c,code:'',clusters:[c]}));
       const childMonthSeries=redirSeries(monthPeriods,x=>x.mes,metric,childGroups);
@@ -12121,22 +12144,39 @@ function redirFcaCidades(metric){
   }
   return`${mesTxt}\n\n${semTxt}\n\n${acaoTxt}`;
 }
+/* Pedido do usuário: "cópia do Painel Redir... integrada ao Painel Executivo" — em vez
+   de duplicar toda a lógica, a mesma redirRenderAll() agora escreve em DOIS conjuntos de
+   ids (o original no B2B Encerrados e a cópia no Painel Executivo), pulando qualquer
+   conjunto cujo elemento não exista na tela (ex.: cópia ainda não tem HTML, ou o painel
+   original não está montado). Os dois sempre mostram os MESMOS dados (mesmo ano
+   selecionado, mesma regra fixa sem filtro) — só o estado de expandir/recolher UF é
+   independente entre os dois (ver redirExpandedGroups, chaveado por elId). */
+const REDIR_RENDER_TARGETS=[
+  {ano:'redir-ano-sel',prazo:'redir-table-prazo',outlier:'redir-table-outlier',fcaPrazo:'redir-fca-prazo',fcaOutlier:'redir-fca-outlier'},
+  {ano:'exec-redir-ano-sel',prazo:'exec-redir-table-prazo',outlier:'exec-redir-table-outlier',fcaPrazo:'exec-redir-fca-prazo',fcaOutlier:'exec-redir-fca-outlier'},
+];
 function redirFillAnoSelect(){
-  const sel=document.getElementById('redir-ano-sel');
-  if(!sel)return;
   const anos=redirAnosDisponiveis();
   if(redirSelAno&&!anos.includes(redirSelAno))redirSelAno='';
-  sel.innerHTML=anos.map(a=>`<option value="${a}"${(redirSelAno||String(redirAnoAtualNum()))===a?' selected':''}>${a}</option>`).join('');
+  REDIR_RENDER_TARGETS.forEach(t=>{
+    const sel=document.getElementById(t.ano);
+    if(!sel)return;
+    sel.innerHTML=anos.map(a=>`<option value="${a}"${(redirSelAno||String(redirAnoAtualNum()))===a?' selected':''}>${a}</option>`).join('');
+  });
 }
 function redirRenderAll(){
-  if(!document.getElementById('redir-table-prazo'))return;
+  if(!REDIR_RENDER_TARGETS.some(t=>document.getElementById(t.prazo)))return;
   redirFillAnoSelect();
-  redirRenderTable('redir-table-prazo','prazo');
-  redirRenderTable('redir-table-outlier','outlier');
-  const fcaPrazoEl=document.getElementById('redir-fca-prazo');
-  if(fcaPrazoEl)fcaPrazoEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(redirFcaCidades('prazo'))+'</pre>';
-  const fcaOutlierEl=document.getElementById('redir-fca-outlier');
-  if(fcaOutlierEl)fcaOutlierEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(redirFcaCidades('outlier'))+'</pre>';
+  const fcaPrazoTxt=redirFcaCidades('prazo'),fcaOutlierTxt=redirFcaCidades('outlier');
+  REDIR_RENDER_TARGETS.forEach(t=>{
+    if(!document.getElementById(t.prazo))return;
+    redirRenderTable(t.prazo,'prazo');
+    redirRenderTable(t.outlier,'outlier');
+    const fcaPrazoEl=document.getElementById(t.fcaPrazo);
+    if(fcaPrazoEl)fcaPrazoEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(fcaPrazoTxt)+'</pre>';
+    const fcaOutlierEl=document.getElementById(t.fcaOutlier);
+    if(fcaOutlierEl)fcaOutlierEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(fcaOutlierTxt)+'</pre>';
+  });
 }
 function parseOpeningDate(v){if(v===undefined||v===null||v==='')return null;if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v).trim();if(!raw)return null;const iso=new Date(raw);if(!isNaN(iso))return iso;const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const y=Number(m[3].length===2?'20'+m[3]:m[3]);const d=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(d)?null:d}
 function fmtReportDate(v){const d=parseOpeningDate(v);if(!d)return String(v||'').trim()||'-';const hasTime=d.getHours()||d.getMinutes()||d.getSeconds();return hasTime?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}
@@ -27284,6 +27324,7 @@ function renderExecutivo(){
   execRenderBlock('rede',redeSnap);
   execRenderBlock('encerrados',encSnap);
   execRenderBlock('b2c',b2cSnap);
+  redirRenderAll();
 }
 
 /* Bug real de produção ("perco a base ao atualizar o navegador"): initAuth() — que
