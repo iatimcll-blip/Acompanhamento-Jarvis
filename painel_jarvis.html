@@ -1553,6 +1553,14 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rede-report-box b{color:var(--tx)}
 .rr-ok{color:#34c759;font-weight:600}.rr-wn{color:#ff9500;font-weight:600}.rr-bd{color:#ff3b30;font-weight:600}
 @media(max-width:720px){.rede-kpi-grid,#rde-kpis{grid-template-columns:1fr}.rede-charts-2{grid-template-columns:1fr}}
+.redir-desc{font-size:11.5px;color:var(--tx3);margin:-4px 0 14px;line-height:1.5}
+.redir-sub-title{font-size:12.5px;font-weight:700;color:var(--tx);margin:0 0 8px}
+.redir-table{border-collapse:collapse;width:100%;font-size:11.5px;white-space:nowrap}
+.redir-table th,.redir-table td{padding:7px 10px;text-align:center;border:.5px solid var(--bd)}
+.redir-table thead th{background:var(--surface2,rgba(0,122,255,.06));color:var(--tx2);font-weight:700;font-size:10.5px}
+.redir-th-sub{font-weight:400;color:var(--tx3);font-size:9.5px}
+.redir-cluster-cell{text-align:left!important;color:var(--tx);font-weight:600}
+.redir-table td.redir-delta{font-weight:700}
 @media(max-width:600px){.rede-krow{grid-template-columns:1fr}.rede-sgrid{grid-template-columns:1fr}.rede-meta-info{grid-template-columns:1fr}}
 
 /* ─── APORTES COMBUSTÍVEL (fap-*) ─── */
@@ -8171,6 +8179,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="cw"><canvas id="ch-enc" role="img" aria-label="Distribuição por regra de SLA encerrados"></canvas></div>
         </div>
       </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-hd"><span class="card-title">Redir</span></div>
+        <div class="redir-desc">Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta 85% · Outlier &gt;24h: máx. 1,98%). Últimos 6 meses fechados + mês corrente (MTD) e últimas 5 semanas fechadas + semana corrente (WTD), sempre pela data de hoje — não reage aos filtros do painel; só muda ao anexar nova base.</div>
+        <div class="redir-sub-title">Prazo &lt;8h</div>
+        <div style="overflow-x:auto;margin-bottom:18px" id="redir-table-prazo"></div>
+        <div class="redir-sub-title">Outlier &gt;24h</div>
+        <div style="overflow-x:auto" id="redir-table-outlier"></div>
+        <div class="redir-sub-title" style="margin-top:18px">FCA — Prazo &lt;8h</div>
+        <div class="rede-report-box" id="redir-fca-prazo"></div>
+        <div class="redir-sub-title" style="margin-top:14px">FCA — Outlier &gt;24h</div>
+        <div class="rede-report-box" id="redir-fca-outlier"></div>
+      </div>
       <div class="g2">
         <div class="card">
           <div class="card-hd"><span class="card-title">Análise de prazo e outlier</span></div>
@@ -11725,6 +11745,168 @@ function encStatsClusterAvg(d){
   const n=clusters.length;
   const pPrazo=sumPrazo/n,pInter=sumInter/n,pOut=sumOut/n,pFora8=pInter+pOut;
   return{...pooled,pPrazo,pInter,pOut,pFora8,gapPrazo:Math.max(0,85-pPrazo),excessoOutlier:Math.max(0,pOut-1.98)};
+}
+/* "Redir" (pedido do usuário): bloco fixo acima de "Análise de prazo e outlier"/"Volume /
+   Semana" no B2B Encerrados — 2 tabelas (Prazo <8h / Outlier >24h) por REGIONAL/CLUSTER
+   (Maranhão=C.32, Piauí=C.31, Norte=C.28 — mesmo agrupamento de PA CAP+PA INT+AM/AP já
+   usado no filtro "Norte" de Cluster, ver CLUSTER_NORTE_MEMBERS), com os últimos 6 meses
+   fechados + mês corrente (MTD) e as últimas 5 semanas fechadas + semana corrente (WTD),
+   sempre ancorado na data REAL de hoje — nunca no filtro de Mês/Semana/Cluster do painel
+   (pedido explícito do usuário: "sem interação de filtros"). Usa a mesma regra/meta já
+   adotada em encRuleStats() (85% pra Prazo≤8h, 1,98% máx. pra Outlier>24h). Como não lê
+   nenhum estado de filtro, só muda quando dEnc muda (nova base anexada) — chamado sempre
+   que renderAllEnc() roda é suficiente, sem wiring extra. */
+const REDIR_GROUPS=[
+  {key:'Norte',code:'C.28',clusters:CLUSTER_NORTE_MEMBERS},
+  {key:'Piauí',code:'C.31',clusters:['PI CAP','PI INT']},
+  {key:'Maranhão',code:'C.32',clusters:['MA CAP','MA INT']},
+];
+function redirGroupOf(rawCluster){const g=REDIR_GROUPS.find(g=>g.clusters.includes(rawCluster));return g?g.key:null;}
+/* Toda essa família de funções usa datas em horário LOCAL (nunca Date.UTC/getUTC*),
+   de propósito: calcSemana() (reaproveitada aqui) lê o Date que recebe via getters
+   LOCAIS (getFullYear/getMonth/getDate) — misturar construção UTC com leitura local
+   é exatamente o bug que já existe documentado em rdeParseDateBR (meia-noite UTC vira
+   21h do dia anterior no fuso do Brasil, UTC-3). Bug real encontrado e corrigido aqui
+   na 1ª versão: redirIsoWeekMonday construía a segunda-feira via Date.UTC, e ao
+   repassar esse Date pra calcSemana() (leitura local), a "segunda-feira" virava
+   domingo da semana ANTERIOR no horário de Brasília — toda a série de semanas saía
+   deslocada 1 semana pra trás (ex.: WTD mostrava S38 quando hoje já é S39). */
+function redirIsoWeekMonday(y,w){
+  const jan4=new Date(y,0,4);
+  const jan4Day=jan4.getDay()||7;
+  const week1Mon=new Date(y,0,4-jan4Day+1);
+  return new Date(week1Mon.getFullYear(),week1Mon.getMonth(),week1Mon.getDate()+(w-1)*7);
+}
+function redirWeekRangeLabel(semanaKey){
+  const m=/^(\d{4})-S(\d{2})$/.exec(semanaKey||'');
+  if(!m)return semanaKey||'';
+  const mon=redirIsoWeekMonday(+m[1],+m[2]);
+  const sun=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6);
+  const f=d=>String(d.getDate()).padStart(2,'0')+'/'+d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
+  return`${f(mon)}–${f(sun)}`;
+}
+/* Retorna nReal+1 chaves 'AAAA-MM' terminando no mês corrente (o último item). */
+function redirLastMonths(nReal){
+  const now=new Date();
+  const out=[];
+  for(let i=nReal;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
+  }
+  return out;
+}
+/* Retorna nReal+1 chaves 'AAAA-Snn' terminando na semana corrente (o último item) —
+   deriva por data real (não w-i ingênuo) pra não quebrar em virada de ano. */
+function redirLastWeeks(nReal){
+  const today=new Date();
+  const curKey=calcSemana(today);
+  const m=/^(\d{4})-S(\d{2})$/.exec(curKey);
+  const curMon=redirIsoWeekMonday(+m[1],+m[2]);
+  const out=[];
+  for(let i=nReal;i>=0;i--){
+    const d=new Date(curMon.getFullYear(),curMon.getMonth(),curMon.getDate()-i*7);
+    out.push(calcSemana(d));
+  }
+  return out;
+}
+function redirStatsFor(rows,metric){
+  const total=rows.length;
+  const n=metric==='prazo'?rows.filter(x=>x.dentro8h).length:rows.filter(x=>x.outlier24h).length;
+  return{total,pct:total?n/total*100:null};
+}
+function redirSeries(periods,periodKeyFn,metric){
+  const base=slnEnc();
+  const byGroupPeriod={};
+  REDIR_GROUPS.forEach(g=>byGroupPeriod[g.key]={});
+  base.forEach(x=>{
+    const g=redirGroupOf(x.cluster);if(!g)return;
+    const pk=periodKeyFn(x);if(!periods.includes(pk))return;
+    (byGroupPeriod[g][pk]=byGroupPeriod[g][pk]||[]).push(x);
+  });
+  return REDIR_GROUPS.map(g=>{
+    const cells=periods.map(pk=>redirStatsFor(byGroupPeriod[g.key][pk]||[],metric));
+    const last=cells[cells.length-1],prev=cells[cells.length-2];
+    const delta=(last&&last.pct!==null&&prev&&prev.pct!==null)?+(last.pct-prev.pct).toFixed(1):null;
+    return{group:g,cells,delta};
+  });
+}
+function redirPctColor(metric,pct){
+  if(pct===null)return'var(--tx3)';
+  if(metric==='prazo')return pct>=85?'var(--green-dk)':pct>=70?'var(--orange)':'var(--red)';
+  return pct<=1.98?'var(--green-dk)':pct<=5?'var(--orange)':'var(--red)';
+}
+function redirDeltaBadge(metric,delta){
+  if(delta===null)return'<span style="color:var(--tx3)">—</span>';
+  const good=metric==='prazo'?delta>=0:delta<=0;
+  const sign=delta>0?'+':'';
+  return`<span class="tag ${good?'tag-green':'tag-red'}">${sign}${pp(delta)} p.p.</span>`;
+}
+function redirRenderTable(elId,metric){
+  const el=document.getElementById(elId);if(!el)return;
+  const monthPeriods=redirLastMonths(6);
+  const weekPeriods=redirLastWeeks(5);
+  const monthSeries=redirSeries(monthPeriods,x=>x.mes,metric);
+  const weekSeries=redirSeries(weekPeriods,x=>x.semana,metric);
+  const monthHead=monthPeriods.map((k,i)=>{
+    const lbl=fmtMesLabel(k);
+    return`<th>${eh(lbl.charAt(0).toUpperCase()+lbl.slice(1))}<br><span class="redir-th-sub">${i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
+  }).join('');
+  const weekHead=weekPeriods.map((k,i)=>{
+    const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
+    return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
+  }).join('');
+  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th>ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th>${weekHead}<th>ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th></tr></thead><tbody>${
+    monthSeries.map((row,i)=>{
+      const wrow=weekSeries[i];
+      const monthCells=row.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+      const weekCells=wrow.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+      return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta">${redirDeltaBadge(metric,row.delta)}</td>${weekCells}<td class="redir-delta">${redirDeltaBadge(metric,wrow.delta)}</td></tr>`;
+    }).join('')
+  }</tbody></table>`;
+}
+/* FCA (Fato/Causa/Ação) do bloco Redir: justifica o resultado do MÊS corrente e da SEMANA
+   corrente com as cidades de maior peso nos chamados fora da regra (fora de 8h pro Prazo,
+   ou outlier pro Outlier), mesmo padrão de rdeMttrOfensoresFcaText()/desvioRanking (texto
+   plano, cidade + peso %). Não usa filtro nenhum — mesma base fixa das tabelas acima. */
+function redirFcaCidades(metric){
+  const base=slnEnc();
+  const curMonth=redirLastMonths(0)[0];
+  const curWeek=redirLastWeeks(0)[0];
+  const isBad=metric==='prazo'?x=>!x.dentro8h:x=>x.outlier24h;
+  const metricLabel=metric==='prazo'?'fora da meta de Prazo ≤8h':'em Outlier (>24h)';
+  function resumo(rows){
+    const total=rows.length;
+    const bad=rows.filter(isBad);
+    const porCidade={};
+    bad.forEach(x=>{if(!x.cidade)return;porCidade[x.cidade]=(porCidade[x.cidade]||0)+1;});
+    const ranking=Object.entries(porCidade).sort((a,b)=>b[1]-a[1]);
+    return{total,badTotal:bad.length,ranking};
+  }
+  const mesInfo=resumo(base.filter(x=>x.mes===curMonth));
+  const semInfo=resumo(base.filter(x=>x.semana===curWeek));
+  const fmtRanking=info=>info.ranking.slice(0,5).map(([c,n])=>`${c} (${n}/${info.badTotal} — ${pp(n/info.badTotal*100)}%)`).join(', ')||'sem cidade identificada';
+  const mesLbl=fmtMesLabel(curMonth);
+  const mesTxt=mesInfo.total
+    ?`Fato: em ${mesLbl} (MTD), ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`+(mesInfo.badTotal?`\nCausa: cidades com maior peso no resultado do mês: ${fmtRanking(mesInfo)}.`:'')
+    :`Sem chamados encerrados em ${mesLbl} até o momento.`;
+  const semLbl=`S${(/-S(\d{2})$/.exec(curWeek)||[])[1]||''} (${redirWeekRangeLabel(curWeek)})`;
+  const semTxt=semInfo.total
+    ?`Na semana ${semLbl} (WTD), ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`+(semInfo.badTotal?`\nCidades com maior peso no resultado da semana: ${fmtRanking(semInfo)}.`:'')
+    :`Sem chamados encerrados na semana ${semLbl} até o momento.`;
+  const top=mesInfo.ranking[0];
+  const acaoTxt=top
+    ?`Ação: priorizar ${top[0]} (maior peso no mês) com reforço de equipe/estoque e acompanhamento semanal da evolução até fechar a meta.`
+    :'Ação: manter monitoramento — sem concentração relevante por cidade no período.';
+  return`${mesTxt}\n\n${semTxt}\n\n${acaoTxt}`;
+}
+function redirRenderAll(){
+  if(!document.getElementById('redir-table-prazo'))return;
+  redirRenderTable('redir-table-prazo','prazo');
+  redirRenderTable('redir-table-outlier','outlier');
+  const fcaPrazoEl=document.getElementById('redir-fca-prazo');
+  if(fcaPrazoEl)fcaPrazoEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(redirFcaCidades('prazo'))+'</pre>';
+  const fcaOutlierEl=document.getElementById('redir-fca-outlier');
+  if(fcaOutlierEl)fcaOutlierEl.innerHTML='<pre style="font-family:inherit;font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--tx2);margin:0">'+eh(redirFcaCidades('outlier'))+'</pre>';
 }
 function parseOpeningDate(v){if(v===undefined||v===null||v==='')return null;if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d)?null:d}const raw=String(v).trim();if(!raw)return null;const iso=new Date(raw);if(!isNaN(iso))return iso;const m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const y=Number(m[3].length===2?'20'+m[3]:m[3]);const d=new Date(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));return isNaN(d)?null:d}
 function fmtReportDate(v){const d=parseOpeningDate(v);if(!d)return String(v||'').trim()||'-';const hasTime=d.getHours()||d.getMinutes()||d.getSeconds();return hasTime?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('pt-BR')}
@@ -15914,6 +16096,7 @@ function renderAllEnc(){
   rBanner(d);renderExecReport(d);rMetEnc(d);rClusterCards(d);
   rSlaEnc(d);rCausaEnc(d);rMeta8(d);rChEnc(d);rChSem();rChMetaEnc();rChWowEnc();
   rSegEnc(d);rUfEnc(d);rCidadeEnc(d);renderTEnc();
+  redirRenderAll();
 }
 
 function rBanner(d){
