@@ -1561,6 +1561,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .redir-th-sub{font-weight:400;color:var(--tx3);font-size:9.5px}
 .redir-cluster-cell{text-align:left!important;color:var(--tx);font-weight:600}
 .redir-table td.redir-delta{font-weight:700}
+.redir-table .redir-delta-col{background:rgba(0,122,255,.08)}
+.redir-table thead th.redir-delta-col{background:rgba(0,122,255,.16)}
 @media(max-width:600px){.rede-krow{grid-template-columns:1fr}.rede-sgrid{grid-template-columns:1fr}.rede-meta-info{grid-template-columns:1fr}}
 
 /* ─── APORTES COMBUSTÍVEL (fap-*) ─── */
@@ -11795,6 +11797,19 @@ function redirLastMonths(nReal){
   }
   return out;
 }
+/* Pedido do usuário: "mostrar sempre todos os mês de Janeiro ao Mês atual" — troca o
+   recorte fixo de 6 meses por Jan..mês corrente do ANO CORRENTE (cresce mês a mês,
+   ex.: 9 colunas em setembro, 12 em dezembro). O último item continua sendo o mês
+   corrente (MTD). */
+function redirYearMonths(){
+  const now=new Date();
+  const out=[];
+  for(let m=0;m<=now.getMonth();m++){
+    const d=new Date(now.getFullYear(),m,1);
+    out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
+  }
+  return out;
+}
 /* Retorna nReal+1 chaves 'AAAA-Snn' terminando na semana corrente (o último item) —
    deriva por data real (não w-i ingênuo) pra não quebrar em virada de ano. */
 function redirLastWeeks(nReal){
@@ -11830,10 +11845,12 @@ function redirSeries(periods,periodKeyFn,metric){
     return{group:g,cells,delta};
   });
 }
+/* Pedido do usuário: "os dados abaixo da meta a fonte fica em vermelho" — regra binária
+   (dentro da meta = verde, fora = vermelho), sem faixa intermediária laranja. */
 function redirPctColor(metric,pct){
   if(pct===null)return'var(--tx3)';
-  if(metric==='prazo')return pct>=85?'var(--green-dk)':pct>=70?'var(--orange)':'var(--red)';
-  return pct<=1.98?'var(--green-dk)':pct<=5?'var(--orange)':'var(--red)';
+  const dentroDaMeta=metric==='prazo'?pct>=85:pct<=1.98;
+  return dentroDaMeta?'var(--green-dk)':'var(--red)';
 }
 function redirDeltaBadge(metric,delta){
   if(delta===null)return'<span style="color:var(--tx3)">—</span>';
@@ -11843,7 +11860,7 @@ function redirDeltaBadge(metric,delta){
 }
 function redirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
-  const monthPeriods=redirLastMonths(6);
+  const monthPeriods=redirYearMonths();
   const weekPeriods=redirLastWeeks(5);
   const monthSeries=redirSeries(monthPeriods,x=>x.mes,metric);
   const weekSeries=redirSeries(weekPeriods,x=>x.semana,metric);
@@ -11855,19 +11872,36 @@ function redirRenderTable(elId,metric){
     const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
     return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
-  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th>ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th>${weekHead}<th>ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th></tr></thead><tbody>${
+  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th></tr></thead><tbody>${
     monthSeries.map((row,i)=>{
       const wrow=weekSeries[i];
       const monthCells=row.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
       const weekCells=wrow.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
-      return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta">${redirDeltaBadge(metric,row.delta)}</td>${weekCells}<td class="redir-delta">${redirDeltaBadge(metric,wrow.delta)}</td></tr>`;
+      return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td></tr>`;
     }).join('')
   }</tbody></table>`;
 }
+/* Sugestões de ação por causa raiz (pedido do usuário: "lista algumas soluções para
+   melhorar o indicador") — mapeadas pelas categorias já normalizadas por fmtCausaRaiz().
+   Fallback genérico cobre qualquer causa fora dessa lista (texto livre vindo da base). */
+const REDIR_CAUSA_ACOES={
+  'Rompimento de Fibra':'reforçar rondas preventivas nos trechos críticos e manter equipe de plantão dedicada a emergência de fibra',
+  'Normalizado Sem Intervenção':'validar remotamente antes de despachar técnico, reduzindo deslocamento desnecessário e liberando agenda',
+  'Ajuste de Atenuação':'padronizar checklist de medição de atenuação na instalação, evitando retrabalho por sinal fora da faixa',
+  'Configuração':'revisar o procedimento de configuração de equipamento na ponta e reforçar treinamento da equipe técnica',
+  'Falha Elétrica Cliente':'orientar o cliente sobre proteção elétrica e avaliar reforço de proteção (No-break/protetor) nos pontos recorrentes',
+  'Ação Cliente':'reforçar a comunicação prévia de agendamento com o cliente, pra reduzir reagendamento e ausência',
+  'Falha Elétrica no POP':'priorizar manutenção preventiva de energia nos POPs com maior recorrência de falha',
+  'Demais Causas de Rompimento':'mapear os pontos de rompimento recorrentes e reforçar a proteção física da rede nesses trechos',
+  'Sem Ação':'investigar por que os chamados fecham sem ação registrada — pode ser falha de processo/registro, não causa técnica real',
+};
+function redirAcaoParaCausa(causa){return REDIR_CAUSA_ACOES[causa]||'investigar a causa raiz com a equipe técnica local e padronizar um plano de ação específico';}
 /* FCA (Fato/Causa/Ação) do bloco Redir: justifica o resultado do MÊS corrente e da SEMANA
-   corrente com as cidades de maior peso nos chamados fora da regra (fora de 8h pro Prazo,
-   ou outlier pro Outlier), mesmo padrão de rdeMttrOfensoresFcaText()/desvioRanking (texto
-   plano, cidade + peso %). Não usa filtro nenhum — mesma base fixa das tabelas acima. */
+   corrente com as cidades E causas raiz de maior peso nos chamados fora da regra (fora de
+   8h pro Prazo, ou outlier pro Outlier), mesmo padrão de rdeMttrOfensoresFcaText()/
+   desvioRanking (texto plano, item + peso %). Ação lista soluções concretas por causa raiz
+   predominante (pedido do usuário), não só "priorizar a cidade X". Não usa filtro nenhum —
+   mesma base fixa das tabelas acima. */
 function redirFcaCidades(metric){
   const base=slnEnc();
   const curMonth=redirLastMonths(0)[0];
@@ -11877,26 +11911,41 @@ function redirFcaCidades(metric){
   function resumo(rows){
     const total=rows.length;
     const bad=rows.filter(isBad);
-    const porCidade={};
-    bad.forEach(x=>{if(!x.cidade)return;porCidade[x.cidade]=(porCidade[x.cidade]||0)+1;});
-    const ranking=Object.entries(porCidade).sort((a,b)=>b[1]-a[1]);
-    return{total,badTotal:bad.length,ranking};
+    const porCidade={},porCausa={};
+    bad.forEach(x=>{
+      if(x.cidade)porCidade[x.cidade]=(porCidade[x.cidade]||0)+1;
+      const c=fmtCausaRaiz(x.causaRaiz)||'Não informada';
+      porCausa[c]=(porCausa[c]||0)+1;
+    });
+    const rankingCidade=Object.entries(porCidade).sort((a,b)=>b[1]-a[1]);
+    const rankingCausa=Object.entries(porCausa).sort((a,b)=>b[1]-a[1]);
+    return{total,badTotal:bad.length,rankingCidade,rankingCausa};
   }
   const mesInfo=resumo(base.filter(x=>x.mes===curMonth));
   const semInfo=resumo(base.filter(x=>x.semana===curWeek));
-  const fmtRanking=info=>info.ranking.slice(0,5).map(([c,n])=>`${c} (${n}/${info.badTotal} — ${pp(n/info.badTotal*100)}%)`).join(', ')||'sem cidade identificada';
+  const fmtRankingCidade=info=>info.rankingCidade.slice(0,5).map(([c,n])=>`${c} (${n}/${info.badTotal} — ${pp(n/info.badTotal*100)}%)`).join(', ')||'sem cidade identificada';
+  const fmtRankingCausa=info=>info.rankingCausa.slice(0,3).map(([c,n])=>`${c} (${n}/${info.badTotal} — ${pp(n/info.badTotal*100)}%)`).join(', ')||'sem causa identificada';
   const mesLbl=fmtMesLabel(curMonth);
   const mesTxt=mesInfo.total
-    ?`Fato: em ${mesLbl} (MTD), ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`+(mesInfo.badTotal?`\nCausa: cidades com maior peso no resultado do mês: ${fmtRanking(mesInfo)}.`:'')
+    ?`Fato: em ${mesLbl} (MTD), ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
+      +(mesInfo.badTotal?`\nCidades com maior peso no resultado do mês: ${fmtRankingCidade(mesInfo)}.`:'')
+      +(mesInfo.badTotal?`\nPrincipais causas raiz no mês: ${fmtRankingCausa(mesInfo)}.`:'')
     :`Sem chamados encerrados em ${mesLbl} até o momento.`;
   const semLbl=`S${(/-S(\d{2})$/.exec(curWeek)||[])[1]||''} (${redirWeekRangeLabel(curWeek)})`;
   const semTxt=semInfo.total
-    ?`Na semana ${semLbl} (WTD), ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`+(semInfo.badTotal?`\nCidades com maior peso no resultado da semana: ${fmtRanking(semInfo)}.`:'')
+    ?`Na semana ${semLbl} (WTD), ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
+      +(semInfo.badTotal?`\nCidades com maior peso no resultado da semana: ${fmtRankingCidade(semInfo)}.`:'')
+      +(semInfo.badTotal?`\nPrincipais causas raiz na semana: ${fmtRankingCausa(semInfo)}.`:'')
     :`Sem chamados encerrados na semana ${semLbl} até o momento.`;
-  const top=mesInfo.ranking[0];
-  const acaoTxt=top
-    ?`Ação: priorizar ${top[0]} (maior peso no mês) com reforço de equipe/estoque e acompanhamento semanal da evolução até fechar a meta.`
-    :'Ação: manter monitoramento — sem concentração relevante por cidade no período.';
+  let acaoTxt;
+  if(mesInfo.rankingCausa.length){
+    const bullets=mesInfo.rankingCausa.slice(0,3).map(([causa,n])=>`- Para ${causa} (${pp(n/mesInfo.badTotal*100)}% do mês): ${redirAcaoParaCausa(causa)}.`);
+    const topCidade=mesInfo.rankingCidade[0];
+    if(topCidade)bullets.push(`- Priorizar ${topCidade[0]} (maior peso no mês) com acompanhamento semanal da evolução até fechar a meta.`);
+    acaoTxt=`Ação — sugestões para melhorar o indicador:\n${bullets.join('\n')}`;
+  }else{
+    acaoTxt='Ação: manter monitoramento — sem concentração relevante de causa/cidade no período.';
+  }
   return`${mesTxt}\n\n${semTxt}\n\n${acaoTxt}`;
 }
 function redirRenderAll(){
