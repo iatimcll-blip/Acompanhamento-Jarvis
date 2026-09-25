@@ -1563,6 +1563,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .redir-table td.redir-delta{font-weight:700}
 .redir-table .redir-delta-col{background:rgba(0,122,255,.08)}
 .redir-table thead th.redir-delta-col{background:rgba(0,122,255,.16)}
+.redir-table .redir-proj-col{background:rgba(175,82,222,.10)}
+.redir-table thead th.redir-proj-col{background:rgba(175,82,222,.20)}
 @media(max-width:600px){.rede-krow{grid-template-columns:1fr}.rede-sgrid{grid-template-columns:1fr}.rede-meta-info{grid-template-columns:1fr}}
 
 /* ─── APORTES COMBUSTÍVEL (fap-*) ─── */
@@ -11864,12 +11866,34 @@ function redirDeltaBadge(metric,delta){
   const sign=delta>0?'+':'';
   return`<span class="tag ${good?'tag-green':'tag-red'}">${sign}${pp(delta)} p.p.</span>`;
 }
+/* Dias já decorridos no período corrente x total de dias do período — base do "run-rate"
+   de volume já usado em fuelMonthProjection() (Painel Combustível), mas aqui aplicado a
+   uma TAXA (% dentro do prazo/outlier), não a um total acumulado: projetar numerador e
+   denominador pelo MESMO fator de run-rate daria sempre a própria taxa atual de volta
+   (identidade matemática, coluna redundante com MTD/WTD) — por isso a projeção pondera a
+   taxa do período corrente com a MÉDIA dos períodos reais já fechados, dando mais peso ao
+   dado real conforme o período avança (poucos dias decorridos → projeção puxa mais pra
+   média histórica; período quase completo → projeção converge pro dado real do período). */
+function redirDiaSemanaDecorrido(){const d=new Date();return d.getDay()||7;}
+function redirDiasNoMesAtual(){const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate();}
+function redirProjecao(cells,diasDecorridos,diasTotais){
+  if(!cells.length)return null;
+  const atual=cells[cells.length-1];
+  const historicos=cells.slice(0,-1).filter(c=>c.pct!==null);
+  const mediaHist=historicos.length?historicos.reduce((s,c)=>s+c.pct,0)/historicos.length:null;
+  if(atual.pct===null)return mediaHist;
+  if(mediaHist===null)return atual.pct;
+  const pesoAtual=Math.min(1,Math.max(0,diasDecorridos/Math.max(1,diasTotais)));
+  return pesoAtual*atual.pct+(1-pesoAtual)*mediaHist;
+}
 function redirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
   const monthPeriods=redirYearMonths();
   const weekPeriods=redirLastWeeks(5);
   const monthSeries=redirSeries(monthPeriods,x=>x.mes,metric);
   const weekSeries=redirSeries(weekPeriods,x=>x.semana,metric);
+  const diaMes=new Date().getDate(),diasMes=redirDiasNoMesAtual();
+  const diaSemana=redirDiaSemanaDecorrido();
   const monthHead=monthPeriods.map((k,i)=>{
     const lbl=fmtMesLabel(k);
     return`<th>${eh(lbl.charAt(0).toUpperCase()+lbl.slice(1))}<br><span class="redir-th-sub">${i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
@@ -11878,12 +11902,15 @@ function redirRenderTable(elId,metric){
     const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
     return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
-  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th></tr></thead><tbody>${
+  el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Mês)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Semana)</span></th></tr></thead><tbody>${
     monthSeries.map((row,i)=>{
       const wrow=weekSeries[i];
       const monthCells=row.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
       const weekCells=wrow.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
-      return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td></tr>`;
+      const projMes=redirProjecao(row.cells,diaMes,diasMes);
+      const projSem=redirProjecao(wrow.cells,diaSemana,7);
+      const projCell=p=>`<td class="redir-proj-col" style="color:${redirPctColor(metric,p)};font-weight:700">${p===null?'—':pp(p)+'%'}</td>`;
+      return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
     }).join('')
   }</tbody></table>`;
 }
