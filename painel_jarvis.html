@@ -8556,13 +8556,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button class="rede-sgbtn on" data-cl="" onclick="rdeSetCluster('')">Todos <span class="rede-cnt" id="rde-cnt-all">0</span></button>
             <button class="rede-sgbtn" data-cl="C" onclick="rdeSetCluster('C')">MA CAP <span class="rede-cnt" id="rde-cnt-C">0</span></button>
             <button class="rede-sgbtn" data-cl="I" onclick="rdeSetCluster('I')">MA INT <span class="rede-cnt" id="rde-cnt-I">0</span></button>
-            <button class="rede-sgbtn" data-cl="P" onclick="rdeSetCluster('P')">PI <span class="rede-cnt" id="rde-cnt-P">0</span></button>
             <button class="rede-sgbtn" data-cl="N" onclick="rdeSetCluster('N')">NORTE <span class="rede-cnt" id="rde-cnt-N">0</span></button>
             <!-- Pedido do usuário: filtros que consolidam os resultados no cluster regional
                  — "Maranhão" soma MA CAP+MA INT (2 clusters brutos distintos, ver
-                 RDE_CLUSTER_AGGREGATES); "Piauí" é o nome completo do cluster "PI" já
-                 existente (que já é atômico no Rede, sem CAP/INT separado) — mantido como
-                 opção própria a pedido explícito, sem remover o botão "PI" original. -->
+                 RDE_CLUSTER_AGGREGATES). O botão "PI" original foi removido a pedido do
+                 usuário por ficar em duplicidade com "Piauí" (que aponta pro mesmo cluster
+                 bruto "P", já atômico no Rede — sem CAP/INT separado); rdeClFilter('P')
+                 continua funcionando normalmente por trás, só não tem mais botão próprio. -->
             <button class="rede-sgbtn" data-cl="MA" onclick="rdeSetCluster('MA')">Maranhão <span class="rede-cnt" id="rde-cnt-MA">0</span></button>
             <button class="rede-sgbtn" data-cl="PIA" onclick="rdeSetCluster('PIA')">Piauí <span class="rede-cnt" id="rde-cnt-PIA">0</span></button>
           </div>
@@ -23427,15 +23427,38 @@ function rdeComputeMttr(){
      "Meta" do Painel Rede.
    - Volume de Eventos/Volume de Outlier são contagens, não taxas — sem meta/cor por
      definição (sem "certo ou errado" fixo pra um volume), só ΔMoM/ΔWoW neutro. */
+/* Extrai a UF bruta da linha achatada por rdeToFlat — mesmo padrão de acesso a `_raw`/
+   `_scope` já usado em rdeChaveExpurgo() (o "det" é o objeto de detalhe, índice 8 pra
+   Acesso ou 7 pra Backbone). Necessário pra subdividir Norte em PA CAP/PA INT/AP/AM: o
+   cluster bruto do Rede só sabe "N" (Norte inteiro), a UF real (AM/AP/PA) só existe
+   dentro do detalhe da linha. */
+function rdeRedirRawUf(r){
+  const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:null;
+  return det?String(det.uf||'').toUpperCase().trim():'';
+}
 /* Pedido do usuário: "transformar a tabela com as mesmas características do Painel B2B
-   Encerrados Bloco Redir" — linhas REGIONAIS (Norte/Piauí/Maranhão, mesmo agrupamento do
-   novo filtro "Maranhão"/"Piauí" do painel), com Maranhão expansível revelando MA CAP/MA
-   INT como linhas ocultas (mesmo padrão redirToggleGroup do Encerrados) — Norte e Piauí
-   não expandem porque já são atômicos no Rede (N e P não têm sub-cluster por trás). */
+   Encerrados Bloco Redir" — linhas REGIONAIS (Norte/Piauí/Maranhão), TODAS expansíveis
+   revelando sub-clusters como linhas ocultas (mesmo padrão redirToggleGroup do
+   Encerrados). Maranhão subdivide pelo próprio cluster bruto do Rede (C/I já vêm
+   separados na base). Piauí e Norte não têm essa granularidade nativa no Rede (P e N são
+   atômicos) — a pedido do usuário, a subdivisão reaproveita as MESMAS regras de
+   cidade→cluster já usadas no B2B Encerrados (normClusterByCity(), ver comentário na
+   própria função): Piauí vira PI CAP (Teresina) / PI INT (resto); Norte vira PA CAP
+   (Belém/Ananindeua) / PA INT (resto do Pará) / AP / AM — 4 grupos, não 3, porque o
+   usuário pediu AP e AM separados (o Encerrados junta os dois em "AM/AP" numa cluster só;
+   aqui não). Simplificação assumida: a exceção de Santarém/Almeirim (que o Encerrados
+   desvia pra fora de PA CAP/PA INT) não é replicada aqui — não há um 5º grupo previsto
+   pelo usuário pra acomodá-la, e são poucas linhas; ficam classificadas como PA INT. */
 const RDE_REDIR_GROUPS=[
-  {key:'Norte',clusters:['N']},
-  {key:'Piauí',clusters:['P']},
-  {key:'Maranhão',clusters:['C','I']},
+  {key:'Norte',match:r=>r.cl==='N',childKeys:['PA CAP','PA INT','AP','AM'],childKeyFn:r=>{
+    const uf=rdeRedirRawUf(r);
+    if(uf==='AP')return'AP';
+    if(uf==='AM')return'AM';
+    const c=nk(r.cidade);
+    return(c.includes('BELEM')||c.includes('ANANINDEUA'))?'PA CAP':'PA INT';
+  }},
+  {key:'Piauí',match:r=>r.cl==='P',childKeys:['PI CAP','PI INT'],childKeyFn:r=>normClusterByCity('PI',r.cidade)},
+  {key:'Maranhão',match:r=>r.cl==='C'||r.cl==='I',childKeys:['MA CAP','MA INT'],childKeyFn:r=>r.cl==='C'?'MA CAP':'MA INT'},
 ];
 const RDE_REDIR_METRICS={
   mttr:{label:'MTTR',unit:'h',metaGetter:()=>RDE_MTME,better:'lower'},
@@ -23524,7 +23547,7 @@ function rdeRedirSeries(periods,periodKeyFn,metric,groups){
   const byGroupPeriod={};
   groups.forEach(g=>byGroupPeriod[g.key]={});
   base.forEach(r=>{
-    const g=groups.find(g=>g.clusters.includes(r.cl));if(!g)return;
+    const g=groups.find(g=>g.match(r));if(!g)return;
     const pk=periodKeyFn(r);if(!periods.includes(pk))return;
     (byGroupPeriod[g.key][pk]=byGroupPeriod[g.key][pk]||[]).push(r);
   });
@@ -23617,13 +23640,12 @@ function rdeRedirRenderTable(elId,metric){
   };
   const bodyHtml=monthSeries.map((row,i)=>{
     const wrow=weekSeries[i];
-    const expandivel=row.group.clusters.length>1;
-    if(!expandivel)return buildRow(row,wrow,eh(row.group.key),'redir-group-row','');
     const isExpanded=expandedSet.has(row.group.key);
     const chevron=`<i class="ti ${isExpanded?'ti-chevron-down':'ti-chevron-right'}" style="font-size:11px;vertical-align:-1px;margin-right:3px;color:var(--tx3)"></i>`;
-    const parentHtml=buildRow(row,wrow,chevron+eh(row.group.key),'redir-group-row',` onclick="rdeRedirToggleGroup('${elId}','${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} os clusters de ${eh(row.group.key)}" style="cursor:pointer"`);
+    const parentHtml=buildRow(row,wrow,chevron+eh(row.group.key),'redir-group-row',` onclick="rdeRedirToggleGroup('${elId}','${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} os sub-clusters de ${eh(row.group.key)}" style="cursor:pointer"`);
     if(!isExpanded)return parentHtml;
-    const childGroups=row.group.clusters.map(c=>({key:RDE_CLUSTER_LABELS[c]||c,clusters:[c]}));
+    const parentGroup=row.group;
+    const childGroups=parentGroup.childKeys.map(ck=>({key:ck,match:r=>parentGroup.match(r)&&parentGroup.childKeyFn(r)===ck}));
     const childMonthSeries=rdeRedirSeries(monthPeriods,r=>r.m,metric,childGroups);
     const childWeekSeries=rdeRedirSeries(weekPeriods,r=>r.w,metric,childGroups);
     const childHtml=childGroups.map((cg,ci)=>buildRow(childMonthSeries[ci],childWeekSeries[ci],`<span style="padding-left:18px">${eh(cg.key)}</span>`,'redir-child-row','')).join('');
