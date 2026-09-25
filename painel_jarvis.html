@@ -1555,16 +1555,33 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 @media(max-width:720px){.rede-kpi-grid,#rde-kpis{grid-template-columns:1fr}.rede-charts-2{grid-template-columns:1fr}}
 .redir-desc{font-size:11.5px;color:var(--tx3);margin:-4px 0 14px;line-height:1.5}
 .redir-sub-title{font-size:12.5px;font-weight:700;color:var(--tx);margin:0 0 8px}
-.redir-table{border-collapse:collapse;width:100%;font-size:11.5px;white-space:nowrap}
-.redir-table th,.redir-table td{padding:7px 10px;text-align:center;border:.5px solid var(--bd)}
+.redir-ano-bar{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--tx3);font-weight:600}
+.redir-ano-bar select{border:.5px solid var(--bd2);border-radius:8px;padding:5px 9px;font-size:12.5px;color:var(--tx);background:var(--surface);font-family:inherit}
+/* Pedido do usuário: "deixar as colunas sempre ajustadas" — table-layout:fixed com
+   largura mínima/máxima igual pra toda coluna de dado (a 1ª, "Cluster", fica livre pra
+   caber "C.XX | Nome"), pra não deixar a tabela larga/desalinhada agora que os rótulos
+   de mês encolheram pra 3 letras (ver REDIR_MESES_ABREV). */
+.redir-table{border-collapse:collapse;width:100%;font-size:11.5px;white-space:nowrap;table-layout:fixed}
+.redir-table th,.redir-table td{padding:6px 4px;text-align:center;border:.5px solid var(--bd);width:64px;overflow:hidden;text-overflow:ellipsis}
+.redir-table th:first-child,.redir-table td:first-child{width:110px;padding:6px 8px}
 .redir-table thead th{background:var(--surface2,rgba(0,122,255,.06));color:var(--tx2);font-weight:700;font-size:10.5px}
 .redir-th-sub{font-weight:400;color:var(--tx3);font-size:9.5px}
 .redir-cluster-cell{text-align:left!important;color:var(--tx);font-weight:600}
 .redir-table td.redir-delta{font-weight:700}
 .redir-table .redir-delta-col{background:rgba(0,122,255,.08)}
 .redir-table thead th.redir-delta-col{background:rgba(0,122,255,.16)}
-.redir-table .redir-proj-col{background:rgba(175,82,222,.10)}
+.redir-table .redir-proj-col{background:rgba(175,82,222,.10);font-weight:700}
 .redir-table thead th.redir-proj-col{background:rgba(175,82,222,.20)}
+/* BUG REAL: o app tem uma regra global "td{...color:var(--tx2)!important}" /
+   "tbody td{...color:var(--tx2)!important}" (unificação visual de TODAS as tabelas do
+   app) que vencia qualquer style="color:..." inline nas células do Redir — o resultado
+   dentro/fora da meta nunca aparecia colorido. Precisa de !important aqui TAMBÉM: com
+   !important dos dois lados, quem decide é a especificidade do seletor, e
+   ".redir-table td.redir-ok" (0,3,1) é mais específico que "tbody td" (0,0,2). */
+.redir-table td.redir-ok{color:var(--green-dk) !important}
+.redir-table td.redir-warn{color:var(--orange) !important}
+.redir-table td.redir-bad{color:var(--red) !important}
+.redir-table td.redir-na{color:var(--tx3) !important}
 @media(max-width:600px){.rede-krow{grid-template-columns:1fr}.rede-sgrid{grid-template-columns:1fr}.rede-meta-info{grid-template-columns:1fr}}
 
 /* ─── APORTES COMBUSTÍVEL (fap-*) ─── */
@@ -8184,8 +8201,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <div class="card-hd"><span class="card-title">Redir</span></div>
-        <div class="redir-desc">Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta 85% · Outlier &gt;24h: máx. 1,98%). Últimos 6 meses fechados + mês corrente (MTD) e últimas 5 semanas fechadas + semana corrente (WTD), sempre pela data de hoje — não reage aos filtros do painel; só muda ao anexar nova base.</div>
+        <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span class="card-title">Redir</span>
+          <div class="redir-ano-bar"><label for="redir-ano-sel">Ano</label><select id="redir-ano-sel" onchange="redirSetAno(this.value)"></select></div>
+        </div>
+        <div class="redir-desc">Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta 85% · Outlier &gt;24h: máx. 1,98%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base ou trocar o ano.</div>
         <div class="redir-sub-title">Prazo &lt;8h</div>
         <div style="overflow-x:auto;margin-bottom:18px" id="redir-table-prazo"></div>
         <div class="redir-sub-title">Outlier &gt;24h</div>
@@ -11772,6 +11792,32 @@ const REDIR_GROUPS=[
   {key:'Maranhão',code:'C.32',clusters:['MA CAP','MA INT']},
 ];
 function redirGroupOf(rawCluster){const g=REDIR_GROUPS.find(g=>g.clusters.includes(rawCluster));return g?g.key:null;}
+const REDIR_MESES_ABREV=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function redirMesAbrev(mesKey){const m=+String(mesKey||'').slice(5,7);return REDIR_MESES_ABREV[m-1]||mesKey;}
+/* Filtro de Ano do próprio bloco Redir (pedido do usuário) — único controle que o bloco
+   responde; os filtros do painel (Mês/Semana/Cluster do subbar) continuam ignorados. ''
+   = ano corrente (comportamento padrão, igual a antes). */
+let redirSelAno='';
+function redirAnoAtualNum(){return new Date().getFullYear();}
+function redirAnoEfetivo(){return redirSelAno?+redirSelAno:redirAnoAtualNum();}
+function redirAnosDisponiveis(){
+  const anos=new Set([String(redirAnoAtualNum())]);
+  slnEnc().forEach(x=>{if(x.mes)anos.add(x.mes.slice(0,4));});
+  return[...anos].sort();
+}
+/* "Hoje" efetivo pros cálculos de mês/semana: se o ano selecionado for o ano corrente,
+   é a data real de hoje (comportamento de sempre); se for um ano passado, é 31/dez
+   daquele ano — o mês vira Jan..Dez inteiro (12 meses "Real", nenhum MTD) e a semana
+   final é a última semana ISO que toca aquele ano, também sem WTD. */
+function redirRefDateFim(){
+  const ano=redirAnoEfetivo();
+  return ano===redirAnoAtualNum()?new Date():new Date(ano,11,31);
+}
+function redirSetAno(v){
+  redirSelAno=v||'';
+  saveState();
+  redirRenderAll();
+}
 /* Toda essa família de funções usa datas em horário LOCAL (nunca Date.UTC/getUTC*),
    de propósito: calcSemana() (reaproveitada aqui) lê o Date que recebe via getters
    LOCAIS (getFullYear/getMonth/getDate) — misturar construção UTC com leitura local
@@ -11795,33 +11841,22 @@ function redirWeekRangeLabel(semanaKey){
   const f=d=>String(d.getDate()).padStart(2,'0')+'/'+d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
   return`${f(mon)}–${f(sun)}`;
 }
-/* Retorna nReal+1 chaves 'AAAA-MM' terminando no mês corrente (o último item). */
-function redirLastMonths(nReal){
-  const now=new Date();
-  const out=[];
-  for(let i=nReal;i>=0;i--){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
-  }
-  return out;
-}
-/* Pedido do usuário: "mostrar sempre todos os mês de Janeiro ao Mês atual" — troca o
-   recorte fixo de 6 meses por Jan..mês corrente do ANO CORRENTE (cresce mês a mês,
-   ex.: 9 colunas em setembro, 12 em dezembro). O último item continua sendo o mês
-   corrente (MTD). */
+/* Pedido do usuário: "mostrar sempre todos os mês de Janeiro ao Mês atual" — Jan..mês
+   corrente do ANO SELECIONADO no filtro (cresce mês a mês, ex.: 9 colunas em setembro,
+   12 em dezembro; ano passado sempre mostra Jan..Dez completo). O último item é o mês
+   corrente (MTD) só quando o ano selecionado é o ano corrente. */
 function redirYearMonths(){
-  const now=new Date();
+  const ano=redirAnoEfetivo();
+  const mesFinal=ano===redirAnoAtualNum()?new Date().getMonth():11;
   const out=[];
-  for(let m=0;m<=now.getMonth();m++){
-    const d=new Date(now.getFullYear(),m,1);
-    out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
-  }
+  for(let m=0;m<=mesFinal;m++)out.push(ano+'-'+String(m+1).padStart(2,'0'));
   return out;
 }
-/* Retorna nReal+1 chaves 'AAAA-Snn' terminando na semana corrente (o último item) —
-   deriva por data real (não w-i ingênuo) pra não quebrar em virada de ano. */
+/* Retorna nReal+1 chaves 'AAAA-Snn' terminando na semana de referência (o último item) —
+   deriva por data real (não w-i ingênuo) pra não quebrar em virada de ano. Usa
+   redirRefDateFim() (hoje, ou 31/dez do ano selecionado se for um ano passado). */
 function redirLastWeeks(nReal){
-  const today=new Date();
+  const today=redirRefDateFim();
   const curKey=calcSemana(today);
   const m=/^(\d{4})-S(\d{2})$/.exec(curKey);
   const curMon=redirIsoWeekMonday(+m[1],+m[2]);
@@ -11853,12 +11888,27 @@ function redirSeries(periods,periodKeyFn,metric){
     return{group:g,cells,delta};
   });
 }
-/* Pedido do usuário: "os dados abaixo da meta a fonte fica em vermelho" — regra binária
-   (dentro da meta = verde, fora = vermelho), sem faixa intermediária laranja. */
+/* Pedido do usuário: vermelho fora da meta, verde dentro da meta, amarelo quando estiver
+   fora da meta mas a até 5 p.p. de distância dela (near-miss). Mesma meta de sempre (85%
+   pra Prazo≤8h, 1,98% máx. pra Outlier>24h).
+   BUG REAL encontrado e corrigido aqui: esta função devolvia o valor pra um style="color:
+   ..." inline no td, mas o app tem uma regra GLOBAL de "unificação de tabelas" (td com
+   color:var(--tx2) !important, e tbody td também com color:var(--tx2) !important, perto
+   do comentário "Tabelas" no CSS, junto de table{border-collapse...}) que usa !important
+   e SEMPRE vence estilo inline sem !important — resultado: a cor nunca aparecia (célula
+   sempre no cinza padrão), mesmo com o cálculo/valor corretos. Corrigido devolvendo uma
+   CLASSE (aplicada como .redir-table td.redir-ok/.redir-warn/.redir-bad/.redir-na, também
+   com !important — ver CSS) em vez de um valor de color pra usar em style inline; com
+   !important dos dois lados, a classe mais específica (.redir-table td.redir-ok, 3
+   seletores) vence a global (tbody td, 2 seletores) pela especificidade, não pela ordem
+   no arquivo. */
 function redirPctColor(metric,pct){
-  if(pct===null)return'var(--tx3)';
-  const dentroDaMeta=metric==='prazo'?pct>=85:pct<=1.98;
-  return dentroDaMeta?'var(--green-dk)':'var(--red)';
+  if(pct===null)return'redir-na';
+  const meta=metric==='prazo'?85:1.98;
+  const dentroDaMeta=metric==='prazo'?pct>=meta:pct<=meta;
+  if(dentroDaMeta)return'redir-ok';
+  const distancia=metric==='prazo'?meta-pct:pct-meta;
+  return distancia<=5?'redir-warn':'redir-bad';
 }
 function redirDeltaBadge(metric,delta){
   if(delta===null)return'<span style="color:var(--tx3)">—</span>';
@@ -11874,8 +11924,8 @@ function redirDeltaBadge(metric,delta){
    taxa do período corrente com a MÉDIA dos períodos reais já fechados, dando mais peso ao
    dado real conforme o período avança (poucos dias decorridos → projeção puxa mais pra
    média histórica; período quase completo → projeção converge pro dado real do período). */
-function redirDiaSemanaDecorrido(){const d=new Date();return d.getDay()||7;}
-function redirDiasNoMesAtual(){const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate();}
+function redirDiaSemanaDecorrido(){const d=redirRefDateFim();return d.getDay()||7;}
+function redirDiasNoMesAtual(){const d=redirRefDateFim();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate();}
 function redirProjecao(cells,diasDecorridos,diasTotais){
   if(!cells.length)return null;
   const atual=cells[cells.length-1];
@@ -11892,24 +11942,24 @@ function redirRenderTable(elId,metric){
   const weekPeriods=redirLastWeeks(5);
   const monthSeries=redirSeries(monthPeriods,x=>x.mes,metric);
   const weekSeries=redirSeries(weekPeriods,x=>x.semana,metric);
-  const diaMes=new Date().getDate(),diasMes=redirDiasNoMesAtual();
+  const diaMes=redirRefDateFim().getDate(),diasMes=redirDiasNoMesAtual();
   const diaSemana=redirDiaSemanaDecorrido();
+  const anoAtual=redirAnoEfetivo()===redirAnoAtualNum();
   const monthHead=monthPeriods.map((k,i)=>{
-    const lbl=fmtMesLabel(k);
-    return`<th>${eh(lbl.charAt(0).toUpperCase()+lbl.slice(1))}<br><span class="redir-th-sub">${i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
+    return`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
   }).join('');
   const weekHead=weekPeriods.map((k,i)=>{
     const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
-    return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
+    return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
   el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Mês)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Semana)</span></th></tr></thead><tbody>${
     monthSeries.map((row,i)=>{
       const wrow=weekSeries[i];
-      const monthCells=row.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
-      const weekCells=wrow.cells.map(c=>`<td style="color:${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+      const monthCells=row.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+      const weekCells=wrow.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
       const projMes=redirProjecao(row.cells,diaMes,diasMes);
       const projSem=redirProjecao(wrow.cells,diaSemana,7);
-      const projCell=p=>`<td class="redir-proj-col" style="color:${redirPctColor(metric,p)};font-weight:700">${p===null?'—':pp(p)+'%'}</td>`;
+      const projCell=p=>`<td class="redir-proj-col ${redirPctColor(metric,p)}">${p===null?'—':pp(p)+'%'}</td>`;
       return`<tr><td class="redir-cluster-cell">${eh(row.group.code)} | ${eh(row.group.key)}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
     }).join('')
   }</tbody></table>`;
@@ -11937,8 +11987,12 @@ function redirAcaoParaCausa(causa){return REDIR_CAUSA_ACOES[causa]||'investigar 
    mesma base fixa das tabelas acima. */
 function redirFcaCidades(metric){
   const base=slnEnc();
-  const curMonth=redirLastMonths(0)[0];
+  const anoAtual=redirAnoEfetivo()===redirAnoAtualNum();
+  const meses=redirYearMonths();
+  const curMonth=meses[meses.length-1];
   const curWeek=redirLastWeeks(0)[0];
+  const mtdTag=anoAtual?' (MTD)':'';
+  const wtdTag=anoAtual?' (WTD)':'';
   const isBad=metric==='prazo'?x=>!x.dentro8h:x=>x.outlier24h;
   const metricLabel=metric==='prazo'?'fora da meta de Prazo ≤8h':'em Outlier (>24h)';
   function resumo(rows){
@@ -11960,13 +12014,13 @@ function redirFcaCidades(metric){
   const fmtRankingCausa=info=>info.rankingCausa.slice(0,3).map(([c,n])=>`${c} (${n}/${info.badTotal} — ${pp(n/info.badTotal*100)}%)`).join(', ')||'sem causa identificada';
   const mesLbl=fmtMesLabel(curMonth);
   const mesTxt=mesInfo.total
-    ?`Fato: em ${mesLbl} (MTD), ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
+    ?`Fato: em ${mesLbl}${mtdTag}, ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
       +(mesInfo.badTotal?`\nCidades com maior peso no resultado do mês: ${fmtRankingCidade(mesInfo)}.`:'')
       +(mesInfo.badTotal?`\nPrincipais causas raiz no mês: ${fmtRankingCausa(mesInfo)}.`:'')
     :`Sem chamados encerrados em ${mesLbl} até o momento.`;
   const semLbl=`S${(/-S(\d{2})$/.exec(curWeek)||[])[1]||''} (${redirWeekRangeLabel(curWeek)})`;
   const semTxt=semInfo.total
-    ?`Na semana ${semLbl} (WTD), ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
+    ?`Na semana ${semLbl}${wtdTag}, ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
       +(semInfo.badTotal?`\nCidades com maior peso no resultado da semana: ${fmtRankingCidade(semInfo)}.`:'')
       +(semInfo.badTotal?`\nPrincipais causas raiz na semana: ${fmtRankingCausa(semInfo)}.`:'')
     :`Sem chamados encerrados na semana ${semLbl} até o momento.`;
@@ -11981,8 +12035,16 @@ function redirFcaCidades(metric){
   }
   return`${mesTxt}\n\n${semTxt}\n\n${acaoTxt}`;
 }
+function redirFillAnoSelect(){
+  const sel=document.getElementById('redir-ano-sel');
+  if(!sel)return;
+  const anos=redirAnosDisponiveis();
+  if(redirSelAno&&!anos.includes(redirSelAno))redirSelAno='';
+  sel.innerHTML=anos.map(a=>`<option value="${a}"${(redirSelAno||String(redirAnoAtualNum()))===a?' selected':''}>${a}</option>`).join('');
+}
 function redirRenderAll(){
   if(!document.getElementById('redir-table-prazo'))return;
+  redirFillAnoSelect();
   redirRenderTable('redir-table-prazo','prazo');
   redirRenderTable('redir-table-outlier','outlier');
   const fcaPrazoEl=document.getElementById('redir-fca-prazo');
@@ -12289,7 +12351,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -12589,6 +12651,7 @@ function applyState(st,label){
       selEncUf=asArr(st.selEncUf).filter(u=>_encUfs.includes(u));
       selEncSemana=asArr(st.selEncSemana).filter(s=>_encSemanas.includes(s));
       selEncSeg=asArr(st.selEncSeg).filter(s=>_encSegs.includes(s));
+      if(Object.prototype.hasOwnProperty.call(st,'redirSelAno'))redirSelAno=st.redirSelAno||'';
       /* restaura barra superior (mês/semana/cluster) antes de popular, mesmo
          padrão dos filtros de tabela acima — arrays validados contra os dados
          atuais; fillMesSelector/fillWeekSelector/fillClusterSelector também
