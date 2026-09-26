@@ -7027,7 +7027,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="top-tabbar-wrap">
       <button type="button" class="tabbar-arrow tabbar-arrow-l" id="tabbar-arrow-l" onclick="scrollTabbar(-1)" title="Ver painéis anteriores"><i class="ti ti-chevron-left"></i></button>
       <div class="top-tabbar" id="top-tabbar" onscroll="updateTabbarArrows()">
-      <button class="ntab" id="ntab-abertos-ofs" onclick="window.location.href='painel_abertos_ofs.html'">
+      <button class="ntab" id="ntab-abertos-ofs" onclick="switchTab('abertosOfs')">
         <i class="ti ti-list-check"></i><span class="ntab-label"> Abertos OFS</span>
       </button>
       <button class="ntab" id="ntab-aportes" onclick="switchTab('aportes')">
@@ -7140,6 +7140,478 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="app-body">
 
   <!-- ── APORTES COMBUSTÍVEL ── -->
+  <!-- ── PAINEL ABERTOS OFS (atividades do dia por cluster/técnico/tipo, fila em
+       aberto com aging/SLA desde a abertura da OS, curva de fechamento — CSV
+       Atividades-R3 do OFS, PI/MA/PA/AM/AP). Design próprio (Barlow/Barlow
+       Condensed), inteiramente escopado sob #panel-abertos-ofs pra não vazar
+       pro resto do app: variáveis --aof-* nunca em :root, classes com prefixo
+       aof- mesmo quando o nome original era genérico (.card, .tab, .pill...). ── -->
+  <style id="aof-style">
+  #panel-abertos-ofs{
+    --aof-navy:#182238; --aof-green:#42C34B; --aof-blue:#1476C9;
+    --aof-amber:#E9A23B; --aof-red:#E0484F; --aof-gray:#8A93A6;
+    --aof-bg:#EEF1F6; --aof-card:#FFFFFF; --aof-ink:#182238; --aof-muted:#5D6780; --aof-line:#DCE1EA; --aof-soft:#F5F7FA;
+    --aof-head:#182238; --aof-headink:#FFFFFF;
+    --aof-sans:'Barlow',Calibri,'Segoe UI',Roboto,Arial,sans-serif;
+    --aof-cond:'Barlow Condensed','Arial Narrow',Calibri,sans-serif;
+    padding:0;background:var(--aof-bg);color:var(--aof-ink);font-family:var(--aof-sans);font-size:15px;line-height:1.45;
+  }
+  @media (prefers-color-scheme: dark){
+    body:not([data-theme="light"]) #panel-abertos-ofs{--aof-bg:#0F1524; --aof-card:#182238; --aof-ink:#E8ECF4; --aof-muted:#9AA5BD; --aof-line:#2A3654; --aof-soft:#1E2A44; --aof-head:#0A0F1B;}
+  }
+  body[data-theme="dark"] #panel-abertos-ofs{--aof-bg:#0F1524; --aof-card:#182238; --aof-ink:#E8ECF4; --aof-muted:#9AA5BD; --aof-line:#2A3654; --aof-soft:#1E2A44; --aof-head:#0A0F1B;}
+  #panel-abertos-ofs *,#panel-abertos-ofs *::before,#panel-abertos-ofs *::after{box-sizing:border-box}
+  #panel-abertos-ofs header.aof-top{background:var(--aof-head);color:var(--aof-headink);padding:22px clamp(16px,4vw,40px) 18px}
+  #panel-abertos-ofs .aof-brandrow{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+  #panel-abertos-ofs .aof-brand-sub{display:block;color:#9FB0CF;font-size:13px;font-weight:500}
+  #panel-abertos-ofs .aof-main.aof-empty-state .aof-grid,#panel-abertos-ofs .aof-main.aof-empty-state .aof-kpis,#panel-abertos-ofs .aof-main.aof-empty-state .aof-seg,#panel-abertos-ofs .aof-main.aof-empty-state .aof-legend{display:none}
+  #panel-abertos-ofs .aof-brand h1{margin:2px 0 0;font-family:var(--aof-cond);font-weight:700;font-size:clamp(28px,4vw,38px);letter-spacing:.2px;line-height:1.05}
+  #panel-abertos-ofs .aof-brand h1 span{color:var(--aof-green)}
+  #panel-abertos-ofs .aof-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #panel-abertos-ofs .aof-btn{font:600 14px var(--aof-sans);border-radius:10px;padding:9px 14px;border:1px solid #33415F;background:#22304D;color:#fff;cursor:pointer}
+  #panel-abertos-ofs .aof-btn:hover{background:#2A3A5C}
+  #panel-abertos-ofs .aof-btn.aof-primary{background:var(--aof-green);border-color:var(--aof-green);color:#0E2A12}
+  #panel-abertos-ofs .aof-btn:focus-visible,#panel-abertos-ofs select:focus-visible,#panel-abertos-ofs input:focus-visible,#panel-abertos-ofs .aof-tab:focus-visible,#panel-abertos-ofs th:focus-visible,#panel-abertos-ofs summary:focus-visible{outline:2px solid var(--aof-blue);outline-offset:2px}
+  #panel-abertos-ofs .aof-fileinfo{color:#9FB0CF;font-size:13px}
+  #panel-abertos-ofs .aof-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
+  #panel-abertos-ofs .aof-filters label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#9FB0CF;font-weight:500}
+  #panel-abertos-ofs .aof-filters select,#panel-abertos-ofs .aof-filters input[type=search]{font:500 14px var(--aof-sans);padding:8px 10px;border-radius:9px;border:1px solid #33415F;background:#1F2B45;color:#fff;width:100%}
+  #panel-abertos-ofs .aof-chk{flex-direction:row!important;align-items:center;gap:8px!important;padding-top:20px;color:#DCE4F3!important;font-size:14px!important}
+  #panel-abertos-ofs .aof-main{padding:22px clamp(16px,4vw,40px) 30px;max-width:1500px;margin:0 auto}
+  #panel-abertos-ofs .aof-hero{background:var(--aof-card);border-radius:18px;padding:22px 24px;border:1px solid var(--aof-line)}
+  #panel-abertos-ofs .aof-hero p.aof-lead{margin:0 0 14px;font-size:clamp(18px,2.2vw,22px);font-weight:500;max-width:70ch}
+  #panel-abertos-ofs .aof-hero p.aof-lead b{font-weight:700}
+  #panel-abertos-ofs .aof-seg{display:flex;height:34px;border-radius:10px;overflow:hidden;background:var(--aof-soft)}
+  #panel-abertos-ofs .aof-seg div{height:100%;transition:width .5s ease}
+  #panel-abertos-ofs .aof-legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:13.5px;color:var(--aof-muted)}
+  #panel-abertos-ofs .aof-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  #panel-abertos-ofs .aof-legend b{color:var(--aof-ink);font-weight:600}
+  #panel-abertos-ofs .aof-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:14px}
+  #panel-abertos-ofs .aof-kpi{background:var(--aof-card);border:1px solid var(--aof-line);border-radius:14px;padding:14px 16px}
+  #panel-abertos-ofs .aof-kpi .aof-v{font-family:var(--aof-cond);font-size:34px;font-weight:700;line-height:1}
+  #panel-abertos-ofs .aof-kpi .aof-l{font-size:13.5px;font-weight:600;margin-top:6px}
+  #panel-abertos-ofs .aof-kpi .aof-s{font-size:12.5px;color:var(--aof-muted);margin-top:2px}
+  #panel-abertos-ofs .aof-kpi.aof-accent{border-left:4px solid var(--aof-green)}
+  #panel-abertos-ofs .aof-kpi.aof-warn{border-left:4px solid var(--aof-amber)}
+  #panel-abertos-ofs .aof-kpi.aof-info{border-left:4px solid var(--aof-blue)}
+  #panel-abertos-ofs .aof-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin-top:14px}
+  #panel-abertos-ofs .aof-card{background:var(--aof-card);border:1px solid var(--aof-line);border-radius:14px;padding:16px 18px;min-width:0}
+  #panel-abertos-ofs .aof-card h2{margin:0;font-size:16.5px;font-weight:700}
+  #panel-abertos-ofs .aof-card .aof-sub{margin:2px 0 12px;font-size:13px;color:var(--aof-muted)}
+  #panel-abertos-ofs .aof-c6{grid-column:span 6}#panel-abertos-ofs .aof-c7{grid-column:span 7}#panel-abertos-ofs .aof-c5{grid-column:span 5}#panel-abertos-ofs .aof-c12{grid-column:span 12}#panel-abertos-ofs .aof-c4{grid-column:span 4}#panel-abertos-ofs .aof-c8{grid-column:span 8}
+  @media (max-width:980px){#panel-abertos-ofs .aof-c6,#panel-abertos-ofs .aof-c7,#panel-abertos-ofs .aof-c5,#panel-abertos-ofs .aof-c4,#panel-abertos-ofs .aof-c8{grid-column:span 12}}
+  #panel-abertos-ofs .aof-chartbox{position:relative;height:320px}
+  #panel-abertos-ofs .aof-chartbox.aof-tall{height:420px}
+  #panel-abertos-ofs ul.aof-alerts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  #panel-abertos-ofs ul.aof-alerts li{padding:10px 12px;border-radius:10px;background:var(--aof-soft);font-size:14px;border-left:4px solid var(--aof-blue)}
+  #panel-abertos-ofs ul.aof-alerts li.aof-w{border-left-color:var(--aof-amber)}
+  #panel-abertos-ofs ul.aof-alerts li.aof-r{border-left-color:var(--aof-red)}
+  #panel-abertos-ofs ul.aof-alerts li.aof-g{border-left-color:var(--aof-green)}
+  #panel-abertos-ofs .aof-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  #panel-abertos-ofs .aof-tab{font:600 14px var(--aof-sans);padding:8px 14px;border-radius:9px;border:1px solid var(--aof-line);background:var(--aof-soft);color:var(--aof-ink);cursor:pointer}
+  #panel-abertos-ofs .aof-tab[aria-selected=true]{background:var(--aof-navy);color:#fff;border-color:var(--aof-navy)}
+  #panel-abertos-ofs .aof-tablewrap{overflow-x:auto;max-height:560px;overflow-y:auto;border:1px solid var(--aof-line);border-radius:10px}
+  #panel-abertos-ofs table{border-collapse:collapse;width:100%;font-size:13.5px}
+  #panel-abertos-ofs th,#panel-abertos-ofs td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--aof-line);vertical-align:top;white-space:nowrap}
+  #panel-abertos-ofs td.aof-wrap{white-space:normal;min-width:220px;max-width:380px}
+  #panel-abertos-ofs th{position:sticky;top:0;background:var(--aof-soft);font-weight:600;cursor:pointer;user-select:none;z-index:1}
+  #panel-abertos-ofs th.aof-num,#panel-abertos-ofs td.aof-num{text-align:right;font-variant-numeric:tabular-nums}
+  #panel-abertos-ofs tbody tr:hover{background:var(--aof-soft)}
+  #panel-abertos-ofs .aof-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff}
+  #panel-abertos-ofs .aof-bar{height:6px;border-radius:4px;background:var(--aof-line);min-width:60px;overflow:hidden}
+  #panel-abertos-ofs .aof-bar>div{height:100%;background:var(--aof-green)}
+  #panel-abertos-ofs details summary{cursor:pointer;color:var(--aof-blue);font-weight:500}
+  #panel-abertos-ofs details pre{white-space:pre-wrap;font:13px var(--aof-sans);margin:6px 0 0;color:var(--aof-muted)}
+  #panel-abertos-ofs .aof-tabletools{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:13px;color:var(--aof-muted)}
+  #panel-abertos-ofs .aof-tabletools input{font:500 14px var(--aof-sans);padding:7px 10px;border-radius:9px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink);min-width:220px}
+  #panel-abertos-ofs .aof-footer{text-align:center;color:var(--aof-muted);font-size:12.5px;padding:10px 0 26px}
+  #panel-abertos-ofs .aof-empty{padding:26px;text-align:center;color:var(--aof-muted)}
+  #panel-abertos-ofs .aof-err{background:#FDECEC;color:#8B1D22;padding:10px 14px;border-radius:10px;margin-top:12px;display:none}
+  @media (prefers-reduced-motion: reduce){#panel-abertos-ofs .aof-seg div{transition:none}}
+  </style>
+  <div class="panel" id="panel-abertos-ofs">
+    <header class="aof-top">
+      <div class="aof-brandrow">
+        <div class="aof-brand">
+          <small class="aof-brand-sub">Regional R3</small>
+          <h1>Abertos OFS <span id="aof-hDate">—</span></h1>
+        </div>
+        <div class="aof-actions">
+          <span class="aof-fileinfo" id="aof-fileInfo"></span>
+          <label class="aof-btn aof-primary" for="aof-fileIn" tabindex="0">Anexar base (.csv)</label>
+          <input type="file" id="aof-fileIn" accept=".csv,text/csv" hidden>
+          <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
+          <button class="aof-btn" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
+        </div>
+      </div>
+      <div class="aof-filters">
+        <label>Cluster<select id="aof-fCluster"></select></label>
+        <label>UF<select id="aof-fUF"></select></label>
+        <label>Categoria<select id="aof-fCat"></select></label>
+        <label>Tipo de atividade<select id="aof-fTipo"></select></label>
+        <label>Status<select id="aof-fStatus"></select></label>
+        <label>Técnico<input type="search" id="aof-fTec" placeholder="Nome do técnico"></label>
+        <label class="aof-chk"><input type="checkbox" id="aof-fPausa"> Incluir almoço</label>
+      </div>
+      <div class="aof-err" id="aof-err"></div>
+    </header>
+
+    <div class="aof-main aof-empty-state" id="aof-main">
+      <section class="aof-hero">
+        <p class="aof-lead" id="aof-lead">Anexe o CSV de atividades exportado do OFS (Atividades-R3) para montar o painel. Serão consideradas apenas as UFs PI, MA, PA, AM e AP.</p>
+        <div class="aof-seg" id="aof-seg" role="img" aria-label="Composição de status"></div>
+        <div class="aof-legend" id="aof-segLegend"></div>
+      </section>
+
+      <section class="aof-kpis" id="aof-kpis"></section>
+
+      <section class="aof-grid">
+        <div class="aof-card aof-c7">
+          <h2>Status por cluster</h2>
+          <p class="aof-sub">Atividades programadas no dia, empilhadas por status</p>
+          <div class="aof-chartbox"><canvas id="aof-chCluster"></canvas></div>
+        </div>
+        <div class="aof-card aof-c5">
+          <h2>Pontos de atenção</h2>
+          <p class="aof-sub">Gerados a partir do recorte filtrado</p>
+          <ul class="aof-alerts" id="aof-alerts"></ul>
+        </div>
+        <div class="aof-card aof-c7">
+          <h2>Atividades por tipo</h2>
+          <p class="aof-sub">Volume e status de cada tipo de atividade</p>
+          <div class="aof-chartbox aof-tall"><canvas id="aof-chTipo"></canvas></div>
+        </div>
+        <div class="aof-card aof-c5">
+          <h2>Curva de fechamento</h2>
+          <p class="aof-sub">Atividades concluídas por hora de término e acumulado do dia</p>
+          <div class="aof-chartbox aof-tall"><canvas id="aof-chHora"></canvas></div>
+        </div>
+        <div class="aof-card aof-c12">
+          <div class="aof-tabs" role="tablist">
+            <button type="button" class="aof-tab" role="tab" aria-selected="true" data-tab="tec">Produtividade por técnico</button>
+            <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="fila">Fila em aberto</button>
+            <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="cid">Cidades</button>
+          </div>
+          <div class="aof-tabletools"><span id="aof-tblInfo"></span><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"></div>
+          <div class="aof-tablewrap"><table id="aof-tbl"></table></div>
+        </div>
+      </section>
+    </div>
+    <div class="aof-footer">Jarvis MCLL · alloha FIBRA</div>
+  </div>
+  <script id="aof-script">
+  (function(){
+    const AOF_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
+    const STORE_KEY='jarvis_abertos_ofs_v1';
+    const ST={
+      'Concluída':{c:'--aof-green',keys:['concluído','concluido']},
+      'Em aberto':{c:'--aof-blue',keys:['pendente','iniciado','em rota']},
+      'Suspensa':{c:'--aof-amber',keys:['suspenso']},
+      'Não concluída':{c:'--aof-red',keys:['não concluído','nao concluido']},
+      'Cancelada':{c:'--aof-gray',keys:['cancelado']}
+    };
+    const ST_ORDER=Object.keys(ST);
+    const CAT={
+      'Rede':['Manutenção Preventiva de Rede','Manutenção Corretiva de Rede','Manutenção de Rede Field','Vistoria de Rede Externa','Vistoria de POP Próprio','Construção FTTH REDES','Reparo Emergencial PI'],
+      'B2B':['Reparo Corretivo B2B','Implantação de Projeto B2B','Ativação de Equipamento B2B','Ativação/Implantação de Esteira','Vistoria de Ativação B2B','Mudança de Endereço B2B','Quebra de Linha - Formatação'],
+      'Suporte e logística':['Apoio','Checklist','Retirada de material','Reposição de Materiais','Manutenção Veicular'],
+      'Residencial':['Clean Up - Casa Cliente'],
+      'Pausa':['Almoço']
+    };
+    const UF_ALVO=['PI','MA','PA','AM','AP'];
+    let EXCL=0;
+    const UFNAME={PERNAMBUCO:'PE',CEARA:'CE','CEARÁ':'CE',MARANHAO:'MA','MARANHÃO':'MA','PIAUÍ':'PI',PIAUI:'PI'};
+
+    let ROWS=[],BASEDATE='',REF=null,charts={},tab='tec',sortState={},pendingRestore=null,FILE_NAME='';
+
+    const css=v=>getComputedStyle(document.getElementById('panel-abertos-ofs')).getPropertyValue(v).trim();
+    const n=s=>(s==null?'':String(s)).trim();
+    const mins=s=>{const m=/^(\d{1,3}):(\d{2})$/.exec(n(s));return m?(+m[1])*60+(+m[2]):null;};
+    const pdt=s=>{const m=/^(\d{2})\/(\d{2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/.exec(n(s));if(!m)return null;
+      const y=m[3].length===2?2000+(+m[3]):+m[3];return new Date(y,+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));};
+    const fmtH=m=>m==null?'—':`${Math.floor(m/60)}h${String(Math.round(m%60)).padStart(2,'0')}`;
+    const pct=(a,b)=>b?Math.round(a*100/b):0;
+    const esc=s=>n(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const fmtN=x=>x.toLocaleString('pt-BR');
+
+    const OPEN=['Em aberto','Suspensa','Não concluída'];
+    const slaH=r=>(r.ab&&r.cat!=='Pausa'&&OPEN.includes(r.sg))?Math.max(0,(Date.now()-r.ab.getTime())/3600000):null;
+    const fmtSLA=h=>{if(h==null)return'—';const t=Math.floor(h*60),d=Math.floor(t/1440),hh=Math.floor((t%1440)/60),mm=t%60;
+      return(d?d+'d ':'')+String(hh).padStart(2,'0')+'h'+String(mm).padStart(2,'0');};
+    const slaColor=h=>h>=48?'var(--aof-red)':h>=24?'var(--aof-amber)':'var(--aof-green)';
+    function statusGroup(s){s=n(s).toLowerCase();for(const k of ST_ORDER)if(ST[k].keys.includes(s))return k;return'Em aberto';}
+    function category(t){for(const k in CAT)if(CAT[k].includes(t))return k;return'Outros';}
+
+    function build(table){
+      const h=table[0].map(x=>n(x).replace(/^﻿/,''));
+      const f=k=>h.indexOf(k),l=k=>h.lastIndexOf(k);
+      const I={rec:f('Recurso'),data:f('Data'),st:f('Status da Atividade'),nome:f('Nome'),bairro:f('Bairro'),cid:f('Cidade'),uf:f('Estado'),
+        ab:f('Data de Abertura OS'),ini:f('Início'),fim:f('Fim'),dur:f('Duração'),desl:f('Tempo de Deslocamento'),tipo:l('Tipo de Atividade'),
+        motivo:f('Motivo de Encerramento das atividades'),os:f('Ordem de Serviço'),area:f('Área de Trabalho'),pos:f('Posição na Rota'),com:f('Comentários Gerais')};
+      for(const k of['rec','st','tipo'])if(I[k]<0)throw new Error('A base não tem as colunas Recurso, Status da Atividade e Tipo de Atividade. Use a exportação de atividades do OFS.');
+      const g=(r,k)=>I[k]>=0?n(r[I[k]]):'';
+      const rows=table.slice(1).filter(r=>r.length>5&&g(r,'rec'));
+      const out=rows.map(r=>{
+        const rec=g(r,'rec'),area=g(r,'area'),tipo=g(r,'tipo')||'(sem tipo)';
+        const m=/C\.\s*(\d+)\s*-\s*([A-Z]{2})\s*-/i.exec(area);
+        let uf=n(g(r,'uf')).toUpperCase();uf=UFNAME[uf]||(uf.length===2?uf:'');
+        return{rec,unassigned:/CLUSTER/i.test(rec),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:g(r,'nome'),
+          cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
+          tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),area,pos:g(r,'pos'),com:g(r,'com'),
+          clAr:m?'C'+(+m[1]):'',ufAr:m?m[2].toUpperCase():''};
+      });
+      const byRec={};
+      out.forEach(o=>{if(o.clAr){const b=byRec[o.rec]||={cl:{},uf:{}};b.cl[o.clAr]=(b.cl[o.clAr]||0)+1;b.uf[o.ufAr]=(b.uf[o.ufAr]||0)+1;}});
+      const mode=obj=>obj?Object.entries(obj).sort((a,b)=>b[1]-a[1])[0]?.[0]:'';
+      out.forEach(o=>{
+        const cm=/CLUSTER_C(\d+)/i.exec(o.rec);
+        o.cluster=o.clAr||mode(byRec[o.rec]?.cl)||(cm?'C'+(+cm[1]):'')||'Sem cluster';
+        o.uf=o.ufAr||mode(byRec[o.rec]?.uf)||o.ufRaw||'N/I';
+      });
+      const dc={};out.forEach(o=>{if(o.data)dc[o.data]=(dc[o.data]||0)+1;});
+      BASEDATE=mode(dc)||'';
+      const bd=pdt(BASEDATE);
+      const same=d=>bd&&d&&d.getFullYear()===bd.getFullYear()&&d.getMonth()===bd.getMonth()&&d.getDate()===bd.getDate();
+      const abs=out.filter(o=>same(o.ab)).map(o=>o.ab.getTime());
+      REF=abs.length?new Date(Math.max(...abs)):(bd?new Date(bd.getTime()+86399000):new Date());
+      out.forEach(o=>{o.aging=(o.ab&&o.cat!=='Pausa')?(REF-o.ab)/3600000:null;});
+      const kept=out.filter(o=>UF_ALVO.includes(o.uf));
+      EXCL=out.length-kept.length;
+      if(!kept.length)throw new Error('A base não tem atividades de PI, MA, PA, AM ou AP. Confira se o arquivo é da regional correta.');
+      return kept;
+    }
+
+    function fillSelect(id,values,label){
+      const el=document.getElementById(id),cur=el.value;
+      el.innerHTML=`<option value="">${label}</option>`+values.map(v=>`<option>${esc(v)}</option>`).join('');
+      if(values.includes(cur))el.value=cur;
+    }
+    const numSort=(a,b)=>(parseInt(a.replace(/\D/g,''))||999)-(parseInt(b.replace(/\D/g,''))||999);
+    function setupFilters(){
+      const u=k=>[...new Set(ROWS.map(r=>r[k]))];
+      fillSelect('aof-fCluster',u('cluster').sort(numSort),'Todos');
+      fillSelect('aof-fUF',u('uf').sort(),'Todas');
+      fillSelect('aof-fCat',u('cat').sort(),'Todas');
+      fillSelect('aof-fTipo',u('tipo').sort((a,b)=>a.localeCompare(b,'pt')),'Todos');
+      fillSelect('aof-fStatus',ST_ORDER.filter(s=>ROWS.some(r=>r.sg===s)),'Todos');
+    }
+    function filtered(){
+      const v=id=>document.getElementById(id).value;
+      const tec=n(document.getElementById('aof-fTec').value).toLowerCase(),pausa=document.getElementById('aof-fPausa').checked;
+      return ROWS.filter(r=>(!v('aof-fCluster')||r.cluster===v('aof-fCluster'))&&(!v('aof-fUF')||r.uf===v('aof-fUF'))&&(!v('aof-fCat')||r.cat===v('aof-fCat'))
+        &&(!v('aof-fTipo')||r.tipo===v('aof-fTipo'))&&(!v('aof-fStatus')||r.sg===v('aof-fStatus'))&&(!tec||r.rec.toLowerCase().includes(tec))
+        &&(pausa||r.cat!=='Pausa'||v('aof-fCat')==='Pausa'));
+    }
+
+    function render(){
+      const D=filtered();
+      const cnt={};ST_ORDER.forEach(s=>cnt[s]=0);D.forEach(r=>cnt[r.sg]++);
+      const tot=D.length,valid=tot-cnt['Cancelada'];
+      const unass=D.filter(r=>r.unassigned&&r.sg==='Em aberto').length;
+      const techs=new Set(D.filter(r=>!r.unassigned&&r.cat!=='Pausa').map(r=>r.rec));
+      const concl=D.filter(r=>r.sg==='Concluída'&&r.cat!=='Pausa');
+      const avgDur=concl.length?concl.reduce((a,r)=>a+(r.dur||0),0)/concl.length:null;
+      const dl=concl.filter(r=>r.desl!=null);
+      const avgDesl=dl.length?dl.reduce((a,r)=>a+r.desl,0)/dl.length:null;
+      const[d,mo,y]=BASEDATE.split('/');
+      const dateTxt=BASEDATE?`${d}/${mo}/${y.length===2?'20'+y:y}`:'';
+      document.getElementById('aof-hDate').textContent=dateTxt;
+
+      document.getElementById('aof-lead').innerHTML=tot
+        ?`<b>${fmtN(tot)}</b> atividades no recorte em ${dateTxt}: <b>${pct(cnt['Concluída'],valid)}%</b> concluídas e <b>${fmtN(cnt['Em aberto'])}</b> ainda aguardando execução${unass?`, sendo <b>${unass}</b> sem técnico atribuído`:''}.`
+        :'Nenhuma atividade corresponde aos filtros. Ajuste ou limpe os filtros acima.';
+      document.getElementById('aof-seg').innerHTML=ST_ORDER.map(s=>`<div title="${s}: ${cnt[s]}" style="width:${tot?cnt[s]*100/tot:0}%;background:var(${ST[s].c})"></div>`).join('');
+      document.getElementById('aof-segLegend').innerHTML=ST_ORDER.map(s=>`<span><i style="background:var(${ST[s].c})"></i>${s} <b>${cnt[s]}</b> (${pct(cnt[s],tot)}%)</span>`).join('');
+
+      const k=[
+        ['aof-accent',pct(cnt['Concluída'],valid)+'%','Taxa de conclusão',`${cnt['Concluída']} de ${valid} (sem canceladas)`],
+        ['aof-info',fmtN(cnt['Em aberto']),'Em aberto',`${unass} na fila sem técnico`],
+        ['aof-warn',fmtN(cnt['Suspensa']+cnt['Não concluída']),'Suspensas e não concluídas',`${cnt['Suspensa']} suspensas · ${cnt['Não concluída']} não concluídas`],
+        ['',fmtN(techs.size),'Técnicos em campo','com ao menos uma atividade'],
+        ['',techs.size?(concl.filter(r=>!r.unassigned).length/techs.size).toFixed(1).replace('.',','):'—','Concluídas por técnico','média do recorte'],
+        ['',fmtH(avgDur),'Tempo médio de execução',`deslocamento médio ${fmtH(avgDesl)}`]
+      ];
+      document.getElementById('aof-kpis').innerHTML=k.map(([c,v,l,s])=>`<div class="aof-kpi ${c}"><div class="aof-v">${v}</div><div class="aof-l">${l}</div><div class="aof-s">${s}</div></div>`).join('');
+
+      drawCharts(D);drawAlerts(D);drawTable(D);
+    }
+
+    function stackData(D,key,order){
+      return ST_ORDER.map(s=>({label:s,data:order.map(v=>D.filter(r=>r[key]===v&&r.sg===s).length),
+        backgroundColor:css(ST[s].c),borderRadius:3,maxBarThickness:26}));
+    }
+    function baseOpts(horizontal){
+      const ink=css('--aof-muted'),grid=css('--aof-line');
+      return{responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',animation:{duration:400},font:{family:AOF_FONT},
+        plugins:{legend:{position:'bottom',labels:{color:ink,boxWidth:10,boxHeight:10,font:{size:12,family:AOF_FONT}}},
+          tooltip:{mode:'index',intersect:false}},
+        scales:{x:{stacked:true,ticks:{color:ink,font:{family:AOF_FONT}},grid:{color:grid}},
+                y:{stacked:true,ticks:{color:ink,font:{family:AOF_FONT}},grid:{color:horizontal?'transparent':grid}}}};
+    }
+    function mk(id,cfg){charts[id]?.destroy();charts[id]=new Chart(document.getElementById(id),cfg);}
+
+    function drawCharts(D){
+      const cls=[...new Set(D.map(r=>r.cluster))].sort(numSort);
+      mk('aof-chCluster',{type:'bar',data:{labels:cls,datasets:stackData(D,'cluster',cls)},options:baseOpts(false)});
+
+      const tc={};D.forEach(r=>tc[r.tipo]=(tc[r.tipo]||0)+1);
+      const tipos=Object.keys(tc).sort((a,b)=>tc[b]-tc[a]);
+      mk('aof-chTipo',{type:'bar',data:{labels:tipos,datasets:stackData(D,'tipo',tipos)},options:baseOpts(true)});
+
+      const C=D.filter(r=>r.sg==='Concluída'&&r.cat!=='Pausa'),hrs=Array(24).fill(0);
+      C.forEach(r=>{const m=mins(r.fim);if(m!=null&&!(r.unassigned))hrs[Math.min(23,Math.floor(m/60))]++;});
+      let first=hrs.findIndex(x=>x>0),last=23-[...hrs].reverse().findIndex(x=>x>0);
+      if(first<0){first=6;last=20;}
+      first=Math.min(first,6);last=Math.max(last,19);
+      const lab=[],vals=[],acc=[];let s=0;const T=hrs.reduce((a,b)=>a+b,0);
+      for(let h=first;h<=last;h++){lab.push(String(h).padStart(2,'0')+'h');vals.push(hrs[h]);s+=hrs[h];acc.push(T?Math.round(s*100/T):0);}
+      const o=baseOpts(false);o.scales.x.stacked=false;o.scales.y.stacked=false;
+      o.scales.y2={position:'right',min:0,max:100,ticks:{color:css('--aof-muted'),callback:v=>v+'%',font:{family:AOF_FONT}},grid:{display:false}};
+      mk('aof-chHora',{type:'bar',data:{labels:lab,datasets:[
+        {type:'line',label:'% acumulado',data:acc,yAxisID:'y2',borderColor:css('--aof-blue'),backgroundColor:css('--aof-blue'),tension:.3,pointRadius:2},
+        {label:'Concluídas na hora',data:vals,backgroundColor:css('--aof-green'),borderRadius:3}
+      ]},options:o});
+    }
+
+    function drawAlerts(D){
+      const A=[],W=D.filter(r=>r.cat!=='Pausa');
+      const q=W.filter(r=>r.unassigned&&r.sg==='Em aberto');
+      if(q.length){
+        const bc={};q.forEach(r=>bc[r.cluster]=(bc[r.cluster]||0)+1);
+        const top=Object.entries(bc).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c,v])=>`${c} (${v})`).join(', ');
+        const old=q.filter(r=>r.aging!=null&&r.aging>=12).length;
+        A.push(['aof-r',`<b>${q.length}</b> atividades na fila sem técnico atribuído, concentradas em ${top}.${old?` ${old} delas estão abertas há 12 h ou mais.`:''}`]);
+      }
+      const S=W.map(slaH).filter(h=>h!=null);
+      if(S.length){const o24=S.filter(h=>h>=24).length,o48=S.filter(h=>h>=48).length;
+        A.push([o48?'aof-r':o24?'aof-w':'aof-g',`SLA da fila agora: <b>${o24}</b> de ${S.length} atividades abertas há 24 h ou mais, sendo <b>${o48}</b> acima de 48 h. Maior tempo aberto: ${fmtSLA(Math.max(...S))}.`]);}
+      const b2b=W.filter(r=>r.tipo==='Reparo Corretivo B2B'),b2bOpen=b2b.filter(r=>['Em aberto','Suspensa','Não concluída'].includes(r.sg));
+      if(b2b.length)A.push([b2bOpen.length>b2b.length*0.3?'aof-w':'aof-g',`Reparo corretivo B2B: <b>${b2b.filter(r=>r.sg==='Concluída').length}</b> de ${b2b.length} concluídos; ${b2bOpen.length} seguem em aberto, suspensos ou não concluídos.`]);
+      const sus=W.filter(r=>r.sg==='Suspensa');
+      if(sus.length){const t={};sus.forEach(r=>t[r.tipo]=(t[r.tipo]||0)+1);
+        A.push(['aof-w',`<b>${sus.length}</b> suspensões no dia; principais tipos: ${Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k} (${v})`).join(', ')}.`]);}
+      const tt={};W.forEach(r=>{const o=tt[r.tipo]||={t:0,c:0,x:0};o.t++;if(r.sg==='Concluída')o.c++;if(r.sg==='Cancelada')o.x++;});
+      const worst=Object.entries(tt).filter(([,o])=>o.t-o.x>=5).map(([k,o])=>[k,pct(o.c,o.t-o.x),o.t]).sort((a,b)=>a[1]-b[1])[0];
+      if(worst&&worst[1]<70)A.push(['aof-w',`Menor taxa de conclusão entre os tipos com volume: <b>${worst[0]}</b>, ${worst[1]}% de ${worst[2]} atividades.`]);
+      const tech={};W.filter(r=>!r.unassigned).forEach(r=>{const o=tech[r.rec]||={t:0,c:0};o.t++;if(r.sg==='Concluída')o.c++;});
+      const zero=Object.entries(tech).filter(([,o])=>o.c===0);
+      if(zero.length)A.push(['aof-r',`<b>${zero.length}</b> técnico${zero.length>1?'s':''} sem nenhuma atividade concluída: ${zero.slice(0,4).map(([k])=>k).join(', ')}${zero.length>4?'…':''}.`]);
+      const nc=W.filter(r=>r.sg==='Não concluída'||r.sg==='Cancelada');
+      if(nc.length){const mv={};nc.forEach(r=>{if(r.motivo)mv[r.motivo]=(mv[r.motivo]||0)+1;});
+        const semMot=nc.filter(r=>!r.motivo).length;
+        if(semMot)A.push(['',`${nc.length} atividades canceladas ou não concluídas, ${semMot} sem motivo de encerramento registrado.`]);}
+      if(!A.length)A.push(['aof-g','Nenhum ponto crítico no recorte selecionado.']);
+      document.getElementById('aof-alerts').innerHTML=A.map(([c,t])=>`<li class="${c}">${t}</li>`).join('');
+    }
+
+    const pill=sg=>`<span class="aof-pill" style="background:var(${ST[sg].c})">${sg}</span>`;
+    function tableDefs(D){
+      if(tab==='tec'){
+        const m={};
+        D.filter(r=>!r.unassigned&&r.cat!=='Pausa').forEach(r=>{
+          const o=m[r.rec]||={rec:r.rec,cl:{},uf:r.uf,t:0,c:0,ab:0,su:0,dur:0,desl:0,ini:null,fim:null};
+          o.cl[r.cluster]=1;o.t++;if(r.sg==='Concluída'){o.c++;o.dur+=r.dur||0;o.desl+=r.desl||0;
+            const a=mins(r.ini),b=mins(r.fim);if(a!=null&&(o.ini==null||a<o.ini))o.ini=a;if(b!=null&&(o.fim==null||b>o.fim))o.fim=b;}
+          else if(r.sg==='Em aberto')o.ab++;else if(r.sg!=='Cancelada')o.su++;
+        });
+        const rows=Object.values(m).map(o=>({...o,cluster:Object.keys(o.cl).join(', '),p:pct(o.c,o.t)}));
+        return{def:[
+          ['rec','Técnico',r=>esc(r.rec)],['cluster','Cluster',r=>r.cluster],['uf','UF',r=>r.uf],
+          ['t','Atividades',r=>r.t,'aof-num'],['c','Concluídas',r=>r.c,'aof-num'],
+          ['p','Conclusão',r=>`<div style="display:flex;gap:8px;align-items:center"><div class="aof-bar" style="flex:1"><div style="width:${r.p}%;background:${r.p>=80?'var(--aof-green)':r.p>=50?'var(--aof-amber)':'var(--aof-red)'}"></div></div>${r.p}%</div>`],
+          ['ab','Em aberto',r=>r.ab,'aof-num'],['su','Susp./não concl.',r=>r.su,'aof-num'],
+          ['dur','Tempo em atividade',r=>fmtH(r.dur),'aof-num'],['desl','Deslocamento',r=>fmtH(r.desl),'aof-num'],
+          ['ini','1º início',r=>r.ini==null?'—':fmtH(r.ini).replace('h',':'),'aof-num'],['fim','Último fim',r=>r.fim==null?'—':fmtH(r.fim).replace('h',':'),'aof-num']
+        ],rows,def0:['c',-1],label:'técnicos'};
+      }
+      if(tab==='fila'){
+        const rows=D.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa').map(r=>({...r,sla:slaH(r)}));
+        return{def:[
+          ['sg','Status',r=>pill(r.sg)+(r.status.toLowerCase()!=='pendente'&&r.sg==='Em aberto'?` <small>${esc(r.status)}</small>`:'')],
+          ['aging','Aberta há',r=>r.aging==null?'—':`<b style="color:${r.aging>=24?'var(--aof-red)':r.aging>=12?'var(--aof-amber)':'inherit'}">${r.aging.toFixed(1).replace('.',',')} h</b>`,'aof-num'],
+          ['sla','SLA',r=>r.sla==null?'—':`<b style="color:${slaColor(r.sla)}">${fmtSLA(r.sla)}</b>`,'aof-num'],
+          ['os','OS',r=>esc(r.os)||'—'],['tipo','Tipo',r=>esc(r.tipo)],['nome','Cliente',r=>esc(r.nome)||'—'],
+          ['cid','Cidade',r=>esc(r.cid)+(r.uf?` / ${r.uf}`:'')],['cluster','Cluster',r=>r.cluster],
+          ['rec','Recurso',r=>r.unassigned?`<span class="aof-pill" style="background:var(--aof-red)">Sem técnico</span> <small>${esc(r.rec)}</small>`:esc(r.rec)],
+          ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap']
+        ],rows,def0:['sla',-1],label:'atividades em aberto, suspensas ou não concluídas'};
+      }
+      const m={};
+      D.filter(r=>r.cat!=='Pausa'&&r.cid).forEach(r=>{const k=r.cid.toUpperCase()+'|'+r.uf;
+        const o=m[k]||={cid:r.cid.toUpperCase(),uf:r.uf,cluster:r.cluster,t:0,c:0,ab:0,su:0,b2b:0,rede:0};
+        o.t++;if(r.sg==='Concluída')o.c++;else if(r.sg==='Em aberto')o.ab++;else if(r.sg!=='Cancelada')o.su++;
+        if(r.cat==='B2B')o.b2b++;if(r.cat==='Rede')o.rede++;});
+      const rows=Object.values(m).map(o=>({...o,p:pct(o.c,o.t)}));
+      return{def:[['cid','Cidade',r=>esc(r.cid)],['uf','UF',r=>r.uf],['cluster','Cluster',r=>r.cluster],['t','Atividades',r=>r.t,'aof-num'],
+        ['rede','Rede',r=>r.rede,'aof-num'],['b2b','B2B',r=>r.b2b,'aof-num'],['c','Concluídas',r=>r.c,'aof-num'],['p','Conclusão',r=>r.p+'%','aof-num'],
+        ['ab','Em aberto',r=>r.ab,'aof-num'],['su','Susp./não concl.',r=>r.su,'aof-num']],rows,def0:['t',-1],label:'cidades'};
+    }
+    function drawTable(D){
+      const{def,rows,def0,label}=tableDefs(D);
+      const[sk,sd]=sortState[tab]||def0;
+      const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
+      let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
+      R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
+        if(x==null)return 1;if(y==null)return-1;
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
+      const t=document.getElementById('aof-tbl');
+      t.innerHTML=`<thead><tr>${def.map(([k,l,,c])=>`<th tabindex="0" data-k="${k}" class="${c||''}">${l}${k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead>`
+        +`<tbody>${R.length?R.map(r=>`<tr>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
+      document.getElementById('aof-tblInfo').textContent=`${R.length} ${label}`+(tab==='fila'&&REF?` · aging calculado até ${String(REF.getHours()).padStart(2,'0')}:${String(REF.getMinutes()).padStart(2,'0')} do dia da base · SLA da abertura da OS até agora`:'');
+      t.querySelectorAll('th').forEach(th=>{const go=()=>{const k=th.dataset.k;const cur=sortState[tab]||def0;
+        sortState[tab]=[k,cur[0]===k?-cur[1]:(typeof rows[0]?.[k]==='number'?-1:1)];drawTable(filtered());};
+        th.onclick=go;th.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};});
+    }
+
+    const KEEP=['Recurso','Data','Status da Atividade','Nome','Bairro','Cidade','Estado','Data de Abertura OS','Início','Fim','Duração','Tempo de Deslocamento','Tipo de Atividade','Motivo de Encerramento das atividades','Ordem de Serviço','Área de Trabalho','Posição na Rota','Comentários Gerais'];
+    function slim(table){
+      const h=table[0].map(x=>n(x).replace(/^﻿/,''));
+      const idx=h.map((k,i)=>KEEP.includes(k)?i:-1).filter(i=>i>=0);
+      return table.filter(r=>r&&r.length>5).map((r,j)=>idx.map(i=>j?n(r[i]).slice(0,i===h.indexOf('Comentários Gerais')?500:200):h[i]));
+    }
+    function load(table,name,save){
+      const errEl=document.getElementById('aof-err');
+      try{ROWS=build(table);errEl.style.display='none';}
+      catch(e){errEl.textContent=e.message;errEl.style.display='block';return;}
+      FILE_NAME=name;
+      if(save){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,table:slim(table),savedAt:Date.now()}));}catch(e){/* sem espaço: segue só na sessão */}}
+      document.getElementById('aof-main').classList.remove('aof-empty-state');
+      document.getElementById('aof-fileInfo').textContent=`${name} · ${fmtN(ROWS.length)} registros de PI/MA/PA/AM/AP`+(EXCL?` (${fmtN(EXCL)} de outras UFs ignorados)`:'');
+      setupFilters();render();
+    }
+
+    document.querySelectorAll('#panel-abertos-ofs .aof-filters select, #panel-abertos-ofs .aof-filters input').forEach(el=>el.addEventListener('input',render));
+    document.getElementById('aof-btnReset').onclick=()=>{document.querySelectorAll('#panel-abertos-ofs .aof-filters select').forEach(s=>s.value='');document.getElementById('aof-fTec').value='';document.getElementById('aof-fPausa').checked=false;render();};
+    document.getElementById('aof-tblSearch').addEventListener('input',()=>drawTable(filtered()));
+    document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;
+      document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(x=>x.setAttribute('aria-selected',x===b));document.getElementById('aof-tblSearch').value='';drawTable(filtered());});
+    document.querySelector('#panel-abertos-ofs label[for=aof-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('aof-fileIn').click();}};
+    document.getElementById('aof-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
+      const er=document.getElementById('aof-err');const rd=new FileReader();
+      rd.onload=()=>{try{
+          const wb=XLSX.read(rd.result,{type:'string',raw:true});
+          const table=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
+          load(table,file.name,true);
+        }catch(x){er.textContent='Não foi possível ler o arquivo. Confirme que é o CSV exportado do OFS.';er.style.display='block';}};
+      rd.onerror=()=>{er.textContent='Falha ao ler o arquivo.';er.style.display='block';};
+      rd.readAsText(file,'UTF-8');e.target.value='';};
+    document.getElementById('aof-btnClear').onclick=()=>{if(!confirm('Remover a base salva neste navegador?'))return;
+      try{localStorage.removeItem(STORE_KEY);}catch(e){}
+      ROWS=[];pendingRestore=null;
+      document.getElementById('aof-main').classList.add('aof-empty-state');
+      document.getElementById('aof-fileInfo').textContent='';};
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
+
+    try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&s.table)pendingRestore=s;}catch(e){}
+    setInterval(()=>{if(!ROWS.length)return;const D=filtered();drawAlerts(D);if(tab==='fila')drawTable(D);},60000);
+
+    window.aofRenderAll=function(){
+      if(pendingRestore){const s=pendingRestore;pendingRestore=null;load(s.table,s.name,false);}
+      else if(ROWS.length){render();}
+    };
+  })();
+  </script>
+
   <div class="panel" id="panel-aportes">
     <div class="fuel-page-head">
       <div>
@@ -7503,7 +7975,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
 
     <div class="dash-modules">
-      <button class="dash-module" id="dash-mod-abertos-ofs" onclick="window.location.href='painel_abertos_ofs.html'"><i class="ti ti-list-check"></i><strong>Abertos OFS</strong><span>Atividades do dia por cluster, técnico e tipo, com fila em aberto e SLA desde a abertura da OS (PI, MA, PA, AM e AP).</span></button>
+      <button class="dash-module" id="dash-mod-abertos-ofs" onclick="switchTab('abertosOfs')"><i class="ti ti-list-check"></i><strong>Abertos OFS</strong><span>Atividades do dia por cluster, técnico e tipo, com fila em aberto e SLA desde a abertura da OS (PI, MA, PA, AM e AP).</span></button>
       <button class="dash-module" id="dash-mod-aportes" onclick="switchTab('aportes')"><i class="ti ti-cash"></i><strong>Aportes Combustível</strong><span>Aportes e retiradas de saldo por placa, com histórico e gráficos.</span></button>
       <button class="dash-module" id="dash-mod-abertos" onclick="switchTab('abertos')"><i class="ti ti-clipboard-list"></i><strong>B2B Abertos</strong><span>SLA, substatus, técnicos, MOP/EPS e tabela operacional.</span></button>
       <button class="dash-module" id="dash-mod-b2c" onclick="switchTab('b2c')"><i class="ti ti-users"></i><strong>B2C</strong><span>Indicadores B2C (Reparos, IRT, IRR, IFI, IFME, Aging, Efetividade...) e desvios contra a meta.</span></button>
@@ -20538,14 +21010,15 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true,skipRenderTabs=null){
-  if(!['aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
+  if(!['abertosOfs','aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
+  const isAof=tab==='abertosOfs',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isAof?'abertos-ofs':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
+  document.getElementById('panel-abertos-ofs').classList.toggle('active',isAof);
   document.getElementById('panel-aportes').classList.toggle('active',isFap);
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-executivo').classList.toggle('active',isExec);
@@ -20578,6 +21051,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(upFuel)upFuel.style.display=isFuel?'':'none';
   if(upOfs)upOfs.style.display=isOfs?'flex':'none';
   const _skip=k=>!!(skipRenderTabs&&skipRenderTabs.has(k));
+  if(isAof&&!_skip('abertosOfs')&&window.aofRenderAll)aofRenderAll();
   if(isFap&&!_skip('aportes'))fapRenderAll();
   if(isFuel){if(!_skip('combustivel'))renderFuel();setTimeout(initFuelSplit,80);}
   if(isSi&&!_skip('semIntervencao'))renderAllSi();
