@@ -7218,6 +7218,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-status-select{margin-left:6px;font:500 10px var(--aof-sans);padding:1px 3px;border-radius:5px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);vertical-align:middle}
   #panel-abertos-ofs .aof-obs-input{width:100%;min-width:200px;font:500 12px var(--aof-sans);padding:5px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink)}
   #panel-abertos-ofs .aof-obs-input::placeholder{color:var(--aof-muted);font-style:italic}
+  #panel-abertos-ofs .aof-obs-capture-text{font:600 12px var(--aof-sans);padding:4px 6px;color:var(--aof-ink);background:#FFF6D8;border:1px solid var(--aof-amber);border-radius:6px;white-space:normal;word-break:break-word;max-width:260px;display:inline-block}
+  #panel-abertos-ofs .aof-obs-capture-text.aof-obs-empty{background:none;border-style:dashed;border-color:var(--aof-line);color:var(--aof-muted);font-weight:500;font-style:italic}
+  #panel-abertos-ofs .aof-capture-open-comment{background:#FFF6D8;border:1px solid var(--aof-amber);border-radius:6px;padding:4px 6px;margin-top:2px}
   #panel-abertos-ofs .aof-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px}
   #panel-abertos-ofs .aof-modal-overlay.aof-open{display:flex}
   #panel-abertos-ofs .aof-modal{background:var(--aof-card);color:var(--aof-ink);border-radius:14px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;padding:22px 24px;position:relative}
@@ -7406,7 +7409,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     let EXCL=0,EXCL_TIPO=0;
     const UFNAME={PERNAMBUCO:'PE',CEARA:'CE','CEARÁ':'CE',MARANHAO:'MA','MARANHÃO':'MA','PIAUÍ':'PI',PIAUI:'PI'};
 
-    let ROWS=[],BASEDATE='',REF=null,charts={},tab='tec',sortState={},pendingRestore=null,FILE_NAME='';
+    let ROWS=[],BASEDATE='',REF=null,charts={},tab='tec',sortState={},pendingRestore=null,FILE_NAME='',aofCopyInProgress=false;
 
     const css=v=>getComputedStyle(document.getElementById('panel-abertos-ofs')).getPropertyValue(v).trim();
     const n=s=>(s==null?'':String(s)).trim();
@@ -7814,7 +7817,36 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     document.getElementById('aof-drill-close').onclick=()=>{document.getElementById('aof-drill-card').style.display='none';};
     document.getElementById('aof-btnCopy').onclick=()=>{
       const el=document.getElementById('aof-last-block');
-      if(typeof abCopiarImagem==='function')abCopiarImagem(el,document.getElementById('aof-btnCopy'));
+      const btn=document.getElementById('aof-btnCopy');
+      if(typeof abCopiarImagem!=='function')return;
+      /* Pro comentário/observação não ficar escondido (details fechado) ou cortado
+         (input de texto de largura fixa) na imagem estática capturada, abre tudo e
+         troca os inputs por texto normal com quebra de linha antes de fotografar —
+         e desfaz assim que o botão voltar a ficar habilitado (fim da captura).
+         aofCopyInProgress trava o setInterval de 60s nesse meio-tempo: sem isso, um
+         drawTable() automático no instante exato da captura reconstrói o <tbody> e
+         apaga as trocas antes do html2canvas rodar. */
+      aofCopyInProgress=true;
+      const openedDetails=[...el.querySelectorAll('details:not([open])')];
+      openedDetails.forEach(d=>{d.open=true;const pre=d.querySelector('pre');if(pre)pre.classList.add('aof-capture-open-comment');});
+      const obsSwaps=[...el.querySelectorAll('.aof-obs-input')].map(inp=>{
+        const hasVal=!!inp.value.trim();
+        const span=document.createElement('div');
+        span.className='aof-obs-capture-text'+(hasVal?'':' aof-obs-empty');
+        span.textContent=hasVal?inp.value:(inp.placeholder||'Sem observação');
+        inp.style.display='none';
+        inp.insertAdjacentElement('afterend',span);
+        return{inp,span};
+      });
+      const restore=()=>{
+        openedDetails.forEach(d=>{d.open=false;const pre=d.querySelector('pre');if(pre)pre.classList.remove('aof-capture-open-comment');});
+        obsSwaps.forEach(({inp,span})=>{inp.style.display='';span.remove();});
+        aofCopyInProgress=false;
+      };
+      abCopiarImagem(el,btn);
+      const mo=new MutationObserver(()=>{if(!btn.disabled){restore();mo.disconnect();}});
+      mo.observe(btn,{attributes:true,attributeFilter:['disabled']});
+      setTimeout(()=>{restore();mo.disconnect();},8000);
     };
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
 
@@ -7852,7 +7884,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     };
 
     try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&s.table)pendingRestore=s;}catch(e){}
-    setInterval(()=>{if(!ROWS.length)return;const D=filtered();drawAlerts(D);if(tab==='fila')drawTable(D);},60000);
+    setInterval(()=>{if(!ROWS.length||aofCopyInProgress)return;const D=filtered();drawAlerts(D);if(tab==='fila')drawTable(D);},60000);
 
     window.aofRenderAll=function(){
       if(pendingRestore){const s=pendingRestore;pendingRestore=null;load(s.table,s.name,false);}
