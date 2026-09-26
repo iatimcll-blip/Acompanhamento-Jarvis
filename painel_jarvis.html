@@ -8069,6 +8069,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="wm-footer">Jarvis MCLL · alloha FIBRA</div>
   </div>
   <script id="wm-script">
+  /* Ponte de sincronização entre dispositivos, mesmo padrão do Abertos OFS
+     (ver AOF_SYNC_* mais acima no documento) — variáveis verdadeiramente
+     globais (fora da IIFE) pra serem lidas/gravadas de buildState()/
+     applyState()/_mergeGhRemoteIntoLocal(), definidos num script mais abaixo. */
+  let WM_SYNC_RECORDS=null,WM_SYNC_FILENAME='',WM_SYNC_AT='';
   (function(){
     const WM_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
     const STORE_KEY='jarvis_warmap_v1';
@@ -8388,6 +8393,26 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       setupFilters();render();
     }
 
+    /* Publica a base atual pras variáveis-ponte globais e aciona o saveState()
+       do app inteiro (grava local + agenda o envio pro GitHub, se o usuário
+       puder editar) — chamado a cada novo PDF anexado, pra qualquer dispositivo
+       que sincronizar depois enxergar a mesma base sem precisar re-anexar. */
+    function wmSyncPublish(label){
+      WM_SYNC_AT=new Date().toISOString();
+      WM_SYNC_RECORDS=ROWS;
+      WM_SYNC_FILENAME=FILE_NAME;
+      if(typeof saveState==='function')saveState();
+      if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
+    }
+    /* Chamado por applyState()/_mergeGhRemoteIntoLocal() sempre que uma base
+       mais recente chegar de outro dispositivo — mesmo padrão do aofSyncBoot. */
+    window.wmSyncBoot=function(){
+      if(!WM_SYNC_RECORDS)return;
+      const isActive=document.getElementById('panel-warmap').classList.contains('active');
+      if(isActive)loadRecords(WM_SYNC_RECORDS,WM_SYNC_FILENAME,true);
+      else pendingRestore={records:WM_SYNC_RECORDS,name:WM_SYNC_FILENAME};
+    };
+
     async function handlePdf(file){
       const errEl=document.getElementById('wm-err');
       errEl.style.display='none';
@@ -8399,6 +8424,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste PDF.');
         LAST_PDF_NAME=file.name;
         loadRecords(records,file.name,true);
+        wmSyncPublish('Warmap');
         const note=document.getElementById('wm-parseNote');
         if(note)note.textContent=`${parsedCount} de ${rowAttempts} linha(s) de chamado reconhecidas no PDF.`;
       }catch(e){
@@ -12354,6 +12380,14 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         AOF_SYNC_CFG=remoteSt.AOF_SYNC_CFG&&typeof remoteSt.AOF_SYNC_CFG==='object'?remoteSt.AOF_SYNC_CFG:null;
         if(typeof window.aofSyncBoot==='function')window.aofSyncBoot();
       }
+      /* Warmap: mesmo padrão replace-by-latest do Abertos OFS acima — cada PDF
+         anexado é a base autoritativa completa, nunca mescla linha a linha. */
+      if(remoteSt.WM_SYNC_AT&&remoteSt.WM_SYNC_AT>(WM_SYNC_AT||'')){
+        WM_SYNC_RECORDS=Array.isArray(remoteSt.WM_SYNC_RECORDS)?remoteSt.WM_SYNC_RECORDS:null;
+        WM_SYNC_FILENAME=remoteSt.WM_SYNC_FILENAME||'';
+        WM_SYNC_AT=remoteSt.WM_SYNC_AT;
+        if(typeof window.wmSyncBoot==='function')window.wmSyncBoot();
+      }
       /* Fuel Vehicles: a condição antiga (fuelVeiculosCleared && remoto TAMBÉM vazio) só
          evitava mesclar quando o remoto já tinha convergido pra vazio — ou seja, não
          protegia nada no caso real (remoto ainda com a base antiga, não-vazia, logo
@@ -13869,6 +13903,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt']},
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt']},
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT','AOF_SYNC_CFG']},
+  {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -13901,7 +13936,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -14111,6 +14146,17 @@ function applyState(st,label){
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Abertos OFS:',e);}
+  try{
+    /* Warmap: mesmo padrão do Abertos OFS acima — window.wmSyncBoot() decide
+       se renderiza na hora ou adia (aba pode estar inativa no boot). */
+    if(Object.prototype.hasOwnProperty.call(st,'WM_SYNC_AT')&&st.WM_SYNC_AT){
+      WM_SYNC_RECORDS=Array.isArray(st.WM_SYNC_RECORDS)?st.WM_SYNC_RECORDS:null;
+      WM_SYNC_FILENAME=st.WM_SYNC_FILENAME||'';
+      WM_SYNC_AT=st.WM_SYNC_AT;
+      if(typeof window.wmSyncBoot==='function')window.wmSyncBoot();
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Warmap:',e);}
   try{
     /* fapRenderAll() é definida num <script> mais abaixo (mesmo motivo do Audit
        Material/Saldo SAP acima) — só os dados são restaurados aqui; a renderização
