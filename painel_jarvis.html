@@ -12,6 +12,7 @@ window.APP_BUILD_ID='2026-09-13T02:30:00-03:00';</script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
 <script src="assets/vendor/chartjs-plugin-datalabels/chartjs-plugin-datalabels.min.js"></script>
 <script src="assets/vendor/pptxgenjs/pptxgen.bundle.js"></script>
+<script src="assets/vendor/pdfjs/pdf.min.js"></script>
 <script src="assets/audit_material/tickets_catalog.js"></script>
 <style>
 :root {
@@ -7030,6 +7031,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-abertos-ofs" onclick="switchTab('abertosOfs')">
         <i class="ti ti-list-check"></i><span class="ntab-label"> Abertos OFS</span>
       </button>
+      <button class="ntab" id="ntab-warmap" onclick="switchTab('warmap')">
+        <i class="ti ti-map-2"></i><span class="ntab-label"> Warmap</span>
+      </button>
       <button class="ntab" id="ntab-aportes" onclick="switchTab('aportes')">
         <i class="ti ti-cash"></i><span class="ntab-label"> Aportes Combustível</span>
       </button>
@@ -7943,6 +7947,492 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   })();
   </script>
 
+  <!-- ── PAINEL WARMAP (incidentes de Backbone/Acesso extraídos do relatório
+       Warmap em PDF, sempre filtrados em PI/MA/PA/AM/AP) ── -->
+  <style id="wm-style">
+  #panel-warmap{
+    --wm-navy:#182238; --wm-green:#42C34B; --wm-blue:#1476C9;
+    --wm-amber:#E9A23B; --wm-red:#E0484F; --wm-gray:#8A93A6;
+    --wm-bg:#EEF1F6; --wm-card:#FFFFFF; --wm-ink:#182238; --wm-muted:#5D6780; --wm-line:#DCE1EA; --wm-soft:#F5F7FA;
+    --wm-head:#0F2A4A; --wm-headink:#FFFFFF;
+    --wm-sans:'Barlow',Calibri,'Segoe UI',Roboto,Arial,sans-serif;
+    --wm-cond:'Barlow Condensed','Arial Narrow',Calibri,sans-serif;
+    padding:0;background:var(--wm-bg);color:var(--wm-ink);font-family:var(--wm-sans);font-size:15px;line-height:1.45;
+  }
+  @media (prefers-color-scheme: dark){
+    body:not([data-theme="light"]) #panel-warmap{--wm-bg:#0F1524; --wm-card:#182238; --wm-ink:#E8ECF4; --wm-muted:#9AA5BD; --wm-line:#2A3654; --wm-soft:#1E2A44; --wm-head:#08182B;}
+  }
+  body[data-theme="dark"] #panel-warmap{--wm-bg:#0F1524; --wm-card:#182238; --wm-ink:#E8ECF4; --wm-muted:#9AA5BD; --wm-line:#2A3654; --wm-soft:#1E2A44; --wm-head:#08182B;}
+  #panel-warmap *,#panel-warmap *::before,#panel-warmap *::after{box-sizing:border-box}
+  #panel-warmap header.wm-top{background:var(--wm-head);color:var(--wm-headink);padding:22px clamp(16px,4vw,40px) 18px}
+  #panel-warmap .wm-brandrow{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+  #panel-warmap .wm-brand-sub{display:block;color:#9FB0CF;font-size:13px;font-weight:500}
+  #panel-warmap .wm-brand h1{margin:2px 0 0;font-family:var(--wm-cond);font-weight:700;font-size:clamp(28px,4vw,38px);letter-spacing:.2px;line-height:1.05}
+  #panel-warmap .wm-brand h1 span{color:var(--wm-green)}
+  #panel-warmap .wm-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #panel-warmap .wm-btn{font:600 14px var(--wm-sans);border-radius:10px;padding:9px 14px;border:1px solid #33415F;background:#1B3A5C;color:#fff;cursor:pointer}
+  #panel-warmap .wm-btn:hover{background:#234A72}
+  #panel-warmap .wm-btn.wm-primary{background:var(--wm-green);border-color:var(--wm-green);color:#0E2A12}
+  #panel-warmap .wm-fileinfo{color:#9FB0CF;font-size:13px}
+  #panel-warmap .wm-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
+  #panel-warmap .wm-filters label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#9FB0CF;font-weight:500}
+  #panel-warmap .wm-filters select,#panel-warmap .wm-filters input[type=search]{font:500 14px var(--wm-sans);padding:8px 10px;border-radius:9px;border:1px solid #33415F;background:#173252;color:#fff;width:100%}
+  #panel-warmap .wm-uf-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(66,195,75,.16);border:1px solid var(--wm-green);color:#8CE996;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;white-space:nowrap}
+  #panel-warmap .wm-err{background:#FDECEC;color:#8B1D22;padding:10px 14px;border-radius:10px;margin-top:12px;display:none}
+  #panel-warmap .wm-main{padding:22px clamp(16px,4vw,40px) 30px;max-width:1500px;margin:0 auto}
+  #panel-warmap .wm-main.wm-empty-state .wm-grid,#panel-warmap .wm-main.wm-empty-state .wm-kpis{display:none}
+  #panel-warmap .wm-hero{background:var(--wm-card);border-radius:18px;padding:22px 24px;border:1px solid var(--wm-line)}
+  #panel-warmap .wm-hero p.wm-lead{margin:0;font-size:clamp(16px,2vw,19px);font-weight:500;max-width:80ch}
+  #panel-warmap .wm-hero p.wm-lead b{font-weight:700}
+  #panel-warmap .wm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:14px}
+  #panel-warmap .wm-kpi{background:var(--wm-card);border:1px solid var(--wm-line);border-radius:14px;padding:14px 16px;border-left:4px solid var(--wm-blue)}
+  #panel-warmap .wm-kpi .wm-v{font-family:var(--wm-cond);font-size:32px;font-weight:700;line-height:1}
+  #panel-warmap .wm-kpi .wm-l{font-size:13px;font-weight:600;margin-top:6px}
+  #panel-warmap .wm-kpi .wm-s{font-size:12px;color:var(--wm-muted);margin-top:2px}
+  #panel-warmap .wm-kpi.wm-c-tx{border-left-color:var(--wm-blue)}
+  #panel-warmap .wm-kpi.wm-c-acesso{border-left-color:var(--wm-green)}
+  #panel-warmap .wm-kpi.wm-c-massiva{border-left-color:var(--wm-red)}
+  #panel-warmap .wm-kpi.wm-c-total{border-left-color:var(--wm-navy)}
+  #panel-warmap .wm-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin-top:14px;align-items:start}
+  #panel-warmap .wm-card{background:var(--wm-card);border:1px solid var(--wm-line);border-radius:14px;padding:16px 18px;min-width:0}
+  #panel-warmap .wm-card h2{margin:0;font-size:16.5px;font-weight:700}
+  #panel-warmap .wm-card .wm-sub{margin:2px 0 12px;font-size:13px;color:var(--wm-muted)}
+  #panel-warmap .wm-c12{grid-column:span 12}#panel-warmap .wm-c5{grid-column:span 5}#panel-warmap .wm-c7{grid-column:span 7}
+  @media (max-width:980px){#panel-warmap .wm-c5,#panel-warmap .wm-c7{grid-column:span 12}}
+  #panel-warmap .wm-chartbox{position:relative;height:260px}
+  #panel-warmap .wm-tabletools{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:13px;color:var(--wm-muted)}
+  #panel-warmap .wm-tabletools input{font:500 14px var(--wm-sans);padding:7px 10px;border-radius:9px;border:1px solid var(--wm-line);background:var(--wm-card);color:var(--wm-ink);min-width:220px}
+  #panel-warmap .wm-tablewrap{overflow-x:auto;max-height:560px;overflow-y:auto;border:1px solid var(--wm-line);border-radius:10px}
+  #panel-warmap table{border-collapse:collapse;width:100%;font-size:13px}
+  #panel-warmap th,#panel-warmap td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--wm-line);vertical-align:top;white-space:normal;word-break:break-word}
+  #panel-warmap th{position:sticky;top:0;background:var(--wm-soft);font-weight:600;cursor:pointer;user-select:none;z-index:1;white-space:nowrap}
+  #panel-warmap th.wm-num,#panel-warmap td.wm-num{text-align:right;font-variant-numeric:tabular-nums}
+  #panel-warmap tbody tr:hover{background:var(--wm-soft)}
+  #panel-warmap tr.wm-row-overdue{background:#FDECEC}
+  #panel-warmap tr.wm-row-overdue:hover{background:#FBDCDC}
+  #panel-warmap .wm-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;color:#fff;white-space:nowrap}
+  #panel-warmap .wm-uf-pill{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11px;font-weight:700;background:var(--wm-soft);color:var(--wm-ink);border:1px solid var(--wm-line)}
+  #panel-warmap .wm-footer{text-align:center;color:var(--wm-muted);font-size:12.5px;padding:10px 0 26px}
+  #panel-warmap .wm-empty{padding:26px;text-align:center;color:var(--wm-muted)}
+  #panel-warmap .wm-parse-note{font-size:11.5px;color:var(--wm-muted);margin-top:6px}
+  </style>
+  <div class="panel" id="panel-warmap">
+    <header class="wm-top">
+      <div class="wm-brandrow">
+        <div class="wm-brand">
+          <small class="wm-brand-sub">NOC · Backbone &amp; Acesso</small>
+          <h1>Warmap <span id="wm-hDate">—</span></h1>
+        </div>
+        <div class="wm-actions">
+          <span class="wm-uf-badge"><i class="ti ti-filter"></i> Filtro fixo: PI · MA · PA · AM · AP</span>
+          <span class="wm-fileinfo" id="wm-fileInfo"></span>
+          <label class="wm-btn wm-primary" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
+          <input type="file" id="wm-fileIn" accept=".pdf,application/pdf" hidden>
+          <button class="wm-btn" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
+        </div>
+      </div>
+      <div class="wm-filters">
+        <label>Categoria<select id="wm-fCat"></select></label>
+        <label>UF<select id="wm-fUf"></select></label>
+        <label>Cidade<select id="wm-fCid"></select></label>
+        <label>Status<select id="wm-fStatus"></select></label>
+        <label>Parceira<select id="wm-fParceira"></select></label>
+      </div>
+      <div class="wm-err" id="wm-err"></div>
+    </header>
+
+    <div class="wm-main wm-empty-state" id="wm-main">
+      <section class="wm-hero">
+        <p class="wm-lead" id="wm-lead">Anexe o PDF do relatório Warmap (Backbone/Acesso) clicando no botão "Warmap" acima. Serão exibidos apenas os chamados com Cidade/UF em PI, MA, PA, AM ou AP — esse filtro é sempre aplicado, independente dos demais filtros da tela.</p>
+        <div class="wm-parse-note" id="wm-parseNote"></div>
+      </section>
+
+      <section class="wm-kpis" id="wm-kpis"></section>
+
+      <section class="wm-grid">
+        <div class="wm-card wm-c5">
+          <h2>Chamados por UF</h2>
+          <p class="wm-sub">Volume por categoria, no recorte filtrado</p>
+          <div class="wm-chartbox"><canvas id="wm-chUf"></canvas></div>
+        </div>
+        <div class="wm-card wm-c7">
+          <h2>Chamados por Status</h2>
+          <p class="wm-sub">Situação atual de cada chamado, no recorte filtrado</p>
+          <div class="wm-chartbox"><canvas id="wm-chStatus"></canvas></div>
+        </div>
+        <div class="wm-card wm-c12" id="wm-last-block">
+          <div class="wm-tabletools"><span id="wm-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="wm-tblSearch" placeholder="Buscar na tabela"><button type="button" class="wm-btn" id="wm-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button></span></div>
+          <div class="wm-tablewrap"><table id="wm-tbl"></table></div>
+        </div>
+      </section>
+    </div>
+    <div class="wm-footer">Jarvis MCLL · alloha FIBRA</div>
+  </div>
+  <script id="wm-script">
+  (function(){
+    const WM_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
+    const STORE_KEY='jarvis_warmap_v1';
+    const UF_SET=new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
+    const TARGET_UF=['PI','MA','PA','AM','AP'];
+    const STATUS_PHRASES=['Aguardando equipe de campo','Atendimento de campo suspenso','Enviado para COPREDE','Aguardando tratativas','Aguardando baixa','Em Andamento','Suspenso'];
+    const STATUS_RE=new RegExp('('+STATUS_PHRASES.map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','i');
+    const CAT_COLOR={TX:'--wm-blue',IP:'--wm-navy',Acesso:'--wm-green',Massiva:'--wm-red'};
+    const STATUS_COLOR={
+      'Aguardando equipe de campo':'--wm-amber','Atendimento de campo suspenso':'--wm-red',
+      'Enviado para COPREDE':'--wm-blue','Aguardando tratativas':'--wm-gray',
+      'Aguardando baixa':'--wm-green','Em Andamento':'--wm-red','Suspenso':'--wm-gray'
+    };
+
+    let ROWS=[],FILE_NAME='',charts={},LAST_PDF_NAME='';
+
+    const css=v=>getComputedStyle(document.getElementById('panel-warmap')).getPropertyValue(v).trim();
+    const n=s=>(s==null?'':String(s)).replace(/\s+/g,' ').trim();
+    const esc=s=>n(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const fmtN=x=>x.toLocaleString('pt-BR');
+
+    /* ---- Extração de texto do PDF (pdf.js), agrupando itens por linha (Y) e
+       inserindo espaço entre itens quando há um vão horizontal perceptível —
+       sem isso, células adjacentes da tabela (ex.: Trecho e Cidade/UF) colam
+       sem espaço nenhum no texto bruto. ---- */
+    async function wmExtractLines(arrayBuffer){
+      if(typeof pdfjsLib==='undefined')throw new Error('pdf.js não carregado');
+      if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='assets/vendor/pdfjs/pdf.worker.min.js';
+      const doc=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+      const pages=[];
+      for(let p=1;p<=doc.numPages;p++){
+        const page=await doc.getPage(p);
+        const content=await page.getTextContent();
+        const items=content.items.map(it=>({str:it.str,x:it.transform[4],y:it.transform[5],w:it.width||0})).filter(it=>it.str!=null);
+        items.sort((a,b)=>(b.y-a.y)||(a.x-b.x));
+        const lines=[];
+        let cur=null,curY=null,lastEndX=null;
+        const TOL=2.5;
+        for(const it of items){
+          if(cur===null||Math.abs(it.y-curY)>TOL){
+            if(cur)lines.push(cur.join(''));
+            cur=[];curY=it.y;lastEndX=null;
+          }
+          if(lastEndX!=null){
+            const gap=it.x-lastEndX;
+            if(gap>1.2)cur.push(' ');
+          }
+          cur.push(it.str);
+          lastEndX=it.x+it.w;
+        }
+        if(cur)lines.push(cur.join(''));
+        pages.push(lines.map(l=>n(l)).filter(Boolean));
+      }
+      return pages;
+    }
+
+    function findCidadeUf(seg){
+      const slashRe=/([A-ZÀ-Úa-zà-úãõçÃÕÇ0-9'.\- ]{2,60}?)\/([A-Z]{2})\b/g;
+      let m,best=null;
+      while((m=slashRe.exec(seg))){
+        const uf=m[2];if(!UF_SET.has(uf))continue;
+        best={cidade:n(m[1]),uf,matchStart:m.index,matchEnd:m.index+m[0].length};
+      }
+      if(best)return best;
+      const bareRe=/(^|\s)([A-Z]{2})(\s|$)/g;
+      while((m=bareRe.exec(seg))){
+        const uf=m[2];if(!UF_SET.has(uf))continue;
+        const start=m.index+m[1].length;
+        best={cidade:'',uf,matchStart:start,matchEnd:start+uf.length};
+      }
+      return best;
+    }
+    function splitOnStatus(seg){
+      const m=STATUS_RE.exec(seg);
+      if(!m)return null;
+      return{before:seg.slice(0,m.index),status:m[1],after:seg.slice(m.index+m[1].length)};
+    }
+    function chunkRows(lines,startRe){
+      const chunks=[];let cur=null;
+      for(const raw of lines){
+        const line=n(raw);if(!line)continue;
+        if(startRe.test(line)){if(cur)chunks.push(cur.join(' '));cur=[line];}
+        else if(cur)cur.push(line);
+      }
+      if(cur)chunks.push(cur.join(' '));
+      return chunks;
+    }
+
+    function parseTable1(chunk){
+      const m=/^(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/.exec(chunk);
+      if(!m)return null;
+      const[,requisicao,inicioFalha,tempoDecorrido,rest]=m;
+      const cu=findCidadeUf(rest);if(!cu)return null;
+      const trecho=n(rest.slice(0,cu.matchStart));
+      const sp=splitOnStatus(rest.slice(cu.matchEnd));if(!sp)return null;
+      const midTokens=n(sp.before).split(' ').filter(Boolean);
+      const catIdx=midTokens.findIndex(t=>t==='TX'||t==='IP');
+      const categoria=catIdx>=0?midTokens[catIdx]:'';
+      const clusterNome=catIdx>0?midTokens.slice(0,catIdx).join(' '):'';
+      const afterCat=catIdx>=0?midTokens.slice(catIdx+1):midTokens;
+      let clientesB2C='',parceira='';
+      if(afterCat.length&&/^\d+$/.test(afterCat[0])){clientesB2C=afterCat[0];parceira=afterCat.slice(1).join(' ');}
+      else parceira=afterCat.join(' ');
+      return{origem:'Backbone 48h+',requisicao,inicioFalha,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
+        cluster:n(clusterNome),categoria,clientesB2C:n(clientesB2C),parceira:n(parceira),status:sp.status,os:n(sp.after),areaResponsavel:''};
+    }
+    function parseTable2(chunk){
+      const m=/^(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM))\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/i.exec(chunk);
+      if(!m)return null;
+      const[,requisicao,inicioFalha,tempoDecorrido,rest]=m;
+      const cu=findCidadeUf(rest);if(!cu)return null;
+      const oltEqp=n(rest.slice(0,cu.matchStart));
+      const sp=splitOnStatus(rest.slice(cu.matchEnd));if(!sp)return null;
+      const midTokens=n(sp.before).split(' ').filter(Boolean);
+      let clientes='',cluster='';
+      if(midTokens.length&&/^\d+$/.test(midTokens[midTokens.length-1])){clientes=midTokens[midTokens.length-1];cluster=midTokens.slice(0,-1).join(' ');}
+      else cluster=midTokens.join(' ');
+      return{origem:'Acesso 12h+',requisicao,inicioFalha,tempoDecorrido,trecho:oltEqp,cidade:cu.cidade,uf:cu.uf,
+        cluster:n(cluster),categoria:'Acesso',clientesB2C:n(clientes),parceira:'',status:sp.status,os:n(sp.after),areaResponsavel:''};
+    }
+    function parseMassiva(chunk){
+      const m=/^Massiva\s+(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/.exec(chunk);
+      if(!m)return null;
+      const[,requisicao,inicioFalha,tempoDecorrido,rest0]=m;
+      const rest=rest0.replace(/^[A-Z]{2,6}\s*-\s*/,'');
+      const cu=findCidadeUf(rest);if(!cu)return null;
+      const sp=splitOnStatus(rest.slice(cu.matchEnd));
+      const beforeStatus=sp?sp.before:rest.slice(cu.matchEnd);
+      const tokens=n(beforeStatus).split(' ').filter(Boolean);
+      const nums=tokens.filter(t=>/^\d+$/.test(t));
+      const cluster=tokens.filter(t=>!/^\d+$/.test(t)).join(' ');
+      return{origem:'Massiva',requisicao,inicioFalha,tempoDecorrido,trecho:'',cidade:cu.cidade,uf:cu.uf,
+        cluster:n(cluster),categoria:'Massiva',clientesB2C:nums[0]||'',clientesB2B:nums[1]||'',parceira:'',
+        status:sp?sp.status:n(beforeStatus),os:'',areaResponsavel:''};
+    }
+    function parseTable3(chunk){
+      const m=/^(TX|IP)\s+(.*)$/.exec(chunk);
+      if(!m)return null;
+      const[,categoria,rest0]=m;
+      const dateRe=/\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/g;
+      const dates=[...rest0.matchAll(dateRe)];
+      if(dates.length<2)return null;
+      const trecho=n(rest0.slice(0,dates[0].index));
+      const inicioFalha=n(dates[0][0]),acionamento=n(dates[1][0]);
+      let rest=rest0.slice(dates[1].index+dates[1][0].length);
+      const reqM=/^\s*(\d{4,7})\s*/.exec(rest);if(!reqM)return null;
+      const requisicao=reqM[1];rest=rest.slice(reqM[0].length);
+      const cu=findCidadeUf(rest);if(!cu)return null;
+      const afterCidade=rest.slice(cu.matchEnd);
+      const tdM=/^\s*(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s*/.exec(afterCidade);if(!tdM)return null;
+      const tempoDecorrido=n(tdM[1]);
+      const sp=splitOnStatus(afterCidade.slice(tdM[0].length));if(!sp)return null;
+      const areaRe=/(COPREDE INTERNO\s*-\s*[A-ZÀ-Ú ]+|COPREDE PARCEIROS|NOC)\s*$/i;
+      const am=areaRe.exec(n(sp.after));
+      const areaResponsavel=am?n(am[1]):'';
+      const beforeArea=am?n(sp.after).slice(0,am.index):n(sp.after);
+      const tokens=beforeArea.split(' ').filter(Boolean);
+      const KNOWN_PARCEIRAS=new Set(['UPIX','ALGAR','ALLOHA','VIVO','ITS','TIM','ACCS','MULTVALE','VOCE','TELECOM','EVE']);
+      let parceira='',os='';
+      if(tokens.length&&KNOWN_PARCEIRAS.has(tokens[0])){
+        let i=1;if(tokens[0]==='VOCE'&&tokens[1]==='TELECOM')i=2;
+        parceira=tokens.slice(0,i).join(' ');os=tokens.slice(i).join(' ');
+      }else os=tokens.join(' ');
+      return{origem:'Backlog 48h+',requisicao,inicioFalha,acionamento,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
+        categoria,parceira:n(parceira),os:n(os),status:sp.status,areaResponsavel,cluster:'',clientesB2C:''};
+    }
+
+    function parsePages(pages){
+      const all=[];let parsedCount=0,rowAttempts=0;
+      pages.forEach(lines=>{
+        const joinIdx=(re)=>lines.findIndex(l=>re.test(l));
+        const t1i=joinIdx(/INCIDENTES ABERTOS.{0,6}48HRS/i);
+        const t2i=joinIdx(/INCIDENTES ABERTOS.{0,6}12HRS/i);
+        const massi=joinIdx(/MASSIVAS EM ANDAMENTO/i);
+        const t3i=joinIdx(/BACKLOG ACIMA 48HRS/i);
+        if(t1i>=0){
+          const end=massi>=0?massi:lines.length;
+          const chunks=chunkRows(lines.slice(t1i+2,end),/^\d{4,7}\s/);
+          rowAttempts+=chunks.length;
+          chunks.forEach(c=>{const r=parseTable1(c);if(r){all.push(r);parsedCount++;}});
+        }
+        if(massi>=0){
+          const chunks=chunkRows(lines.slice(massi+2),/^Massiva\s/);
+          rowAttempts+=chunks.length;
+          chunks.forEach(c=>{const r=parseMassiva(c);if(r){all.push(r);parsedCount++;}});
+        }
+        if(t2i>=0){
+          const chunks=chunkRows(lines.slice(t2i+2),/^\d{4,7}\s/);
+          rowAttempts+=chunks.length;
+          chunks.forEach(c=>{const r=parseTable2(c);if(r){all.push(r);parsedCount++;}});
+        }
+        if(t3i>=0){
+          const chunks=chunkRows(lines.slice(t3i+2),/^(TX|IP)\s/);
+          rowAttempts+=chunks.length;
+          chunks.forEach(c=>{const r=parseTable3(c);if(r){all.push(r);parsedCount++;}});
+        }
+      });
+      /* Backlog (page3) e "48h+" (page1) descrevem os MESMOS incidentes de
+         backbone — mescla por Requisição pra não contar/duplicar o mesmo
+         chamado duas vezes, preferindo os campos mais ricos do Backlog
+         (Acionamento/Área responsável) sem perder ClientesImpactadosB2C,
+         que só existe na tabela "48h+". */
+      const byReq=new Map();
+      all.forEach(r=>{
+        const key=r.requisicao+'|'+(r.origem==='Massiva'?'massiva':r.origem==='Acesso 12h+'?'acesso':'backbone');
+        const prev=byReq.get(key);
+        if(!prev){byReq.set(key,{...r});return;}
+        const richer=r.origem==='Backlog 48h+'?r:prev.origem==='Backlog 48h+'?prev:r;
+        const merged={...prev,...richer};
+        if(!merged.clientesB2C)merged.clientesB2C=prev.clientesB2C||r.clientesB2C||'';
+        if(!merged.acionamento)merged.acionamento=prev.acionamento||r.acionamento||'';
+        if(!merged.areaResponsavel)merged.areaResponsavel=prev.areaResponsavel||r.areaResponsavel||'';
+        merged.origem=[prev.origem,r.origem].filter((v,i,a)=>a.indexOf(v)===i).join(' + ');
+        byReq.set(key,merged);
+      });
+      return{records:[...byReq.values()],parsedCount,rowAttempts};
+    }
+
+    function fillSelect(id,values,label){
+      const el=document.getElementById(id);if(!el)return;
+      const cur=el.value;
+      el.innerHTML=`<option value="">${label}</option>`+values.map(v=>`<option>${esc(v)}</option>`).join('');
+      if(values.includes(cur))el.value=cur;
+    }
+    function setupFilters(){
+      const u=k=>[...new Set(ROWS.map(r=>r[k]).filter(Boolean))];
+      fillSelect('wm-fCat',u('categoria').sort(),'Todas');
+      fillSelect('wm-fUf',TARGET_UF.filter(uf=>ROWS.some(r=>r.uf===uf)),'Todas');
+      fillSelect('wm-fCid',u('cidade').sort((a,b)=>a.localeCompare(b,'pt')),'Todas');
+      fillSelect('wm-fStatus',u('status').sort(),'Todos');
+      fillSelect('wm-fParceira',u('parceira').sort(),'Todas');
+    }
+    function filtered(){
+      const v=id=>document.getElementById(id).value;
+      return ROWS.filter(r=>TARGET_UF.includes(r.uf)
+        &&(!v('wm-fCat')||r.categoria===v('wm-fCat'))&&(!v('wm-fUf')||r.uf===v('wm-fUf'))
+        &&(!v('wm-fCid')||r.cidade===v('wm-fCid'))&&(!v('wm-fStatus')||r.status===v('wm-fStatus'))
+        &&(!v('wm-fParceira')||r.parceira===v('wm-fParceira')));
+    }
+
+    function render(){
+      const D=filtered();
+      document.getElementById('wm-lead').innerHTML=D.length
+        ?`<b>${fmtN(D.length)}</b> chamado(s) em PI/MA/PA/AM/AP no recorte filtrado, de <b>${fmtN(ROWS.length)}</b> chamados totais no relatório.`
+        :'Nenhum chamado em PI, MA, PA, AM ou AP no recorte atual dos filtros.';
+      const cnt={};D.forEach(r=>cnt[r.categoria]=(cnt[r.categoria]||0)+1);
+      const k=[
+        ['wm-c-total',fmtN(D.length),'Total filtrado','PI · MA · PA · AM · AP'],
+        ['wm-c-tx',fmtN((cnt.TX||0)+(cnt.IP||0)),'Backbone (TX/IP)','trechos de transporte'],
+        ['wm-c-acesso',fmtN(cnt.Acesso||0),'Acesso','OLT/rede externa'],
+        ['wm-c-massiva',fmtN(cnt.Massiva||0),'Massivas','afetação em massa'],
+      ];
+      document.getElementById('wm-kpis').innerHTML=k.map(([c,v,l,s])=>`<div class="wm-kpi ${c}"><div class="wm-v">${v}</div><div class="wm-l">${l}</div><div class="wm-s">${s}</div></div>`).join('');
+      drawCharts(D);drawTable(D);
+    }
+
+    function stackData(D,key,order,colorMap){
+      const cats=[...new Set(D.map(r=>r.categoria))];
+      return cats.map(cat=>({label:cat,data:order.map(v=>D.filter(r=>r[key]===v&&r.categoria===cat).length),
+        backgroundColor:css(CAT_COLOR[cat]||'--wm-gray'),borderRadius:3,maxBarThickness:26}));
+    }
+    function baseOpts(horizontal){
+      const ink=css('--wm-muted'),grid=css('--wm-line');
+      const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+      return{responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',animation:{duration:400},font:{family:WM_FONT},
+        plugins:{legend:{position:'bottom',labels:{color:ink,boxWidth:10,boxHeight:10,font:{size:11,family:WM_FONT}}},
+          tooltip:{mode:'index',intersect:false},
+          datalabels:DL?{color:'#fff',font:{size:10,weight:'bold',family:WM_FONT},formatter:v=>v>0?v:'',anchor:'center',align:'center'}:{display:false}},
+        scales:{x:{stacked:true,ticks:{color:ink,font:{family:WM_FONT}},grid:{color:grid}},
+                y:{stacked:true,ticks:{color:ink,font:{family:WM_FONT}},grid:{color:horizontal?'transparent':grid}}}};
+    }
+    function mk(id,cfg){
+      const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+      cfg.plugins=DL?[DL]:[];
+      charts[id]?.destroy();charts[id]=new Chart(document.getElementById(id),cfg);
+    }
+    function drawCharts(D){
+      const ufs=TARGET_UF.filter(u=>D.some(r=>r.uf===u));
+      mk('wm-chUf',{type:'bar',data:{labels:ufs,datasets:stackData(D,'uf',ufs)},options:baseOpts(false)});
+      const statuses=[...new Set(D.map(r=>r.status))];
+      mk('wm-chStatus',{type:'bar',data:{labels:statuses,datasets:stackData(D,'status',statuses)},options:baseOpts(true)});
+    }
+
+    const pill=(text,colorVar)=>`<span class="wm-pill" style="background:var(${colorVar||'--wm-gray'})">${esc(text)}</span>`;
+    function drawTable(D){
+      const q=n(document.getElementById('wm-tblSearch').value).toLowerCase();
+      const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):D;
+      const cols=[
+        ['requisicao','Requisição',r=>esc(r.requisicao)],
+        ['categoria','Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],
+        ['uf','UF',r=>`<span class="wm-uf-pill">${esc(r.uf)}</span>`],
+        ['cidade','Cidade',r=>esc(r.cidade)||'—'],
+        ['trecho','Trecho/Equip.',r=>esc(r.trecho)||'—'],
+        ['inicioFalha','Início da falha',r=>esc(r.inicioFalha)||'—'],
+        ['tempoDecorrido','Tempo decorrido',r=>esc(r.tempoDecorrido)||'—','wm-num'],
+        ['status','Status',r=>pill(r.status,STATUS_COLOR[r.status])],
+        ['parceira','Parceira',r=>esc(r.parceira)||'—'],
+        ['os','OS',r=>esc(r.os)||'—'],
+        ['areaResponsavel','Área responsável',r=>esc(r.areaResponsavel)||'—'],
+        ['origem','Origem no relatório',r=>esc(r.origem)],
+      ];
+      const t=document.getElementById('wm-tbl');
+      t.innerHTML=`<thead><tr>${cols.map(([,l,,c])=>`<th class="${c||''}">${l}</th>`).join('')}</tr></thead>`
+        +`<tbody>${R.length?R.map(r=>{
+          const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
+          return`<tr${overdue?' class="wm-row-overdue"':''}>${cols.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`;
+        }).join(''):`<tr><td colspan="${cols.length}" class="wm-empty">Nenhum chamado no recorte atual.</td></tr>`}</tbody>`;
+      document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`;
+    }
+
+    function loadRecords(records,name,save){
+      ROWS=records;FILE_NAME=name;
+      if(save){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,records,savedAt:Date.now()}));}catch(e){}}
+      document.getElementById('wm-main').classList.remove('wm-empty-state');
+      const emUf=ROWS.filter(r=>TARGET_UF.includes(r.uf)).length;
+      document.getElementById('wm-fileInfo').textContent=`${name} · ${fmtN(emUf)} chamado(s) em PI/MA/PA/AM/AP de ${fmtN(ROWS.length)} no relatório`;
+      setupFilters();render();
+    }
+
+    async function handlePdf(file){
+      const errEl=document.getElementById('wm-err');
+      errEl.style.display='none';
+      document.getElementById('wm-fileInfo').textContent='Lendo PDF…';
+      try{
+        const buf=await file.arrayBuffer();
+        const pages=await wmExtractLines(buf);
+        const{records,parsedCount,rowAttempts}=parsePages(pages);
+        if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste PDF.');
+        LAST_PDF_NAME=file.name;
+        loadRecords(records,file.name,true);
+        const note=document.getElementById('wm-parseNote');
+        if(note)note.textContent=`${parsedCount} de ${rowAttempts} linha(s) de chamado reconhecidas no PDF.`;
+      }catch(e){
+        errEl.textContent='Não foi possível ler os chamados deste PDF: '+e.message;
+        errEl.style.display='block';
+        document.getElementById('wm-fileInfo').textContent='';
+      }
+    }
+
+    document.getElementById('wm-fileIn').onchange=e=>{const file=e.target.files[0];if(file)handlePdf(file);e.target.value='';};
+    document.querySelector('#panel-warmap label[for=wm-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('wm-fileIn').click();}};
+    document.getElementById('wm-btnClear').onclick=()=>{if(!confirm('Remover a base Warmap salva neste navegador?'))return;
+      try{localStorage.removeItem(STORE_KEY);}catch(e){}
+      ROWS=[];document.getElementById('wm-main').classList.add('wm-empty-state');document.getElementById('wm-fileInfo').textContent='';
+      const note=document.getElementById('wm-parseNote');if(note)note.textContent='';};
+    ['wm-fCat','wm-fUf','wm-fCid','wm-fStatus','wm-fParceira'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.addEventListener('input',render);
+    });
+    document.getElementById('wm-tblSearch').addEventListener('input',()=>drawTable(filtered()));
+    document.getElementById('wm-btnCopy').onclick=()=>{
+      const el=document.getElementById('wm-last-block');
+      if(typeof abCopiarImagem==='function')abCopiarImagem(el,document.getElementById('wm-btnCopy'));
+    };
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
+
+    let pendingRestore=null;
+    try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&Array.isArray(s.records))pendingRestore=s;}catch(e){}
+    window.warmapRenderAll=function(){
+      if(pendingRestore){const s=pendingRestore;pendingRestore=null;loadRecords(s.records,s.name,false);}
+      else if(ROWS.length)render();
+    };
+  })();
+  </script>
+
   <div class="panel" id="panel-aportes">
     <div class="fuel-page-head">
       <div>
@@ -8307,6 +8797,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="dash-modules">
       <button class="dash-module" id="dash-mod-abertos-ofs" onclick="switchTab('abertosOfs')"><i class="ti ti-list-check"></i><strong>Abertos OFS</strong><span>Atividades do dia por cluster, técnico e tipo, com fila em aberto e SLA desde a abertura da OS (PI, MA, PA, AM e AP).</span></button>
+      <button class="dash-module" id="dash-mod-warmap" onclick="switchTab('warmap')"><i class="ti ti-map-2"></i><strong>Warmap</strong><span>Incidentes de Backbone/Acesso extraídos do relatório Warmap em PDF, sempre filtrados em PI, MA, PA, AM e AP.</span></button>
       <button class="dash-module" id="dash-mod-aportes" onclick="switchTab('aportes')"><i class="ti ti-cash"></i><strong>Aportes Combustível</strong><span>Aportes e retiradas de saldo por placa, com histórico e gráficos.</span></button>
       <button class="dash-module" id="dash-mod-abertos" onclick="switchTab('abertos')"><i class="ti ti-clipboard-list"></i><strong>B2B Abertos</strong><span>SLA, substatus, técnicos, MOP/EPS e tabela operacional.</span></button>
       <button class="dash-module" id="dash-mod-b2c" onclick="switchTab('b2c')"><i class="ti ti-users"></i><strong>B2C</strong><span>Indicadores B2C (Reparos, IRT, IRR, IFI, IFME, Aging, Efetividade...) e desvios contra a meta.</span></button>
@@ -11541,7 +12032,7 @@ function canEdit(){return currentUser&&currentUser.role==='admin'}
    sem nenhum controle de permissão possível (applyPanelVisibility() só esconde o que está
    em ALL_PANEL_KEYS). Bug real, não só falta de opção — o admin não conseguia restringir
    o acesso a esses 3 painéis de jeito nenhum. */
-const ALL_PANEL_KEYS=['abertosOfs','aportes','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap','bancoHoras','investigacaoIp','ampli'];
+const ALL_PANEL_KEYS=['abertosOfs','warmap','aportes','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap','bancoHoras','investigacaoIp','ampli'];
 const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
@@ -11604,6 +12095,7 @@ const PANEL_NAV_MAP={
      desmarcasse manualmente. */
   executivo:['ntab-exec'],
   abertosOfs:['ntab-abertos-ofs','dash-mod-abertos-ofs'],
+  warmap:['ntab-warmap','dash-mod-warmap'],
   aportes:['ntab-aportes','dash-mod-aportes'],
   abertos:['ntab-ab','dash-mod-abertos'],
   b2c:['ntab-b2c','dash-mod-b2c'],
@@ -12341,7 +12833,7 @@ function deleteUser(username){
    já que `${PANEL_LABELS[k]}` não tinha entrada pra essas 3 chaves. Bug real, não só
    falta de nome bonito — o admin não conseguia nem saber qual painel aquele checkbox
    controlava. */
-const PANEL_LABELS={abertosOfs:'Abertos OFS',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
+const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmap',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -21368,15 +21860,16 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true,skipRenderTabs=null){
-  if(!['abertosOfs','aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
+  if(!['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
   if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isAof=tab==='abertosOfs',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
+  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isAof?'abertos-ofs':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-abertos-ofs').classList.toggle('active',isAof);
+  document.getElementById('panel-warmap').classList.toggle('active',isWarmap);
   document.getElementById('panel-aportes').classList.toggle('active',isFap);
   document.getElementById('panel-dashboard').classList.toggle('active',isDash);
   document.getElementById('panel-executivo').classList.toggle('active',isExec);
@@ -21410,6 +21903,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(upOfs)upOfs.style.display=isOfs?'flex':'none';
   const _skip=k=>!!(skipRenderTabs&&skipRenderTabs.has(k));
   if(isAof&&!_skip('abertosOfs')&&window.aofRenderAll)aofRenderAll();
+  if(isWarmap&&!_skip('warmap')&&window.warmapRenderAll)warmapRenderAll();
   if(isFap&&!_skip('aportes'))fapRenderAll();
   if(isFuel){if(!_skip('combustivel'))renderFuel();setTimeout(initFuelSplit,80);}
   if(isSi&&!_skip('semIntervencao'))renderAllSi();
