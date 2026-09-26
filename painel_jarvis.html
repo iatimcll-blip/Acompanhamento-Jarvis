@@ -7221,6 +7221,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-farol{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;flex-shrink:0}
   #panel-abertos-ofs .aof-status-select{margin-left:6px;font:500 10px var(--aof-sans);padding:1px 3px;border-radius:5px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);vertical-align:middle}
   #panel-abertos-ofs .aof-obs-input{width:100%;min-width:260px;min-height:52px;font:500 12px var(--aof-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink);resize:vertical;white-space:normal;word-break:break-word;line-height:1.35}
+  #panel-abertos-ofs .aof-obs-readonly{width:100%;min-width:260px;min-height:52px;font:500 12px var(--aof-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink);white-space:normal;word-break:break-word;line-height:1.35}
   #panel-abertos-ofs .aof-obs-input::placeholder{color:var(--aof-muted);font-style:italic}
   #panel-abertos-ofs td.aof-obs-col{min-width:280px;max-width:420px}
   #panel-abertos-ofs tr.aof-row-overdue{background:#FDECEC}
@@ -7271,11 +7272,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="aof-actions">
           <span class="aof-fileinfo" id="aof-fileInfo"></span>
-          <label class="aof-btn aof-primary" for="aof-fileIn" tabindex="0">Anexar base (.csv)</label>
+          <label class="aof-btn aof-primary admin-only" for="aof-fileIn" tabindex="0">Anexar base (.csv)</label>
           <input type="file" id="aof-fileIn" accept=".csv,text/csv" hidden>
           <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
-          <button class="aof-btn" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
-          <button class="aof-btn" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
+          <button class="aof-btn admin-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
+          <button class="aof-btn admin-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
         </div>
       </div>
       <div class="aof-filters">
@@ -7706,7 +7707,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             const key=aofRowKey(r);
             const tag=r.statusManual?' <small style="opacity:.7">(manual)</small>':(r.status.toLowerCase()!=='pendente'&&r.sg==='Em aberto'?` <small>${esc(r.status)}</small>`:'');
             return pill(r.sg)+tag
-              +`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Em aberto">Em aberto</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`;
+              +(canEdit()?`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Em aberto">Em aberto</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`:'');
           }],
           ['aging','Aberta há',r=>r.aging==null?'—':`<b style="color:${r.aging>=24?'var(--aof-red)':r.aging>=12?'var(--aof-amber)':'inherit'}">${r.aging.toFixed(1).replace('.',',')} h</b>`,'aof-num'],
           ['sla','SLA',r=>r.sla==null?'—':`<b style="color:${slaColor(r.sla)}">${fmtSLA(r.sla)}</b>`,'aof-num'],
@@ -7724,7 +7725,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           ['obs','Justificativas e Observações',r=>{
             const key=aofRowKey(r);
             const ph=esc(r.motivo?r.motivo:'Adicionar observação…');
-            return`<textarea class="aof-obs-input" data-key="${esc(key)}" placeholder="${ph}" rows="2">${esc(r.obsText)}</textarea>`;
+            return canEdit()?`<textarea class="aof-obs-input" data-key="${esc(key)}" placeholder="${ph}" rows="2">${esc(r.obsText)}</textarea>`
+              :`<div class="aof-obs-readonly">${esc(r.obsText)||`<span style="opacity:.6">${ph}</span>`}</div>`;
           },'aof-wrap aof-obs-col'],
           ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap']
         ],rows,def0:['sla',-1],label:'atividades em aberto, suspensas ou não concluídas'};
@@ -7851,6 +7853,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(x=>x.setAttribute('aria-selected',x===b));document.getElementById('aof-tblSearch').value='';drawTable(filtered());});
     document.querySelector('#panel-abertos-ofs label[for=aof-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('aof-fileIn').click();}};
     document.getElementById('aof-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
+      if(!canEdit()){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
       const er=document.getElementById('aof-err');const rd=new FileReader();
       rd.onload=()=>{try{
           const wb=XLSX.read(rd.result,{type:'string',raw:true});
@@ -7860,7 +7863,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         }catch(x){er.textContent='Não foi possível ler o arquivo. Confirme que é o CSV exportado do OFS.';er.style.display='block';}};
       rd.onerror=()=>{er.textContent='Falha ao ler o arquivo.';er.style.display='block';};
       rd.readAsText(file,'UTF-8');e.target.value='';};
-    document.getElementById('aof-btnClear').onclick=()=>{if(!confirm('Remover a base salva neste navegador?'))return;
+    document.getElementById('aof-btnClear').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+      if(!confirm('Remover a base salva neste navegador?'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
       ROWS=[];pendingRestore=null;LAST_RAW_TABLE=null;
       document.getElementById('aof-main').classList.add('aof-empty-state');
@@ -7912,6 +7916,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         slaList.innerHTML=tipos.map(t=>`<div class="aof-cfg-row"><span>${esc(t)}</span><span><input type="number" min="1" step="1" value="${aofSlaGet(t)}" data-tipo="${esc(t)}" class="aof-cfg-sla-input"> h</span></div>`).join('');
         tiposList.innerHTML=tipos.map(t=>`<label class="aof-cfg-row" style="cursor:pointer"><span>${esc(t)}</span><input type="checkbox" data-tipo="${esc(t)}" class="aof-cfg-tipo-check" ${TIPOS_CFG[t]!==false?'checked':''}></label>`).join('');
         slaList.querySelectorAll('.aof-cfg-sla-input').forEach(inp=>inp.onchange=()=>{
+          if(!canEdit()){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           const v=parseFloat(inp.value);
           if(isNaN(v)||v<=0){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           SLA_CFG[inp.dataset.tipo]=v;aofSlaSave();
@@ -7919,6 +7924,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           aofSyncPublish();
         });
         tiposList.querySelectorAll('.aof-cfg-tipo-check').forEach(chk=>chk.onchange=()=>{
+          if(!canEdit()){chk.checked=aofTipoVisible(chk.dataset.tipo);return;}
           TIPOS_CFG[chk.dataset.tipo]=chk.checked;aofTiposSave();
           if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
           aofSyncPublish();
@@ -7926,10 +7932,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }
       document.getElementById('aof-cfg-status-count').textContent=Object.keys(STATUS_OV).length;
     }
-    document.getElementById('aof-btnCfg').onclick=()=>{aofRenderCfgLists();document.getElementById('aof-cfg-overlay').classList.add('aof-open');};
+    document.getElementById('aof-btnCfg').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}aofRenderCfgLists();document.getElementById('aof-cfg-overlay').classList.add('aof-open');};
     document.getElementById('aof-cfg-close').onclick=()=>document.getElementById('aof-cfg-overlay').classList.remove('aof-open');
     document.getElementById('aof-cfg-overlay').addEventListener('click',e=>{if(e.target.id==='aof-cfg-overlay')e.currentTarget.classList.remove('aof-open');});
     document.getElementById('aof-cfg-clear-status').onclick=()=>{
+      if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover todas as alterações manuais de status desta base?'))return;
       STATUS_OV={};try{localStorage.removeItem(STATUS_OV_KEY);}catch(e){}
       if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
@@ -8026,9 +8033,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="wm-actions">
           <span class="wm-uf-badge"><i class="ti ti-filter"></i> Filtro fixo: PI · MA · PA · AM · AP</span>
           <span class="wm-fileinfo" id="wm-fileInfo"></span>
-          <label class="wm-btn wm-primary" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
+          <label class="wm-btn wm-primary admin-only" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
           <input type="file" id="wm-fileIn" accept=".pdf,application/pdf" hidden>
-          <button class="wm-btn" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
+          <button class="wm-btn admin-only" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
         </div>
       </div>
       <div class="wm-filters">
@@ -8434,9 +8441,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }
     }
 
-    document.getElementById('wm-fileIn').onchange=e=>{const file=e.target.files[0];if(file)handlePdf(file);e.target.value='';};
+    document.getElementById('wm-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
+      if(!canEdit()){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
+      handlePdf(file);e.target.value='';};
     document.querySelector('#panel-warmap label[for=wm-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('wm-fileIn').click();}};
-    document.getElementById('wm-btnClear').onclick=()=>{if(!confirm('Remover a base Warmap salva neste navegador?'))return;
+    document.getElementById('wm-btnClear').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+      if(!confirm('Remover a base Warmap salva neste navegador?'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
       ROWS=[];document.getElementById('wm-main').classList.add('wm-empty-state');document.getElementById('wm-fileInfo').textContent='';
       const note=document.getElementById('wm-parseNote');if(note)note.textContent='';};
