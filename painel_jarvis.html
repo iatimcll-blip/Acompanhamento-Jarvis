@@ -7368,6 +7368,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
   </div>
   <script id="aof-script">
+  /* Ponte de sincronização entre dispositivos (buildState()/applyState()/
+     REMOTE_MERGE_SECTIONS/_mergeGhRemoteIntoLocal(), definidos num script mais
+     abaixo) — precisam ser variáveis verdadeiramente globais (fora da IIFE logo
+     adiante) pra serem lidas/gravadas de outro script, mesmo padrão já usado por
+     SB_STOCK/sbStockAt e as variáveis fapAt do painel de Aportes Combustível.
+     AOF_SYNC_AT é a fonte da verdade de "mais recente" nos dois sentidos
+     (publicar local -> remoto e receber remoto -> local). */
+  let AOF_SYNC_TABLE=null,AOF_SYNC_FILENAME='',AOF_SYNC_AT='',AOF_SYNC_CFG=null;
   (function(){
     const AOF_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
     const STORE_KEY='jarvis_abertos_ofs_v1';
@@ -7747,6 +7755,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const r=ROWS.find(x=>aofRowKey(x)===key);
           if(r){r.sg=val;r.status=STATUS_RAW_LABEL[val]||val;r.statusManual=true;}
           render();
+          aofSyncPublish();
         };
       });
       t.querySelectorAll('.aof-obs-input').forEach(inp=>{
@@ -7755,6 +7764,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const key=inp.dataset.key,val=inp.value.trim();
           if(val)OBS_CFG[key]=val;else delete OBS_CFG[key];
           aofObsSave();
+          aofSyncPublish();
         };
       });
     }
@@ -7765,6 +7775,37 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const idx=h.map((k,i)=>KEEP.includes(k)?i:-1).filter(i=>i>=0);
       return table.filter(r=>r&&r.length>5).map((r,j)=>idx.map(i=>j?n(r[i]).slice(0,i===h.indexOf('Comentários Gerais')?500:200):h[i]));
     }
+    /* Publica o estado atual (base bruta + configs) pras variáveis-ponte globais e
+       aciona o saveState() do app inteiro (grava local + agenda o envio pro GitHub,
+       se o usuário puder editar) — chamado em toda mutação que um usuário faz aqui:
+       nova base anexada, SLA por tipo, tipo visível, status manual e observação.
+       Assim qualquer dispositivo que sincronizar depois enxerga a mesma base e as
+       mesmas configurações, sem precisar re-anexar nada. */
+    function aofSyncPublish(label){
+      AOF_SYNC_AT=new Date().toISOString();
+      AOF_SYNC_TABLE=LAST_RAW_TABLE;
+      AOF_SYNC_FILENAME=FILE_NAME;
+      AOF_SYNC_CFG={sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG};
+      if(typeof saveState==='function')saveState();
+      if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
+    }
+    /* Chamado por applyState()/_mergeGhRemoteIntoLocal() (script mais abaixo) sempre
+       que uma base mais recente chegar de outro dispositivo. Se o painel não estiver
+       na aba ativa agora, adia o render pro pendingRestore/aofRenderAll já existente
+       (mesma trava usada no boot, pra não criar gráfico Chart.js num canvas oculto
+       com largura zero). */
+    window.aofSyncBoot=function(){
+      if(!AOF_SYNC_TABLE)return;
+      if(AOF_SYNC_CFG&&typeof AOF_SYNC_CFG==='object'){
+        if(AOF_SYNC_CFG.sla&&typeof AOF_SYNC_CFG.sla==='object'){SLA_CFG=AOF_SYNC_CFG.sla;aofSlaSave();}
+        if(AOF_SYNC_CFG.tipos&&typeof AOF_SYNC_CFG.tipos==='object'){TIPOS_CFG=AOF_SYNC_CFG.tipos;aofTiposSave();}
+        if(AOF_SYNC_CFG.statusOv&&typeof AOF_SYNC_CFG.statusOv==='object'){STATUS_OV=AOF_SYNC_CFG.statusOv;aofStatusOvSave();}
+        if(AOF_SYNC_CFG.obs&&typeof AOF_SYNC_CFG.obs==='object'){OBS_CFG=AOF_SYNC_CFG.obs;aofObsSave();}
+      }
+      const isActive=document.getElementById('panel-abertos-ofs').classList.contains('active');
+      if(isActive)load(AOF_SYNC_TABLE,AOF_SYNC_FILENAME,true);
+      else pendingRestore={table:AOF_SYNC_TABLE,name:AOF_SYNC_FILENAME};
+    };
     function load(table,name,save){
       const errEl=document.getElementById('aof-err');
       LAST_RAW_TABLE=table;
@@ -7806,6 +7847,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const wb=XLSX.read(rd.result,{type:'string',raw:true});
           const table=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
           load(table,file.name,true);
+          if(ROWS.length)aofSyncPublish('Abertos OFS');
         }catch(x){er.textContent='Não foi possível ler o arquivo. Confirme que é o CSV exportado do OFS.';er.style.display='block';}};
       rd.onerror=()=>{er.textContent='Falha ao ler o arquivo.';er.style.display='block';};
       rd.readAsText(file,'UTF-8');e.target.value='';};
@@ -7865,10 +7907,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           if(isNaN(v)||v<=0){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           SLA_CFG[inp.dataset.tipo]=v;aofSlaSave();
           if(ROWS.length)render();
+          aofSyncPublish();
         });
         tiposList.querySelectorAll('.aof-cfg-tipo-check').forEach(chk=>chk.onchange=()=>{
           TIPOS_CFG[chk.dataset.tipo]=chk.checked;aofTiposSave();
           if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
+          aofSyncPublish();
         });
       }
       document.getElementById('aof-cfg-status-count').textContent=Object.keys(STATUS_OV).length;
@@ -7881,6 +7925,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       STATUS_OV={};try{localStorage.removeItem(STATUS_OV_KEY);}catch(e){}
       if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
       aofRenderCfgLists();
+      aofSyncPublish();
     };
 
     try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&s.table)pendingRestore=s;}catch(e){}
@@ -11800,6 +11845,18 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         lastEncAt=remoteSt.lastEncAt||lastEncAt;
         lastEncFile=remoteSt.lastEncFile||lastEncFile;
       }
+      /* Abertos OFS: mesmo padrão replace-by-latest do dEnc acima — cada anexo é um
+         export completo e autoritativo do dia, nunca mescla linha a linha. Só troca
+         quando o remoto for comprovadamente mais novo (AOF_SYNC_AT, timestamp ISO)
+         que a base já carregada neste dispositivo. window.aofSyncBoot() decide se
+         renderiza na hora ou adia pro pendingRestore (aba pode estar inativa). */
+      if(remoteSt.AOF_SYNC_AT&&remoteSt.AOF_SYNC_AT>(AOF_SYNC_AT||'')){
+        AOF_SYNC_TABLE=Array.isArray(remoteSt.AOF_SYNC_TABLE)?remoteSt.AOF_SYNC_TABLE:null;
+        AOF_SYNC_FILENAME=remoteSt.AOF_SYNC_FILENAME||'';
+        AOF_SYNC_AT=remoteSt.AOF_SYNC_AT;
+        AOF_SYNC_CFG=remoteSt.AOF_SYNC_CFG&&typeof remoteSt.AOF_SYNC_CFG==='object'?remoteSt.AOF_SYNC_CFG:null;
+        if(typeof window.aofSyncBoot==='function')window.aofSyncBoot();
+      }
       /* Fuel Vehicles: a condição antiga (fuelVeiculosCleared && remoto TAMBÉM vazio) só
          evitava mesclar quando o remoto já tinha convergido pra vazio — ou seja, não
          protegia nada no caso real (remoto ainda com a base antiga, não-vazia, logo
@@ -13314,6 +13371,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','fapAt','fapSaldoMes']},
   {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt']},
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt']},
+  {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT','AOF_SYNC_CFG']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -13346,7 +13404,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -13542,6 +13600,20 @@ function applyState(st,label){
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Saldo SAP:',e);}
+  try{
+    /* Abertos OFS: window.aofSyncBoot() é definida no script do painel (mais acima
+       no documento) — só os dados chegam aqui; ela decide se dá pra renderizar na
+       hora (aba já ativa) ou se precisa adiar pro pendingRestore/aofRenderAll já
+       existente (evita criar gráfico Chart.js num canvas ainda escondido). */
+    if(Object.prototype.hasOwnProperty.call(st,'AOF_SYNC_AT')&&st.AOF_SYNC_AT){
+      AOF_SYNC_TABLE=Array.isArray(st.AOF_SYNC_TABLE)?st.AOF_SYNC_TABLE:null;
+      AOF_SYNC_FILENAME=st.AOF_SYNC_FILENAME||'';
+      AOF_SYNC_AT=st.AOF_SYNC_AT;
+      AOF_SYNC_CFG=st.AOF_SYNC_CFG&&typeof st.AOF_SYNC_CFG==='object'?st.AOF_SYNC_CFG:null;
+      if(typeof window.aofSyncBoot==='function')window.aofSyncBoot();
+      changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Abertos OFS:',e);}
   try{
     /* fapRenderAll() é definida num <script> mais abaixo (mesmo motivo do Audit
        Material/Saldo SAP acima) — só os dados são restaurados aqui; a renderização
