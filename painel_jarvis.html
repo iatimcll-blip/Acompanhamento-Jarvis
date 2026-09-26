@@ -7265,6 +7265,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="aof-filters">
         <label>Cluster<select id="aof-fCluster"></select></label>
         <label>UF<select id="aof-fUF"></select></label>
+        <label>Cidade<select id="aof-fCid"></select></label>
         <label>Categoria<select id="aof-fCat"></select></label>
         <label>Tipo de atividade<select id="aof-fTipo"></select></label>
         <label>Status<select id="aof-fStatus"></select></label>
@@ -7303,6 +7304,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="aof-quickfilters">
             <select id="aof-fCluster2"></select>
             <select id="aof-fUF2"></select>
+            <select id="aof-fCid2"></select>
             <select id="aof-fCat2"></select>
             <select id="aof-fTipo2"></select>
             <select id="aof-fStatus2"></select>
@@ -7458,11 +7460,27 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       fillSelect('aof-'+key,values,label);
       fillSelect('aof-'+key+'2',values,label);
     }
+    function fillCidSelect(){
+      const groups={};
+      ROWS.forEach(r=>{if(!r.cid)return;const k=nk(r.cid);(groups[k]=groups[k]||[]).push(r.cid);});
+      const entries=Object.keys(groups).map(k=>{
+        const counts={};groups[k].forEach(c=>counts[c]=(counts[c]||0)+1);
+        const label=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+        return[k,label];
+      }).sort((a,b)=>a[1].localeCompare(b[1],'pt'));
+      ['aof-fCid','aof-fCid2'].forEach(id=>{
+        const el=document.getElementById(id);if(!el)return;
+        const cur=el.value;
+        el.innerHTML='<option value="">Todas</option>'+entries.map(([k,label])=>`<option value="${esc(k)}">${esc(label)}</option>`).join('');
+        if(entries.some(([k])=>k===cur))el.value=cur;
+      });
+    }
     const numSort=(a,b)=>(parseInt(a.replace(/\D/g,''))||999)-(parseInt(b.replace(/\D/g,''))||999);
     function setupFilters(){
       const u=k=>[...new Set(ROWS.map(r=>r[k]))];
       fillSelectPair('fCluster',u('cluster').sort(numSort),'Todos');
       fillSelectPair('fUF',u('uf').sort(),'Todas');
+      fillCidSelect();
       fillSelectPair('fCat',u('cat').sort(),'Todas');
       fillSelectPair('fTipo',u('tipo').sort((a,b)=>a.localeCompare(b,'pt')),'Todos');
       fillSelectPair('fStatus',ST_ORDER.filter(s=>ROWS.some(r=>r.sg===s)),'Todos');
@@ -7470,7 +7488,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function filtered(){
       const v=id=>document.getElementById(id).value;
       const tec=n(document.getElementById('aof-fTec').value).toLowerCase(),pausa=document.getElementById('aof-fPausa').checked;
-      return ROWS.filter(r=>(!v('aof-fCluster')||r.cluster===v('aof-fCluster'))&&(!v('aof-fUF')||r.uf===v('aof-fUF'))&&(!v('aof-fCat')||r.cat===v('aof-fCat'))
+      return ROWS.filter(r=>(!v('aof-fCluster')||r.cluster===v('aof-fCluster'))&&(!v('aof-fUF')||r.uf===v('aof-fUF'))&&(!v('aof-fCid')||nk(r.cid)===v('aof-fCid'))&&(!v('aof-fCat')||r.cat===v('aof-fCat'))
         &&(!v('aof-fTipo')||r.tipo===v('aof-fTipo'))&&(!v('aof-fStatus')||r.sg===v('aof-fStatus'))&&(!tec||r.rec.toLowerCase().includes(tec))
         &&(pausa||r.cat!=='Pausa'||v('aof-fCat')==='Pausa'));
     }
@@ -7699,7 +7717,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       setupFilters();render();
     }
 
-    const AOF_FILTER_KEYS=['fCluster','fUF','fCat','fTipo','fStatus','fTec','fPausa'];
+    const AOF_FILTER_KEYS=['fCluster','fUF','fCid','fCat','fTipo','fStatus','fTec','fPausa'];
     AOF_FILTER_KEYS.forEach(key=>{
       const a=document.getElementById('aof-'+key),b=document.getElementById('aof-'+key+'2');
       if(!a||!b)return;
