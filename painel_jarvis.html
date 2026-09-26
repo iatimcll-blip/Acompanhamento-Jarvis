@@ -7216,8 +7216,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-quickfilters .aof-chk{flex-direction:row!important;align-items:center;gap:4px!important;padding-top:0;color:var(--aof-muted)!important;font-size:11px!important}
   #panel-abertos-ofs .aof-farol{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;flex-shrink:0}
   #panel-abertos-ofs .aof-status-select{margin-left:6px;font:500 10px var(--aof-sans);padding:1px 3px;border-radius:5px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);vertical-align:middle}
-  #panel-abertos-ofs .aof-obs-input{width:100%;min-width:200px;font:500 12px var(--aof-sans);padding:5px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink)}
+  #panel-abertos-ofs .aof-obs-input{width:100%;min-width:260px;min-height:52px;font:500 12px var(--aof-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink);resize:vertical;white-space:normal;word-break:break-word;line-height:1.35}
   #panel-abertos-ofs .aof-obs-input::placeholder{color:var(--aof-muted);font-style:italic}
+  #panel-abertos-ofs td.aof-obs-col{min-width:280px;max-width:420px}
+  #panel-abertos-ofs tr.aof-row-overdue{background:#FDECEC}
+  #panel-abertos-ofs tr.aof-row-overdue:hover{background:#FBDCDC}
+  #panel-abertos-ofs tr.aof-row-overdue td{border-bottom-color:#F3C6C6}
   #panel-abertos-ofs .aof-obs-capture-text{font:600 12px var(--aof-sans);padding:4px 6px;color:var(--aof-ink);background:#FFF6D8;border:1px solid var(--aof-amber);border-radius:6px;white-space:normal;word-break:break-word;max-width:260px;display:inline-block}
   #panel-abertos-ofs .aof-obs-capture-text.aof-obs-empty{background:none;border-style:dashed;border-color:var(--aof-line);color:var(--aof-muted);font-weight:500;font-style:italic}
   #panel-abertos-ofs .aof-capture-open-comment{background:#FFF6D8;border:1px solid var(--aof-amber);border-radius:6px;padding:4px 6px;margin-top:2px}
@@ -7710,14 +7714,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             const color=over<=0?'var(--aof-green)':over<=limit*0.2?'var(--aof-amber)':'var(--aof-red)';
             return`<span class="aof-farol" style="background:${color}"></span>${limit}h`;
           },'aof-num'],
-          ['tipo','Tipo',r=>esc(r.tipo)],['nome','Cliente',r=>esc(r.nome)||'—','aof-wrap'],
+          ['tipo','Tipo',r=>esc(r.tipo),'aof-wrap'],['nome','Cliente',r=>esc(r.nome)||'—','aof-wrap'],
           ['cid','Cidade',r=>esc(r.cid)+(r.uf?` / ${r.uf}`:'')],['cluster','Cluster',r=>r.cluster],
-          ['rec','Recurso',r=>r.unassigned?`<span class="aof-pill" style="background:var(--aof-red)">Sem técnico</span> <small>${esc(r.rec)}</small>`:esc(r.rec)],
+          ['rec','Recurso',r=>r.unassigned?`<span class="aof-pill" style="background:var(--aof-red)">Sem técnico</span> <small>${esc(r.rec)}</small>`:esc(r.rec),'aof-wrap'],
           ['obs','Justificativas e Observações',r=>{
             const key=aofRowKey(r);
             const ph=esc(r.motivo?r.motivo:'Adicionar observação…');
-            return`<input type="text" class="aof-obs-input" data-key="${esc(key)}" value="${esc(r.obsText)}" placeholder="${ph}">`;
-          },'aof-wrap'],
+            return`<textarea class="aof-obs-input" data-key="${esc(key)}" placeholder="${ph}" rows="2">${esc(r.obsText)}</textarea>`;
+          },'aof-wrap aof-obs-col'],
           ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap']
         ],rows,def0:['sla',-1],label:'atividades em aberto, suspensas ou não concluídas'};
       }
@@ -7740,8 +7744,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(x==null)return 1;if(y==null)return-1;
         return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
       const t=document.getElementById('aof-tbl');
+      const rowCls=r=>(r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0))?' class="aof-row-overdue"':'';
       t.innerHTML=`<thead><tr>${def.map(([k,l,,c])=>`<th tabindex="0" data-k="${k}" class="${c||''}">${l}${k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead>`
-        +`<tbody>${R.length?R.map(r=>`<tr>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
+        +`<tbody>${R.length?R.map(r=>`<tr${rowCls(r)}>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
       document.getElementById('aof-tblInfo').textContent=`${R.length} ${label}`+(tab==='fila'&&REF?` · aging calculado até ${String(REF.getHours()).padStart(2,'0')}:${String(REF.getMinutes()).padStart(2,'0')} do dia da base · SLA da abertura da OS até agora`:'');
       t.querySelectorAll('th').forEach(th=>{const go=()=>{const k=th.dataset.k;const cur=sortState[tab]||def0;
         sortState[tab]=[k,cur[0]===k?-cur[1]:(typeof rows[0]?.[k]==='number'?-1:1)];drawTable(filtered());};
