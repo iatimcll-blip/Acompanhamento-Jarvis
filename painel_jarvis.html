@@ -7211,6 +7211,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-quickfilters .aof-chk{flex-direction:row!important;align-items:center;gap:4px!important;padding-top:0;color:var(--aof-muted)!important;font-size:11px!important}
   #panel-abertos-ofs .aof-farol{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;flex-shrink:0}
   #panel-abertos-ofs .aof-status-select{margin-left:6px;font:500 10px var(--aof-sans);padding:1px 3px;border-radius:5px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);vertical-align:middle}
+  #panel-abertos-ofs .aof-obs-input{width:100%;min-width:200px;font:500 12px var(--aof-sans);padding:5px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink)}
+  #panel-abertos-ofs .aof-obs-input::placeholder{color:var(--aof-muted);font-style:italic}
   #panel-abertos-ofs .aof-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px}
   #panel-abertos-ofs .aof-modal-overlay.aof-open{display:flex}
   #panel-abertos-ofs .aof-modal{background:var(--aof-card);color:var(--aof-ink);border-radius:14px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;padding:22px 24px;position:relative}
@@ -7358,6 +7360,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function aofTipoVisible(t){return TIPOS_CFG[t]!==false;}
     function aofStatusOvSave(){try{localStorage.setItem(STATUS_OV_KEY,JSON.stringify(STATUS_OV));}catch(e){}}
     function aofRowKey(r){return r.os||[r.rec,r.data,r.tipo,r.ini].join('|');}
+    const OBS_KEY='jarvis_abertos_ofs_obs_v1';
+    let OBS_CFG={};
+    try{OBS_CFG=JSON.parse(localStorage.getItem(OBS_KEY)||'{}');}catch(e){OBS_CFG={};}
+    function aofObsSave(){try{localStorage.setItem(OBS_KEY,JSON.stringify(OBS_CFG));}catch(e){}}
+    const STATUS_RAW_LABEL={'Em aberto':'Pendente','Concluída':'Concluído','Suspensa':'Suspenso','Cancelada':'Cancelado','Não concluída':'Não concluído'};
     const ST={
       'Concluída':{c:'--aof-green',keys:['concluído','concluido']},
       'Em aberto':{c:'--aof-blue',keys:['pendente','iniciado','em rota']},
@@ -7597,12 +7604,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ],rows,def0:['c',-1],label:'técnicos'};
       }
       if(tab==='fila'){
-        const rows=D.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa').map(r=>({...r,sla:slaH(r)}));
+        const rows=D.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa').map(r=>{const key=aofRowKey(r);return{...r,sla:slaH(r),obsText:OBS_CFG[key]||''};});
         return{def:[
           ['sg','Status',r=>{
             const key=aofRowKey(r);
-            return pill(r.sg)+(r.status.toLowerCase()!=='pendente'&&r.sg==='Em aberto'?` <small>${esc(r.status)}</small>`:'')
-              +`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`;
+            const tag=r.statusManual?' <small style="opacity:.7">(manual)</small>':(r.status.toLowerCase()!=='pendente'&&r.sg==='Em aberto'?` <small>${esc(r.status)}</small>`:'');
+            return pill(r.sg)+tag
+              +`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Em aberto">Em aberto</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`;
           }],
           ['aging','Aberta há',r=>r.aging==null?'—':`<b style="color:${r.aging>=24?'var(--aof-red)':r.aging>=12?'var(--aof-amber)':'inherit'}">${r.aging.toFixed(1).replace('.',',')} h</b>`,'aof-num'],
           ['sla','SLA',r=>r.sla==null?'—':`<b style="color:${slaColor(r.sla)}">${fmtSLA(r.sla)}</b>`,'aof-num'],
@@ -7614,9 +7622,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             const color=over<=0?'var(--aof-green)':over<=limit*0.2?'var(--aof-amber)':'var(--aof-red)';
             return`<span class="aof-farol" style="background:${color}"></span>${limit}h`;
           },'aof-num'],
-          ['tipo','Tipo',r=>esc(r.tipo)],['nome','Cliente',r=>esc(r.nome)||'—'],
+          ['tipo','Tipo',r=>esc(r.tipo)],['nome','Cliente',r=>esc(r.nome)||'—','aof-wrap'],
           ['cid','Cidade',r=>esc(r.cid)+(r.uf?` / ${r.uf}`:'')],['cluster','Cluster',r=>r.cluster],
           ['rec','Recurso',r=>r.unassigned?`<span class="aof-pill" style="background:var(--aof-red)">Sem técnico</span> <small>${esc(r.rec)}</small>`:esc(r.rec)],
+          ['obs','Justificativas e Observações',r=>{
+            const key=aofRowKey(r);
+            const ph=esc(r.motivo?r.motivo:'Adicionar observação…');
+            return`<input type="text" class="aof-obs-input" data-key="${esc(key)}" value="${esc(r.obsText)}" placeholder="${ph}">`;
+          },'aof-wrap'],
           ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap']
         ],rows,def0:['sla',-1],label:'atividades em aberto, suspensas ou não concluídas'};
       }
@@ -7652,8 +7665,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const key=sel.dataset.key;
           STATUS_OV[key]=val;aofStatusOvSave();
           const r=ROWS.find(x=>aofRowKey(x)===key);
-          if(r)r.sg=val;
+          if(r){r.sg=val;r.status=STATUS_RAW_LABEL[val]||val;r.statusManual=true;}
           render();
+        };
+      });
+      t.querySelectorAll('.aof-obs-input').forEach(inp=>{
+        inp.onclick=e=>e.stopPropagation();
+        inp.onchange=()=>{
+          const key=inp.dataset.key,val=inp.value.trim();
+          if(val)OBS_CFG[key]=val;else delete OBS_CFG[key];
+          aofObsSave();
         };
       });
     }
@@ -7669,7 +7690,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       LAST_RAW_TABLE=table;
       try{ROWS=build(table);errEl.style.display='none';}
       catch(e){errEl.textContent=e.message;errEl.style.display='block';return;}
-      ROWS.forEach(r=>{const k=aofRowKey(r);if(STATUS_OV[k])r.sg=STATUS_OV[k];});
+      ROWS.forEach(r=>{const k=aofRowKey(r);if(STATUS_OV[k]){r.sg=STATUS_OV[k];r.status=STATUS_RAW_LABEL[STATUS_OV[k]]||STATUS_OV[k];r.statusManual=true;}});
       FILE_NAME=name;
       if(save){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,table:slim(table),savedAt:Date.now()}));}catch(e){/* sem espaço: segue só na sessão */}}
       document.getElementById('aof-main').classList.remove('aof-empty-state');
