@@ -7461,8 +7461,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       fillSelect('aof-'+key+'2',values,label);
     }
     function fillCidSelect(){
+      const uf=document.getElementById('aof-fUF')?document.getElementById('aof-fUF').value:'';
       const groups={};
-      ROWS.forEach(r=>{if(!r.cid)return;const k=nk(r.cid);(groups[k]=groups[k]||[]).push(r.cid);});
+      ROWS.forEach(r=>{if(!r.cid||(uf&&r.uf!==uf))return;const k=nk(r.cid);(groups[k]=groups[k]||[]).push(r.cid);});
       const entries=Object.keys(groups).map(k=>{
         const counts={};groups[k].forEach(c=>counts[c]=(counts[c]||0)+1);
         const label=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
@@ -7472,7 +7473,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const el=document.getElementById(id);if(!el)return;
         const cur=el.value;
         el.innerHTML='<option value="">Todas</option>'+entries.map(([k,label])=>`<option value="${esc(k)}">${esc(label)}</option>`).join('');
-        if(entries.some(([k])=>k===cur))el.value=cur;
+        el.value=entries.some(([k])=>k===cur)?cur:'';
       });
     }
     const numSort=(a,b)=>(parseInt(a.replace(/\D/g,''))||999)-(parseInt(b.replace(/\D/g,''))||999);
@@ -7722,14 +7723,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const a=document.getElementById('aof-'+key),b=document.getElementById('aof-'+key+'2');
       if(!a||!b)return;
       const sync=(src,dst)=>{if(src.type==='checkbox')dst.checked=src.checked;else dst.value=src.value;};
-      a.addEventListener('input',()=>{sync(a,b);render();});
-      b.addEventListener('input',()=>{sync(b,a);render();});
+      a.addEventListener('input',()=>{sync(a,b);if(key==='fUF')fillCidSelect();render();});
+      b.addEventListener('input',()=>{sync(b,a);if(key==='fUF')fillCidSelect();render();});
     });
     document.getElementById('aof-btnReset').onclick=()=>{
       AOF_FILTER_KEYS.forEach(key=>{
         const a=document.getElementById('aof-'+key),b=document.getElementById('aof-'+key+'2');
         [a,b].forEach(el=>{if(!el)return;if(el.type==='checkbox')el.checked=false;else el.value='';});
       });
+      fillCidSelect();
       render();
     };
     document.getElementById('aof-tblSearch').addEventListener('input',()=>drawTable(filtered()));
