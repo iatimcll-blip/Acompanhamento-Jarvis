@@ -7368,7 +7368,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="cid">Cidades</button>
             <button type="button" class="aof-tab" role="tab" aria-selected="true" data-tab="tec">Produtividade por técnico</button>
           </div>
-          <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button></span></div>
+          <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="aof-btn" id="aof-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
           <div class="aof-tablewrap"><table id="aof-tbl"></table></div>
         </div>
       </section>
@@ -7800,6 +7800,53 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       });
     }
 
+    /* Colunas do Excel exportado — mesmos campos plain-value (sem HTML/badge) já
+       calculados por tableDefs(), um mapeamento por aba (tec/fila/cid). */
+    function aofExportDefs(){
+      if(tab==='tec')return[
+        ['Técnico',r=>r.rec],['Cluster',r=>r.cluster],['UF',r=>r.uf],
+        ['Atividades',r=>r.t],['Concluídas',r=>r.c],['Conclusão %',r=>r.p],
+        ['Em aberto',r=>r.ab],['Susp./não concl.',r=>r.su],
+        ['Tempo em atividade',r=>fmtH(r.dur)],['Deslocamento',r=>fmtH(r.desl)],
+        ['1º início',r=>r.ini==null?'':fmtH(r.ini).replace('h',':')],
+        ['Último fim',r=>r.fim==null?'':fmtH(r.fim).replace('h',':')]
+      ];
+      if(tab==='fila')return[
+        ['Status',r=>r.sg],['Aberta há (h)',r=>r.aging==null?'':Number(r.aging.toFixed(2))],
+        ['SLA',r=>r.sla==null?'':fmtSLA(r.sla)],['OS',r=>r.os||''],
+        ['SLA Prazo (h)',r=>aofSlaGet(r.tipo)],['Tipo',r=>r.tipo],
+        ['Cliente',r=>r.nome||''],['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],
+        ['Recurso',r=>r.rec],['Sem técnico',r=>r.unassigned?'Sim':'Não'],
+        ['Observação',r=>r.obsText||''],['Comentários',r=>r.com||'']
+      ];
+      return[
+        ['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],['Atividades',r=>r.t],
+        ['Rede',r=>r.rede],['B2B',r=>r.b2b],['Concluídas',r=>r.c],['Conclusão %',r=>r.p],
+        ['Em aberto',r=>r.ab],['Susp./não concl.',r=>r.su]
+      ];
+    }
+    /* Exporta a aba atual em .xlsx — mesmo recorte visível na tela (filtros + busca +
+       ordenação atuais), reaproveitando a mesma lógica de busca/ordenação do drawTable. */
+    function aofExportXlsx(){
+      const D=filtered();
+      const{rows,def0}=tableDefs(D);
+      const[sk,sd]=sortState[tab]||def0;
+      const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
+      let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
+      R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
+        if(x==null)return 1;if(y==null)return-1;
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
+      if(!R.length){alert('Nenhum registro no recorte atual para exportar.');return;}
+      const defs=aofExportDefs();
+      const data=R.map(r=>{const o={};defs.forEach(([label,fn])=>{o[label]=fn(r);});return o;});
+      const ws=XLSX.utils.json_to_sheet(data);
+      const wb=XLSX.utils.book_new();
+      const sheetName={tec:'Produtividade',fila:'Fila em aberto',cid:'Cidades'}[tab]||'Abertos OFS';
+      XLSX.utils.book_append_sheet(wb,ws,sheetName);
+      const fileTab={tec:'produtividade-tecnico',fila:'fila-aberto',cid:'cidades'}[tab]||'export';
+      XLSX.writeFile(wb,`abertos-ofs-${fileTab}-${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
     /* Combina N tabelas brutas (uma por arquivo CSV selecionado de uma vez no input
        multiple) numa única tabela, pra contabilizar as atividades de todos os
        arquivos juntas no painel. Usa o cabeçalho do primeiro arquivo como referência
@@ -7970,6 +8017,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       mo.observe(btn,{attributes:true,attributeFilter:['disabled']});
       setTimeout(()=>{restore();mo.disconnect();},8000);
     };
+    document.getElementById('aof-btnExport').onclick=()=>aofExportXlsx();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
 
     function aofRenderCfgLists(){
@@ -8135,7 +8183,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="wm-chartbox"><canvas id="wm-chStatus"></canvas></div>
         </div>
         <div class="wm-card wm-c12" id="wm-last-block">
-          <div class="wm-tabletools"><span id="wm-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="wm-tblSearch" placeholder="Buscar na tabela"><button type="button" class="wm-btn" id="wm-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button></span></div>
+          <div class="wm-tabletools"><span id="wm-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="wm-tblSearch" placeholder="Buscar na tabela"><button type="button" class="wm-btn" id="wm-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="wm-btn" id="wm-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
           <div class="wm-tablewrap"><table id="wm-tbl"></table></div>
         </div>
       </section>
@@ -8458,6 +8506,30 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`;
     }
 
+    /* Exporta a tabela atual (mesmo recorte visível: filtros fixos+opcionais e busca)
+       em .xlsx, mesmo padrão do botão Exportar do Abertos OFS. */
+    function wmExportDefs(){
+      return[
+        ['Requisição',r=>r.requisicao],['Categoria',r=>r.categoria],['UF',r=>r.uf],
+        ['Cidade',r=>r.cidade||''],['Trecho/Equip.',r=>r.trecho||''],
+        ['Início da falha',r=>r.inicioFalha||''],['Tempo decorrido',r=>r.tempoDecorrido||''],
+        ['Status',r=>r.status],['Parceira',r=>r.parceira||''],['OS',r=>r.os||''],
+        ['Área responsável',r=>r.areaResponsavel||''],['Origem no relatório',r=>r.origem]
+      ];
+    }
+    function wmExportXlsx(){
+      const D=filtered();
+      const q=n(document.getElementById('wm-tblSearch').value).toLowerCase();
+      const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):D;
+      if(!R.length){alert('Nenhum chamado no recorte atual para exportar.');return;}
+      const defs=wmExportDefs();
+      const data=R.map(r=>{const o={};defs.forEach(([label,fn])=>{o[label]=fn(r);});return o;});
+      const ws=XLSX.utils.json_to_sheet(data);
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,'Warmap');
+      XLSX.writeFile(wb,`warmap-${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
     function loadRecords(records,name,save){
       ROWS=records;FILE_NAME=name;
       if(save){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,records,savedAt:Date.now()}));}catch(e){}}
@@ -8525,6 +8597,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const el=document.getElementById('wm-last-block');
       if(typeof abCopiarImagem==='function')abCopiarImagem(el,document.getElementById('wm-btnCopy'));
     };
+    document.getElementById('wm-btnExport').onclick=()=>wmExportXlsx();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
 
     let pendingRestore=null;
