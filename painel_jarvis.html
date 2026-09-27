@@ -7456,6 +7456,23 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const mins=s=>{const m=/^(\d{1,3}):(\d{2})$/.exec(n(s));return m?(+m[1])*60+(+m[2]):null;};
     const pdt=s=>{const m=/^(\d{2})\/(\d{2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/.exec(n(s));if(!m)return null;
       const y=m[3].length===2?2000+(+m[3]):+m[3];return new Date(y,+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));};
+    /* "Data Abertura Chamado" vem em formatos inconsistentes dependendo do export do
+       OFS — visto em dado real: "AAAA/MM/DD" (sem hora), "DD/MM hh:mm" (sem ano) e
+       "DD/MM/AA hh:mm" (ano de 2 dígitos). Normaliza tudo pro padrão DD/MM/AAAA
+       pedido pelo usuário. Quando o ano vem ausente (formato DD/MM), usa o ano da
+       coluna "Data" da mesma linha como referência — o chamado é sempre aberto no
+       mesmo ano da atividade, na prática. Formato não reconhecido: devolve como veio
+       (melhor que esconder o dado por completo). */
+    const fmtAbChamado=(s,dataRef)=>{
+      s=n(s);if(!s)return'';
+      let m=/^(\d{4})\/(\d{2})\/(\d{2})/.exec(s);
+      if(m)return`${m[3]}/${m[2]}/${m[1]}`;
+      m=/^(\d{2})\/(\d{2})\/(\d{2,4})/.exec(s);
+      if(m){const y=m[3].length===2?2000+(+m[3]):+m[3];return`${m[1]}/${m[2]}/${y}`;}
+      m=/^(\d{2})\/(\d{2})(?:\s|$)/.exec(s);
+      if(m){const ref=pdt(dataRef);const y=ref?ref.getFullYear():new Date().getFullYear();return`${m[1]}/${m[2]}/${y}`;}
+      return s;
+    };
     const fmtH=m=>m==null?'—':`${Math.floor(m/60)}h${String(Math.round(m%60)).padStart(2,'0')}`;
     const pct=(a,b)=>b?Math.round(a*100/b):0;
     const esc=s=>n(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -7488,7 +7505,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const m=/C\.\s*(\d+)\s*-\s*([A-Z]{2})\s*-/i.exec(area);
         let uf=n(g(r,'uf')).toUpperCase();uf=UFNAME[uf]||(uf.length===2?uf:'');
         return{rec,unassigned:/CLUSTER/i.test(rec),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:g(r,'nome'),
-          cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:g(r,'abChamado'),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
+          cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:fmtAbChamado(g(r,'abChamado'),g(r,'data')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
           tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),area,pos:g(r,'pos'),com:g(r,'com'),
           clAr:m?'C'+(+m[1]):'',ufAr:m?m[2].toUpperCase():''};
       });
