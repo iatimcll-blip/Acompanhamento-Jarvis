@@ -7524,10 +7524,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const abs=out.filter(o=>same(o.ab)).map(o=>o.ab.getTime());
       REF=abs.length?new Date(Math.max(...abs)):(bd?new Date(bd.getTime()+86399000):new Date());
       out.forEach(o=>{o.aging=(o.ab&&o.cat!=='Pausa')?(REF-o.ab)/3600000:null;});
-      let tiposNovos=false;
-      out.forEach(o=>{if(!(o.tipo in TIPOS_CFG)){TIPOS_CFG[o.tipo]=true;tiposNovos=true;}});
-      if(tiposNovos)aofTiposSave();
       const ufOk=out.filter(o=>UF_ALVO.includes(o.uf));
+      /* Registra tipos novos só a partir das linhas de PI/MA/PA/AM/AP (ufOk), não
+         de "out" inteiro — 2 bugs reais corrigidos juntos: (1) ao combinar com uma
+         base nacional (GIGA+ Nacional), tipos exclusivos de outros estados
+         poluíam "Tipos de atividade visíveis" com nomes irrelevantes pro painel;
+         (2) quando o upload FALHA por falta de dado de PI/MA/PA/AM/AP (erro
+         abaixo), ufOk fica vazio — então nada é registrado/salvo, em vez de
+         poluir a config com tipos de um arquivo que nunca chegou a carregar. */
+      let tiposNovos=false;
+      ufOk.forEach(o=>{if(!(o.tipo in TIPOS_CFG)){TIPOS_CFG[o.tipo]=true;tiposNovos=true;}});
+      if(tiposNovos)aofTiposSave();
       const kept=ufOk.filter(o=>aofTipoVisible(o.tipo));
       EXCL=out.length-ufOk.length;
       EXCL_TIPO=ufOk.length-kept.length;
@@ -7594,6 +7601,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     }
 
     function render(){
+      /* Bug real: o card de detalhamento (aberto ao clicar numa barra do gráfico)
+         ficava aberto mostrando dado ANTIGO depois que o usuário mudava um filtro,
+         trocava de técnico/UF ou anexava uma base nova — nada fechava ele. Fecha
+         aqui (chamado em toda mudança real de filtro/base), não no drawTable/
+         drawAlerts do refresh automático de 60s, que não deve interromper alguém
+         olhando o detalhamento. */
+      const drillCard=document.getElementById('aof-drill-card');
+      if(drillCard)drillCard.style.display='none';
       const D=filtered();
       const cnt={};ST_ORDER.forEach(s=>cnt[s]=0);D.forEach(r=>cnt[r.sg]++);
       const tot=D.length,valid=tot-cnt['Cancelada'];
@@ -7812,7 +7827,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const r=ROWS.find(x=>aofRowKey(x)===key);
           if(r){r.sg=val;r.status=STATUS_RAW_LABEL[val]||val;r.statusManual=true;}
           render();
-          aofSyncPublish();
+          aofSyncPublish('Abertos OFS — status atualizado');
         };
       });
       t.querySelectorAll('.aof-obs-input').forEach(inp=>{
@@ -7821,7 +7836,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const key=inp.dataset.key,val=inp.value.trim();
           if(val)OBS_CFG[key]=val;else delete OBS_CFG[key];
           aofObsSave();
-          aofSyncPublish();
+          aofSyncPublish('Abertos OFS — observação salva');
         };
       });
     }
@@ -8017,9 +8032,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     };
     function load(table,name,save){
       const errEl=document.getElementById('aof-err');
-      LAST_RAW_TABLE=table;
-      try{ROWS=build(table);errEl.style.display='none';}
+      /* Bug real: LAST_RAW_TABLE era sobrescrito com a tabela nova ANTES de saber
+         se build() ia funcionar. Se o upload falhasse (ex.: arquivo sem PI/MA/PA/
+         AM/AP, ou faltando coluna obrigatória), ROWS continuava mostrando a base
+         antiga válida na tela — mas LAST_RAW_TABLE já apontava pra tabela ruim.
+         Qualquer ação seguinte que reaproveitasse LAST_RAW_TABLE (aofSyncPublish
+         ao trocar um tipo/SLA, ou o próprio upload que chama aofSyncPublish sempre
+         que ROWS.length>0 — que continuava >0, com o dado antigo) publicava a
+         tabela CORROMPIDA pra outros dispositivos, mesmo com a tela ainda mostrando
+         o dado antigo correto. Só atualiza LAST_RAW_TABLE depois que build() prova
+         que a tabela é válida. */
+      let built;
+      try{built=build(table);errEl.style.display='none';}
       catch(e){errEl.textContent=e.message;errEl.style.display='block';return;}
+      ROWS=built;
+      LAST_RAW_TABLE=table;
       ROWS.forEach(r=>{const k=aofRowKey(r);if(STATUS_OV[k]){r.sg=STATUS_OV[k];r.status=STATUS_RAW_LABEL[STATUS_OV[k]]||STATUS_OV[k];r.statusManual=true;}});
       FILE_NAME=name;
       if(save){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,table:slim(table),savedAt:Date.now()}));}catch(e){/* sem espaço: segue só na sessão */}}
@@ -8044,6 +8071,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         [a,b].forEach(el=>{if(!el)return;if(el.type==='checkbox')el.checked=false;else el.value='';});
       });
       mselClear('aof-tipo');mselClear('aof-tipo2');
+      /* Bug real: "Limpar filtros" zerava os filtros de cima mas deixava o texto
+         digitado na busca da tabela (aof-tblSearch) intacto — a tabela continuava
+         restrita àquela busca mesmo com "todos" os filtros supostamente limpos,
+         mesmo padrão já corrigido antes noutros painéis (ex.: Limpar filtros do
+         B2B Encerrados também zera a busca). */
+      document.getElementById('aof-tblSearch').value='';
       fillCidSelect();
       render();
     };
@@ -8158,13 +8191,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           if(isNaN(v)||v<=0){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           SLA_CFG[inp.dataset.tipo]=v;aofSlaSave();
           if(ROWS.length)render();
-          aofSyncPublish();
+          aofSyncPublish('Abertos OFS — SLA atualizado');
         });
         tiposList.querySelectorAll('.aof-cfg-tipo-check').forEach(chk=>chk.onchange=()=>{
           if(!canEdit('abertosOfs')){chk.checked=aofTipoVisible(chk.dataset.tipo);return;}
           TIPOS_CFG[chk.dataset.tipo]=chk.checked;aofTiposSave();
           if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
-          aofSyncPublish();
+          aofSyncPublish('Abertos OFS — tipos visíveis atualizados');
         });
       }
       document.getElementById('aof-cfg-status-count').textContent=Object.keys(STATUS_OV).length;
@@ -8178,7 +8211,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       STATUS_OV={};try{localStorage.removeItem(STATUS_OV_KEY);}catch(e){}
       if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
       aofRenderCfgLists();
-      aofSyncPublish();
+      aofSyncPublish('Abertos OFS — status revertidos');
     };
 
     try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&s.table)pendingRestore=s;}catch(e){}
