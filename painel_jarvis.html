@@ -1171,6 +1171,17 @@ body.is-admin .mop-ref-btn.admin-only { display: inline-flex !important; }
 body.is-admin .panel-edit-only { display: flex; }
 #panel-abertos-ofs.can-edit-here .panel-edit-only,
 #panel-warmap.can-edit-here .panel-edit-only { display: flex; }
+/* Modal "Configurar visualização": lista de painéis em 2 colunas internas pra caber
+   os ~27 painéis sem precisar rolar tanto (pedido do usuário — "todas as opções
+   sejam vistas"). Cada linha é um checkbox de visualização + (só quando o usuário
+   editado é Sr e o painel suporta) um segundo toggle "Anexar base" ao lado. */
+#uperms-panels{display:grid;grid-template-columns:1fr 1fr;gap:1px 16px}
+.uperms-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0}
+.uperms-row-view{display:flex;align-items:center;gap:6px;min-width:0}
+.uperms-row-view span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.uperms-row-edit{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--tx3);flex-shrink:0;white-space:nowrap;cursor:pointer}
+.uperms-row-edit input{accent-color:var(--blue)}
+@media (max-width:760px){#uperms-panels{grid-template-columns:1fr}}
 .ofs-apply-btn.admin-only { display: none !important; }
 body.is-admin .ofs-apply-btn.admin-only { display: flex !important; }
 .tsec.admin-only { display: none !important; }
@@ -11494,14 +11505,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
 <!-- ── MODAL: CONFIGURAR VISUALIZAÇÃO DO USUÁRIO ── -->
 <div class="modal-overlay" id="modal-user-perms" style="display:none" onclick="if(event.target===this)closeUserPermsModal()">
-  <div class="modal-box" style="max-width:640px">
+  <div class="modal-box" style="max-width:960px;max-height:92vh">
     <div class="modal-hd">
       <span class="modal-title" id="uperms-title"><i class="ti ti-adjustments"></i> Configurar visualização</span>
       <button class="modal-close" onclick="closeUserPermsModal()"><i class="ti ti-x"></i></button>
     </div>
     <div class="modal-body">
-      <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">Marque o que este usuário poderá visualizar. Desmarque um painel, cluster ou MOP/EPS para ocultá-lo.</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <p style="font-size:12px;color:var(--tx3);margin-bottom:14px" id="uperms-hint">Marque o que este usuário poderá visualizar. Desmarque um painel, cluster ou MOP/EPS para ocultá-lo.</p>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
         <div>
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:6px">Painéis visíveis</div>
           <div id="uperms-panels"></div>
@@ -11512,11 +11523,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin:12px 0 6px">MOP/EPS (B2B + OFS)</div>
           <div id="uperms-mops"></div>
         </div>
-      </div>
-      <div id="uperms-edit-section" style="display:none;margin-top:16px;padding-top:14px;border-top:.5px dashed var(--bd)">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:6px">Pode atualizar / anexar base (Usuário Sr)</div>
-        <p style="font-size:11px;color:var(--tx3);margin-bottom:8px">Só os painéis abaixo já suportam essa liberação — os demais continuam anexáveis apenas pelo Admin.</p>
-        <div id="uperms-editpanels"></div>
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:.5px solid var(--bd)">
@@ -12983,22 +12989,26 @@ function openUserPermsModal(username){
   const mops=p&&Array.isArray(p.mops)?p.mops:AB_ORDEM_MOP;
   const editPanels=p&&Array.isArray(p.editPanels)?p.editPanels:[];
   document.getElementById('uperms-title').textContent='Configurar visualização — '+username;
-  document.getElementById('uperms-panels').innerHTML=ALL_PANEL_KEYS.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${k}" ${panels.includes(k)?'checked':''}> ${PANEL_LABELS[k]}</label>`).join('');
+  document.getElementById('uperms-hint').textContent='Marque o que este usuário poderá visualizar. Desmarque um painel, cluster ou MOP/EPS para ocultá-lo.'
+    +(isSr?' O toggle "Anexar base" ao lado de alguns painéis libera o Usuário Sr pra atualizar/anexar base ali (só os painéis já preparados pra isso mostram o toggle).':'');
+  document.getElementById('uperms-panels').innerHTML=ALL_PANEL_KEYS.map(k=>{
+    const editToggle=isSr&&SR_EDIT_ENABLED_PANELS.includes(k)
+      ?`<label class="uperms-row-edit" title="Usuário Sr pode anexar base/atualizar em ${eh(PANEL_LABELS[k])}"><input type="checkbox" class="uperms-edit-chk" value="${k}" ${editPanels.includes(k)?'checked':''}><i class="ti ti-upload"></i> Anexar base</label>`
+      :'';
+    return`<div class="uperms-row"><label class="uperms-row-view"><input type="checkbox" class="uperms-view-chk" value="${k}" ${panels.includes(k)?'checked':''}> <span>${PANEL_LABELS[k]}</span></label>${editToggle}</div>`;
+  }).join('');
   document.getElementById('uperms-clusters').innerHTML=RDE_CLUSTER_KEYS.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${k}" ${clusters.includes(k)?'checked':''}> ${RDE_CLUSTER_LABELS[k]}</label>`).join('');
   document.getElementById('uperms-mops').innerHTML=AB_ORDEM_MOP.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${eh(k)}" ${mops.includes(k)?'checked':''}> ${eh(k)}</label>`).join('');
-  const editSection=document.getElementById('uperms-edit-section');
-  editSection.style.display=isSr?'':'none';
-  if(isSr)document.getElementById('uperms-editpanels').innerHTML=SR_EDIT_ENABLED_PANELS.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${k}" ${editPanels.includes(k)?'checked':''}> ${PANEL_LABELS[k]}</label>`).join('');
   document.getElementById('modal-user-perms').style.display='flex';
 }
 function closeUserPermsModal(){document.getElementById('modal-user-perms').style.display='none';_permsEditUser='';}
 function saveUserPermsModal(){
   if(!_permsEditUser)return;
-  const getChecked=id=>[...document.querySelectorAll('#'+id+' input:checked')].map(i=>i.value);
-  const panels=getChecked('uperms-panels');
+  const getChecked=(id,sel)=>[...document.querySelectorAll('#'+id+' '+(sel||'input')+':checked')].map(i=>i.value);
+  const panels=getChecked('uperms-panels','.uperms-view-chk');
   const clusters=getChecked('uperms-clusters');
   const mops=getChecked('uperms-mops');
-  const editPanels=getChecked('uperms-editpanels');
+  const editPanels=getChecked('uperms-panels','.uperms-edit-chk');
   const perms={
     panels:panels.length===ALL_PANEL_KEYS.length?DEFAULT_VIEWER_PANELS:panels,
     clusters:clusters.length===RDE_CLUSTER_KEYS.length?null:clusters,
