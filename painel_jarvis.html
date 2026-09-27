@@ -12157,6 +12157,12 @@ function canEdit(panelKey){
    o acesso a esses 3 painéis de jeito nenhum. */
 const ALL_PANEL_KEYS=['abertosOfs','warmap','aportes','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','monitor','whatsapp','dsrVolante','sobreaviso','ativacoes','preventivas','pop','auditMaterial','saldoSap','bancoHoras','investigacaoIp','ampli'];
 const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','auditMaterial','saldoSap'];
+/* Tabs que switchTab() sabe renderizar (subconjunto de ALL_PANEL_KEYS + 'dashboard' —
+   dsrVolante/sobreaviso/bancoHoras/investigacaoIp/ampli são páginas standalone, link
+   direto, não trocam de aba aqui). Usado tanto pra normalizar um tab desconhecido
+   quanto por defaultLandingTab() pra nunca devolver algo que switchTab() não sabe
+   exibir. */
+const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -12169,7 +12175,20 @@ function userPerms(){
 function userAllowedMops(){const p=userPerms();return(p&&Array.isArray(p.mops))?p.mops:null;}
 function userAllowedClusters(){const p=userPerms();return(p&&Array.isArray(p.clusters))?p.clusters:null;}
 function userAllowedPanels(){const p=userPerms();return(p&&Array.isArray(p.panels))?p.panels:DEFAULT_VIEWER_PANELS;}
-function canSeePanel(tab){return!!canEdit()||userAllowedPanels().includes(tab);}
+/* Dashboard (pedido do usuário): aparece só pro Admin — nunca configurável por
+   Usuário/Usuário Sr via perms.panels (diferente dos demais painéis), regra fixa. */
+function canSeePanel(tab){if(tab==='dashboard')return!!canEdit();return!!canEdit()||userAllowedPanels().includes(tab);}
+/* Pra onde mandar quem não pode mais ver a aba atual (perdeu permissão, ou é a
+   primeira vez que um usuário sem acesso ao Dashboard entra). Admin sempre cai no
+   Dashboard; os demais caem em Painel Executivo (quase sempre liberado por padrão,
+   ver DEFAULT_VIEWER_PANELS) ou, na falta dele, no primeiro painel que o usuário
+   realmente pode ver e que switchTab() sabe renderizar. */
+function defaultLandingTab(){
+  if(canEdit())return'dashboard';
+  const allowed=userAllowedPanels();
+  if(allowed.includes('executivo'))return'executivo';
+  return allowed.find(k=>TAB_SWITCHABLE_KEYS.includes(k))||'executivo';
+}
 /* Painel SWAP: mesma base (dAb) de B2B Abertos, mas só os chamados cujo Dep_Atual
    (col Q) CONTENHA "CMO - REPARO SWAP" — comparação via nk() (ignora acento/
    maiúsculas/espaços), então "Cmo - Reparo Swap", "CMO-REPARO SWAP" etc. também casam. */
@@ -12254,7 +12273,14 @@ function applyPanelVisibility(){
       else el.style.setProperty('display','none','important');
     });
   });
-  if(activeTab&&activeTab!=='dashboard'&&!canSeePanel(activeTab))switchTab('dashboard');
+  /* Dashboard não está em ALL_PANEL_KEYS/PANEL_NAV_MAP (não é configurável por
+     usuário) — botão da aba escondido à parte, mesma regra fixa de canSeePanel(). */
+  const dashBtn=document.getElementById('ntab-dash');
+  if(dashBtn){
+    if(canSeePanel('dashboard'))dashBtn.style.removeProperty('display');
+    else dashBtn.style.setProperty('display','none','important');
+  }
+  if(activeTab&&!canSeePanel(activeTab))switchTab(defaultLandingTab());
 }
 function applyPermissions(){
   document.body.classList.toggle('is-admin',!!canEdit());
@@ -13002,6 +13028,16 @@ function openUserPermsModal(username){
   document.getElementById('modal-user-perms').style.display='flex';
 }
 function closeUserPermsModal(){document.getElementById('modal-user-perms').style.display='none';_permsEditUser='';}
+/* Marcar "Anexar base" num painel sempre libera a visualização dele junto — não faz
+   sentido o Usuário Sr atualizar um painel que ele nem enxerga. O onchange abaixo já
+   marca o checkbox de visualizar na hora (feedback imediato); esta função reforça a
+   mesma regra na hora de salvar (união panels+editPanels), cobrindo qualquer sequência
+   de cliques (ex.: marcar Anexar e depois desmarcar Visualizar por engano). */
+document.getElementById('uperms-panels').addEventListener('change',e=>{
+  if(!e.target.classList.contains('uperms-edit-chk')||!e.target.checked)return;
+  const viewChk=e.target.closest('.uperms-row')?.querySelector('.uperms-view-chk');
+  if(viewChk)viewChk.checked=true;
+});
 function saveUserPermsModal(){
   if(!_permsEditUser)return;
   const getChecked=(id,sel)=>[...document.querySelectorAll('#'+id+' '+(sel||'input')+':checked')].map(i=>i.value);
@@ -13009,8 +13045,9 @@ function saveUserPermsModal(){
   const clusters=getChecked('uperms-clusters');
   const mops=getChecked('uperms-mops');
   const editPanels=getChecked('uperms-panels','.uperms-edit-chk');
+  const viewPanels=[...new Set([...panels,...editPanels])];
   const perms={
-    panels:panels.length===ALL_PANEL_KEYS.length?DEFAULT_VIEWER_PANELS:panels,
+    panels:viewPanels.length===ALL_PANEL_KEYS.length?DEFAULT_VIEWER_PANELS:viewPanels,
     clusters:clusters.length===RDE_CLUSTER_KEYS.length?null:clusters,
     mops:mops.length===AB_ORDEM_MOP.length?null:mops,
     editPanels,
@@ -22048,8 +22085,11 @@ function scrollTabbar(dir){
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
 function switchTab(tab,persist=true,skipRenderTabs=null){
-  if(!['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','monitor','whatsapp','ofs','ativacoes','preventivas','pop','auditMaterial','saldoSap'].includes(tab))tab='dashboard';
-  if(tab!=='dashboard'&&!canSeePanel(tab)){_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);tab='dashboard';}
+  if(!TAB_SWITCHABLE_KEYS.includes(tab))tab='dashboard';
+  if(!canSeePanel(tab)){
+    if(tab!=='dashboard')_ghToast('Você não tem permissão para visualizar este painel.','var(--red)',4000);
+    tab=defaultLandingTab();
+  }
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
   const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
