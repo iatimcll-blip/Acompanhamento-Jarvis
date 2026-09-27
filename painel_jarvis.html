@@ -7473,7 +7473,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const h=table[0].map(x=>n(x).replace(/^﻿/,''));
       const f=k=>h.indexOf(k),l=k=>h.lastIndexOf(k);
       const I={rec:f('Recurso'),data:f('Data'),st:f('Status da Atividade'),nome:f('Nome'),bairro:f('Bairro'),cid:f('Cidade'),uf:f('Estado'),
-        ab:f('Data de Abertura OS'),ini:f('Início'),fim:f('Fim'),dur:f('Duração'),desl:f('Tempo de Deslocamento'),tipo:l('Tipo de Atividade'),
+        ab:f('Data de Abertura OS'),abChamado:f('Data Abertura Chamado'),ini:f('Início'),fim:f('Fim'),dur:f('Duração'),desl:f('Tempo de Deslocamento'),tipo:l('Tipo de Atividade'),
         motivo:f('Motivo de Encerramento das atividades'),os:f('Ordem de Serviço'),area:f('Área de Trabalho'),pos:f('Posição na Rota'),com:f('Comentários Gerais')};
       for(const k of['rec','st','tipo'])if(I[k]<0)throw new Error('A base não tem as colunas Recurso, Status da Atividade e Tipo de Atividade. Use a exportação de atividades do OFS.');
       const g=(r,k)=>I[k]>=0?n(r[I[k]]):'';
@@ -7483,7 +7483,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const m=/C\.\s*(\d+)\s*-\s*([A-Z]{2})\s*-/i.exec(area);
         let uf=n(g(r,'uf')).toUpperCase();uf=UFNAME[uf]||(uf.length===2?uf:'');
         return{rec,unassigned:/CLUSTER/i.test(rec),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:g(r,'nome'),
-          cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
+          cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:g(r,'abChamado'),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
           tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),area,pos:g(r,'pos'),com:g(r,'com'),
           clAr:m?'C'+(+m[1]):'',ufAr:m?m[2].toUpperCase():''};
       });
@@ -7735,6 +7735,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           ['aging','Aberta há',r=>r.aging==null?'—':`<b style="color:${r.aging>=24?'var(--aof-red)':r.aging>=12?'var(--aof-amber)':'inherit'}">${r.aging.toFixed(1).replace('.',',')} h</b>`,'aof-num'],
           ['sla','SLA',r=>r.sla==null?'—':`<b style="color:${slaColor(r.sla)}">${fmtSLA(r.sla)}</b>`,'aof-num'],
           ['os','OS',r=>esc(r.os)||'—'],
+          ['abChamado','Abertura do Chamado',r=>esc(r.abChamado)||'—'],
           ['slaPrazo','SLA Prazo',r=>{
             const limit=aofSlaGet(r.tipo);
             if(r.aging==null)return'—';
@@ -7817,6 +7818,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       if(tab==='fila')return[
         ['Status',r=>r.sg],['Data de Abertura',r=>r.ab?`${String(r.ab.getDate()).padStart(2,'0')}/${String(r.ab.getMonth()+1).padStart(2,'0')}/${r.ab.getFullYear()} ${String(r.ab.getHours()).padStart(2,'0')}:${String(r.ab.getMinutes()).padStart(2,'0')}`:''],
         ['SLA',r=>r.sla==null?'':fmtSLA(r.sla)],['OS',r=>r.os||''],
+        ['Abertura do Chamado',r=>r.abChamado||''],
         ['SLA Prazo (h)',r=>aofSlaGet(r.tipo)],['Tipo',r=>r.tipo],
         ['Cliente',r=>r.nome||''],['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],
         ['Recurso',r=>r.rec],['Sem técnico',r=>r.unassigned?'Sim':'Não'],
@@ -7882,16 +7884,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     /* Combina N tabelas brutas (uma por arquivo CSV selecionado de uma vez no input
        multiple) numa única tabela, pra contabilizar as atividades de todos os
-       arquivos juntas no painel. Usa o cabeçalho do primeiro arquivo como referência
-       e remapeia as colunas dos demais por NOME (não por posição) — cobre o caso de
-       exports do OFS com a mesma coluna em ordem levemente diferente entre arquivos.
+       arquivos juntas no painel. O cabeçalho combinado é a UNIÃO das colunas de
+       TODOS os arquivos (não só o primeiro) — sem isso, uma coluna que só existe
+       num formato de export mais rico (ex.: "Data Abertura Chamado", presente no
+       GIGA+ Nacional mas talvez ausente num export R3 mais antigo) sumia do
+       resultado sempre que esse arquivo não fosse o primeiro selecionado. Cada
+       coluna é remapeada por NOME (não por posição) — cobre também o caso de
+       exports com a mesma coluna em ordem diferente entre arquivos.
        Descarta linhas 100% idênticas já vistas (ex.: o mesmo arquivo selecionado sem
        querer duas vezes, ou um export que se sobrepõe a outro) — só duplicata exata
        byte a byte é removida, então duas atividades genuinamente diferentes (mesma OS
        mas status atualizado entre exports, por exemplo) nunca são descartadas. */
     function aofCombineTables(tables){
       if(tables.length===1)return tables[0];
-      const header=tables[0][0].map(x=>n(x).replace(/^﻿/,''));
+      const header=[],seenCols=new Set();
+      tables.forEach(table=>{
+        table[0].map(x=>n(x).replace(/^﻿/,'')).forEach(col=>{
+          if(col&&!seenCols.has(col)){seenCols.add(col);header.push(col);}
+        });
+      });
       const seen=new Set();
       const combined=[header];
       tables.forEach(table=>{
@@ -7913,7 +7924,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       });
       return combined;
     }
-    const KEEP=['Recurso','Data','Status da Atividade','Nome','Bairro','Cidade','Estado','Data de Abertura OS','Início','Fim','Duração','Tempo de Deslocamento','Tipo de Atividade','Motivo de Encerramento das atividades','Ordem de Serviço','Área de Trabalho','Posição na Rota','Comentários Gerais'];
+    const KEEP=['Recurso','Data','Status da Atividade','Nome','Bairro','Cidade','Estado','Data de Abertura OS','Data Abertura Chamado','Início','Fim','Duração','Tempo de Deslocamento','Tipo de Atividade','Motivo de Encerramento das atividades','Ordem de Serviço','Área de Trabalho','Posição na Rota','Comentários Gerais'];
     function slim(table){
       const h=table[0].map(x=>n(x).replace(/^﻿/,''));
       const idx=h.map((k,i)=>KEEP.includes(k)?i:-1).filter(i=>i>=0);
