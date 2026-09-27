@@ -7052,7 +7052,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <i class="ti ti-list-check"></i><span class="ntab-label"> Abertos OFS</span>
       </button>
       <button class="ntab" id="ntab-warmap" onclick="switchTab('warmap')">
-        <i class="ti ti-map-2"></i><span class="ntab-label"> Warmap</span>
+        <i class="ti ti-map-2"></i><span class="ntab-label"> Warmup</span>
       </button>
       <button class="ntab" id="ntab-aportes" onclick="switchTab('aportes')">
         <i class="ti ti-cash"></i><span class="ntab-label"> Aportes Combustível</span>
@@ -8293,6 +8293,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-warmap .wm-uf-pill{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11px;font-weight:700;background:var(--wm-soft);color:var(--wm-ink);border:1px solid var(--wm-line)}
   #panel-warmap .wm-footer{text-align:center;color:var(--wm-muted);font-size:12.5px;padding:10px 0 26px}
   #panel-warmap .wm-empty{padding:26px;text-align:center;color:var(--wm-muted)}
+  #panel-warmap .wm-just-input{width:100%;min-width:220px;min-height:48px;font:500 12px var(--wm-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--wm-line);background:var(--wm-card);color:var(--wm-ink);resize:vertical;white-space:normal;word-break:break-word;line-height:1.35}
+  #panel-warmap .wm-just-readonly{width:100%;min-width:220px;min-height:48px;font:500 12px var(--wm-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--wm-line);background:var(--wm-card);color:var(--wm-ink);white-space:normal;word-break:break-word;line-height:1.35}
+  #panel-warmap .wm-just-input::placeholder{color:var(--wm-muted);font-style:italic}
+  #panel-warmap td.wm-just-col{min-width:240px;max-width:380px}
   #panel-warmap .wm-parse-note{font-size:11.5px;color:var(--wm-muted);margin-top:6px}
   </style>
   <div class="panel" id="panel-warmap">
@@ -8300,13 +8304,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="wm-brandrow">
         <div class="wm-brand">
           <small class="wm-brand-sub">NOC · Backbone &amp; Acesso</small>
-          <h1>Warmap <span id="wm-hDate">—</span></h1>
+          <h1>Warmup <span id="wm-hDate">—</span></h1>
         </div>
         <div class="wm-actions">
           <span class="wm-uf-badge"><i class="ti ti-filter"></i> Filtro fixo: PI · MA · PA · AM · AP</span>
           <span class="wm-upd-badge" id="wm-upd-badge" title=""><i class="ti ti-clock-hour-4"></i><span id="wm-upd-ts">Nenhuma base anexada</span></span>
           <span class="wm-fileinfo" id="wm-fileInfo"></span>
-          <label class="wm-btn wm-primary panel-edit-only" for="wm-fileIn" tabindex="0" title="Aceita o relatório em PDF ou em Excel (.xlsx)"><i class="ti ti-map-2"></i> Warmap</label>
+          <label class="wm-btn wm-primary panel-edit-only" for="wm-fileIn" tabindex="0" title="Aceita o relatório em PDF ou em Excel (.xlsx)"><i class="ti ti-map-2"></i> Warmup</label>
           <input type="file" id="wm-fileIn" accept=".pdf,application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
           <button class="wm-btn panel-edit-only" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
         </div>
@@ -8323,7 +8327,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="wm-main wm-empty-state" id="wm-main">
       <section class="wm-hero">
-        <p class="wm-lead" id="wm-lead">Anexe o PDF do relatório Warmap (Backbone/Acesso) clicando no botão "Warmap" acima. Serão exibidos apenas os chamados com Cidade/UF em PI, MA, PA, AM ou AP — esse filtro é sempre aplicado, independente dos demais filtros da tela.</p>
+        <p class="wm-lead" id="wm-lead">Anexe o relatório Warmup (Backbone/Acesso) clicando no botão "Warmup" acima. Serão exibidos apenas os chamados com Cidade/UF em PI, MA, PA, AM ou AP — esse filtro é sempre aplicado, independente dos demais filtros da tela.</p>
         <div class="wm-parse-note" id="wm-parseNote"></div>
       </section>
 
@@ -8353,10 +8357,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
      (ver AOF_SYNC_* mais acima no documento) — variáveis verdadeiramente
      globais (fora da IIFE) pra serem lidas/gravadas de buildState()/
      applyState()/_mergeGhRemoteIntoLocal(), definidos num script mais abaixo. */
-  let WM_SYNC_RECORDS=null,WM_SYNC_FILENAME='',WM_SYNC_AT='';
+  let WM_SYNC_RECORDS=null,WM_SYNC_FILENAME='',WM_SYNC_AT='',WM_SYNC_CFG=null;
   (function(){
     const WM_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
     const STORE_KEY='jarvis_warmap_v1';
+    /* Justificativa por chamado — mesmo padrão do "Justificativas e Observações"
+       do Abertos OFS (OBS_KEY/OBS_CFG): texto livre editável, guardado por
+       Requisição (chave já usada pra mesclar Backbone+Backlog, sempre única e
+       estável mesmo reprocessando o mesmo relatório), sincronizado entre
+       dispositivos junto com a base via WM_SYNC_CFG. */
+    const WM_JUST_KEY='jarvis_warmap_just_v1';
+    let WM_JUST_CFG={};
+    try{WM_JUST_CFG=JSON.parse(localStorage.getItem(WM_JUST_KEY)||'{}');}catch(e){WM_JUST_CFG={};}
+    function wmJustSave(){try{localStorage.setItem(WM_JUST_KEY,JSON.stringify(WM_JUST_CFG));}catch(e){}}
+    function wmRowKey(r){return r.requisicao;}
     const UF_SET=new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
     const TARGET_UF=['PI','MA','PA','AM','AP'];
     const STATUS_PHRASES=['Aguardando equipe de campo','Atendimento de campo suspenso','Continuar atendimento de campo','Enviado para COPREDE','Aguardando tratativas','Aguardando baixa','Em Andamento','Suspenso'];
@@ -8838,7 +8852,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const pill=(text,colorVar)=>`<span class="wm-pill" style="background:var(${colorVar||'--wm-gray'})">${esc(text)}</span>`;
     function drawTable(D){
       const q=n(document.getElementById('wm-tblSearch').value).toLowerCase();
-      const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):D;
+      const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))
+        ||(WM_JUST_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)):D;
       const cols=[
         ['requisicao','Requisição',r=>esc(r.requisicao)],
         ['categoria','Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],
@@ -8852,6 +8867,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['os','OS',r=>esc(r.os)||'—'],
         ['areaResponsavel','Área responsável',r=>esc(r.areaResponsavel)||'—'],
         ['origem','Origem no relatório',r=>esc(r.origem)],
+        ['justificativa','Justificativa',r=>{
+          const key=wmRowKey(r);
+          const val=WM_JUST_CFG[key]||'';
+          return canEdit('warmap')?`<textarea class="wm-just-input" data-key="${esc(key)}" placeholder="Adicionar justificativa…" rows="2">${esc(val)}</textarea>`
+            :`<div class="wm-just-readonly">${esc(val)||`<span style="opacity:.6">—</span>`}</div>`;
+        },'wm-just-col'],
       ];
       const t=document.getElementById('wm-tbl');
       t.innerHTML=`<thead><tr>${cols.map(([,l,,c])=>`<th class="${c||''}">${l}</th>`).join('')}</tr></thead>`
@@ -8860,6 +8881,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           return`<tr${overdue?' class="wm-row-overdue"':''}>${cols.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`;
         }).join(''):`<tr><td colspan="${cols.length}" class="wm-empty">Nenhum chamado no recorte atual.</td></tr>`}</tbody>`;
       document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`;
+      t.querySelectorAll('.wm-just-input').forEach(inp=>{
+        inp.onclick=e=>e.stopPropagation();
+        inp.onchange=()=>{
+          const key=inp.dataset.key,val=inp.value.trim();
+          if(val)WM_JUST_CFG[key]=val;else delete WM_JUST_CFG[key];
+          wmJustSave();
+          wmSyncPublish('Warmup — justificativa salva');
+        };
+      });
     }
 
     /* Exporta a tabela atual (mesmo recorte visível: filtros fixos+opcionais e busca)
@@ -8870,10 +8900,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['Cidade',r=>r.cidade||''],['Trecho/Equip.',r=>r.trecho||''],
         ['Início da falha',r=>r.inicioFalha||''],['Tempo decorrido',r=>r.tempoDecorrido||''],
         ['Status',r=>r.status],['Parceira',r=>r.parceira||''],['OS',r=>r.os||''],
-        ['Área responsável',r=>r.areaResponsavel||''],['Origem no relatório',r=>r.origem]
+        ['Área responsável',r=>r.areaResponsavel||''],['Origem no relatório',r=>r.origem],
+        ['Justificativa',r=>WM_JUST_CFG[wmRowKey(r)]||'']
       ];
     }
-    const WM_XLSX_WIDE_COLS=new Set(['Trecho/Equip.','Área responsável','Origem no relatório']);
+    const WM_XLSX_WIDE_COLS=new Set(['Trecho/Equip.','Área responsável','Origem no relatório','Justificativa']);
     /* Mesmas cores do painel: cabeçalho no navy do Warmap (--wm-head:#0F2A4A) com
        texto branco, e linha vermelha clara (#FDECEC) pros chamados vencidos —
        idêntico ao .wm-row-overdue já usado na tela (mesma condição de origem
@@ -8889,7 +8920,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         try{
           const defs=wmExportDefs();
           const wb=new ExcelJS.Workbook();
-          const ws=wb.addWorksheet('Warmap');
+          const ws=wb.addWorksheet('Warmup');
           ws.addRow(defs.map(([label])=>label));
           ws.getRow(1).eachCell(c=>{
             c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0F2A4A'}};
@@ -8908,7 +8939,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
           const url=URL.createObjectURL(blob);
           const a=document.createElement('a');
-          a.href=url;a.download=`warmap-${new Date().toISOString().slice(0,10)}.xlsx`;
+          a.href=url;a.download=`warmup-${new Date().toISOString().slice(0,10)}.xlsx`;
           document.body.appendChild(a);a.click();a.remove();
           setTimeout(()=>URL.revokeObjectURL(url),4000);
         }catch(e){console.error('Erro ao exportar Excel:',e);alert('Não foi possível gerar o Excel.');}
@@ -8951,6 +8982,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       WM_SYNC_AT=new Date().toISOString();
       WM_SYNC_RECORDS=ROWS;
       WM_SYNC_FILENAME=FILE_NAME;
+      WM_SYNC_CFG={just:WM_JUST_CFG};
       wmUpdateBadge();
       if(typeof saveState==='function')saveState();
       if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
@@ -8960,6 +8992,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        incluindo replicar uma remoção (WM_SYNC_RECORDS null) feita em outro
        dispositivo, em vez de deixar a base antiga na tela. */
     window.wmSyncBoot=function(){
+      if(WM_SYNC_CFG&&typeof WM_SYNC_CFG==='object'&&WM_SYNC_CFG.just&&typeof WM_SYNC_CFG.just==='object'){
+        WM_JUST_CFG=WM_SYNC_CFG.just;wmJustSave();
+      }
       const isActive=document.getElementById('panel-warmap').classList.contains('active');
       if(WM_SYNC_RECORDS){
         if(isActive)loadRecords(WM_SYNC_RECORDS,WM_SYNC_FILENAME,true);
@@ -8987,7 +9022,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste PDF.');
         LAST_PDF_NAME=file.name;
         loadRecords(records,file.name,true);
-        wmSyncPublish('Warmap');
+        wmSyncPublish('Warmup');
         const note=document.getElementById('wm-parseNote');
         if(note)note.textContent=`${parsedCount} de ${rowAttempts} linha(s) de chamado reconhecidas no PDF.`;
       }catch(e){
@@ -9008,7 +9043,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste Excel.');
         LAST_PDF_NAME='';
         loadRecords(records,file.name,true);
-        wmSyncPublish('Warmap');
+        wmSyncPublish('Warmup');
         const note=document.getElementById('wm-parseNote');
         if(note)note.textContent=`${parsedCount} chamado(s) lidos de ${sheetsFound} aba(s) do Excel.`;
       }catch(e){
@@ -9021,14 +9056,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     document.getElementById('wm-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
       if(!canEdit('warmap')){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
       /* Aceita PDF ou Excel — decide pelo nome/tipo do arquivo, já que os dois
-         formatos usam o mesmo botão "Warmap" (pedido do usuário: "a base sempre
+         formatos usam o mesmo botão "Warmup" (pedido do usuário: "a base sempre
          a ser anexada será em PDF ou Excel"). */
       const isExcel=/\.xlsx?$/i.test(file.name)||/spreadsheetml|ms-excel/i.test(file.type||'');
       if(isExcel)handleExcel(file);else handlePdf(file);
       e.target.value='';};
     document.querySelector('#panel-warmap label[for=wm-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('wm-fileIn').click();}};
     document.getElementById('wm-btnClear').onclick=()=>{if(!canEdit('warmap')){alert('Seu usuário possui acesso somente para visualização.');return;}
-      if(!confirm('Remover a base Warmap salva neste navegador? A remoção também é sincronizada — outros dispositivos deixarão de mostrar esta base até alguém anexar uma nova.'))return;
+      if(!confirm('Remover a base Warmup salva neste navegador? A remoção também é sincronizada — outros dispositivos deixarão de mostrar esta base até alguém anexar uma nova.'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
       ROWS=[];pendingRestore=null;FILE_NAME='';
       document.getElementById('wm-main').classList.add('wm-empty-state');document.getElementById('wm-fileInfo').textContent='';
@@ -9039,7 +9074,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       WM_SYNC_RECORDS=null;WM_SYNC_FILENAME='';WM_SYNC_AT=new Date().toISOString();
       wmUpdateBadge();
       if(typeof saveState==='function')saveState();
-      if(typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload('Warmap — base removida');};
+      if(typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload('Warmup — base removida');};
     ['wm-fCat','wm-fUf','wm-fCid','wm-fStatus','wm-fParceira'].forEach(id=>{
       const el=document.getElementById(id);if(el)el.addEventListener('input',render);
     });
@@ -9424,7 +9459,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="dash-modules">
       <button class="dash-module" id="dash-mod-abertos-ofs" onclick="switchTab('abertosOfs')"><i class="ti ti-list-check"></i><strong>Abertos OFS</strong><span>Atividades do dia por cluster, técnico e tipo, com fila em aberto e SLA desde a abertura da OS (PI, MA, PA, AM e AP).</span></button>
-      <button class="dash-module" id="dash-mod-warmap" onclick="switchTab('warmap')"><i class="ti ti-map-2"></i><strong>Warmap</strong><span>Incidentes de Backbone/Acesso extraídos do relatório Warmap em PDF, sempre filtrados em PI, MA, PA, AM e AP.</span></button>
+      <button class="dash-module" id="dash-mod-warmap" onclick="switchTab('warmap')"><i class="ti ti-map-2"></i><strong>Warmup</strong><span>Incidentes de Backbone/Acesso extraídos do relatório Warmup, sempre filtrados em PI, MA, PA, AM e AP.</span></button>
       <button class="dash-module" id="dash-mod-aportes" onclick="switchTab('aportes')"><i class="ti ti-cash"></i><strong>Aportes Combustível</strong><span>Aportes e retiradas de saldo por placa, com histórico e gráficos.</span></button>
       <button class="dash-module" id="dash-mod-abertos" onclick="switchTab('abertos')"><i class="ti ti-clipboard-list"></i><strong>B2B Abertos</strong><span>SLA, substatus, técnicos, MOP/EPS e tabela operacional.</span></button>
       <button class="dash-module" id="dash-mod-b2c" onclick="switchTab('b2c')"><i class="ti ti-users"></i><strong>B2C</strong><span>Indicadores B2C (Reparos, IRT, IRR, IFI, IFME, Aging, Efetividade...) e desvios contra a meta.</span></button>
@@ -13051,6 +13086,7 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         WM_SYNC_RECORDS=Array.isArray(remoteSt.WM_SYNC_RECORDS)?remoteSt.WM_SYNC_RECORDS:null;
         WM_SYNC_FILENAME=remoteSt.WM_SYNC_FILENAME||'';
         WM_SYNC_AT=remoteSt.WM_SYNC_AT;
+        WM_SYNC_CFG=remoteSt.WM_SYNC_CFG&&typeof remoteSt.WM_SYNC_CFG==='object'?remoteSt.WM_SYNC_CFG:null;
         if(typeof window.wmSyncBoot==='function')window.wmSyncBoot();
       }
       /* Fuel Vehicles: a condição antiga (fuelVeiculosCleared && remoto TAMBÉM vazio) só
@@ -13532,7 +13568,7 @@ function deleteUser(username){
    já que `${PANEL_LABELS[k]}` não tinha entrada pra essas 3 chaves. Bug real, não só
    falta de nome bonito — o admin não conseguia nem saber qual painel aquele checkbox
    controlava. */
-const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmap',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
+const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmup',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -14606,7 +14642,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt']},
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt']},
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT','AOF_SYNC_CFG']},
-  {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
+  {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT','WM_SYNC_CFG']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -14639,7 +14675,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -14856,6 +14892,7 @@ function applyState(st,label){
       WM_SYNC_RECORDS=Array.isArray(st.WM_SYNC_RECORDS)?st.WM_SYNC_RECORDS:null;
       WM_SYNC_FILENAME=st.WM_SYNC_FILENAME||'';
       WM_SYNC_AT=st.WM_SYNC_AT;
+      WM_SYNC_CFG=st.WM_SYNC_CFG&&typeof st.WM_SYNC_CFG==='object'?st.WM_SYNC_CFG:null;
       if(typeof window.wmSyncBoot==='function')window.wmSyncBoot();
       changed=true;
     }
