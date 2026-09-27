@@ -7827,6 +7827,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     }
     /* Exporta a aba atual em .xlsx — mesmo recorte visível na tela (filtros + busca +
        ordenação atuais), reaproveitando a mesma lógica de busca/ordenação do drawTable. */
+    const AOF_XLSX_WIDE_COLS=new Set(['Cliente','Observação','Comentários','Técnico']);
+    /* Mesmas cores do painel: cabeçalho no navy escuro usado no header/aba ativa
+       (--aof-navy/--aof-head:#182238) com texto branco, e linha vermelha clara
+       (#FDECEC) na Fila em aberto pra atividade acima do SLA — idêntico ao
+       .aof-row-overdue já usado na tela (mesma condição: aging-SLA>0). */
     function aofExportXlsx(){
       const D=filtered();
       const{rows,def0}=tableDefs(D);
@@ -7837,14 +7842,39 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(x==null)return 1;if(y==null)return-1;
         return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
       if(!R.length){alert('Nenhum registro no recorte atual para exportar.');return;}
-      const defs=aofExportDefs();
-      const data=R.map(r=>{const o={};defs.forEach(([label,fn])=>{o[label]=fn(r);});return o;});
-      const ws=XLSX.utils.json_to_sheet(data);
-      const wb=XLSX.utils.book_new();
-      const sheetName={tec:'Produtividade',fila:'Fila em aberto',cid:'Cidades'}[tab]||'Abertos OFS';
-      XLSX.utils.book_append_sheet(wb,ws,sheetName);
-      const fileTab={tec:'produtividade-tecnico',fila:'fila-aberto',cid:'cidades'}[tab]||'export';
-      XLSX.writeFile(wb,`abertos-ofs-${fileTab}-${new Date().toISOString().slice(0,10)}.xlsx`);
+      const btn=document.getElementById('aof-btnExport');
+      const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
+      abCarregarExcelJS(async()=>{
+        try{
+          const defs=aofExportDefs();
+          const wb=new ExcelJS.Workbook();
+          const sheetName={tec:'Produtividade',fila:'Fila em aberto',cid:'Cidades'}[tab]||'Abertos OFS';
+          const ws=wb.addWorksheet(sheetName);
+          ws.addRow(defs.map(([label])=>label));
+          ws.getRow(1).eachCell(c=>{
+            c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF182238'}};
+            c.font={color:{argb:'FFFFFFFF'},bold:true};
+            c.alignment={vertical:'middle'};
+          });
+          ws.columns=defs.map(([label])=>({width:AOF_XLSX_WIDE_COLS.has(label)?36:Math.max(12,label.length+4)}));
+          R.forEach(r=>{
+            const row=ws.addRow(defs.map(([,fn])=>fn(r)));
+            const overdue=tab==='fila'&&r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0);
+            if(overdue)row.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDECEC'}};});
+          });
+          ws.autoFilter={from:{row:1,column:1},to:{row:1,column:defs.length}};
+          ws.views=[{state:'frozen',ySplit:1}];
+          const buf=await wb.xlsx.writeBuffer();
+          const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+          const url=URL.createObjectURL(blob);
+          const a=document.createElement('a');
+          const fileTab={tec:'produtividade-tecnico',fila:'fila-aberto',cid:'cidades'}[tab]||'export';
+          a.href=url;a.download=`abertos-ofs-${fileTab}-${new Date().toISOString().slice(0,10)}.xlsx`;
+          document.body.appendChild(a);a.click();a.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),4000);
+        }catch(e){console.error('Erro ao exportar Excel:',e);alert('Não foi possível gerar o Excel.');}
+        finally{btn.disabled=false;btn.innerHTML=origHtml;}
+      },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
     }
 
     /* Combina N tabelas brutas (uma por arquivo CSV selecionado de uma vez no input
@@ -8517,17 +8547,47 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['Área responsável',r=>r.areaResponsavel||''],['Origem no relatório',r=>r.origem]
       ];
     }
+    const WM_XLSX_WIDE_COLS=new Set(['Trecho/Equip.','Área responsável','Origem no relatório']);
+    /* Mesmas cores do painel: cabeçalho no navy do Warmap (--wm-head:#0F2A4A) com
+       texto branco, e linha vermelha clara (#FDECEC) pros chamados vencidos —
+       idêntico ao .wm-row-overdue já usado na tela (mesma condição de origem
+       48h/12h + tempo decorrido em dias). */
     function wmExportXlsx(){
       const D=filtered();
       const q=n(document.getElementById('wm-tblSearch').value).toLowerCase();
       const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):D;
       if(!R.length){alert('Nenhum chamado no recorte atual para exportar.');return;}
-      const defs=wmExportDefs();
-      const data=R.map(r=>{const o={};defs.forEach(([label,fn])=>{o[label]=fn(r);});return o;});
-      const ws=XLSX.utils.json_to_sheet(data);
-      const wb=XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,ws,'Warmap');
-      XLSX.writeFile(wb,`warmap-${new Date().toISOString().slice(0,10)}.xlsx`);
+      const btn=document.getElementById('wm-btnExport');
+      const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
+      abCarregarExcelJS(async()=>{
+        try{
+          const defs=wmExportDefs();
+          const wb=new ExcelJS.Workbook();
+          const ws=wb.addWorksheet('Warmap');
+          ws.addRow(defs.map(([label])=>label));
+          ws.getRow(1).eachCell(c=>{
+            c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0F2A4A'}};
+            c.font={color:{argb:'FFFFFFFF'},bold:true};
+            c.alignment={vertical:'middle'};
+          });
+          ws.columns=defs.map(([label])=>({width:WM_XLSX_WIDE_COLS.has(label)?32:Math.max(12,label.length+4)}));
+          R.forEach(r=>{
+            const row=ws.addRow(defs.map(([,fn])=>fn(r)));
+            const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
+            if(overdue)row.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDECEC'}};});
+          });
+          ws.autoFilter={from:{row:1,column:1},to:{row:1,column:defs.length}};
+          ws.views=[{state:'frozen',ySplit:1}];
+          const buf=await wb.xlsx.writeBuffer();
+          const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+          const url=URL.createObjectURL(blob);
+          const a=document.createElement('a');
+          a.href=url;a.download=`warmap-${new Date().toISOString().slice(0,10)}.xlsx`;
+          document.body.appendChild(a);a.click();a.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),4000);
+        }catch(e){console.error('Erro ao exportar Excel:',e);alert('Não foi possível gerar o Excel.');}
+        finally{btn.disabled=false;btn.innerHTML=origHtml;}
+      },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
     }
 
     function loadRecords(records,name,save){
@@ -17663,6 +17723,21 @@ function abCarregarH2C(cb,onErr){
   s.src='assets/vendor/html2canvas/html2canvas.min.js';
   s.onload=cb;
   s.onerror=()=>{alert('Falha ao carregar html2canvas.');if(onErr)onErr();};
+  document.head.appendChild(s);
+}
+/* Carregada sob demanda (só quando alguém clica em "Exportar") — a versão community
+   do xlsx.full.min.js já usado pelo resto do app (uploads) NÃO escreve estilo de
+   célula nenhum no .xlsx gerado (fill/fonte ficam ignorados silenciosamente ao
+   salvar, confirmado inspecionando o styles.xml produzido — é limitação conhecida
+   da edição community, escrever estilo é recurso pago da SheetJS). ExcelJS escreve
+   fill/fonte de verdade, por isso o botão Exportar do Abertos OFS/Warmap usa esta
+   biblioteca separada em vez do xlsx.full.min.js. */
+function abCarregarExcelJS(cb,onErr){
+  if(window.ExcelJS)return cb();
+  const s=document.createElement('script');
+  s.src='assets/vendor/exceljs/exceljs.min.js';
+  s.onload=cb;
+  s.onerror=()=>{alert('Falha ao carregar ExcelJS.');if(onErr)onErr();};
   document.head.appendChild(s);
 }
 function abCopiarImagem(el,btn){
