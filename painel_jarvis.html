@@ -8415,12 +8415,44 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       return pages;
     }
 
+    /* Normaliza cidade 100% CAIXA ALTA (ex.: a tabela de Massivas escreve
+       "ALENQUER") pro mesmo Nome Próprio usado nas outras tabelas ("Alenquer") —
+       sem isso, a mesma cidade virava 2 opções diferentes no filtro (uma por
+       tabela de origem). Preposições curtas ficam minúsculas ("dos"/"do"/"da"/
+       "das"/"e"), como convenção de nome de lugar em português. Só mexe em texto
+       já 100% maiúsculo — nome que já vem em Title Case (a maioria) passa direto,
+       sem risco de estragar acentuação/caso já correto. */
+    const titleCaseCidade=s=>{
+      if(!s||s!==s.toUpperCase()||s===s.toLowerCase())return s;
+      let wi=0;
+      return s.toLowerCase().replace(/\S+/g,w=>{
+        const keepLower=wi>0&&['da','de','do','das','dos','e'].includes(w);
+        wi++;
+        return keepLower?w:w.charAt(0).toUpperCase()+w.slice(1);
+      });
+    };
     function findCidadeUf(seg){
       const slashRe=/([A-ZÀ-Úa-zà-úãõçÃÕÇ0-9'.\- ]{2,60}?)\/([A-Z]{2})\b/g;
       let m,best=null;
       while((m=slashRe.exec(seg))){
         const uf=m[2];if(!UF_SET.has(uf))continue;
-        best={cidade:n(m[1]),uf,matchStart:m.index,matchEnd:m.index+m[0].length};
+        const rawCidade=m[1];
+        /* Bug real: quando não há separador claro no PDF achatado, a captura vinha
+           colada com o código de trecho/equipamento que vem ANTES (ex.:
+           "ATX-MA-OLT-HUAWEI-PRES-DUTRA-A Presidente Dutra/MA" virava cidade
+           inteira, em vez de só "Presidente Dutra") — o regex, sendo guloso pelo
+           mínimo até achar a barra, precisa "engolir" tudo que vem antes quando
+           não há outra barra no meio. Códigos de trecho/equipamento são sempre
+           CAIXA ALTA com hífen (sem letra minúscula); a cidade de verdade começa
+           no primeiro trecho em Nome Próprio (maiúscula seguida de minúscula).
+           Acha esse ponto e desloca matchStart pra lá, sobrando o código pra
+           Trecho/OLTEqp (que já usa "tudo antes de matchStart"). Cidade 100%
+           CAIXA ALTA (sem par maiúscula+minúscula) não tem como distinguir do
+           código só pelo texto — mantém como veio (mesmo comportamento de antes,
+           sem piorar nada). */
+        const titleM=/[A-ZÀ-Ú][a-zà-ú]/.exec(rawCidade);
+        const cidadeStart=titleM?titleM.index:0;
+        best={cidade:titleCaseCidade(n(rawCidade.slice(cidadeStart))),uf,matchStart:m.index+cidadeStart,matchEnd:m.index+m[0].length};
       }
       if(best)return best;
       const bareRe=/(^|\s)([A-Z]{2})(\s|$)/g;
@@ -8583,8 +8615,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       el.innerHTML=`<option value="">${label}</option>`+values.map(v=>`<option>${esc(v)}</option>`).join('');
       if(values.includes(cur))el.value=cur;
     }
+    /* Bug real: as opções dos filtros (Categoria/Cidade/Status/Parceira) vinham de
+       ROWS inteiro — TODAS as UFs do relatório nacional, não só PI/MA/PA/AM/AP —
+       já que o relatório do Warmap traz o Brasil inteiro e só é restrito à UF alvo
+       dentro de filtered()/render(). Resultado: o filtro de Cidade listava cidades
+       de fora do escopo; selecionar uma delas sempre dava "0 chamados" (filtered()
+       já exige TARGET_UF.includes(r.uf) por baixo, então nunca mistura dado de UF
+       errada — só o dropdown ficava poluído com opção que nunca bate com nada).
+       Escopando aqui pras linhas de PI/MA/PA/AM/AP, os filtros só oferecem valores
+       que realmente existem no recorte que o painel mostra. */
     function setupFilters(){
-      const u=k=>[...new Set(ROWS.map(r=>r[k]).filter(Boolean))];
+      const targetRows=ROWS.filter(r=>TARGET_UF.includes(r.uf));
+      const u=k=>[...new Set(targetRows.map(r=>r[k]).filter(Boolean))];
       fillSelect('wm-fCat',u('categoria').sort(),'Todas');
       fillSelect('wm-fUf',TARGET_UF.filter(uf=>ROWS.some(r=>r.uf===uf)),'Todas');
       fillSelect('wm-fCid',u('cidade').sort((a,b)=>a.localeCompare(b,'pt')),'Todas');
