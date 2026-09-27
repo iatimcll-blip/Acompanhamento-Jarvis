@@ -7197,6 +7197,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-btn.aof-primary{background:var(--aof-green);border-color:var(--aof-green);color:#0E2A12}
   #panel-abertos-ofs .aof-btn:focus-visible,#panel-abertos-ofs select:focus-visible,#panel-abertos-ofs input:focus-visible,#panel-abertos-ofs .aof-tab:focus-visible,#panel-abertos-ofs th:focus-visible,#panel-abertos-ofs summary:focus-visible{outline:2px solid var(--aof-blue);outline-offset:2px}
   #panel-abertos-ofs .aof-fileinfo{color:#9FB0CF;font-size:13px}
+  #panel-abertos-ofs .aof-upd-badge{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:7px;border:.5px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);font-size:11px;font-weight:600;white-space:nowrap}
+  #panel-abertos-ofs .aof-upd-badge i{font-size:13px}
   #panel-abertos-ofs .aof-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
   #panel-abertos-ofs .aof-filters label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#9FB0CF;font-weight:500}
   #panel-abertos-ofs .aof-filters select,#panel-abertos-ofs .aof-filters input[type=search]{font:500 14px var(--aof-sans);padding:8px 10px;border-radius:9px;border:1px solid #33415F;background:#1F2B45;color:#fff;width:100%}
@@ -7291,6 +7293,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <h1>Abertos OFS <span id="aof-hDate">—</span></h1>
         </div>
         <div class="aof-actions">
+          <span class="aof-upd-badge" id="aof-upd-badge" title=""><i class="ti ti-clock-hour-4"></i><span id="aof-upd-ts">Nenhuma base anexada</span></span>
           <span class="aof-fileinfo" id="aof-fileInfo"></span>
           <label class="aof-btn aof-primary panel-edit-only" for="aof-fileIn" tabindex="0" title="Você pode selecionar vários arquivos CSV de uma vez — as atividades de todos são somadas no painel">Anexar base(s) (.csv)</label>
           <input type="file" id="aof-fileIn" accept=".csv,text/csv" multiple hidden>
@@ -7893,7 +7896,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const combined=[header];
       tables.forEach(table=>{
         const h=table[0].map(x=>n(x).replace(/^﻿/,''));
-        const idx=header.map(col=>h.indexOf(col));
+        /* 'Tipo de Atividade' aparece 2x em alguns exports (ex.: GIGA+ Nacional) — a
+           1ª ocorrência é outra coisa (classificação de urgência), só a ÚLTIMA é o
+           tipo de atividade de verdade. Mesma convenção de build() (h.lastIndexOf),
+           usada aqui pra não misturar dado errado nessa coluna ao combinar arquivos
+           com formatos de export diferentes. */
+        const idx=header.map(col=>col==='Tipo de Atividade'?h.lastIndexOf(col):h.indexOf(col));
         table.slice(1).forEach(row=>{
           if(!row||!row.length)return;
           const mapped=idx.map(ix=>ix>=0&&ix<row.length?row[ix]:'');
@@ -7917,11 +7925,31 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        nova base anexada, SLA por tipo, tipo visível, status manual e observação.
        Assim qualquer dispositivo que sincronizar depois enxerga a mesma base e as
        mesmas configurações, sem precisar re-anexar nada. */
+    /* Indicador "Atualizado em"/"Removido em" no cabeçalho (pedido do usuário) — lê
+       direto das variáveis-ponte de sync, então reflete tanto uploads quanto remoções
+       e chegadas de outro dispositivo (aofSyncBoot), sem estado próprio duplicado. */
+    function aofUpdateBadge(){
+      const el=document.getElementById('aof-upd-ts'),badge=document.getElementById('aof-upd-badge');
+      if(!el)return;
+      if(AOF_SYNC_AT){
+        const d=new Date(AOF_SYNC_AT);
+        const txt=isNaN(d)?'':d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        el.textContent=AOF_SYNC_TABLE?('Atualizado em '+txt):('Removido em '+txt);
+        if(badge)badge.title=AOF_SYNC_FILENAME?('Arquivo: '+AOF_SYNC_FILENAME):'';
+      }else if(LAST_RAW_TABLE){
+        el.textContent='Base carregada';
+        if(badge)badge.title=FILE_NAME?('Arquivo: '+FILE_NAME):'';
+      }else{
+        el.textContent='Nenhuma base anexada';
+        if(badge)badge.title='';
+      }
+    }
     function aofSyncPublish(label){
       AOF_SYNC_AT=new Date().toISOString();
       AOF_SYNC_TABLE=LAST_RAW_TABLE;
       AOF_SYNC_FILENAME=FILE_NAME;
       AOF_SYNC_CFG={sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG};
+      aofUpdateBadge();
       if(typeof saveState==='function')saveState();
       if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
     }
@@ -7931,7 +7959,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        (mesma trava usada no boot, pra não criar gráfico Chart.js num canvas oculto
        com largura zero). */
     window.aofSyncBoot=function(){
-      if(!AOF_SYNC_TABLE)return;
       if(AOF_SYNC_CFG&&typeof AOF_SYNC_CFG==='object'){
         if(AOF_SYNC_CFG.sla&&typeof AOF_SYNC_CFG.sla==='object'){SLA_CFG=AOF_SYNC_CFG.sla;aofSlaSave();}
         if(AOF_SYNC_CFG.tipos&&typeof AOF_SYNC_CFG.tipos==='object'){TIPOS_CFG=AOF_SYNC_CFG.tipos;aofTiposSave();}
@@ -7939,8 +7966,22 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(AOF_SYNC_CFG.obs&&typeof AOF_SYNC_CFG.obs==='object'){OBS_CFG=AOF_SYNC_CFG.obs;aofObsSave();}
       }
       const isActive=document.getElementById('panel-abertos-ofs').classList.contains('active');
-      if(isActive)load(AOF_SYNC_TABLE,AOF_SYNC_FILENAME,true);
-      else pendingRestore={table:AOF_SYNC_TABLE,name:AOF_SYNC_FILENAME};
+      if(AOF_SYNC_TABLE){
+        if(isActive)load(AOF_SYNC_TABLE,AOF_SYNC_FILENAME,true);
+        else pendingRestore={table:AOF_SYNC_TABLE,name:AOF_SYNC_FILENAME};
+      }else{
+        /* Base removida em outro dispositivo (ou nesta mesma aba, antes de um F5) —
+           replica a remoção aqui também, em vez de deixar a base antiga na tela até
+           alguém anexar uma nova (pedido do usuário: remoção precisa ser durável em
+           qualquer dispositivo, não só onde o botão foi clicado). */
+        try{localStorage.removeItem(STORE_KEY);}catch(e){}
+        ROWS=[];pendingRestore=null;LAST_RAW_TABLE=null;FILE_NAME='';
+        if(isActive){
+          document.getElementById('aof-main').classList.add('aof-empty-state');
+          document.getElementById('aof-fileInfo').textContent='';
+        }
+      }
+      aofUpdateBadge();
     };
     function load(table,name,save){
       const errEl=document.getElementById('aof-err');
@@ -7954,6 +7995,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const excTxt=[EXCL?`${fmtN(EXCL)} de outras UFs`:'',EXCL_TIPO?`${fmtN(EXCL_TIPO)} de tipos ocultos`:''].filter(Boolean).join(' · ');
       document.getElementById('aof-fileInfo').textContent=`${name} · ${fmtN(ROWS.length)} registros de PI/MA/PA/AM/AP`+(excTxt?` (${excTxt} ignorados)`:'');
       setupFilters();render();
+      aofUpdateBadge();
     }
 
     const AOF_FILTER_KEYS=['fCluster','fUF','fCid','fCat','fStatus','fTec','fPausa'];
@@ -7981,7 +8023,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       return new Promise((resolve,reject)=>{
         const rd=new FileReader();
         rd.onload=()=>{try{
-            const wb=XLSX.read(rd.result,{type:'string',raw:true});
+            /* Alguns exports do OFS (ex.: GIGA+ Nacional) trazem BOM (U+FEFF) logo
+               antes do primeiro campo JÁ entre aspas ("Recurso") — o parser de CSV
+               do xlsx.full.min.js não remove as aspas desse primeiro campo quando o
+               BOM está colado nelas (só remove nos campos seguintes), deixando o
+               cabeçalho como `"Recurso"` (aspas literais) em vez de `Recurso`. Isso
+               quebra a coluna obrigatória e faz o upload falhar por inteiro. Tirar o
+               BOM do texto ANTES de entregar pro parser evita o problema na raiz. */
+            const text=rd.result.replace(/^﻿/,'');
+            const wb=XLSX.read(text,{type:'string',raw:true});
             const table=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
             resolve({name:file.name,table});
           }catch(x){reject(new Error(`Não foi possível ler "${file.name}". Confirme que é o CSV exportado do OFS.`));}};
@@ -8008,11 +8058,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       e.target.value='';
     };
     document.getElementById('aof-btnClear').onclick=()=>{if(!canEdit('abertosOfs')){alert('Seu usuário possui acesso somente para visualização.');return;}
-      if(!confirm('Remover a base salva neste navegador?'))return;
+      if(!confirm('Remover a base salva neste navegador? A remoção também é sincronizada — outros dispositivos deixarão de mostrar esta base até alguém anexar uma nova.'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
-      ROWS=[];pendingRestore=null;LAST_RAW_TABLE=null;
+      ROWS=[];pendingRestore=null;LAST_RAW_TABLE=null;FILE_NAME='';
       document.getElementById('aof-main').classList.add('aof-empty-state');
-      document.getElementById('aof-fileInfo').textContent='';};
+      document.getElementById('aof-fileInfo').textContent='';
+      /* Sem isto, a remoção ficava só na aba atual: as variáveis-ponte (AOF_SYNC_TABLE
+         etc.) continuavam com a base antiga, então um F5 (ou outro dispositivo
+         sincronizando) trazia ela de volta via aofSyncBoot()/applyState() — bug real
+         reportado pelo usuário. Atualizar AOF_SYNC_AT pra agora garante que esta
+         remoção "vence" qualquer estado mais antigo ainda salvo local ou remotamente
+         (mesmo mecanismo de replace-by-latest já usado pra anexar base). */
+      AOF_SYNC_TABLE=null;AOF_SYNC_FILENAME='';AOF_SYNC_AT=new Date().toISOString();AOF_SYNC_CFG=null;
+      aofUpdateBadge();
+      if(typeof saveState==='function')saveState();
+      if(typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload('Abertos OFS — base removida');};
     document.getElementById('aof-drill-close').onclick=()=>{document.getElementById('aof-drill-card').style.display='none';};
     document.getElementById('aof-btnCopy').onclick=()=>{
       const el=document.getElementById('aof-last-block');
@@ -8126,6 +8186,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-warmap .wm-btn:hover{background:#234A72}
   #panel-warmap .wm-btn.wm-primary{background:var(--wm-green);border-color:var(--wm-green);color:#0E2A12}
   #panel-warmap .wm-fileinfo{color:#9FB0CF;font-size:13px}
+  #panel-warmap .wm-upd-badge{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:7px;border:.5px solid var(--wm-line);background:var(--wm-card);color:var(--wm-muted);font-size:11px;font-weight:600;white-space:nowrap}
+  #panel-warmap .wm-upd-badge i{font-size:13px}
   #panel-warmap .wm-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
   #panel-warmap .wm-filters label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#9FB0CF;font-weight:500}
   #panel-warmap .wm-filters select,#panel-warmap .wm-filters input[type=search]{font:500 14px var(--wm-sans);padding:8px 10px;border-radius:9px;border:1px solid #33415F;background:#173252;color:#fff;width:100%}
@@ -8177,6 +8239,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="wm-actions">
           <span class="wm-uf-badge"><i class="ti ti-filter"></i> Filtro fixo: PI · MA · PA · AM · AP</span>
+          <span class="wm-upd-badge" id="wm-upd-badge" title=""><i class="ti ti-clock-hour-4"></i><span id="wm-upd-ts">Nenhuma base anexada</span></span>
           <span class="wm-fileinfo" id="wm-fileInfo"></span>
           <label class="wm-btn wm-primary panel-edit-only" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
           <input type="file" id="wm-fileIn" accept=".pdf,application/pdf" hidden>
@@ -8597,8 +8660,27 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const emUf=ROWS.filter(r=>TARGET_UF.includes(r.uf)).length;
       document.getElementById('wm-fileInfo').textContent=`${name} · ${fmtN(emUf)} chamado(s) em PI/MA/PA/AM/AP de ${fmtN(ROWS.length)} no relatório`;
       setupFilters();render();
+      wmUpdateBadge();
     }
 
+    /* Indicador "Atualizado em"/"Removido em" no cabeçalho, mesmo padrão do
+       aofUpdateBadge — lê direto das variáveis-ponte de sync. */
+    function wmUpdateBadge(){
+      const el=document.getElementById('wm-upd-ts'),badge=document.getElementById('wm-upd-badge');
+      if(!el)return;
+      if(WM_SYNC_AT){
+        const d=new Date(WM_SYNC_AT);
+        const txt=isNaN(d)?'':d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        el.textContent=WM_SYNC_RECORDS?('Atualizado em '+txt):('Removido em '+txt);
+        if(badge)badge.title=WM_SYNC_FILENAME?('Arquivo: '+WM_SYNC_FILENAME):'';
+      }else if(ROWS.length){
+        el.textContent='Base carregada';
+        if(badge)badge.title=FILE_NAME?('Arquivo: '+FILE_NAME):'';
+      }else{
+        el.textContent='Nenhuma base anexada';
+        if(badge)badge.title='';
+      }
+    }
     /* Publica a base atual pras variáveis-ponte globais e aciona o saveState()
        do app inteiro (grava local + agenda o envio pro GitHub, se o usuário
        puder editar) — chamado a cada novo PDF anexado, pra qualquer dispositivo
@@ -8607,16 +8689,29 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       WM_SYNC_AT=new Date().toISOString();
       WM_SYNC_RECORDS=ROWS;
       WM_SYNC_FILENAME=FILE_NAME;
+      wmUpdateBadge();
       if(typeof saveState==='function')saveState();
       if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
     }
     /* Chamado por applyState()/_mergeGhRemoteIntoLocal() sempre que uma base
-       mais recente chegar de outro dispositivo — mesmo padrão do aofSyncBoot. */
+       mais recente chegar de outro dispositivo — mesmo padrão do aofSyncBoot,
+       incluindo replicar uma remoção (WM_SYNC_RECORDS null) feita em outro
+       dispositivo, em vez de deixar a base antiga na tela. */
     window.wmSyncBoot=function(){
-      if(!WM_SYNC_RECORDS)return;
       const isActive=document.getElementById('panel-warmap').classList.contains('active');
-      if(isActive)loadRecords(WM_SYNC_RECORDS,WM_SYNC_FILENAME,true);
-      else pendingRestore={records:WM_SYNC_RECORDS,name:WM_SYNC_FILENAME};
+      if(WM_SYNC_RECORDS){
+        if(isActive)loadRecords(WM_SYNC_RECORDS,WM_SYNC_FILENAME,true);
+        else pendingRestore={records:WM_SYNC_RECORDS,name:WM_SYNC_FILENAME};
+      }else{
+        try{localStorage.removeItem(STORE_KEY);}catch(e){}
+        ROWS=[];pendingRestore=null;FILE_NAME='';
+        if(isActive){
+          document.getElementById('wm-main').classList.add('wm-empty-state');
+          document.getElementById('wm-fileInfo').textContent='';
+          const note=document.getElementById('wm-parseNote');if(note)note.textContent='';
+        }
+      }
+      wmUpdateBadge();
     };
 
     async function handlePdf(file){
@@ -8645,10 +8740,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       handlePdf(file);e.target.value='';};
     document.querySelector('#panel-warmap label[for=wm-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('wm-fileIn').click();}};
     document.getElementById('wm-btnClear').onclick=()=>{if(!canEdit('warmap')){alert('Seu usuário possui acesso somente para visualização.');return;}
-      if(!confirm('Remover a base Warmap salva neste navegador?'))return;
+      if(!confirm('Remover a base Warmap salva neste navegador? A remoção também é sincronizada — outros dispositivos deixarão de mostrar esta base até alguém anexar uma nova.'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
-      ROWS=[];document.getElementById('wm-main').classList.add('wm-empty-state');document.getElementById('wm-fileInfo').textContent='';
-      const note=document.getElementById('wm-parseNote');if(note)note.textContent='';};
+      ROWS=[];pendingRestore=null;FILE_NAME='';
+      document.getElementById('wm-main').classList.add('wm-empty-state');document.getElementById('wm-fileInfo').textContent='';
+      const note=document.getElementById('wm-parseNote');if(note)note.textContent='';
+      /* Mesmo fix do Abertos OFS: sem atualizar as variáveis-ponte, a remoção ficava
+         só nesta aba — um F5 ou outro dispositivo sincronizando trazia a base de
+         volta via wmSyncBoot()/applyState(). */
+      WM_SYNC_RECORDS=null;WM_SYNC_FILENAME='';WM_SYNC_AT=new Date().toISOString();
+      wmUpdateBadge();
+      if(typeof saveState==='function')saveState();
+      if(typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload('Warmap — base removida');};
     ['wm-fCat','wm-fUf','wm-fCid','wm-fStatus','wm-fParceira'].forEach(id=>{
       const el=document.getElementById(id);if(el)el.addEventListener('input',render);
     });
