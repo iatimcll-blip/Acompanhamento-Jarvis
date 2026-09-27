@@ -7460,6 +7460,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const pct=(a,b)=>b?Math.round(a*100/b):0;
     const esc=s=>n(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const fmtN=x=>x.toLocaleString('pt-BR');
+    /* Padrão pedido pelo usuário pra qualquer data/hora exibida ou exportada neste
+       painel: DD/MM/AAAA hh:mm:ss. Aceita Date ou string ISO; devolve '' se inválida. */
+    const fmtDT=d=>{if(!d)return'';const dt=d instanceof Date?d:new Date(d);if(isNaN(dt))return'';
+      const p2=v=>String(v).padStart(2,'0');
+      return`${p2(dt.getDate())}/${p2(dt.getMonth()+1)}/${dt.getFullYear()} ${p2(dt.getHours())}:${p2(dt.getMinutes())}:${p2(dt.getSeconds())}`;};
 
     const OPEN=['Em aberto','Suspensa','Não concluída'];
     const slaH=r=>(r.ab&&r.cat!=='Pausa'&&OPEN.includes(r.sg))?Math.max(0,(Date.now()-r.ab.getTime())/3600000):null;
@@ -7732,10 +7737,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             return pill(r.sg)+tag
               +(canEdit('abertosOfs')?`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Em aberto">Em aberto</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`:'');
           }],
+          ['abChamado','Abertura do Chamado',r=>esc(r.abChamado)||'—'],
+          ['os','OS',r=>esc(r.os)||'—'],
           ['aging','Aberta há',r=>r.aging==null?'—':`<b style="color:${r.aging>=24?'var(--aof-red)':r.aging>=12?'var(--aof-amber)':'inherit'}">${r.aging.toFixed(1).replace('.',',')} h</b>`,'aof-num'],
           ['sla','SLA',r=>r.sla==null?'—':`<b style="color:${slaColor(r.sla)}">${fmtSLA(r.sla)}</b>`,'aof-num'],
-          ['os','OS',r=>esc(r.os)||'—'],
-          ['abChamado','Abertura do Chamado',r=>esc(r.abChamado)||'—'],
           ['slaPrazo','SLA Prazo',r=>{
             const limit=aofSlaGet(r.tipo);
             if(r.aging==null)return'—';
@@ -7746,13 +7751,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           ['tipo','Tipo',r=>esc(r.tipo),'aof-wrap'],['nome','Cliente',r=>esc(r.nome)||'—','aof-wrap'],
           ['cid','Cidade',r=>esc(r.cid)+(r.uf?` / ${r.uf}`:'')],['cluster','Cluster',r=>r.cluster],
           ['rec','Recurso',r=>r.unassigned?`<span class="aof-pill" style="background:var(--aof-red)">Sem técnico</span> <small>${esc(r.rec)}</small>`:esc(r.rec),'aof-wrap'],
+          ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap'],
           ['obs','Justificativas e Observações',r=>{
             const key=aofRowKey(r);
             const ph=esc(r.motivo?r.motivo:'Adicionar observação…');
             return canEdit('abertosOfs')?`<textarea class="aof-obs-input" data-key="${esc(key)}" placeholder="${ph}" rows="2">${esc(r.obsText)}</textarea>`
               :`<div class="aof-obs-readonly">${esc(r.obsText)||`<span style="opacity:.6">${ph}</span>`}</div>`;
-          },'aof-wrap aof-obs-col'],
-          ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap']
+          },'aof-wrap aof-obs-col']
         ],rows,def0:['sla',-1],label:'atividades em aberto, suspensas ou não concluídas'};
       }
       const m={};
@@ -7816,13 +7821,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['Último fim',r=>r.fim==null?'':fmtH(r.fim).replace('h',':')]
       ];
       if(tab==='fila')return[
-        ['Status',r=>r.sg],['Data de Abertura',r=>r.ab?`${String(r.ab.getDate()).padStart(2,'0')}/${String(r.ab.getMonth()+1).padStart(2,'0')}/${r.ab.getFullYear()} ${String(r.ab.getHours()).padStart(2,'0')}:${String(r.ab.getMinutes()).padStart(2,'0')}`:''],
-        ['SLA',r=>r.sla==null?'':fmtSLA(r.sla)],['OS',r=>r.os||''],
-        ['Abertura do Chamado',r=>r.abChamado||''],
+        ['Status',r=>r.sg],['Abertura do Chamado',r=>r.abChamado||''],
+        ['OS',r=>r.os||''],['Data de Abertura',r=>fmtDT(r.ab)],
+        ['SLA',r=>r.sla==null?'':fmtSLA(r.sla)],
         ['SLA Prazo (h)',r=>aofSlaGet(r.tipo)],['Tipo',r=>r.tipo],
         ['Cliente',r=>r.nome||''],['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],
         ['Recurso',r=>r.rec],['Sem técnico',r=>r.unassigned?'Sim':'Não'],
-        ['Observação',r=>r.obsText||''],['Comentários',r=>r.com||'']
+        ['Comentários',r=>r.com||''],['Observação',r=>r.obsText||'']
       ];
       return[
         ['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],['Atividades',r=>r.t],
@@ -7943,8 +7948,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const el=document.getElementById('aof-upd-ts'),badge=document.getElementById('aof-upd-badge');
       if(!el)return;
       if(AOF_SYNC_AT){
-        const d=new Date(AOF_SYNC_AT);
-        const txt=isNaN(d)?'':d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        const txt=fmtDT(AOF_SYNC_AT);
         el.textContent=AOF_SYNC_TABLE?('Atualizado em '+txt):('Removido em '+txt);
         if(badge)badge.title=AOF_SYNC_FILENAME?('Arquivo: '+AOF_SYNC_FILENAME):'';
       }else if(LAST_RAW_TABLE){
@@ -8320,6 +8324,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const n=s=>(s==null?'':String(s)).replace(/\s+/g,' ').trim();
     const esc=s=>n(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const fmtN=x=>x.toLocaleString('pt-BR');
+    /* Padrão pedido pelo usuário pra qualquer data/hora exibida ou exportada neste
+       painel: DD/MM/AAAA hh:mm:ss. Aceita Date ou string ISO; devolve '' se inválida. */
+    const fmtDT=d=>{if(!d)return'';const dt=d instanceof Date?d:new Date(d);if(isNaN(dt))return'';
+      const p2=v=>String(v).padStart(2,'0');
+      return`${p2(dt.getDate())}/${p2(dt.getMonth()+1)}/${dt.getFullYear()} ${p2(dt.getHours())}:${p2(dt.getMinutes())}:${p2(dt.getSeconds())}`;};
 
     /* ---- Extração de texto do PDF (pdf.js), agrupando itens por linha (Y) e
        inserindo espaço entre itens quando há um vão horizontal perceptível —
@@ -8680,8 +8689,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const el=document.getElementById('wm-upd-ts'),badge=document.getElementById('wm-upd-badge');
       if(!el)return;
       if(WM_SYNC_AT){
-        const d=new Date(WM_SYNC_AT);
-        const txt=isNaN(d)?'':d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        const txt=fmtDT(WM_SYNC_AT);
         el.textContent=WM_SYNC_RECORDS?('Atualizado em '+txt):('Removido em '+txt);
         if(badge)badge.title=WM_SYNC_FILENAME?('Arquivo: '+WM_SYNC_FILENAME):'';
       }else if(ROWS.length){
