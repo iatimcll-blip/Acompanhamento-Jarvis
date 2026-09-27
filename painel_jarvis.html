@@ -1163,6 +1163,14 @@ body.is-admin .cd-row.admin-only { display: flex !important; }
 body.is-admin .cd-upload-btn.admin-only { display: inline-flex !important; }
 .mop-ref-btn.admin-only { display: none !important; }
 body.is-admin .mop-ref-btn.admin-only { display: inline-flex !important; }
+/* Usuário Sr (perms.editPanels): controles de anexar/remover base/config que também
+   ficam visíveis pra um Usuário Sr liberado NAQUELE painel específico, mesmo sem
+   is-admin no body — diferente de .admin-only (site-wide, só admin de verdade). O
+   painel container ganha .can-edit-here via applyPermissions()/canEdit(panelKey). */
+.panel-edit-only { display: none; }
+body.is-admin .panel-edit-only { display: flex; }
+#panel-abertos-ofs.can-edit-here .panel-edit-only,
+#panel-warmap.can-edit-here .panel-edit-only { display: flex; }
 .ofs-apply-btn.admin-only { display: none !important; }
 body.is-admin .ofs-apply-btn.admin-only { display: flex !important; }
 .tsec.admin-only { display: none !important; }
@@ -6875,6 +6883,7 @@ body.is-admin #panel-combustivel .fuel-management-row { display: grid; }
       <input id="new-pass" type="password" placeholder="Senha">
       <select id="new-role" title="Tipo de acesso">
         <option value="viewer">Usuário</option>
+        <option value="sr">Usuário Sr</option>
         <option value="admin">Admin</option>
       </select>
       <button onclick="createSecondaryUser()">Criar</button>
@@ -7272,11 +7281,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="aof-actions">
           <span class="aof-fileinfo" id="aof-fileInfo"></span>
-          <label class="aof-btn aof-primary admin-only" for="aof-fileIn" tabindex="0" title="Você pode selecionar vários arquivos CSV de uma vez — as atividades de todos são somadas no painel">Anexar base(s) (.csv)</label>
+          <label class="aof-btn aof-primary panel-edit-only" for="aof-fileIn" tabindex="0" title="Você pode selecionar vários arquivos CSV de uma vez — as atividades de todos são somadas no painel">Anexar base(s) (.csv)</label>
           <input type="file" id="aof-fileIn" accept=".csv,text/csv" multiple hidden>
           <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
-          <button class="aof-btn admin-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
-          <button class="aof-btn admin-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
+          <button class="aof-btn panel-edit-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
+          <button class="aof-btn panel-edit-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
         </div>
       </div>
       <div class="aof-filters">
@@ -7707,7 +7716,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             const key=aofRowKey(r);
             const tag=r.statusManual?' <small style="opacity:.7">(manual)</small>':(r.status.toLowerCase()!=='pendente'&&r.sg==='Em aberto'?` <small>${esc(r.status)}</small>`:'');
             return pill(r.sg)+tag
-              +(canEdit()?`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Em aberto">Em aberto</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`:'');
+              +(canEdit('abertosOfs')?`<select class="aof-status-select" data-key="${esc(key)}" title="Alterar status manualmente"><option value="">Alterar…</option><option value="Em aberto">Em aberto</option><option value="Concluída">Concluído</option><option value="Suspensa">Suspenso</option><option value="Cancelada">Cancelado</option></select>`:'');
           }],
           ['aging','Aberta há',r=>r.aging==null?'—':`<b style="color:${r.aging>=24?'var(--aof-red)':r.aging>=12?'var(--aof-amber)':'inherit'}">${r.aging.toFixed(1).replace('.',',')} h</b>`,'aof-num'],
           ['sla','SLA',r=>r.sla==null?'—':`<b style="color:${slaColor(r.sla)}">${fmtSLA(r.sla)}</b>`,'aof-num'],
@@ -7725,7 +7734,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           ['obs','Justificativas e Observações',r=>{
             const key=aofRowKey(r);
             const ph=esc(r.motivo?r.motivo:'Adicionar observação…');
-            return canEdit()?`<textarea class="aof-obs-input" data-key="${esc(key)}" placeholder="${ph}" rows="2">${esc(r.obsText)}</textarea>`
+            return canEdit('abertosOfs')?`<textarea class="aof-obs-input" data-key="${esc(key)}" placeholder="${ph}" rows="2">${esc(r.obsText)}</textarea>`
               :`<div class="aof-obs-readonly">${esc(r.obsText)||`<span style="opacity:.6">${ph}</span>`}</div>`;
           },'aof-wrap aof-obs-col'],
           ['com','Comentários',r=>r.com?`<details><summary>${esc(r.com.split('\n').find(x=>x.trim())||'').slice(0,60)}…</summary><pre>${esc(r.com)}</pre></details>`:'—','aof-wrap']
@@ -7895,7 +7904,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     document.getElementById('aof-fileIn').onchange=e=>{
       const files=[...e.target.files];
       if(!files.length)return;
-      if(!canEdit()){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
+      if(!canEdit('abertosOfs')){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
       const er=document.getElementById('aof-err');
       er.style.display='none';
       Promise.all(files.map(aofReadOneCsv)).then(parsed=>{
@@ -7910,7 +7919,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }).catch(x=>{er.textContent=x.message;er.style.display='block';});
       e.target.value='';
     };
-    document.getElementById('aof-btnClear').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+    document.getElementById('aof-btnClear').onclick=()=>{if(!canEdit('abertosOfs')){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover a base salva neste navegador?'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
       ROWS=[];pendingRestore=null;LAST_RAW_TABLE=null;
@@ -7963,7 +7972,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         slaList.innerHTML=tipos.map(t=>`<div class="aof-cfg-row"><span>${esc(t)}</span><span><input type="number" min="1" step="1" value="${aofSlaGet(t)}" data-tipo="${esc(t)}" class="aof-cfg-sla-input"> h</span></div>`).join('');
         tiposList.innerHTML=tipos.map(t=>`<label class="aof-cfg-row" style="cursor:pointer"><span>${esc(t)}</span><input type="checkbox" data-tipo="${esc(t)}" class="aof-cfg-tipo-check" ${TIPOS_CFG[t]!==false?'checked':''}></label>`).join('');
         slaList.querySelectorAll('.aof-cfg-sla-input').forEach(inp=>inp.onchange=()=>{
-          if(!canEdit()){inp.value=aofSlaGet(inp.dataset.tipo);return;}
+          if(!canEdit('abertosOfs')){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           const v=parseFloat(inp.value);
           if(isNaN(v)||v<=0){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           SLA_CFG[inp.dataset.tipo]=v;aofSlaSave();
@@ -7971,7 +7980,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           aofSyncPublish();
         });
         tiposList.querySelectorAll('.aof-cfg-tipo-check').forEach(chk=>chk.onchange=()=>{
-          if(!canEdit()){chk.checked=aofTipoVisible(chk.dataset.tipo);return;}
+          if(!canEdit('abertosOfs')){chk.checked=aofTipoVisible(chk.dataset.tipo);return;}
           TIPOS_CFG[chk.dataset.tipo]=chk.checked;aofTiposSave();
           if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
           aofSyncPublish();
@@ -7979,11 +7988,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }
       document.getElementById('aof-cfg-status-count').textContent=Object.keys(STATUS_OV).length;
     }
-    document.getElementById('aof-btnCfg').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}aofRenderCfgLists();document.getElementById('aof-cfg-overlay').classList.add('aof-open');};
+    document.getElementById('aof-btnCfg').onclick=()=>{if(!canEdit('abertosOfs')){alert('Seu usuário possui acesso somente para visualização.');return;}aofRenderCfgLists();document.getElementById('aof-cfg-overlay').classList.add('aof-open');};
     document.getElementById('aof-cfg-close').onclick=()=>document.getElementById('aof-cfg-overlay').classList.remove('aof-open');
     document.getElementById('aof-cfg-overlay').addEventListener('click',e=>{if(e.target.id==='aof-cfg-overlay')e.currentTarget.classList.remove('aof-open');});
     document.getElementById('aof-cfg-clear-status').onclick=()=>{
-      if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+      if(!canEdit('abertosOfs')){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover todas as alterações manuais de status desta base?'))return;
       STATUS_OV={};try{localStorage.removeItem(STATUS_OV_KEY);}catch(e){}
       if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
@@ -8080,9 +8089,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="wm-actions">
           <span class="wm-uf-badge"><i class="ti ti-filter"></i> Filtro fixo: PI · MA · PA · AM · AP</span>
           <span class="wm-fileinfo" id="wm-fileInfo"></span>
-          <label class="wm-btn wm-primary admin-only" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
+          <label class="wm-btn wm-primary panel-edit-only" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
           <input type="file" id="wm-fileIn" accept=".pdf,application/pdf" hidden>
-          <button class="wm-btn admin-only" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
+          <button class="wm-btn panel-edit-only" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
         </div>
       </div>
       <div class="wm-filters">
@@ -8489,10 +8498,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     }
 
     document.getElementById('wm-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
-      if(!canEdit()){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
+      if(!canEdit('warmap')){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
       handlePdf(file);e.target.value='';};
     document.querySelector('#panel-warmap label[for=wm-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('wm-fileIn').click();}};
-    document.getElementById('wm-btnClear').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+    document.getElementById('wm-btnClear').onclick=()=>{if(!canEdit('warmap')){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover a base Warmap salva neste navegador?'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
       ROWS=[];document.getElementById('wm-main').classList.add('wm-empty-state');document.getElementById('wm-fileInfo').textContent='';
@@ -11504,6 +11513,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div id="uperms-mops"></div>
         </div>
       </div>
+      <div id="uperms-edit-section" style="display:none;margin-top:16px;padding-top:14px;border-top:.5px dashed var(--bd)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin-bottom:6px">Pode atualizar / anexar base (Usuário Sr)</div>
+        <p style="font-size:11px;color:var(--tx3);margin-bottom:8px">Só os painéis abaixo já suportam essa liberação — os demais continuam anexáveis apenas pelo Admin.</p>
+        <div id="uperms-editpanels"></div>
+      </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:.5px solid var(--bd)">
       <button class="mini-btn" onclick="closeUserPermsModal()">Cancelar</button>
@@ -12073,8 +12087,15 @@ async function hashPass(v){
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }catch(e){return encPass(v);}/* fallback Base64 se Web Crypto indisponível */
 }
-function normRole(role){return role==='admin'?'admin':'viewer'}
-function roleLabel(role){return normRole(role)==='admin'?'Admin - permissões totais':'Usuário - apenas leitura'}
+function normRole(role){return role==='admin'?'admin':role==='sr'?'sr':'viewer'}
+function roleLabel(role){const r=normRole(role);return r==='admin'?'Admin - permissões totais':r==='sr'?'Usuário Sr - leitura + atualização liberada pelo admin':'Usuário - apenas leitura'}
+/* Painéis em que o admin pode liberar "atualizar/anexar base" pro perfil Usuário Sr
+   (perms.editPanels) — lista curada, não é igual a ALL_PANEL_KEYS: só os painéis já
+   com canEdit(panelKey) implementado suportam essa liberação granular por enquanto.
+   Pra habilitar um novo painel aqui, ele precisa primeiro trocar seus canEdit() de
+   bare (site-wide) pra canEdit('chaveDoPainel') nos pontos de anexar/editar, mesmo
+   padrão já feito em Abertos OFS e Warmap. */
+const SR_EDIT_ENABLED_PANELS=['abertosOfs','warmap'];
 /* Usuário Padrão (pedido do usuário: "visão para usuário padrão... não precisará de
    acesso ou senha, porém o admin definirá quais painéis"). É uma entrada FIXA na lista
    de usuários (mesmo padrão do 'admin' acima — sempre garantida/reforçada aqui), com
@@ -12104,7 +12125,20 @@ function getUsers(){
   return users;
 }
 function saveUsers(users){localStorage.setItem(USERS_KEY,JSON.stringify(users))}
-function canEdit(){return currentUser&&currentUser.role==='admin'}
+/* Sem argumento: gate estrito de admin, usado em toda ação site-wide (gestão de
+   usuários, config de sync, excluir/limpar coisas fora dos 2 painéis abaixo) — Usuário
+   Sr NUNCA passa aqui, mesmo com painéis liberados, pra não ganhar poderes de admin
+   por engano. Com panelKey: também libera Usuário Sr se o admin marcou esse painel
+   em perms.editPanels (ver SR_EDIT_ENABLED_PANELS/openUserPermsModal). */
+function canEdit(panelKey){
+  if(!currentUser)return false;
+  if(currentUser.role==='admin')return true;
+  if(panelKey&&normRole(currentUser.role)==='sr'){
+    const p=currentUser.perms;
+    return!!(p&&Array.isArray(p.editPanels)&&p.editPanels.includes(panelKey));
+  }
+  return false;
+}
 /* Configuração de visualização por usuário: paineis visíveis + clusters (Rede) +
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
@@ -12220,6 +12254,10 @@ function applyPermissions(){
   document.body.classList.toggle('is-admin',!!canEdit());
   document.body.classList.toggle('readonly',!!currentUser&&!canEdit());
   const av=document.getElementById('avatar-label');if(av)av.textContent=initials(currentUser&&currentUser.username);
+  /* Usuário Sr: gate por painel, separado do is-admin site-wide acima — só os 2
+     painéis em SR_EDIT_ENABLED_PANELS reagem a isso (ver .can-edit-here no CSS). */
+  document.getElementById('panel-abertos-ofs')?.classList.toggle('can-edit-here',canEdit('abertosOfs'));
+  document.getElementById('panel-warmap')?.classList.toggle('can-edit-here',canEdit('warmap'));
   applyPanelVisibility();
   if(dAb.length)renderTAb();
   renderFuel();
@@ -12938,14 +12976,19 @@ function openUserPermsModal(username){
   if(!canEdit())return;
   const u=getUsers().find(x=>x.username===username);if(!u)return;
   _permsEditUser=username;
+  const isSr=normRole(u.role)==='sr';
   const p=u.perms||(u.scope==='sln'?{mops:['SLN MA','SLN PA'],clusters:['C','N'],panels:DEFAULT_VIEWER_PANELS}:null);
   const panels=p&&Array.isArray(p.panels)?p.panels:DEFAULT_VIEWER_PANELS;
   const clusters=p&&Array.isArray(p.clusters)?p.clusters:RDE_CLUSTER_KEYS;
   const mops=p&&Array.isArray(p.mops)?p.mops:AB_ORDEM_MOP;
+  const editPanels=p&&Array.isArray(p.editPanels)?p.editPanels:[];
   document.getElementById('uperms-title').textContent='Configurar visualização — '+username;
   document.getElementById('uperms-panels').innerHTML=ALL_PANEL_KEYS.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${k}" ${panels.includes(k)?'checked':''}> ${PANEL_LABELS[k]}</label>`).join('');
   document.getElementById('uperms-clusters').innerHTML=RDE_CLUSTER_KEYS.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${k}" ${clusters.includes(k)?'checked':''}> ${RDE_CLUSTER_LABELS[k]}</label>`).join('');
   document.getElementById('uperms-mops').innerHTML=AB_ORDEM_MOP.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${eh(k)}" ${mops.includes(k)?'checked':''}> ${eh(k)}</label>`).join('');
+  const editSection=document.getElementById('uperms-edit-section');
+  editSection.style.display=isSr?'':'none';
+  if(isSr)document.getElementById('uperms-editpanels').innerHTML=SR_EDIT_ENABLED_PANELS.map(k=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0"><input type="checkbox" value="${k}" ${editPanels.includes(k)?'checked':''}> ${PANEL_LABELS[k]}</label>`).join('');
   document.getElementById('modal-user-perms').style.display='flex';
 }
 function closeUserPermsModal(){document.getElementById('modal-user-perms').style.display='none';_permsEditUser='';}
@@ -12955,22 +12998,40 @@ function saveUserPermsModal(){
   const panels=getChecked('uperms-panels');
   const clusters=getChecked('uperms-clusters');
   const mops=getChecked('uperms-mops');
+  const editPanels=getChecked('uperms-editpanels');
   const perms={
     panels:panels.length===ALL_PANEL_KEYS.length?DEFAULT_VIEWER_PANELS:panels,
     clusters:clusters.length===RDE_CLUSTER_KEYS.length?null:clusters,
     mops:mops.length===AB_ORDEM_MOP.length?null:mops,
+    editPanels,
   };
   setUserPerms(_permsEditUser,perms);
   closeUserPermsModal();
 }
+/* Trocar o tipo de um usuário já existente (pedido do usuário: antes só dava pra
+   escolher o tipo na criação, sem jeito de promover/rebaixar depois). admin e o
+   usuário Padrão (visitante, sem login) têm o tipo fixo, não aparecem com o seletor. */
+function changeUserRole(username,newRole){
+  if(!canEdit())return;
+  if(username==='admin'||username===GUEST_USERNAME)return;
+  const role=normRole(newRole);
+  const users=getUsers().map(u=>u.username===username?{...u,role}:u);
+  saveUsers(users);
+  saveState();
+  if(currentUser&&currentUser.username===username){currentUser={...currentUser,role};applyPermissions();}
+  renderUsers();
+}
 function renderUsers(){
   const users=getUsers();
   document.getElementById('users-list').innerHTML=users.map(u=>{
-    const isViewer=normRole(u.role)==='viewer';
-    const cfgBtn=isViewer?`<button class="mini-btn" title="Configurar o que este usuário pode visualizar" onclick="openUserPermsModal('${eh(u.username)}')"><i class="ti ti-adjustments"></i> Configurar</button>`:'';
+    const role=normRole(u.role);
+    const canConfigurePanels=role==='viewer'||role==='sr';
+    const cfgBtn=canConfigurePanels?`<button class="mini-btn" title="Configurar o que este usuário pode visualizar${role==='sr'?' e atualizar':''}" onclick="openUserPermsModal('${eh(u.username)}')"><i class="ti ti-adjustments"></i> Configurar</button>`:'';
     const roleTxt=u.isGuest?'Visitante — sem login, painéis definidos pelo admin':eh(roleLabel(u.role));
+    const fixedRole=u.username==='admin'||u.isGuest;
+    const roleSelect=fixedRole?'':`<select class="mini-btn" style="padding:4px 6px" title="Alterar tipo de usuário" onchange="changeUserRole('${eh(u.username)}',this.value)"><option value="viewer"${role==='viewer'?' selected':''}>Usuário</option><option value="sr"${role==='sr'?' selected':''}>Usuário Sr</option><option value="admin"${role==='admin'?' selected':''}>Admin</option></select>`;
     const tailBtn=u.username==='admin'?'<span class="user-role">fixo</span>':(u.isGuest?'<span class="user-role">fixo — sem senha</span>':`<button class="mini-btn" onclick="deleteUser('${eh(u.username)}')">Excluir</button>`);
-    return`<div class="user-row"><div><b>${eh(u.username)}</b><div class="user-role">${roleTxt}</div></div>${cfgBtn}${tailBtn}</div>`;
+    return`<div class="user-row"><div><b>${eh(u.username)}</b><div class="user-role">${roleTxt}</div></div>${roleSelect}${cfgBtn}${tailBtn}</div>`;
   }).join('');
 }
 
