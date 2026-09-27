@@ -8306,8 +8306,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="wm-uf-badge"><i class="ti ti-filter"></i> Filtro fixo: PI · MA · PA · AM · AP</span>
           <span class="wm-upd-badge" id="wm-upd-badge" title=""><i class="ti ti-clock-hour-4"></i><span id="wm-upd-ts">Nenhuma base anexada</span></span>
           <span class="wm-fileinfo" id="wm-fileInfo"></span>
-          <label class="wm-btn wm-primary panel-edit-only" for="wm-fileIn" tabindex="0"><i class="ti ti-map-2"></i> Warmap</label>
-          <input type="file" id="wm-fileIn" accept=".pdf,application/pdf" hidden>
+          <label class="wm-btn wm-primary panel-edit-only" for="wm-fileIn" tabindex="0" title="Aceita o relatório em PDF ou em Excel (.xlsx)"><i class="ti ti-map-2"></i> Warmap</label>
+          <input type="file" id="wm-fileIn" accept=".pdf,application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
           <button class="wm-btn panel-edit-only" id="wm-btnClear" title="Remove a base salva neste navegador">Remover base</button>
         </div>
       </div>
@@ -8359,7 +8359,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const STORE_KEY='jarvis_warmap_v1';
     const UF_SET=new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
     const TARGET_UF=['PI','MA','PA','AM','AP'];
-    const STATUS_PHRASES=['Aguardando equipe de campo','Atendimento de campo suspenso','Enviado para COPREDE','Aguardando tratativas','Aguardando baixa','Em Andamento','Suspenso'];
+    const STATUS_PHRASES=['Aguardando equipe de campo','Atendimento de campo suspenso','Continuar atendimento de campo','Enviado para COPREDE','Aguardando tratativas','Aguardando baixa','Em Andamento','Suspenso'];
     const STATUS_RE=new RegExp('('+STATUS_PHRASES.map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','i');
     const CAT_COLOR={TX:'--wm-blue',IP:'--wm-navy',Acesso:'--wm-green',Massiva:'--wm-red'};
     const STATUS_COLOR={
@@ -8392,7 +8392,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       for(let p=1;p<=doc.numPages;p++){
         const page=await doc.getPage(p);
         const content=await page.getTextContent();
-        const items=content.items.map(it=>({str:it.str,x:it.transform[4],y:it.transform[5],w:it.width||0})).filter(it=>it.str!=null);
+        /* Bug real (PDF de produção): a fonte de ícones do relatório injeta
+           glifos decorativos "soltos" (Área de Uso Privado do Unicode, ex.
+           U+E8B5) como itens de texto próprios entre as linhas de dados —
+           invisíveis/sem sentido, mas não são espaço em branco, então não
+           eram filtrados como linha vazia; o chunkRows os tratava como
+           "continuação" e colava no meio/fim do registro seguinte,
+           corrompendo Trecho/OS/Área responsável. Descarta qualquer item
+           cujo texto seja 100% desses glifos antes de agrupar por linha. */
+        const items=content.items.map(it=>({str:it.str,x:it.transform[4],y:it.transform[5],w:it.width||0})).filter(it=>it.str!=null&&!/^[-]+$/.test(it.str));
         items.sort((a,b)=>(b.y-a.y)||(a.x-b.x));
         const lines=[];
         let cur=null,curY=null,lastEndX=null;
@@ -8533,27 +8541,83 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const dateRe=/\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/g;
       const dates=[...rest0.matchAll(dateRe)];
       if(dates.length<2)return null;
-      const trecho=n(rest0.slice(0,dates[0].index));
+      let trecho=n(rest0.slice(0,dates[0].index));
       const inicioFalha=n(dates[0][0]),acionamento=n(dates[1][0]);
       let rest=rest0.slice(dates[1].index+dates[1][0].length);
       const reqM=/^\s*(\d{4,7})\s*/.exec(rest);if(!reqM)return null;
       const requisicao=reqM[1];rest=rest.slice(reqM[0].length);
-      const cu=findCidadeUf(rest);if(!cu)return null;
-      const afterCidade=rest.slice(cu.matchEnd);
-      const tdM=/^\s*(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s*/.exec(afterCidade);if(!tdM)return null;
-      const tempoDecorrido=n(tdM[1]);
-      const sp=splitOnStatus(afterCidade.slice(tdM[0].length));if(!sp)return null;
+      /* Tempo Decorrido tem formato fixo e sempre vem logo depois da
+         Cidade/UF — acha ele primeiro, de forma independente, em vez de
+         depender da Cidade já ter sido encontrada. Isso recupera o caso
+         raro em que a PRÓPRIA Cidade quebra de linha (nome comprido, ex.
+         "São Domingos do Azeitão") e o pedaço com o UF só aparece bem mais
+         à frente, colado nos outros retalhos que sobraram no fim do chunk. */
+      const tdRe=/(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)/;
+      const tdM0=tdRe.exec(rest);if(!tdM0)return null;
+      const cidadeZone=n(rest.slice(0,tdM0.index));
+      const tempoDecorrido=n(tdM0[1]);
+      const sp=splitOnStatus(rest.slice(tdM0.index+tdM0[0].length));if(!sp)return null;
       const areaRe=/(COPREDE INTERNO\s*-\s*[A-ZÀ-Ú ]+|COPREDE PARCEIROS|NOC)\s*$/i;
-      const am=areaRe.exec(n(sp.after));
+      let tail=n(sp.after);
+      let am=areaRe.exec(tail);
+      let osExtra=[];
+      let cu=findCidadeUf(cidadeZone);
+      if(!am||!cu){
+        /* Bug real (PDF de produção): quando alguma coluna depois da Área
+           Responsável quebra pra uma linha isolada — o resto do Trecho
+           (ex. "APMPA_MOB-"+"APMPA_RNP_WORK"), o resto de um protocolo/OS
+           comprido demais ("602133574360102 ||"+"4727558"), o resto da
+           própria Cidade ("do Azeitão/MA"), ou vários desses juntos na
+           mesma linha de continuação (sempre na ordem das colunas:
+           Trecho, Cidade, Área) — o chunkRows não sabe onde encaixar e
+           cola tudo no FIM do chunk inteiro, quebrando o `$` que a Área
+           Responsável precisa pra bater. Descasca token solto por token
+           solto do fim até Área E Cidade baterem; devolve cada um pro
+           lugar certo: com "_" volta pro Trecho (só se ele já tinha
+           cortado num hífen), o que tem "/UF" (e o que vem antes dele)
+           completa a Cidade, só-letras completa a Área quando ela ficou
+           pendurada, e o que sobrar (número/protocolo) volta pro OS. */
+        const stray=[];let probe=tail;
+        for(let guard=0;guard<5;guard++){
+          const stubM=/ (\S{1,24})$/.exec(probe);
+          if(!stubM)break;
+          stray.unshift(stubM[1]);probe=probe.slice(0,stubM.index);
+          const direct=areaRe.exec(probe);
+          const dangling=/COPREDE INTERNO\s*-\s*$/i.test(probe);
+          const hasCidadeFrag=stray.some(w=>/\/[A-Z]{2}$/i.test(w));
+          const readyArea=direct||dangling;
+          const readyCidade=cu||hasCidadeFrag;
+          if(readyArea&&readyCidade){
+            const trechoWords=/-$/.test(trecho)?stray.filter(w=>w.includes('_')):[];
+            let cidadeWords=[];
+            if(!cu){
+              const cidadeIdx=stray.findIndex(w=>/\/[A-Z]{2}$/i.test(w));
+              if(cidadeIdx>=0)cidadeWords=stray.slice(0,cidadeIdx+1).filter(w=>!trechoWords.includes(w));
+            }
+            const areaWords=dangling?stray.filter(w=>/^[A-ZÀ-Ú]+$/i.test(w)&&!cidadeWords.includes(w)):[];
+            osExtra=stray.filter(w=>!trechoWords.includes(w)&&!areaWords.includes(w)&&!cidadeWords.includes(w));
+            if(trechoWords.length)trecho+=trechoWords.join('');
+            if(cidadeWords.length)cu=findCidadeUf(cidadeZone+' '+cidadeWords.join(' '));
+            const rebuilt=areaWords.length?probe+' '+areaWords.join(' '):probe;
+            const again=areaRe.exec(rebuilt);
+            if(again){am=again;tail=rebuilt;}
+            else if(direct){am=direct;tail=probe;}
+            break;
+          }
+        }
+      }
+      if(!cu)return null;
       const areaResponsavel=am?n(am[1]):'';
-      const beforeArea=am?n(sp.after).slice(0,am.index):n(sp.after);
+      const beforeArea=am?tail.slice(0,am.index):tail;
       const tokens=beforeArea.split(' ').filter(Boolean);
-      const KNOWN_PARCEIRAS=new Set(['UPIX','ALGAR','ALLOHA','VIVO','ITS','TIM','ACCS','MULTVALE','VOCE','TELECOM','EVE']);
+      const KNOWN_PARCEIRAS=new Set(['UPIX','ALGAR','ALLOHA','VIVO','ITS','TIM','ACCS','MULTVALE','VOCE','TELECOM','EVE','MOBWIRE','SOBRALNET','BR','DIGITAL']);
       let parceira='',os='';
       if(tokens.length&&KNOWN_PARCEIRAS.has(tokens[0])){
         let i=1;if(tokens[0]==='VOCE'&&tokens[1]==='TELECOM')i=2;
+        if(tokens[0]==='BR'&&tokens[1]==='DIGITAL')i=2;
         parceira=tokens.slice(0,i).join(' ');os=tokens.slice(i).join(' ');
       }else os=tokens.join(' ');
+      if(osExtra.length)os=n(os+' '+osExtra.join(' '));
       return{origem:'Backlog 48h+',requisicao,inicioFalha,acionamento,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
         categoria,parceira:n(parceira),os:n(os),status:sp.status,areaResponsavel,cluster:'',clientesB2C:''};
     }
@@ -8566,33 +8630,49 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const t2i=joinIdx(/INCIDENTES ABERTOS.{0,6}12HRS/i);
         const massi=joinIdx(/MASSIVAS EM ANDAMENTO/i);
         const t3i=joinIdx(/BACKLOG ACIMA 48HRS/i);
+        const encI=joinIdx(/INCIDENTES ENCERRADOS/i);
+        /* Bug real (achado com o PDF de produção): a ordem das seções varia de
+           relatório pra relatório — nesse aqui "Massivas em Andamento" vem
+           ANTES de "Incidentes Abertos à 48hrs+", ao contrário do PDF de teste
+           usado antes. O código assumia ordem fixa (fim de cada tabela = início
+           da PRÓXIMA tabela específica, hardcoded); quando a ordem real não
+           bate, o slice vira vazio (tabela inteira perdida) ou some sem limite
+           até o fim da página (linhas de OUTRAS seções short viram "continuação"
+           da última linha, corrompendo o último registro). Corrigido calculando
+           o fim de cada bloco como a PRÓXIMA seção conhecida (de qualquer tipo)
+           que vier depois dele no texto, não mais um índice fixo. */
+        const marks=[t1i,t2i,massi,t3i,encI].filter(i=>i>=0).sort((a,b)=>a-b);
+        const endAfter=idx=>{const nxt=marks.find(m=>m>idx);return nxt!=null?nxt:lines.length;};
         if(t1i>=0){
-          const end=massi>=0?massi:lines.length;
-          const chunks=chunkRows(lines.slice(t1i+2,end),/^\d{4,7}\s/);
+          const chunks=chunkRows(lines.slice(t1i+2,endAfter(t1i)),/^\d{4,7}\s/);
           rowAttempts+=chunks.length;
           chunks.forEach(c=>{const r=parseTable1(c);if(r){all.push(r);parsedCount++;}});
         }
         if(massi>=0){
-          const chunks=chunkRows(lines.slice(massi+2),/^Massiva\s/);
+          const chunks=chunkRows(lines.slice(massi+2,endAfter(massi)),/^Massiva\s/);
           rowAttempts+=chunks.length;
           chunks.forEach(c=>{const r=parseMassiva(c);if(r){all.push(r);parsedCount++;}});
         }
         if(t2i>=0){
-          const chunks=chunkRows(lines.slice(t2i+2),/^\d{4,7}\s/);
+          const chunks=chunkRows(lines.slice(t2i+2,endAfter(t2i)),/^\d{4,7}\s/);
           rowAttempts+=chunks.length;
           chunks.forEach(c=>{const r=parseTable2(c);if(r){all.push(r);parsedCount++;}});
         }
         if(t3i>=0){
-          const chunks=chunkRows(lines.slice(t3i+2),/^(TX|IP)\s/);
+          const chunks=chunkRows(lines.slice(t3i+2,endAfter(t3i)),/^(TX|IP)\s/);
           rowAttempts+=chunks.length;
           chunks.forEach(c=>{const r=parseTable3(c);if(r){all.push(r);parsedCount++;}});
         }
       });
-      /* Backlog (page3) e "48h+" (page1) descrevem os MESMOS incidentes de
-         backbone — mescla por Requisição pra não contar/duplicar o mesmo
-         chamado duas vezes, preferindo os campos mais ricos do Backlog
-         (Acionamento/Área responsável) sem perder ClientesImpactadosB2C,
-         que só existe na tabela "48h+". */
+      return{records:mergeRecords(all),parsedCount,rowAttempts};
+    }
+    /* Backlog e "48h+" descrevem os MESMOS incidentes de backbone (do PDF ou das
+       abas equivalentes do Excel) — mescla por Requisição pra não contar/duplicar
+       o mesmo chamado duas vezes, preferindo os campos mais ricos do Backlog
+       (Acionamento/Área responsável) sem perder ClientesImpactadosB2C, que só
+       existe na tabela "48h+". Compartilhada entre o caminho PDF (parsePages)
+       e o caminho Excel (handleExcel) — mesma regra nos 2 formatos de anexo. */
+    function mergeRecords(all){
       const byReq=new Map();
       all.forEach(r=>{
         const key=r.requisicao+'|'+(r.origem==='Massiva'?'massiva':r.origem==='Acesso 12h+'?'acesso':'backbone');
@@ -8606,7 +8686,78 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         merged.origem=[prev.origem,r.origem].filter((v,i,a)=>a.indexOf(v)===i).join(' + ');
         byReq.set(key,merged);
       });
-      return{records:[...byReq.values()],parsedCount,rowAttempts};
+      return[...byReq.values()];
+    }
+
+    /* ---- Leitura do Excel do Warmap (formato exportado pelo Painel Alloha Fibra:
+       abas "BB Abertos 48h+", "Massivas em Andamento", "Acesso Abertos 12h+" e
+       "Backlog 48h Backbone") — caminho alternativo ao PDF, bem mais confiável já
+       que as colunas já vêm separadas (sem precisar reconstruir linha de texto
+       achatado nem adivinhar onde a cidade termina e o código do equipamento
+       começa, como no PDF). Produz o MESMO formato de registro usado pelo PDF,
+       então passa pelo mesmo mergeRecords()/render()/tabela/export dali pra
+       frente sem nenhuma diferença de tratamento entre os 2 formatos de anexo. ---- */
+    const WM_EXCEL_SHEETS=[
+      {re:/backbone.*48|bb\s*abertos/i,origem:'Backbone 48h+'},
+      {re:/massivas/i,origem:'Massiva'},
+      {re:/acesso.*12/i,origem:'Acesso 12h+'},
+      {re:/backlog/i,origem:'Backlog 48h+'},
+    ];
+    function wmFindHeaderRow(rows){
+      for(let i=0;i<Math.min(rows.length,8);i++){
+        const r=rows[i]||[];
+        if(r.some(c=>typeof c==='string'&&/Requisi[cç][aã]o/i.test(c)))return i;
+      }
+      return-1;
+    }
+    function excelSheetToRecords(rows,origem){
+      const hi=wmFindHeaderRow(rows);
+      if(hi<0)return[];
+      const header=rows[hi].map(c=>n(String(c==null?'':c)));
+      const idx=name=>header.findIndex(h=>h.toLowerCase()===name.toLowerCase());
+      const I={requisicao:idx('Requisição'),inicioFalha:idx('Início Falha'),acionamento:idx('Acionamento'),
+        tempoDecorrido:idx('Tempo Decorrido'),trecho:idx('Trecho'),oltEqp:idx('OLT/Equipamento'),
+        cidadeUf:idx('Cidade/UF'),uf:idx('UF'),cluster:idx('Cluster'),categoria:idx('Categoria'),
+        parceira:idx('Parceira'),status:idx('Status'),os:idx('OS'),osRedeExterna:idx('OS Rede Externa'),
+        areaResponsavel:idx('Área Responsável'),clientes:idx('Clientes Impactados')};
+      const isMassiva=origem==='Massiva';
+      const out=[];
+      for(let r=hi+1;r<rows.length;r++){
+        const row=rows[r];if(!row)continue;
+        const g=k=>{const ix=I[k];if(ix==null||ix<0||ix>=row.length)return'';const v=row[ix];return v==null?'':v;};
+        const gS=k=>{const v=g(k);return v instanceof Date?fmtDT(v):n(String(v));};
+        const requisicao=gS('requisicao');
+        if(!requisicao)continue;
+        let cidadeUfText=gS('cidadeUf');
+        /* Mesmo prefixo "COD - " visto no PDF (ex.: "ALQ - ALENQUER/PA") aparece
+           igual na aba de Massivas do Excel — mesma limpeza aplicada. */
+        if(isMassiva)cidadeUfText=cidadeUfText.replace(/^[A-Z]{2,6}\s*-\s*/,'');
+        const cu=findCidadeUf(cidadeUfText);
+        const ufExplicit=gS('uf').toUpperCase();
+        /* Prefere a coluna UF separada (quando existe — BB Abertos/Backlog) por ser
+           direta, sem depender de nenhum parsing; cai pro texto "Cidade/UF" (via
+           findCidadeUf, já com a mesma limpeza de Nome Próprio do caminho PDF) só
+           quando não há coluna UF própria (Massivas/Acesso). */
+        const uf=ufExplicit&&UF_SET.has(ufExplicit)?ufExplicit:(cu?cu.uf:'');
+        const cidade=cu?cu.cidade:cidadeUfText;
+        out.push({origem,requisicao,inicioFalha:gS('inicioFalha'),acionamento:gS('acionamento'),
+          tempoDecorrido:gS('tempoDecorrido'),trecho:gS('trecho')||gS('oltEqp'),cidade,uf,
+          cluster:gS('cluster'),categoria:gS('categoria')||(isMassiva?'Massiva':origem==='Acesso 12h+'?'Acesso':''),
+          clientesB2C:gS('clientes'),clientesB2B:'',parceira:gS('parceira'),status:gS('status'),
+          os:gS('os')||gS('osRedeExterna'),areaResponsavel:gS('areaResponsavel')});
+      }
+      return out;
+    }
+    function parseExcelWorkbook(wb){
+      let all=[],sheetsFound=0,rowAttempts=0;
+      wb.SheetNames.forEach(name=>{
+        const cfg=WM_EXCEL_SHEETS.find(s=>s.re.test(name));
+        if(!cfg)return;
+        const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});
+        const recs=excelSheetToRecords(rows,cfg.origem);
+        if(recs.length||wmFindHeaderRow(rows)>=0){sheetsFound++;rowAttempts+=recs.length;all=all.concat(recs);}
+      });
+      return{records:mergeRecords(all),parsedCount:all.length,rowAttempts,sheetsFound};
     }
 
     function fillSelect(id,values,label){
@@ -8845,10 +8996,36 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         document.getElementById('wm-fileInfo').textContent='';
       }
     }
+    async function handleExcel(file){
+      const errEl=document.getElementById('wm-err');
+      errEl.style.display='none';
+      document.getElementById('wm-fileInfo').textContent='Lendo Excel…';
+      try{
+        const buf=await file.arrayBuffer();
+        const wb=XLSX.read(buf,{type:'array',cellDates:true});
+        const{records,parsedCount,sheetsFound}=parseExcelWorkbook(wb);
+        if(!sheetsFound)throw new Error('Não foram encontradas as abas esperadas (BB Abertos 48h+, Massivas em Andamento, Acesso Abertos 12h+, Backlog 48h Backbone) neste Excel.');
+        if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste Excel.');
+        LAST_PDF_NAME='';
+        loadRecords(records,file.name,true);
+        wmSyncPublish('Warmap');
+        const note=document.getElementById('wm-parseNote');
+        if(note)note.textContent=`${parsedCount} chamado(s) lidos de ${sheetsFound} aba(s) do Excel.`;
+      }catch(e){
+        errEl.textContent='Não foi possível ler os chamados deste Excel: '+e.message;
+        errEl.style.display='block';
+        document.getElementById('wm-fileInfo').textContent='';
+      }
+    }
 
     document.getElementById('wm-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
       if(!canEdit('warmap')){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
-      handlePdf(file);e.target.value='';};
+      /* Aceita PDF ou Excel — decide pelo nome/tipo do arquivo, já que os dois
+         formatos usam o mesmo botão "Warmap" (pedido do usuário: "a base sempre
+         a ser anexada será em PDF ou Excel"). */
+      const isExcel=/\.xlsx?$/i.test(file.name)||/spreadsheetml|ms-excel/i.test(file.type||'');
+      if(isExcel)handleExcel(file);else handlePdf(file);
+      e.target.value='';};
     document.querySelector('#panel-warmap label[for=wm-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('wm-fileIn').click();}};
     document.getElementById('wm-btnClear').onclick=()=>{if(!canEdit('warmap')){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover a base Warmap salva neste navegador? A remoção também é sincronizada — outros dispositivos deixarão de mostrar esta base até alguém anexar uma nova.'))return;
