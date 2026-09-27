@@ -12218,6 +12218,20 @@ function canEdit(panelKey){
   }
   return false;
 }
+/* Usuário Sr com pelo menos 1 painel liberado em editPanels — usado só pra decidir
+   se a mudança deste dispositivo deve ser EMPURRADA pro GitHub (saveState()/
+   autoSyncAfterBaseUpload()), não pra liberar nenhuma ação nova. Sem isto, uma base
+   anexada/config alterada por um Usuário Sr no painel liberado (ex.: Abertos OFS)
+   salvava só localStorage deste navegador e nunca chegava a outros dispositivos —
+   canEdit() sem argumento (usado até aqui em saveState()) é estritamente admin, então
+   bloqueava o push mesmo depois de uma mutação legítima já ter passado por
+   canEdit('abertosOfs'). Seguro porque Sr só consegue de fato mutar algo nos painéis
+   que o admin liberou (todo o resto do app continua atrás de canEdit() puro=false
+   pra Sr) — isto só decide "empurrar ou não", nunca "pode editar ou não". */
+function _hasSrEditRights(){
+  return!!(currentUser&&normRole(currentUser.role)==='sr'&&currentUser.perms
+    &&Array.isArray(currentUser.perms.editPanels)&&currentUser.perms.editPanels.length);
+}
 /* Configuração de visualização por usuário: paineis visíveis + clusters (Rede) +
    MOP/EPS (B2B via mop, OFS via grupo) que um perfil "Usuário" pode enxergar.
    perms ausente/null em cada eixo = sem restrição (vê tudo), exceto paineis, que
@@ -14727,7 +14741,7 @@ async function restoreSharedState(){
 function saveState(){
   const st=buildState();
   saveLocalState(st);
-  if(canEdit()){
+  if(canEdit()||_hasSrEditRights()){
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer=setTimeout(()=>{
       /* saveGhState() não precisa mais de token pessoal (via Worker) — passou a ser
@@ -14753,7 +14767,7 @@ async function persistClearedBase(label){
   return false;
 }
 function autoSyncAfterBaseUpload(label){
-  if(!canEdit())return;
+  if(!canEdit()&&!_hasSrEditRights())return;
   clearTimeout(remoteSaveTimer);
   remoteSaveTimer=setTimeout(async()=>{
     const suffix=label?' ('+label+')':'';
