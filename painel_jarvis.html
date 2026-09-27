@@ -7272,8 +7272,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div class="aof-actions">
           <span class="aof-fileinfo" id="aof-fileInfo"></span>
-          <label class="aof-btn aof-primary admin-only" for="aof-fileIn" tabindex="0">Anexar base (.csv)</label>
-          <input type="file" id="aof-fileIn" accept=".csv,text/csv" hidden>
+          <label class="aof-btn aof-primary admin-only" for="aof-fileIn" tabindex="0" title="Você pode selecionar vários arquivos CSV de uma vez — as atividades de todos são somadas no painel">Anexar base(s) (.csv)</label>
+          <input type="file" id="aof-fileIn" accept=".csv,text/csv" multiple hidden>
           <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
           <button class="aof-btn admin-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
           <button class="aof-btn admin-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
@@ -7780,6 +7780,34 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       });
     }
 
+    /* Combina N tabelas brutas (uma por arquivo CSV selecionado de uma vez no input
+       multiple) numa única tabela, pra contabilizar as atividades de todos os
+       arquivos juntas no painel. Usa o cabeçalho do primeiro arquivo como referência
+       e remapeia as colunas dos demais por NOME (não por posição) — cobre o caso de
+       exports do OFS com a mesma coluna em ordem levemente diferente entre arquivos.
+       Descarta linhas 100% idênticas já vistas (ex.: o mesmo arquivo selecionado sem
+       querer duas vezes, ou um export que se sobrepõe a outro) — só duplicata exata
+       byte a byte é removida, então duas atividades genuinamente diferentes (mesma OS
+       mas status atualizado entre exports, por exemplo) nunca são descartadas. */
+    function aofCombineTables(tables){
+      if(tables.length===1)return tables[0];
+      const header=tables[0][0].map(x=>n(x).replace(/^﻿/,''));
+      const seen=new Set();
+      const combined=[header];
+      tables.forEach(table=>{
+        const h=table[0].map(x=>n(x).replace(/^﻿/,''));
+        const idx=header.map(col=>h.indexOf(col));
+        table.slice(1).forEach(row=>{
+          if(!row||!row.length)return;
+          const mapped=idx.map(ix=>ix>=0&&ix<row.length?row[ix]:'');
+          const key=mapped.join('\u0001');
+          if(seen.has(key))return;
+          seen.add(key);
+          combined.push(mapped);
+        });
+      });
+      return combined;
+    }
     const KEEP=['Recurso','Data','Status da Atividade','Nome','Bairro','Cidade','Estado','Data de Abertura OS','Início','Fim','Duração','Tempo de Deslocamento','Tipo de Atividade','Motivo de Encerramento das atividades','Ordem de Serviço','Área de Trabalho','Posição na Rota','Comentários Gerais'];
     function slim(table){
       const h=table[0].map(x=>n(x).replace(/^﻿/,''));
@@ -7852,17 +7880,36 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;
       document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(x=>x.setAttribute('aria-selected',x===b));document.getElementById('aof-tblSearch').value='';drawTable(filtered());});
     document.querySelector('#panel-abertos-ofs label[for=aof-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('aof-fileIn').click();}};
-    document.getElementById('aof-fileIn').onchange=e=>{const file=e.target.files[0];if(!file)return;
+    function aofReadOneCsv(file){
+      return new Promise((resolve,reject)=>{
+        const rd=new FileReader();
+        rd.onload=()=>{try{
+            const wb=XLSX.read(rd.result,{type:'string',raw:true});
+            const table=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
+            resolve({name:file.name,table});
+          }catch(x){reject(new Error(`Não foi possível ler "${file.name}". Confirme que é o CSV exportado do OFS.`));}};
+        rd.onerror=()=>reject(new Error(`Falha ao ler o arquivo "${file.name}".`));
+        rd.readAsText(file,'UTF-8');
+      });
+    }
+    document.getElementById('aof-fileIn').onchange=e=>{
+      const files=[...e.target.files];
+      if(!files.length)return;
       if(!canEdit()){e.target.value='';alert('Seu usuário possui acesso somente para visualização.');return;}
-      const er=document.getElementById('aof-err');const rd=new FileReader();
-      rd.onload=()=>{try{
-          const wb=XLSX.read(rd.result,{type:'string',raw:true});
-          const table=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
-          load(table,file.name,true);
+      const er=document.getElementById('aof-err');
+      er.style.display='none';
+      Promise.all(files.map(aofReadOneCsv)).then(parsed=>{
+        try{
+          const combined=aofCombineTables(parsed.map(p=>p.table));
+          const label=parsed.length>1?`${parsed.length} arquivos anexados`:parsed[0].name;
+          load(combined,label,true);
+          const infoEl=document.getElementById('aof-fileInfo');
+          if(infoEl)infoEl.title=parsed.map(p=>p.name).join('\n');
           if(ROWS.length)aofSyncPublish('Abertos OFS');
-        }catch(x){er.textContent='Não foi possível ler o arquivo. Confirme que é o CSV exportado do OFS.';er.style.display='block';}};
-      rd.onerror=()=>{er.textContent='Falha ao ler o arquivo.';er.style.display='block';};
-      rd.readAsText(file,'UTF-8');e.target.value='';};
+        }catch(x){er.textContent=x.message||'Não foi possível combinar os arquivos selecionados.';er.style.display='block';}
+      }).catch(x=>{er.textContent=x.message;er.style.display='block';});
+      e.target.value='';
+    };
     document.getElementById('aof-btnClear').onclick=()=>{if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover a base salva neste navegador?'))return;
       try{localStorage.removeItem(STORE_KEY);}catch(e){}
