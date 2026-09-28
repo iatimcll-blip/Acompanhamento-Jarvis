@@ -7420,6 +7420,23 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     try{TIPOS_CFG=JSON.parse(localStorage.getItem(TIPOS_KEY)||'{}');}catch(e){TIPOS_CFG={};}
     try{STATUS_OV=JSON.parse(localStorage.getItem(STATUS_OV_KEY)||'{}');}catch(e){STATUS_OV={};}
     function aofSlaGet(tipo){return SLA_CFG[tipo]>0?SLA_CFG[tipo]:SLA_DEFAULT;}
+    /* Timestamp por entrada (nome→chave→ISO) das 4 configs sincronizadas (sla, tipos,
+       statusOv, obs) — base do merge chave a chave entre dispositivos (_cfgMergePerKey). */
+    const CFG_TS_KEY='jarvis_abertos_ofs_cfgts_v1';
+    let CFG_TS={};
+    try{CFG_TS=JSON.parse(localStorage.getItem(CFG_TS_KEY)||'{}');}catch(e){CFG_TS={};}
+    function aofCfgTouch(nm,key){(CFG_TS[nm]||(CFG_TS[nm]={}))[key]=new Date().toISOString();try{localStorage.setItem(CFG_TS_KEY,JSON.stringify(CFG_TS));}catch(e){}}
+    function aofBuildCfg(){return{sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG,ts:CFG_TS};}
+    /* Mescla a config vinda de outro dispositivo com a local, chave a chave. Devolve true
+       se algo local mudou (pra só recarregar a tela quando necessário). */
+    function aofMergeCfg(remoteCfg){
+      const maps={sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG};
+      const changed=_cfgMergePerKey(['sla','tipos','statusOv','obs'],maps,CFG_TS,remoteCfg);
+      SLA_CFG=maps.sla;TIPOS_CFG=maps.tipos;STATUS_OV=maps.statusOv;OBS_CFG=maps.obs;
+      aofSlaSave();aofTiposSave();aofStatusOvSave();aofObsSave();
+      try{localStorage.setItem(CFG_TS_KEY,JSON.stringify(CFG_TS));}catch(e){}
+      return changed;
+    }
     function aofSlaSave(){try{localStorage.setItem(SLA_KEY,JSON.stringify(SLA_CFG));}catch(e){}}
     function aofTiposSave(){try{localStorage.setItem(TIPOS_KEY,JSON.stringify(TIPOS_CFG));}catch(e){}}
     function aofTipoVisible(t){return TIPOS_CFG[t]!==false;}
@@ -7823,7 +7840,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         sel.onchange=()=>{
           const val=sel.value;if(!val)return;
           const key=sel.dataset.key;
-          STATUS_OV[key]=val;aofStatusOvSave();
+          STATUS_OV[key]=val;aofStatusOvSave();aofCfgTouch('statusOv',key);
           const r=ROWS.find(x=>aofRowKey(x)===key);
           if(r){r.sg=val;r.status=STATUS_RAW_LABEL[val]||val;r.statusManual=true;}
           render();
@@ -7835,7 +7852,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         inp.onchange=()=>{
           const key=inp.dataset.key,val=inp.value.trim();
           if(val)OBS_CFG[key]=val;else delete OBS_CFG[key];
-          aofObsSave();
+          aofObsSave();aofCfgTouch('obs',key);
           aofSyncPublish('Abertos OFS — observação salva');
         };
       });
@@ -7991,11 +8008,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(badge)badge.title='';
       }
     }
-    function aofSyncPublish(label){
-      AOF_SYNC_AT=new Date().toISOString();
-      AOF_SYNC_TABLE=LAST_RAW_TABLE;
-      AOF_SYNC_FILENAME=FILE_NAME;
-      AOF_SYNC_CFG={sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG};
+    /* baseChanged=true só quando a BASE muda de fato (anexo). Editar obs/status/SLA/tipos
+       publica só a config: antes, qualquer edição regravava AOF_SYNC_AT/TABLE com a base
+       LOCAL — se este dispositivo ainda tinha a base antiga, a edição "vencia" e
+       sobrescrevia pra todos a base recém-anexada em outro. */
+    function aofSyncPublish(label,baseChanged){
+      if(baseChanged){
+        AOF_SYNC_AT=new Date().toISOString();
+        AOF_SYNC_TABLE=LAST_RAW_TABLE;
+        AOF_SYNC_FILENAME=FILE_NAME;
+      }
+      AOF_SYNC_CFG=aofBuildCfg();
       aofUpdateBadge();
       if(typeof saveState==='function')saveState();
       if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
@@ -8005,14 +8028,22 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        na aba ativa agora, adia o render pro pendingRestore/aofRenderAll já existente
        (mesma trava usada no boot, pra não criar gráfico Chart.js num canvas oculto
        com largura zero). */
-    window.aofSyncBoot=function(){
+    window.aofSyncBoot=function(cfgOnly){
+      let cfgChanged=false;
       if(AOF_SYNC_CFG&&typeof AOF_SYNC_CFG==='object'){
-        if(AOF_SYNC_CFG.sla&&typeof AOF_SYNC_CFG.sla==='object'){SLA_CFG=AOF_SYNC_CFG.sla;aofSlaSave();}
-        if(AOF_SYNC_CFG.tipos&&typeof AOF_SYNC_CFG.tipos==='object'){TIPOS_CFG=AOF_SYNC_CFG.tipos;aofTiposSave();}
-        if(AOF_SYNC_CFG.statusOv&&typeof AOF_SYNC_CFG.statusOv==='object'){STATUS_OV=AOF_SYNC_CFG.statusOv;aofStatusOvSave();}
-        if(AOF_SYNC_CFG.obs&&typeof AOF_SYNC_CFG.obs==='object'){OBS_CFG=AOF_SYNC_CFG.obs;aofObsSave();}
+        cfgChanged=aofMergeCfg(AOF_SYNC_CFG);
       }
+      AOF_SYNC_CFG=aofBuildCfg();
       const isActive=document.getElementById('panel-abertos-ofs').classList.contains('active');
+      if(cfgOnly){
+        /* Só a config chegou (obs/status/SLA de outro dispositivo): a base local não
+           muda — recarrega a MESMA base só se algo realmente mudou. */
+        if(cfgChanged&&LAST_RAW_TABLE){
+          if(isActive)load(LAST_RAW_TABLE,FILE_NAME,false);
+          else pendingRestore={table:LAST_RAW_TABLE,name:FILE_NAME};
+        }
+        return;
+      }
       if(AOF_SYNC_TABLE){
         if(isActive)load(AOF_SYNC_TABLE,AOF_SYNC_FILENAME,true);
         else pendingRestore={table:AOF_SYNC_TABLE,name:AOF_SYNC_FILENAME};
@@ -8117,7 +8148,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           load(combined,label,true);
           const infoEl=document.getElementById('aof-fileInfo');
           if(infoEl)infoEl.title=parsed.map(p=>p.name).join('\n');
-          if(ROWS.length)aofSyncPublish('Abertos OFS');
+          if(ROWS.length)aofSyncPublish('Abertos OFS',true);
         }catch(x){er.textContent=x.message||'Não foi possível combinar os arquivos selecionados.';er.style.display='block';}
       }).catch(x=>{er.textContent=x.message;er.style.display='block';});
       e.target.value='';
@@ -8134,7 +8165,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
          reportado pelo usuário. Atualizar AOF_SYNC_AT pra agora garante que esta
          remoção "vence" qualquer estado mais antigo ainda salvo local ou remotamente
          (mesmo mecanismo de replace-by-latest já usado pra anexar base). */
-      AOF_SYNC_TABLE=null;AOF_SYNC_FILENAME='';AOF_SYNC_AT=new Date().toISOString();AOF_SYNC_CFG=null;
+      AOF_SYNC_TABLE=null;AOF_SYNC_FILENAME='';AOF_SYNC_AT=new Date().toISOString();AOF_SYNC_CFG=aofBuildCfg();
       aofUpdateBadge();
       if(typeof saveState==='function')saveState();
       if(typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload('Abertos OFS — base removida');};
@@ -8189,13 +8220,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           if(!canEdit('abertosOfs')){inp.value=aofSlaGet(inp.dataset.tipo);return;}
           const v=parseFloat(inp.value);
           if(isNaN(v)||v<=0){inp.value=aofSlaGet(inp.dataset.tipo);return;}
-          SLA_CFG[inp.dataset.tipo]=v;aofSlaSave();
+          SLA_CFG[inp.dataset.tipo]=v;aofSlaSave();aofCfgTouch('sla',inp.dataset.tipo);
           if(ROWS.length)render();
           aofSyncPublish('Abertos OFS — SLA atualizado');
         });
         tiposList.querySelectorAll('.aof-cfg-tipo-check').forEach(chk=>chk.onchange=()=>{
           if(!canEdit('abertosOfs')){chk.checked=aofTipoVisible(chk.dataset.tipo);return;}
-          TIPOS_CFG[chk.dataset.tipo]=chk.checked;aofTiposSave();
+          TIPOS_CFG[chk.dataset.tipo]=chk.checked;aofTiposSave();aofCfgTouch('tipos',chk.dataset.tipo);
           if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
           aofSyncPublish('Abertos OFS — tipos visíveis atualizados');
         });
@@ -8208,6 +8239,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     document.getElementById('aof-cfg-clear-status').onclick=()=>{
       if(!canEdit('abertosOfs')){alert('Seu usuário possui acesso somente para visualização.');return;}
       if(!confirm('Remover todas as alterações manuais de status desta base?'))return;
+      Object.keys(STATUS_OV).forEach(k=>aofCfgTouch('statusOv',k));
       STATUS_OV={};try{localStorage.removeItem(STATUS_OV_KEY);}catch(e){}
       if(LAST_RAW_TABLE)load(LAST_RAW_TABLE,FILE_NAME,false);
       aofRenderCfgLists();
@@ -8297,6 +8329,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-warmap .wm-just-readonly{width:100%;min-width:220px;min-height:48px;font:500 12px var(--wm-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--wm-line);background:var(--wm-card);color:var(--wm-ink);white-space:normal;word-break:break-word;line-height:1.35}
   #panel-warmap .wm-just-input::placeholder{color:var(--wm-muted);font-style:italic}
   #panel-warmap td.wm-just-col{min-width:240px;max-width:380px}
+  #panel-warmap .wm-status-select{width:100%;min-width:130px;font:600 12px var(--wm-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--wm-line);background:var(--wm-card);color:var(--wm-ink)}
+  /* Colunas com texto mais longo (código de trecho, área responsável, origem)
+     ficavam espremidas com a largura automática da tabela — largura mínima
+     evita quebra de linha excessiva/ilegível. */
+  #panel-warmap td.wm-trecho-col,#panel-warmap th.wm-trecho-col{min-width:190px}
+  #panel-warmap td.wm-area-col,#panel-warmap th.wm-area-col{min-width:210px}
+  #panel-warmap td.wm-origem-col,#panel-warmap th.wm-origem-col{min-width:170px}
   #panel-warmap .wm-parse-note{font-size:11.5px;color:var(--wm-muted);margin-top:6px}
   </style>
   <div class="panel" id="panel-warmap">
@@ -8371,6 +8410,31 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     try{WM_JUST_CFG=JSON.parse(localStorage.getItem(WM_JUST_KEY)||'{}');}catch(e){WM_JUST_CFG={};}
     function wmJustSave(){try{localStorage.setItem(WM_JUST_KEY,JSON.stringify(WM_JUST_CFG));}catch(e){}}
     function wmRowKey(r){return r.requisicao;}
+    /* Status Interno — controle manual por chamado (Aberto/Fechado/Suspenso/
+       Cancelado), separado do "Status" que já existe (texto bruto do próprio
+       relatório, tipo "Aguardando equipe de campo"). Mesmo padrão de
+       persistência/sync da Justificativa acima. */
+    const WM_STATUS_KEY='jarvis_warmap_status_v1';
+    let WM_STATUS_CFG={};
+    try{WM_STATUS_CFG=JSON.parse(localStorage.getItem(WM_STATUS_KEY)||'{}');}catch(e){WM_STATUS_CFG={};}
+    function wmStatusSave(){try{localStorage.setItem(WM_STATUS_KEY,JSON.stringify(WM_STATUS_CFG));}catch(e){}}
+    /* Timestamp por entrada + merge chave a chave da config sincronizada (mesmo esquema
+       do Abertos OFS — ver _cfgMergePerKey). */
+    const WM_CFG_TS_KEY='jarvis_warmap_cfgts_v1';
+    let WM_CFG_TS={};
+    try{WM_CFG_TS=JSON.parse(localStorage.getItem(WM_CFG_TS_KEY)||'{}');}catch(e){WM_CFG_TS={};}
+    function wmCfgTouch(nm,key){(WM_CFG_TS[nm]||(WM_CFG_TS[nm]={}))[key]=new Date().toISOString();try{localStorage.setItem(WM_CFG_TS_KEY,JSON.stringify(WM_CFG_TS));}catch(e){}}
+    function wmBuildCfg(){return{just:WM_JUST_CFG,status:WM_STATUS_CFG,ts:WM_CFG_TS};}
+    function wmMergeCfg(remoteCfg){
+      const maps={just:WM_JUST_CFG,status:WM_STATUS_CFG};
+      const changed=_cfgMergePerKey(['just','status'],maps,WM_CFG_TS,remoteCfg);
+      WM_JUST_CFG=maps.just;WM_STATUS_CFG=maps.status;
+      wmJustSave();wmStatusSave();
+      try{localStorage.setItem(WM_CFG_TS_KEY,JSON.stringify(WM_CFG_TS));}catch(e){}
+      return changed;
+    }
+    const WM_STATUS_INTERNO_OPTS=['Aberto','Fechado','Suspenso','Cancelado'];
+    const WM_STATUS_INTERNO_COLOR={Aberto:'--wm-amber',Fechado:'--wm-green',Suspenso:'--wm-gray',Cancelado:'--wm-red'};
     const UF_SET=new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
     const TARGET_UF=['PI','MA','PA','AM','AP'];
     const STATUS_PHRASES=['Aguardando equipe de campo','Atendimento de campo suspenso','Continuar atendimento de campo','Enviado para COPREDE','Aguardando tratativas','Aguardando baixa','Em Andamento','Suspenso'];
@@ -8853,20 +8917,30 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function drawTable(D){
       const q=n(document.getElementById('wm-tblSearch').value).toLowerCase();
       const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))
-        ||(WM_JUST_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)):D;
+        ||(WM_JUST_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)
+        ||(WM_STATUS_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)):D;
       const cols=[
         ['requisicao','Requisição',r=>esc(r.requisicao)],
         ['categoria','Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],
         ['uf','UF',r=>`<span class="wm-uf-pill">${esc(r.uf)}</span>`],
         ['cidade','Cidade',r=>esc(r.cidade)||'—'],
-        ['trecho','Trecho/Equip.',r=>esc(r.trecho)||'—'],
+        ['trecho','Trecho/Equip.',r=>esc(r.trecho)||'—','wm-trecho-col'],
         ['inicioFalha','Início da falha',r=>esc(r.inicioFalha)||'—'],
         ['tempoDecorrido','Tempo decorrido',r=>esc(r.tempoDecorrido)||'—','wm-num'],
         ['status','Status',r=>pill(r.status,STATUS_COLOR[r.status])],
         ['parceira','Parceira',r=>esc(r.parceira)||'—'],
         ['os','OS',r=>esc(r.os)||'—'],
-        ['areaResponsavel','Área responsável',r=>esc(r.areaResponsavel)||'—'],
-        ['origem','Origem no relatório',r=>esc(r.origem)],
+        ['areaResponsavel','Área responsável',r=>esc(r.areaResponsavel)||'—','wm-area-col'],
+        ['origem','Origem no relatório',r=>esc(r.origem),'wm-origem-col'],
+        ['statusInterno','Status Interno',r=>{
+          const key=wmRowKey(r);
+          const val=WM_STATUS_CFG[key]||'';
+          if(!canEdit('warmap'))return val?pill(val,WM_STATUS_INTERNO_COLOR[val]):`<span style="opacity:.6">—</span>`;
+          const opts=['<option value="">Selecionar…</option>'].concat(
+            WM_STATUS_INTERNO_OPTS.map(o=>`<option value="${o}"${o===val?' selected':''}>${o}</option>`)
+          ).join('');
+          return`<select class="wm-status-select" data-key="${esc(key)}">${opts}</select>`;
+        }],
         ['justificativa','Justificativa',r=>{
           const key=wmRowKey(r);
           const val=WM_JUST_CFG[key]||'';
@@ -8886,8 +8960,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         inp.onchange=()=>{
           const key=inp.dataset.key,val=inp.value.trim();
           if(val)WM_JUST_CFG[key]=val;else delete WM_JUST_CFG[key];
-          wmJustSave();
+          wmJustSave();wmCfgTouch('just',key);
           wmSyncPublish('Warmup — justificativa salva');
+        };
+      });
+      t.querySelectorAll('.wm-status-select').forEach(sel=>{
+        sel.onclick=e=>e.stopPropagation();
+        sel.onchange=()=>{
+          const key=sel.dataset.key,val=sel.value;
+          if(val)WM_STATUS_CFG[key]=val;else delete WM_STATUS_CFG[key];
+          wmStatusSave();wmCfgTouch('status',key);
+          wmSyncPublish('Warmup — status interno atualizado');
         };
       });
     }
@@ -8901,6 +8984,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['Início da falha',r=>r.inicioFalha||''],['Tempo decorrido',r=>r.tempoDecorrido||''],
         ['Status',r=>r.status],['Parceira',r=>r.parceira||''],['OS',r=>r.os||''],
         ['Área responsável',r=>r.areaResponsavel||''],['Origem no relatório',r=>r.origem],
+        ['Status Interno',r=>WM_STATUS_CFG[wmRowKey(r)]||''],
         ['Justificativa',r=>WM_JUST_CFG[wmRowKey(r)]||'']
       ];
     }
@@ -8978,11 +9062,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        do app inteiro (grava local + agenda o envio pro GitHub, se o usuário
        puder editar) — chamado a cada novo PDF anexado, pra qualquer dispositivo
        que sincronizar depois enxergar a mesma base sem precisar re-anexar. */
-    function wmSyncPublish(label){
-      WM_SYNC_AT=new Date().toISOString();
-      WM_SYNC_RECORDS=ROWS;
-      WM_SYNC_FILENAME=FILE_NAME;
-      WM_SYNC_CFG={just:WM_JUST_CFG};
+    /* baseChanged=true só quando a base muda (anexo). Editar justificativa/status
+       interno publica só a config — mesmo motivo do aofSyncPublish (uma edição não
+       pode "vencer" e sobrescrever uma base mais nova anexada em outro dispositivo). */
+    function wmSyncPublish(label,baseChanged){
+      if(baseChanged){
+        WM_SYNC_AT=new Date().toISOString();
+        WM_SYNC_RECORDS=ROWS;
+        WM_SYNC_FILENAME=FILE_NAME;
+      }
+      WM_SYNC_CFG=wmBuildCfg();
       wmUpdateBadge();
       if(typeof saveState==='function')saveState();
       if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
@@ -8991,11 +9080,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        mais recente chegar de outro dispositivo — mesmo padrão do aofSyncBoot,
        incluindo replicar uma remoção (WM_SYNC_RECORDS null) feita em outro
        dispositivo, em vez de deixar a base antiga na tela. */
-    window.wmSyncBoot=function(){
-      if(WM_SYNC_CFG&&typeof WM_SYNC_CFG==='object'&&WM_SYNC_CFG.just&&typeof WM_SYNC_CFG.just==='object'){
-        WM_JUST_CFG=WM_SYNC_CFG.just;wmJustSave();
-      }
+    window.wmSyncBoot=function(cfgOnly){
+      let cfgChanged=false;
+      if(WM_SYNC_CFG&&typeof WM_SYNC_CFG==='object')cfgChanged=wmMergeCfg(WM_SYNC_CFG);
+      WM_SYNC_CFG=wmBuildCfg();
       const isActive=document.getElementById('panel-warmap').classList.contains('active');
+      if(cfgOnly){
+        if(cfgChanged&&isActive&&ROWS.length)drawTable(filtered());
+        return;
+      }
       if(WM_SYNC_RECORDS){
         if(isActive)loadRecords(WM_SYNC_RECORDS,WM_SYNC_FILENAME,true);
         else pendingRestore={records:WM_SYNC_RECORDS,name:WM_SYNC_FILENAME};
@@ -9022,7 +9115,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste PDF.');
         LAST_PDF_NAME=file.name;
         loadRecords(records,file.name,true);
-        wmSyncPublish('Warmup');
+        wmSyncPublish('Warmup',true);
         const note=document.getElementById('wm-parseNote');
         if(note)note.textContent=`${parsedCount} de ${rowAttempts} linha(s) de chamado reconhecidas no PDF.`;
       }catch(e){
@@ -9043,7 +9136,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste Excel.');
         LAST_PDF_NAME='';
         loadRecords(records,file.name,true);
-        wmSyncPublish('Warmup');
+        wmSyncPublish('Warmup',true);
         const note=document.getElementById('wm-parseNote');
         if(note)note.textContent=`${parsedCount} chamado(s) lidos de ${sheetsFound} aba(s) do Excel.`;
       }catch(e){
@@ -13073,21 +13166,34 @@ function _mergeGhRemoteIntoLocal(remoteSt){
          quando o remoto for comprovadamente mais novo (AOF_SYNC_AT, timestamp ISO)
          que a base já carregada neste dispositivo. window.aofSyncBoot() decide se
          renderiza na hora ou adia pro pendingRestore (aba pode estar inativa). */
-      if(remoteSt.AOF_SYNC_AT&&remoteSt.AOF_SYNC_AT>(AOF_SYNC_AT||'')){
-        AOF_SYNC_TABLE=Array.isArray(remoteSt.AOF_SYNC_TABLE)?remoteSt.AOF_SYNC_TABLE:null;
-        AOF_SYNC_FILENAME=remoteSt.AOF_SYNC_FILENAME||'';
-        AOF_SYNC_AT=remoteSt.AOF_SYNC_AT;
-        AOF_SYNC_CFG=remoteSt.AOF_SYNC_CFG&&typeof remoteSt.AOF_SYNC_CFG==='object'?remoteSt.AOF_SYNC_CFG:null;
-        if(typeof window.aofSyncBoot==='function')window.aofSyncBoot();
+      /* A configuração (obs/status manual/SLA) NÃO acompanha mais o timestamp da base: era
+         o que fazia uma simples edição de observação num dispositivo com base antiga
+         "vencer" (AOF_SYNC_AT mais novo) e sobrescrever a base recém-anexada em outro.
+         Base e config agora têm ciclos independentes — base por AOF_SYNC_AT, config
+         mesclada chave a chave (timestamp por entrada, ver _cfgMergePerKey). */
+      {
+        const baseNewer=!!(remoteSt.AOF_SYNC_AT&&remoteSt.AOF_SYNC_AT>(AOF_SYNC_AT||''));
+        const cfgIn=remoteSt.AOF_SYNC_CFG&&typeof remoteSt.AOF_SYNC_CFG==='object'?remoteSt.AOF_SYNC_CFG:null;
+        if(baseNewer){
+          AOF_SYNC_TABLE=Array.isArray(remoteSt.AOF_SYNC_TABLE)?remoteSt.AOF_SYNC_TABLE:null;
+          AOF_SYNC_FILENAME=remoteSt.AOF_SYNC_FILENAME||'';
+          AOF_SYNC_AT=remoteSt.AOF_SYNC_AT;
+        }
+        if(cfgIn)AOF_SYNC_CFG=cfgIn;
+        if((baseNewer||cfgIn)&&typeof window.aofSyncBoot==='function')window.aofSyncBoot(!baseNewer);
       }
       /* Warmap: mesmo padrão replace-by-latest do Abertos OFS acima — cada PDF
          anexado é a base autoritativa completa, nunca mescla linha a linha. */
-      if(remoteSt.WM_SYNC_AT&&remoteSt.WM_SYNC_AT>(WM_SYNC_AT||'')){
-        WM_SYNC_RECORDS=Array.isArray(remoteSt.WM_SYNC_RECORDS)?remoteSt.WM_SYNC_RECORDS:null;
-        WM_SYNC_FILENAME=remoteSt.WM_SYNC_FILENAME||'';
-        WM_SYNC_AT=remoteSt.WM_SYNC_AT;
-        WM_SYNC_CFG=remoteSt.WM_SYNC_CFG&&typeof remoteSt.WM_SYNC_CFG==='object'?remoteSt.WM_SYNC_CFG:null;
-        if(typeof window.wmSyncBoot==='function')window.wmSyncBoot();
+      {
+        const baseNewer=!!(remoteSt.WM_SYNC_AT&&remoteSt.WM_SYNC_AT>(WM_SYNC_AT||''));
+        const cfgIn=remoteSt.WM_SYNC_CFG&&typeof remoteSt.WM_SYNC_CFG==='object'?remoteSt.WM_SYNC_CFG:null;
+        if(baseNewer){
+          WM_SYNC_RECORDS=Array.isArray(remoteSt.WM_SYNC_RECORDS)?remoteSt.WM_SYNC_RECORDS:null;
+          WM_SYNC_FILENAME=remoteSt.WM_SYNC_FILENAME||'';
+          WM_SYNC_AT=remoteSt.WM_SYNC_AT;
+        }
+        if(cfgIn)WM_SYNC_CFG=cfgIn;
+        if((baseNewer||cfgIn)&&typeof window.wmSyncBoot==='function')window.wmSyncBoot(!baseNewer);
       }
       /* Fuel Vehicles: a condição antiga (fuelVeiculosCleared && remoto TAMBÉM vazio) só
          evitava mesclar quando o remoto já tinha convergido pra vazio — ou seja, não
@@ -13434,8 +13540,67 @@ async function restoreGhState(){
       updateCentralStatus();updateClearBtns();
       return true;
     }
+    /* Bug real (Abertos OFS/Warmup "não sincronizam"): shouldApplyRemoteState() compara
+       o savedAt GLOBAL — que qualquer ação local (trocar de aba, mudar filtro, o próprio
+       saveLocalState() após um pull) atualiza pra "agora". Um upload feito em outro
+       dispositivo poucos segundos antes dessa ação local ficava "mais velho" que o savedAt
+       daqui e era descartado pra sempre (só voltava a chegar se OUTRO push acontecesse
+       depois). O timestamp por seção (REMOTE_MERGE_SECTIONS) já é a fonte de verdade certa
+       — então, mesmo com o portão global fechado, aplica as seções cujo timestamp remoto é
+       comprovadamente mais novo, sem tocar no resto (usuários, aba ativa etc.). */
+    const part=_remoteNewerSectionsOnly(st);
+    if(part){
+      applyState(part,'Base compartilhada');
+      saveLocalState();
+      updateCentralStatus();updateClearBtns();
+      _ghToast('Atualizações de outro dispositivo carregadas ✓','var(--green-dk)',4000);
+      return true;
+    }
   }catch(e){console.warn('Erro ao carregar estado do GitHub:',e)}
   return false;
+}
+function _remoteNewerSectionsOnly(remoteSt){
+  let localSt;
+  try{localSt=buildState();}catch(e){return null;}
+  const part={};let any=false;
+  REMOTE_MERGE_SECTIONS.forEach(({at,keys})=>{
+    const ra=_stPath(remoteSt,at)||'',la=_stPath(localSt,at)||'';
+    if(ra&&ra>la){
+      keys.forEach(k=>{if(Object.prototype.hasOwnProperty.call(remoteSt,k))part[k]=remoteSt[k];});
+      any=true;
+    }
+  });
+  /* Configuração por chave (obs/status manual/SLA do AOF; justificativa/status interno do
+     Warmup) é sempre mesclada chave a chave — idempotente, então é seguro reenviar. */
+  ['AOF_SYNC_CFG','WM_SYNC_CFG'].forEach(k=>{
+    if(remoteSt[k]&&typeof remoteSt[k]==='object'){part[k]=remoteSt[k];any=true;}
+  });
+  return any?part:null;
+}
+/* Merge por chave com timestamp por entrada (cfg = {nome:{chave:valor},ts:{nome:{chave:iso}}}).
+   Substituir o objeto inteiro (como era) perdia a edição de outro dispositivo em OUTRA
+   linha: quem publicasse por último apagava as observações/status do outro. Aqui vence,
+   por chave, o timestamp mais novo; chave ausente com timestamp mais novo = exclusão. */
+function _cfgMergePerKey(names,localMaps,localTs,remoteCfg){
+  if(!remoteCfg||typeof remoteCfg!=='object')return false;
+  const rts=remoteCfg.ts&&typeof remoteCfg.ts==='object'?remoteCfg.ts:{};
+  const has=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
+  let changed=false;
+  names.forEach(nm=>{
+    const L=localMaps[nm]||(localMaps[nm]={}),LT=localTs[nm]||(localTs[nm]={});
+    const R=remoteCfg[nm]&&typeof remoteCfg[nm]==='object'?remoteCfg[nm]:{};
+    const RT=rts[nm]&&typeof rts[nm]==='object'?rts[nm]:{};
+    new Set([...Object.keys(L),...Object.keys(LT),...Object.keys(R),...Object.keys(RT)]).forEach(k=>{
+      const lt=LT[k]||'',rt=RT[k]||'';
+      const lHas=has(L,k),rHas=has(R,k);
+      const takeRemote=rt>lt||(rt===lt&&!lt&&rHas&&!lHas);
+      if(!takeRemote)return;
+      if(rHas){if(!lHas||JSON.stringify(L[k])!==JSON.stringify(R[k])){L[k]=R[k];changed=true;}}
+      else if(lHas){delete L[k];changed=true;}
+      if(rt)LT[k]=rt;
+    });
+  });
+  return changed;
 }
 
 function _ghToast(msg,color,dur=3500){
@@ -14641,8 +14806,8 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','fapAt','fapSaldoMes']},
   {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt']},
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt']},
-  {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT','AOF_SYNC_CFG']},
-  {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT','WM_SYNC_CFG']},
+  {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT']},
+  {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -14876,24 +15041,32 @@ function applyState(st,label){
        no documento) — só os dados chegam aqui; ela decide se dá pra renderizar na
        hora (aba já ativa) ou se precisa adiar pro pendingRestore/aofRenderAll já
        existente (evita criar gráfico Chart.js num canvas ainda escondido). */
-    if(Object.prototype.hasOwnProperty.call(st,'AOF_SYNC_AT')&&st.AOF_SYNC_AT){
+    const _aofBase=Object.prototype.hasOwnProperty.call(st,'AOF_SYNC_AT')&&st.AOF_SYNC_AT;
+    const _aofCfg=st.AOF_SYNC_CFG&&typeof st.AOF_SYNC_CFG==='object'?st.AOF_SYNC_CFG:null;
+    if(_aofBase){
       AOF_SYNC_TABLE=Array.isArray(st.AOF_SYNC_TABLE)?st.AOF_SYNC_TABLE:null;
       AOF_SYNC_FILENAME=st.AOF_SYNC_FILENAME||'';
       AOF_SYNC_AT=st.AOF_SYNC_AT;
-      AOF_SYNC_CFG=st.AOF_SYNC_CFG&&typeof st.AOF_SYNC_CFG==='object'?st.AOF_SYNC_CFG:null;
-      if(typeof window.aofSyncBoot==='function')window.aofSyncBoot();
+    }
+    if(_aofCfg)AOF_SYNC_CFG=_aofCfg;
+    if((_aofBase||_aofCfg)&&typeof window.aofSyncBoot==='function'){
+      window.aofSyncBoot(!_aofBase);
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Abertos OFS:',e);}
   try{
     /* Warmap: mesmo padrão do Abertos OFS acima — window.wmSyncBoot() decide
        se renderiza na hora ou adia (aba pode estar inativa no boot). */
-    if(Object.prototype.hasOwnProperty.call(st,'WM_SYNC_AT')&&st.WM_SYNC_AT){
+    const _wmBase=Object.prototype.hasOwnProperty.call(st,'WM_SYNC_AT')&&st.WM_SYNC_AT;
+    const _wmCfg=st.WM_SYNC_CFG&&typeof st.WM_SYNC_CFG==='object'?st.WM_SYNC_CFG:null;
+    if(_wmBase){
       WM_SYNC_RECORDS=Array.isArray(st.WM_SYNC_RECORDS)?st.WM_SYNC_RECORDS:null;
       WM_SYNC_FILENAME=st.WM_SYNC_FILENAME||'';
       WM_SYNC_AT=st.WM_SYNC_AT;
-      WM_SYNC_CFG=st.WM_SYNC_CFG&&typeof st.WM_SYNC_CFG==='object'?st.WM_SYNC_CFG:null;
-      if(typeof window.wmSyncBoot==='function')window.wmSyncBoot();
+    }
+    if(_wmCfg)WM_SYNC_CFG=_wmCfg;
+    if((_wmBase||_wmCfg)&&typeof window.wmSyncBoot==='function'){
+      window.wmSyncBoot(!_wmBase);
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Warmap:',e);}
