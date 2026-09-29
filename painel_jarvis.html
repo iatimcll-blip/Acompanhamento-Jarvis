@@ -497,6 +497,17 @@ body {
   cursor: pointer; color: var(--tx3); font-size: clamp(13px, 1.2vw, 15px); flex-shrink: 0; transition: all .13s;
 }
 .nav-btn:hover { background: var(--surface3); color: var(--tx); }
+/* Zoom da interface (pedido do usuário): não existe API pra ler/ajustar o zoom
+   NATIVO do navegador via JS (bloqueado por segurança em todo navegador) — em
+   vez disso, escala a página inteira via CSS `zoom` (suportado nativamente no
+   Chrome/Edge) e guarda o nível escolhido no localStorage, aplicado de novo a
+   cada F5/sessão nova, pra não voltar sempre a 100% sozinho. */
+.nav-zoom { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.nav-zoom-pct {
+  min-width: 34px; text-align: center; font-size: clamp(11px, 1vw, 12px); font-weight: 700;
+  color: var(--tx3); cursor: pointer; user-select: none; padding: 2px 3px; border-radius: 6px;
+}
+.nav-zoom-pct:hover { background: var(--surface3); color: var(--tx); }
 .upload-pill {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 12px 5px 8px; border-radius: 20px;
@@ -7030,6 +7041,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="nav-btn admin-only" onclick="openUserPanel()" title="Usuários"><i class="ti ti-users"></i></div>
         <div class="nav-btn admin-only" id="sheets-nav-btn" onclick="openSyncSettings()" title="Configurar sincronização entre dispositivos"><i class="ti ti-cloud"></i></div>
         <div class="nav-btn admin-only" onclick="syncNow(true)" title="Sincronizar bases agora"><i class="ti ti-cloud-upload"></i></div>
+        <div class="nav-zoom" title="Ajustar o tamanho da tela — fica salvo neste navegador">
+          <button type="button" class="nav-btn" onclick="uiZoomStep(-1)" title="Diminuir zoom"><i class="ti ti-zoom-out"></i></button>
+          <span class="nav-zoom-pct" id="nav-zoom-pct" onclick="uiZoomReset()" title="Clique para voltar a 100%">100%</span>
+          <button type="button" class="nav-btn" onclick="uiZoomStep(1)" title="Aumentar zoom"><i class="ti ti-zoom-in"></i></button>
+        </div>
         <div class="nav-btn" onclick="toggleTheme()" title="Tema"><i class="ti ti-moon" id="ti-icon"></i></div>
         <div class="nav-btn" onclick="logoutUser()" title="Sair"><i class="ti ti-logout"></i></div>
         <div class="avatar-btn" id="avatar-label">--</div>
@@ -13666,7 +13682,7 @@ async function loginUser(ev){
   currentUser=user;
   localStorage.setItem(SESSION_KEY,user.username);
   document.getElementById('login-pass').value='';
-  hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+  hideLogin();applyUiZoom();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
 }
 /* Visão do usuário Padrão (pedido do usuário): "não precisará de acesso ou senha" — um
    clique, sem formulário. Não persiste SESSION_KEY de propósito: ao recarregar a
@@ -13679,7 +13695,7 @@ function loginAsGuest(){
   if(!guest)return;
   currentUser=guest;
   document.getElementById('login-pass').value='';
-  hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+  hideLogin();applyUiZoom();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
 }
 function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
@@ -13698,7 +13714,7 @@ function initAuth(){
     const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
     if(user){
       currentUser=user;
-      hideLogin();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+      hideLogin();applyUiZoom();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
       return;
     }
   }
@@ -22928,6 +22944,26 @@ function toggleTheme(){
   document.body.dataset.theme=dk?'light':'dark';
   document.getElementById('ti-icon').className=dk?'ti ti-moon':'ti ti-sun';
   setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();},60);
+}
+/* Zoom da interface — ver comentário da CSS .nav-zoom. 70-130% em passos de
+   10, guardado por dispositivo/navegador (não sincroniza entre aparelhos —
+   é preferência de tela, não dado). */
+const UI_ZOOM_KEY='jarvis_ui_zoom_v1';
+let uiZoom=100;
+try{const saved=parseInt(localStorage.getItem(UI_ZOOM_KEY),10);if(saved>=70&&saved<=130)uiZoom=saved;}catch(e){}
+function applyUiZoom(){
+  document.body.style.zoom=uiZoom+'%';
+  const el=document.getElementById('nav-zoom-pct');if(el)el.textContent=uiZoom+'%';
+}
+function uiZoomStep(dir){
+  uiZoom=Math.max(70,Math.min(130,uiZoom+dir*10));
+  try{localStorage.setItem(UI_ZOOM_KEY,String(uiZoom));}catch(e){}
+  applyUiZoom();
+}
+function uiZoomReset(){
+  uiZoom=100;
+  try{localStorage.setItem(UI_ZOOM_KEY,String(uiZoom));}catch(e){}
+  applyUiZoom();
 }
 /* ─── FUEL SPLIT PANE ─── */
 let fuelSplitInited=false;
