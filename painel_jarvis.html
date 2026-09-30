@@ -14815,14 +14815,28 @@ function shouldApplyRemoteState(st){
    `new Date().toISOString()` nos pontos de edição de cada painel — e entraram aqui.
    Filtros do Painel Executivo continuam sem guarda própria (não são dado, são só
    preferência de tela — risco bem menor que os outros). */
+/* Bug real (B2B Encerrados "dados ficam de forma não correta sempre que a base é
+   atualizada", também presente em Abertos/Ativações/POP/Combustível): o campo usado
+   como "timestamp" de cada seção pra decidir se o remoto é mais novo que o local
+   precisa ser comparável com `>` como STRING — só funciona se for ISO 8601
+   (2026-10-01T...), nunca o formato de exibição now2() ("01/10/2026 09:00",
+   pt-BR). Comparando como texto, "30/09/2026" > "01/10/2026" (o caractere '3'
+   é maior que '0'), então uma base de SETEMBRO parecia "mais nova" que uma
+   RECÉM-ANEXADA em outubro — toda virada de mês (ou de ano), o pull automático
+   de 5 em 5 min (ou o próximo F5) revertia silenciosamente a base recém-anexada
+   pra uma cópia velha do mês anterior. lastAbAt/lastEncAt/fuelBaseAt/
+   fuelVeiculosBaseAt/lastAtivAt/lastPopAt são só para EXIBIÇÃO (badge "atualizado
+   em...") — cada um já tem um par ISO correto (.../BaseAt ou .../BaseAtIso) usado
+   corretamente do lado do PUSH (_mergeGhRemoteIntoLocal); só faltava usar o mesmo
+   par aqui do lado do PULL. */
 const REMOTE_MERGE_SECTIONS=[
-  {at:'lastAbAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbBaseAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf','selEveMop','selEveFaixa','selEveSub','selEveUf']},
-  {at:'lastEncAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
-  {at:'fuelBaseAt',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseAtIso','fuelBaseFile','fuelRFilter']},
-  {at:'fuelVeiculosBaseAt',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseAtIso','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
+  {at:'lastAbBaseAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbBaseAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf','selEveMop','selEveFaixa','selEveSub','selEveUf']},
+  {at:'lastEncBaseAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
+  {at:'fuelBaseAtIso',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseAtIso','fuelBaseFile','fuelRFilter']},
+  {at:'fuelVeiculosBaseAtIso',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseAtIso','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
   {at:'rdeState.at',keys:['rdeState']},
-  {at:'lastAtivAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
-  {at:'lastPopAt',keys:['dPop','lastPopAt','lastPopBaseAt','lastPopFile']},
+  {at:'lastAtivBaseAt',keys:['dAtiv','lastAtivAt','lastAtivBaseAt','lastAtivFile','selAtivUf','selAtivCidade','selAtivDep','selAtivStatusAtual','selAtivAging','selAtivSeg','selAtivFc','selAtivSubstatus','selAtivProd','selAtivTec','selAtivCluster','selAtivYear','ativGran','ativPeriod']},
+  {at:'lastPopBaseAt',keys:['dPop','lastPopAt','lastPopBaseAt','lastPopFile']},
   {at:'b2cSummaryAt',keys:['b2cSummary','b2cSummaryAt','b2cMetaOverrides','selB2cCluster','selB2cAno','selB2cMes','selB2cSemana']},
   {at:'lastPreventAt',keys:['dPrevent','dPrevTecnicos','lastPreventAt']},
   {at:'amLastEditAt',keys:['amTickets','amTicketsClearedAt','amLastEditAt']},
