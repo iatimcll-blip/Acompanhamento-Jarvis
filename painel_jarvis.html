@@ -12836,6 +12836,21 @@ function _renderStaleBuildBanner(){
 const GH_TOKEN_KEY='atrix:gh-sync-token:v1';
 const USERS_KEY='atrix:usuarios:v1';
 const SESSION_KEY='atrix:sessao:v1';
+/* Bug real reportado pelo usuário ("ao criar usuário novo, ele fica sem acesso"): a
+   seção `users` do estado sincronizado nunca teve a mesma guarda por timestamp que
+   TODAS as outras seções (ver REMOTE_MERGE_SECTIONS) — mergeRemoteStateForRestore()
+   deixava `users` passar direto, e applyState() então fazia saveUsers(st.users),
+   uma SUBSTITUIÇÃO TOTAL sem merge. Como o push pro GitHub é debounced em 800ms e o
+   CDN (raw.githubusercontent.com) pode servir uma cópia em cache por alguns segundos
+   (mesmo padrão de cache já documentado no DSR Volante), um admin que cria um usuário
+   novo e logo em seguida recarrega a página (ou dispara qualquer outro pull remoto)
+   corria o risco de buscar um estado remoto AINDA sem o usuário recém-criado e
+   sobrescrever a lista local com ele por cima — apagando o usuário novo (ou, se outro
+   dispositivo também mexeu em usuários nesse meio-tempo, apagando a mudança de um
+   dos dois, sem aviso). usersAt é bumped só nos 4 pontos que de fato mutam a lista
+   (criar/excluir/mudar permissões/mudar tipo) — nunca dentro de getUsers(), que roda
+   a cada render e só faz normalização (admin/Moises/visitante). */
+let usersAt='';
 /* Rastreia o savedAt do último estado remoto que ESTE dispositivo conhece — usado
    para detectar, antes de cada envio, se outro dispositivo sincronizou algo mais
    novo nesse meio-tempo (evita apagar bases anexadas em outro PC). */
@@ -13866,6 +13881,7 @@ async function createSecondaryUser(){
   if(users.some(u=>u.username.toLowerCase()===username.toLowerCase())){alert('Usuário já existe.');return}
   const passSha=await hashPass(pass);
   users.push({username,pass:passSha,passType:'sha256',role});
+  usersAt=new Date().toISOString();
   saveUsers(users);
   saveState();
   document.getElementById('new-user').value='';
@@ -13875,6 +13891,7 @@ async function createSecondaryUser(){
 }
 function deleteUser(username){
   if(!canEdit()||username==='admin'||username===GUEST_USERNAME)return;
+  usersAt=new Date().toISOString();
   saveUsers(getUsers().filter(u=>u.username!==username));
   saveState();
   renderUsers();
@@ -13890,6 +13907,7 @@ let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
   const users=getUsers().map(u=>u.username===username?{...u,perms,scope:undefined}:u);
+  usersAt=new Date().toISOString();
   saveUsers(users);
   saveState();
   if(currentUser&&currentUser.username===username){currentUser={...currentUser,perms};applyPermissions();}
@@ -13954,6 +13972,7 @@ function changeUserRole(username,newRole){
   if(username==='admin'||username===GUEST_USERNAME)return;
   const role=normRole(newRole);
   const users=getUsers().map(u=>u.username===username?{...u,role}:u);
+  usersAt=new Date().toISOString();
   saveUsers(users);
   saveState();
   if(currentUser&&currentUser.username===username){currentUser={...currentUser,role};applyPermissions();}
@@ -14974,6 +14993,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt']},
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT']},
   {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
+  {at:'usersAt',keys:['users','usersAt']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -15006,7 +15026,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -15413,6 +15433,7 @@ function applyState(st,label){
   try{
     if(Array.isArray(st.users)&&st.users.length){
       saveUsers(st.users);
+      if(st.usersAt)usersAt=st.usersAt;
       const allUsers=getUsers(); /* normaliza: garante admin com senha correta */
       if(currentUser){
         const fresh=allUsers.find(u=>u.username===currentUser.username);
