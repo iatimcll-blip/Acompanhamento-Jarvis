@@ -7314,6 +7314,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <label class="aof-btn aof-primary panel-edit-only" for="aof-fileIn" tabindex="0" title="Você pode selecionar vários arquivos CSV de uma vez — as atividades de todos são somadas no painel">Anexar base(s) (.csv)</label>
           <input type="file" id="aof-fileIn" accept=".csv,text/csv" multiple hidden>
           <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
+          <button class="aof-btn" id="aof-btnMatinal" title="Gera o Excel no modelo do Matinal: Warmup completo + chamados de Manutenção Corretiva de Rede/Manutenção de Rede Field já acima do SLA"><i class="ti ti-report"></i> Relatório Matinal</button>
           <button class="aof-btn panel-edit-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
           <button class="aof-btn panel-edit-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
         </div>
@@ -7952,6 +7953,96 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
     }
 
+    /* Botão "Relatório Matinal" (pedido do usuário, modelo real em
+       matinal/Matinal.xlsx): uma planilha só com DOIS blocos —
+       1) WARMUP completo (todas as linhas carregadas no painel Warmup, sem
+          filtro — WM_SYNC_RECORDS/WM_SYNC_CFG são globais de verdade, fora das
+          IIFEs dos painéis, justamente pra permitir esse tipo de leitura
+          cruzada entre Abertos OFS e Warmup sem acoplar os dois scripts).
+       2) MATINAL: chamados do Abertos OFS dos tipos "Manutenção Corretiva de
+          Rede"/"Manutenção de Rede Field" que JÁ estão acima do SLA — mesma
+          condição usada pro tingimento vermelho das linhas em aofExportXlsx
+          (r.aging-aofSlaGet(r.tipo)>0); nk() pra casar o Tipo mesmo com
+          variação de acento/caixa na base.
+       Ignora de propósito os filtros/busca da tela (UF, Cidade, Cluster...):
+       é o retrato completo das duas bases anexadas, igual ao exemplo real,
+       não um recorte da visão atual. */
+    const MATINAL_TIPOS_RAW=['Manutenção Corretiva de Rede','Manutenção de Rede Field'];
+    function aofGerarRelatorioMatinal(){
+      /* nk() é definida num <script> mais abaixo no documento — não pode ser
+         chamada no nível do módulo (rodaria antes dela existir, na carga da
+         página); só dentro da função, chamada bem depois, no clique. */
+      const matinalTiposNk=MATINAL_TIPOS_RAW.map(nk);
+      const wmRows=Array.isArray(WM_SYNC_RECORDS)?WM_SYNC_RECORDS:[];
+      const wmJust=(WM_SYNC_CFG&&WM_SYNC_CFG.just&&typeof WM_SYNC_CFG.just==='object')?WM_SYNC_CFG.just:{};
+      const wmStatusInt=(WM_SYNC_CFG&&WM_SYNC_CFG.status&&typeof WM_SYNC_CFG.status==='object')?WM_SYNC_CFG.status:{};
+      const aofRows=ROWS.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa'&&r.tipo&&matinalTiposNk.includes(nk(r.tipo))&&r.aging!=null&&(r.aging-aofSlaGet(r.tipo)>0));
+      if(!wmRows.length&&!aofRows.length){alert('Não há base do Warmup anexada nem chamados de Manutenção Corretiva/Field acima do SLA no Abertos OFS — nada pra colocar no relatório.');return;}
+      const btn=document.getElementById('aof-btnMatinal');
+      const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
+      abCarregarExcelJS(async()=>{
+        try{
+          const wmDefs=[
+            ['Requisição',r=>r.requisicao],['Categoria',r=>r.categoria],['UF',r=>r.uf],
+            ['Cidade',r=>r.cidade||''],['Trecho/Equip.',r=>r.trecho||''],['Tempo decorrido',r=>r.tempoDecorrido||''],
+            ['Parceira',r=>r.parceira||''],['OS',r=>r.os||''],['Área responsável',r=>r.areaResponsavel||''],
+            ['Origem no relatório',r=>r.origem],['Status Interno',r=>wmStatusInt[r.requisicao]||''],['Justificativa',r=>wmJust[r.requisicao]||'']
+          ];
+          const matinalDefs=[
+            ['Status',r=>r.sg],['Abertura do Chamado',r=>r.abChamado||''],['OS',r=>r.os||''],
+            ['SLA',r=>r.aging==null?'':fmtSLA(r.aging)],['Tipo',r=>r.tipo],['Cidade',r=>r.cid||''],
+            ['UF',r=>r.uf||''],['Recurso',r=>r.rec||''],['Justificativa',r=>OBS_CFG[aofRowKey(r)]||'']
+          ];
+          const NAVY_WM='FF0F2A4A',NAVY_AOF='FF182238',RED='FFFDECEC',YELLOW='FFFFFF00';
+          const wb=new ExcelJS.Workbook();
+          const ws=wb.addWorksheet('Relatório Matinal');
+          const titleRow=(r,text)=>{const c=ws.getCell(r,1);c.value=text;c.font={bold:true,size:16,color:{argb:YELLOW}};};
+          const headerRow=(r,defs,color)=>defs.forEach(([label],i)=>{
+            const c=ws.getCell(r,i+1);c.value=label;
+            c.fill={type:'pattern',pattern:'solid',fgColor:{argb:color}};
+            c.font={color:{argb:'FFFFFFFF'},bold:true};c.alignment={vertical:'middle'};
+          });
+          let row=1;
+          ws.getCell(row,wmDefs.length).value='atualizado: '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          ws.getCell(row,wmDefs.length).alignment={horizontal:'right'};
+          row+=1;
+          titleRow(row,'WARMUP');row+=1;
+          headerRow(row,wmDefs,NAVY_WM);row+=1;
+          wmRows.forEach(r=>{
+            const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
+            wmDefs.forEach(([,fn],i)=>{
+              const c=ws.getCell(row,i+1);c.value=fn(r);
+              if(overdue)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:RED}};
+            });
+            row+=1;
+          });
+          row+=1;
+          titleRow(row,'MATINAL');row+=1;
+          headerRow(row,matinalDefs,NAVY_AOF);row+=1;
+          aofRows.forEach(r=>{
+            matinalDefs.forEach(([,fn],i)=>{
+              const c=ws.getCell(row,i+1);c.value=fn(r);
+              c.fill={type:'pattern',pattern:'solid',fgColor:{argb:RED}};
+            });
+            row+=1;
+          });
+          const maxCols=Math.max(wmDefs.length,matinalDefs.length);
+          ws.columns=Array.from({length:maxCols},(_,i)=>{
+            const label=(wmDefs[i]||matinalDefs[i]||[''])[0];
+            return{width:Math.max(14,String(label).length+6)};
+          });
+          const buf=await wb.xlsx.writeBuffer();
+          const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+          const url=URL.createObjectURL(blob);
+          const a=document.createElement('a');
+          a.href=url;a.download=`relatorio-matinal-${new Date().toISOString().slice(0,10)}.xlsx`;
+          document.body.appendChild(a);a.click();a.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),4000);
+        }catch(e){console.error('Erro ao gerar Relatório Matinal:',e);alert('Não foi possível gerar o relatório.');}
+        finally{btn.disabled=false;btn.innerHTML=origHtml;}
+      },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
+    }
+
     /* Combina N tabelas brutas (uma por arquivo CSV selecionado de uma vez no input
        multiple) numa única tabela, pra contabilizar as atividades de todos os
        arquivos juntas no painel. O cabeçalho combinado é a UNIÃO das colunas de
@@ -8220,6 +8311,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       setTimeout(()=>{restore();mo.disconnect();},8000);
     };
     document.getElementById('aof-btnExport').onclick=()=>aofExportXlsx();
+    document.getElementById('aof-btnMatinal').onclick=()=>aofGerarRelatorioMatinal();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
 
     function aofRenderCfgLists(){
