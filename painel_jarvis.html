@@ -8452,6 +8452,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-warmap .wm-just-input::placeholder{color:var(--wm-muted);font-style:italic}
   #panel-warmap td.wm-just-col{min-width:240px;max-width:380px}
   #panel-warmap .wm-status-select{width:100%;min-width:130px;font:600 12px var(--wm-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--wm-line);background:var(--wm-card);color:var(--wm-ink)}
+  /* Link real do chamado (pedido do usuário): anotação de link embutida na
+     coluna "URL" da tabela Backlog do PDF — só existe quando o chamado veio
+     dessa tabela (Backlog é a fonte "mais rica" no merge Backbone+Backlog, ver
+     mergeRecords). */
+  #panel-warmap .wm-url-link{display:inline-flex;align-items:center;gap:4px;color:var(--wm-blue);font-weight:600;text-decoration:none;white-space:nowrap}
+  #panel-warmap .wm-url-link:hover{text-decoration:underline}
   /* Colunas com texto mais longo (código de trecho, área responsável, origem)
      ficavam espremidas com a largura automática da tabela — largura mínima
      evita quebra de linha excessiva/ilegível. */
@@ -8584,13 +8590,32 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        inserindo espaço entre itens quando há um vão horizontal perceptível —
        sem isso, células adjacentes da tabela (ex.: Trecho e Cidade/UF) colam
        sem espaço nenhum no texto bruto. ---- */
+    /* Link de verdade do chamado (pedido do usuário: "o link fica na base
+       anexada na coluna URL"): não é texto nenhuma célula — é uma ANOTAÇÃO DE
+       LINK invisível sobreposta na coluna "URL" da tabela Backlog (página do
+       PDF), achada investigando com PyMuPDF (page.get_links()) depois de
+       confirmar que a célula em si está em branco. Aponta pro sistema de
+       origem (BDesk/Alloha): "...abertura.asp?tpAcao=reqacomp&idReq=<Requisição>".
+       pdf.js expõe o mesmo tipo de anotação via page.getAnnotations() — como
+       cada link já carrega o idReq na própria URL, não precisa casar por
+       posição (Y) na página, só extrair o número de dentro da query string. */
+    function wmExtractReqFromUrl(url){const m=/[?&]idReq=(\d+)/.exec(url||'');return m?m[1]:'';}
     async function wmExtractLines(arrayBuffer){
       if(typeof pdfjsLib==='undefined')throw new Error('pdf.js não carregado');
       if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='assets/vendor/pdfjs/pdf.worker.min.js';
       const doc=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
       const pages=[];
+      const linkMap={};
       for(let p=1;p<=doc.numPages;p++){
         const page=await doc.getPage(p);
+        try{
+          const annots=await page.getAnnotations();
+          annots.forEach(a=>{
+            const url=a.url||(a.unsafeUrl)||'';
+            const req=wmExtractReqFromUrl(url);
+            if(req)linkMap[req]=url;
+          });
+        }catch(e){console.warn('Não foi possível ler os links do PDF:',e);}
         const content=await page.getTextContent();
         /* Bug real (PDF de produção): a fonte de ícones do relatório injeta
            glifos decorativos "soltos" (Área de Uso Privado do Unicode, ex.
@@ -8620,7 +8645,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(cur)lines.push(cur.join(''));
         pages.push(lines.map(l=>n(l)).filter(Boolean));
       }
-      return pages;
+      return{pages,linkMap};
     }
 
     /* Normaliza cidade 100% CAIXA ALTA (ex.: a tabela de Massivas escreve
@@ -8703,7 +8728,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       if(afterCat.length&&/^\d+$/.test(afterCat[0])){clientesB2C=afterCat[0];parceira=afterCat.slice(1).join(' ');}
       else parceira=afterCat.join(' ');
       return{origem:'Backbone 48h+',requisicao,inicioFalha,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
-        cluster:n(clusterNome),categoria,clientesB2C:n(clientesB2C),parceira:n(parceira),status:sp.status,os:n(sp.after),areaResponsavel:''};
+        cluster:n(clusterNome),categoria,clientesB2C:n(clientesB2C),parceira:n(parceira),status:sp.status,os:n(sp.after),areaResponsavel:'',url:''};
     }
     function parseTable2(chunk){
       const m=/^(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM))\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/i.exec(chunk);
@@ -8717,7 +8742,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       if(midTokens.length&&/^\d+$/.test(midTokens[midTokens.length-1])){clientes=midTokens[midTokens.length-1];cluster=midTokens.slice(0,-1).join(' ');}
       else cluster=midTokens.join(' ');
       return{origem:'Acesso 12h+',requisicao,inicioFalha,tempoDecorrido,trecho:oltEqp,cidade:cu.cidade,uf:cu.uf,
-        cluster:n(cluster),categoria:'Acesso',clientesB2C:n(clientes),parceira:'',status:sp.status,os:n(sp.after),areaResponsavel:''};
+        cluster:n(cluster),categoria:'Acesso',clientesB2C:n(clientes),parceira:'',status:sp.status,os:n(sp.after),areaResponsavel:'',url:''};
     }
     function parseMassiva(chunk){
       const m=/^Massiva\s+(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/.exec(chunk);
@@ -8732,7 +8757,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const cluster=tokens.filter(t=>!/^\d+$/.test(t)).join(' ');
       return{origem:'Massiva',requisicao,inicioFalha,tempoDecorrido,trecho:'',cidade:cu.cidade,uf:cu.uf,
         cluster:n(cluster),categoria:'Massiva',clientesB2C:nums[0]||'',clientesB2B:nums[1]||'',parceira:'',
-        status:sp?sp.status:n(beforeStatus),os:'',areaResponsavel:''};
+        status:sp?sp.status:n(beforeStatus),os:'',areaResponsavel:'',url:''};
     }
     function parseTable3(chunk){
       const m=/^(TX|IP)\s+(.*)$/.exec(chunk);
@@ -8822,8 +8847,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         categoria,parceira:n(parceira),os:n(os),status:sp.status,areaResponsavel,cluster:'',clientesB2C:''};
     }
 
-    function parsePages(pages){
+    function parsePages(pages,linkMap){
       const all=[];let parsedCount=0,rowAttempts=0;
+      linkMap=linkMap||{};
       pages.forEach(lines=>{
         const joinIdx=(re)=>lines.findIndex(l=>re.test(l));
         const t1i=joinIdx(/INCIDENTES ABERTOS.{0,6}48HRS/i);
@@ -8861,7 +8887,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         if(t3i>=0){
           const chunks=chunkRows(lines.slice(t3i+2,endAfter(t3i)),/^(TX|IP)\s/);
           rowAttempts+=chunks.length;
-          chunks.forEach(c=>{const r=parseTable3(c);if(r){all.push(r);parsedCount++;}});
+          chunks.forEach(c=>{const r=parseTable3(c);if(r){r.url=linkMap[r.requisicao]||'';all.push(r);parsedCount++;}});
         }
       });
       return{records:mergeRecords(all),parsedCount,rowAttempts};
@@ -8919,7 +8945,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         tempoDecorrido:idx('Tempo Decorrido'),trecho:idx('Trecho'),oltEqp:idx('OLT/Equipamento'),
         cidadeUf:idx('Cidade/UF'),uf:idx('UF'),cluster:idx('Cluster'),categoria:idx('Categoria'),
         parceira:idx('Parceira'),status:idx('Status'),os:idx('OS'),osRedeExterna:idx('OS Rede Externa'),
-        areaResponsavel:idx('Área Responsável'),clientes:idx('Clientes Impactados')};
+        areaResponsavel:idx('Área Responsável'),clientes:idx('Clientes Impactados'),url:idx('URL')};
       const isMassiva=origem==='Massiva';
       const out=[];
       for(let r=hi+1;r<rows.length;r++){
@@ -8944,7 +8970,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           tempoDecorrido:gS('tempoDecorrido'),trecho:gS('trecho')||gS('oltEqp'),cidade,uf,
           cluster:gS('cluster'),categoria:gS('categoria')||(isMassiva?'Massiva':origem==='Acesso 12h+'?'Acesso':''),
           clientesB2C:gS('clientes'),clientesB2B:'',parceira:gS('parceira'),status:gS('status'),
-          os:gS('os')||gS('osRedeExterna'),areaResponsavel:gS('areaResponsavel')});
+          os:gS('os')||gS('osRedeExterna'),areaResponsavel:gS('areaResponsavel'),url:gS('url')});
       }
       return out;
     }
@@ -9054,6 +9080,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['os','OS',r=>esc(r.os)||'—','wm-nowrap'],
         ['areaResponsavel','Área responsável',r=>esc(r.areaResponsavel)||'—','wm-area-col'],
         ['origem','Origem no relatório',r=>esc(r.origem),'wm-origem-col'],
+        ['url','URL',r=>r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener" class="wm-url-link">Abrir <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`:'—','wm-nowrap'],
         ['statusInterno','Status Interno',r=>{
           const key=wmRowKey(r);
           const val=WM_STATUS_CFG[key]||'';
@@ -9106,6 +9133,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['Início da falha',r=>r.inicioFalha||''],['Tempo decorrido',r=>r.tempoDecorrido||''],
         ['Status',r=>r.status],['Parceira',r=>r.parceira||''],['OS',r=>r.os||''],
         ['Área responsável',r=>r.areaResponsavel||''],['Origem no relatório',r=>r.origem],
+        ['URL',r=>r.url||''],
         ['Status Interno',r=>WM_STATUS_CFG[wmRowKey(r)]||''],
         ['Justificativa',r=>WM_JUST_CFG[wmRowKey(r)]||'']
       ];
@@ -9134,8 +9162,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             c.alignment={vertical:'middle'};
           });
           ws.columns=defs.map(([label])=>({width:WM_XLSX_WIDE_COLS.has(label)?32:Math.max(12,label.length+4)}));
+          const urlColIdx=defs.findIndex(([label])=>label==='URL');
           R.forEach(r=>{
             const row=ws.addRow(defs.map(([,fn])=>fn(r)));
+            if(urlColIdx>=0&&r.url)row.getCell(urlColIdx+1).value={text:'Abrir chamado',hyperlink:r.url};
             const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
             if(overdue)row.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDECEC'}};});
           });
@@ -9232,8 +9262,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       document.getElementById('wm-fileInfo').textContent='Lendo PDF…';
       try{
         const buf=await file.arrayBuffer();
-        const pages=await wmExtractLines(buf);
-        const{records,parsedCount,rowAttempts}=parsePages(pages);
+        const{pages,linkMap}=await wmExtractLines(buf);
+        const{records,parsedCount,rowAttempts}=parsePages(pages,linkMap);
         if(!records.length)throw new Error('Não foi possível encontrar chamados no formato esperado dentro deste PDF.');
         LAST_PDF_NAME=file.name;
         loadRecords(records,file.name,true);
