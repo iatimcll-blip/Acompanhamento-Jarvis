@@ -7962,20 +7962,36 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
     }
 
-    /* Botão "Relatório Matinal" (pedido do usuário, modelo real em
-       matinal/Matinal.xlsx): uma planilha só com DOIS blocos —
-       1) WARMUP completo (todas as linhas carregadas no painel Warmup, sem
-          filtro — WM_SYNC_RECORDS/WM_SYNC_CFG são globais de verdade, fora das
-          IIFEs dos painéis, justamente pra permitir esse tipo de leitura
-          cruzada entre Abertos OFS e Warmup sem acoplar os dois scripts).
-       2) MATINAL: chamados do Abertos OFS dos tipos "Manutenção Corretiva de
-          Rede"/"Manutenção de Rede Field" que JÁ estão acima do SLA — mesma
-          condição usada pro tingimento vermelho das linhas em aofExportXlsx
-          (r.aging-aofSlaGet(r.tipo)>0); nk() pra casar o Tipo mesmo com
-          variação de acento/caixa na base.
-       Ignora de propósito os filtros/busca da tela (UF, Cidade, Cluster...):
-       é o retrato completo das duas bases anexadas, igual ao exemplo real,
-       não um recorte da visão atual. */
+    /* Botão "Relatório Matinal" v2 (pedido do usuário, 2026-10-03 — modelo real
+       em "Relatórios/r1/Relatório Matinal.xlsx", inspecionado célula a célula
+       pra reproduzir fielmente): uma única aba "Base Consolidada" com um
+       schema de 25 colunas UNIFICADO (mesmas colunas pras linhas de Warmup e
+       de Fila OFS, cada lado preenchendo só o que se aplica), em vez dos 2
+       blocos com colunas diferentes da v1. Mantém as MESMAS regras já
+       estabelecidas no painel pra decidir O QUE entra e os CÁLCULOS de cada
+       valor — só reorganiza a apresentação:
+       - Tipo-alvo (MATINAL_TIPOS_RAW) e UF-alvo do Warmup (MATINAL_WM_UF):
+         inalterados da v1.
+       - SLA Prazo/Estourado: aofSlaGet(tipo) + (aging-SLA>0), mesma fórmula já
+         usada pro tingimento vermelho em aofExportXlsx — só virou coluna
+         informativa, não mais filtro de inclusão (confirmado no modelo real:
+         tem linha de Fila OFS com SLA Estourado="Não", aging=1.05h<SLA=4h —
+         o modelo real traz TODA a fila aberta dos 2 tipos, não só a vencida).
+       - "Tempo Decorrido"/Faixa Aging do Warmup: wmDuracaoHoras() (mesma do
+         painel Warmup). Da Fila: r.aging + fmtSLA(r.aging) (mesma função já
+         usada na v1 pra formatar o SLA).
+       - "Tipo Evento"/"Ticket" da Fila: extraídos do texto de r.com
+         ("Comentários Gerais", já capturado por build() mas nunca exibido
+         antes) via os marcadores "- TIPO: X"/"- TICKET: 123" que o próprio
+         texto de abertura do chamado já usa — confirmado comparando o modelo
+         real linha a linha (os valores batem exatamente com o texto bruto).
+       - "Sem Técnico": reaproveita r.unassigned, já calculado em build()
+         (true quando o Recurso contém a palavra "CLUSTER" — fila sem técnico
+         individual, só no pool do cluster).
+       - "Está nas duas bases": cruza o OS do Warmup com o OS da Fila (Fila
+         tem prefixo "BDESK-" quando vem do Bdesk; removido antes de comparar)
+         — confirmado no modelo real: o único par com "Sim" dos 2 lados é
+         exatamente o mesmo número de OS. */
     const MATINAL_TIPOS_RAW=['Manutenção Corretiva de Rede','Manutenção de Rede Field'];
     /* Mesma lista de UF-alvo do painel Warmup (TARGET_UF, definida dentro da IIFE
        do wm-script — não dá pra importar direto, então repete aqui). O relatório
@@ -7983,6 +7999,27 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        hora de renderizar a tela, pedido do usuário: "trazer apenas os chamados
        das UF PI, MA, PA, AM, AP no resumo do Warmup"). */
     const MATINAL_WM_UF=['PI','MA','PA','AM','AP'];
+    const MATINAL_COLS=[
+      ['Base Origem',12],['Ticket / Requisição',22],['OS',26],['Categoria / Tipo',28],['Tipo Evento',13],
+      ['UF',6],['Cidade',18],['Trecho / Equipamento',38],['Início Falha / Abertura OS',19],['Abertura Chamado',13],
+      ['Tempo Decorrido (original)',15],['Tempo Decorrido (h)',11],['Faixa Aging',13],['SLA Prazo (h)',9],['SLA Estourado',10],
+      ['Status',28],['Parceira / Recurso',30],['Área Responsável',13],['Cluster',14],['Cliente',34],
+      ['Sem Técnico',15],['Origem no Relatório',26],['Está nas duas bases',18],['Status Interno',21],['Justificativa / Comentários',60],
+    ];
+    function matinalFaixaAging(h){
+      if(h==null)return'';
+      if(h>=72)return'>72h';
+      if(h>=24)return'24-72h';
+      if(h>=8)return'8-24h';
+      return'0-8h';
+    }
+    /* Os marcadores "- TICKET: 123" / "- TIPO: RUPTURA" vêm no texto que o próprio
+       OFS já escreve na abertura do chamado (coluna "Comentários Gerais", r.com) —
+       não é um campo próprio, é extraído do texto livre. Nem todo chamado tem esse
+       padrão (ex.: os abertos via ATRIX direto, sem o template de acionamento); aí
+       fica vazio mesmo, igual ao modelo real. */
+    function matinalExtrairTicket(com){const m=/-\s*TICKET:\s*(\d+)/i.exec(com||'');return m?m[1]:'';}
+    function matinalExtrairTipoEvento(com){const m=/-\s*TIPO:\s*([^\n\r]+)/i.exec(com||'');return m?n(m[1]):'';}
     function aofGerarRelatorioMatinal(){
       /* nk() é definida num <script> mais abaixo no documento — não pode ser
          chamada no nível do módulo (rodaria antes dela existir, na carga da
@@ -7991,67 +8028,94 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const wmRows=(Array.isArray(WM_SYNC_RECORDS)?WM_SYNC_RECORDS:[]).filter(r=>MATINAL_WM_UF.includes(r.uf));
       const wmJust=(WM_SYNC_CFG&&WM_SYNC_CFG.just&&typeof WM_SYNC_CFG.just==='object')?WM_SYNC_CFG.just:{};
       const wmStatusInt=(WM_SYNC_CFG&&WM_SYNC_CFG.status&&typeof WM_SYNC_CFG.status==='object')?WM_SYNC_CFG.status:{};
-      const aofRows=ROWS.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa'&&r.tipo&&matinalTiposNk.includes(nk(r.tipo))&&r.aging!=null&&(r.aging-aofSlaGet(r.tipo)>0));
-      if(!wmRows.length&&!aofRows.length){alert('Não há base do Warmup anexada nem chamados de Manutenção Corretiva/Field acima do SLA no Abertos OFS — nada pra colocar no relatório.');return;}
+      /* Diferença de regra vs a v1 (confirmada no modelo real): não filtra mais só
+         os vencidos (r.aging-aofSlaGet(r.tipo)>0) — traz TODA a fila aberta dos 2
+         tipos-alvo, e "SLA Estourado" vira coluna informativa em vez de filtro. */
+      const aofRows=ROWS.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa'&&r.tipo&&matinalTiposNk.includes(nk(r.tipo)));
+      if(!wmRows.length&&!aofRows.length){alert('Não há base do Warmup anexada nem chamados de Manutenção Corretiva/Field em aberto no Abertos OFS — nada pra colocar no relatório.');return;}
       const btn=document.getElementById('aof-btnMatinal');
       const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
       abCarregarExcelJS(async()=>{
         try{
-          const wmDefs=[
-            ['Requisição',r=>r.requisicao],['Categoria',r=>r.categoria],['UF',r=>r.uf],
-            ['Cidade',r=>r.cidade||''],['Trecho/Equip.',r=>r.trecho||''],['Tempo decorrido',r=>r.tempoDecorrido||''],
-            ['Parceira',r=>r.parceira||''],['OS',r=>r.os||''],['Área responsável',r=>r.areaResponsavel||''],
-            ['Origem no relatório',r=>r.origem],['Status Interno',r=>wmStatusInt[r.requisicao]||''],['Justificativa',r=>wmJust[r.requisicao]||'']
-          ];
-          const matinalDefs=[
-            ['Status',r=>r.sg],['Abertura do Chamado',r=>r.abChamado||''],['OS',r=>r.os||''],
-            ['SLA',r=>r.aging==null?'':fmtSLA(r.aging)],['Tipo',r=>r.tipo],['Cidade',r=>r.cid||''],
-            ['UF',r=>r.uf||''],['Recurso',r=>r.rec||''],['Justificativa',r=>OBS_CFG[aofRowKey(r)]||'']
-          ];
-          const NAVY_WM='FF0F2A4A',NAVY_AOF='FF182238',RED='FFFDECEC',YELLOW='FFFFFF00';
+          const wmOsSet=new Set(wmRows.map(r=>n(r.os)).filter(Boolean));
+          const aofOsNorm=r=>n(r.os).replace(/^BDESK-/i,'');
+          const aofOsSet=new Set(aofRows.map(aofOsNorm).filter(Boolean));
+          const wmEstaNasDuas=r=>n(r.os)&&aofOsSet.has(n(r.os))?'Sim':'Não';
+          const aofEstaNasDuas=r=>{const os=aofOsNorm(r);return os&&wmOsSet.has(os)?'Sim':'Não';};
+
+          const AZUL='FF1476C9',VERDE='FF42C34B',NAVY='FF182238',AMARELO_CLARO='FFFFF9DB',BORDA='FFD9DDE3';
           const wb=new ExcelJS.Workbook();
-          const ws=wb.addWorksheet('Relatório Matinal');
-          const titleRow=(r,text)=>{const c=ws.getCell(r,1);c.value=text;c.font={bold:true,size:16,color:{argb:YELLOW}};};
-          const headerRow=(r,defs,color)=>defs.forEach(([label],i)=>{
-            const c=ws.getCell(r,i+1);c.value=label;
-            c.fill={type:'pattern',pattern:'solid',fgColor:{argb:color}};
-            c.font={color:{argb:'FFFFFFFF'},bold:true};c.alignment={vertical:'middle'};
-          });
-          let row=1;
-          ws.getCell(row,wmDefs.length).value='atualizado: '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-          ws.getCell(row,wmDefs.length).alignment={horizontal:'right'};
-          row+=1;
-          titleRow(row,'WARMUP');row+=1;
-          headerRow(row,wmDefs,NAVY_WM);row+=1;
+          const ws=wb.addWorksheet('Base Consolidada');
+          const border={bottom:{style:'thin',color:{argb:BORDA}}};
+          const setCell=(r,c,val,extra)=>{
+            const cell=ws.getCell(r,c);
+            if(val!==''&&val!=null)cell.value=val;
+            cell.border=border;
+            cell.alignment={vertical:'top',wrapText:c===24||c===25,...(extra&&extra.alignment)};
+            if(extra&&extra.fill)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:extra.fill}};
+            if(extra&&extra.font)cell.font=extra.font;
+            if(extra&&extra.numFmt)cell.numFmt=extra.numFmt;
+            return cell;
+          };
+          const writeHeader=row=>{
+            MATINAL_COLS.forEach(([label],i)=>setCell(row,i+1,label,{
+              fill:NAVY,font:{color:{argb:'FFFFFFFF'},bold:true,size:12},
+              alignment:{vertical:'middle',horizontal:'center',wrapText:true}
+            }));
+            ws.getRow(row).height=31.5;
+          };
+          const writeSectionTitle=(row,label,color)=>{
+            for(let c=1;c<=MATINAL_COLS.length;c++)setCell(row,c,c===1?label:'',{fill:color,font:{color:{argb:'FFFFFFFF'},bold:true,size:12}});
+            ws.getRow(row).height=21.75;
+          };
+          const writeDataRow=(row,values,origemLabel,accentColor)=>{
+            values.forEach((v,i)=>{
+              const col=i+1;
+              const extra={};
+              if(col===1){extra.fill=accentColor;extra.font={color:{argb:'FFFFFFFF'},bold:true,size:12};}
+              else if(col===24)extra.fill=AMARELO_CLARO;
+              if(col===9||col===10)extra.numFmt=col===9?'m/d/yy h:mm':'mm-dd-yy';
+              if(col===12)extra.numFmt='0.0';
+              setCell(row,col,v,extra);
+            });
+            ws.getRow(row).height=45;
+          };
+
+          let row=4;
+          writeHeader(row);row++;
+          writeSectionTitle(row,`WARMUP · ${fmtN(wmRows.length)} registro${wmRows.length===1?'':'s'}`,AZUL);row++;
           wmRows.forEach(r=>{
-            /* Bug real (03/10/2026): os limiares mudaram de 48h/12h pra
-               24h/9h num dia pro outro — a checagem antiga nunca reconhecia
-               "Backbone 24h+"/"Acesso 9h+" como vencido. Usa `tipos` (campo
-               estável, não depende do número do limiar) quando presente;
-               cai pro texto genérico "Nh+" só em registro antigo já
-               sincronizado antes desta correção, sem `tipos` ainda. */
-            const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
-            wmDefs.forEach(([,fn],i)=>{
-              const c=ws.getCell(row,i+1);c.value=fn(r);
-              if(overdue)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:RED}};
-            });
-            row+=1;
+            const horas=wmDuracaoHoras(r.tempoDecorrido);
+            writeDataRow(row,[
+              'Warmup',r.requisicao,r.os||'',r.categoria||'','',
+              r.uf||'',r.cidade||'',r.trecho||'',pdt(r.inicioFalha)||r.inicioFalha||'','',
+              r.tempoDecorrido||'',horas==null?'':Math.round(horas*100)/100,matinalFaixaAging(horas),'','',
+              r.status||'',r.parceira||'',r.areaResponsavel||'','','',
+              '',r.origem||'',wmEstaNasDuas(r),wmStatusInt[r.requisicao]||'',wmJust[r.requisicao]||'',
+            ],'Warmup',AZUL);
+            row++;
           });
-          row+=1;
-          titleRow(row,'MATINAL');row+=1;
-          headerRow(row,matinalDefs,NAVY_AOF);row+=1;
+          row++;
+          writeHeader(row);row++;
+          writeSectionTitle(row,`FILA EM ABERTO OFS · ${fmtN(aofRows.length)} registro${aofRows.length===1?'':'s'}`,VERDE);row++;
           aofRows.forEach(r=>{
-            matinalDefs.forEach(([,fn],i)=>{
-              const c=ws.getCell(row,i+1);c.value=fn(r);
-              c.fill={type:'pattern',pattern:'solid',fgColor:{argb:RED}};
-            });
-            row+=1;
+            const sla=aofSlaGet(r.tipo);
+            const estourado=r.aging!=null&&(r.aging-sla>0)?'Sim':'Não';
+            writeDataRow(row,[
+              'Fila OFS',matinalExtrairTicket(r.com),r.os||'',r.tipo||'',matinalExtrairTipoEvento(r.com),
+              r.uf||'',r.cid||'',r.trecho||'',r.ab||'',r.abChamado?pdt(r.abChamado):'',
+              r.aging==null?'':fmtSLA(r.aging),r.aging==null?'':Math.round(r.aging*100)/100,matinalFaixaAging(r.aging),sla,estourado,
+              r.sg||'',r.rec||'','',r.cluster||'',r.nome||'',
+              r.unassigned?'Sim':'Não','Fila em aberto OFS',aofEstaNasDuas(r),r.com||'',OBS_CFG[aofRowKey(r)]||'',
+            ],'Fila OFS',VERDE);
+            row++;
           });
-          const maxCols=Math.max(wmDefs.length,matinalDefs.length);
-          ws.columns=Array.from({length:maxCols},(_,i)=>{
-            const label=(wmDefs[i]||matinalDefs[i]||[''])[0];
-            return{width:Math.max(14,String(label).length+6)};
-          });
+          const lastRow=row-1;
+
+          ws.columns=MATINAL_COLS.map(([,w])=>({width:w}));
+          ws.views=[{state:'frozen',xSplit:2,ySplit:4}];
+          ws.autoFilter={from:{row:4,column:1},to:{row:lastRow,column:MATINAL_COLS.length}};
+
           const buf=await wb.xlsx.writeBuffer();
           const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
           const url=URL.createObjectURL(blob);
@@ -8573,6 +8637,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     if(/acesso/i.test(o))out.push('acesso');
     if(/backlog/i.test(o))out.push('backlog');
     return out;
+  }
+  /* Também global pelo mesmo motivo: converte o texto livre de Tempo Decorrido
+     ("334d 4h 34m", "18h 26m") em horas (float) — usado na tela do Warmup
+     (Horas Decorridas/Tratativa) e agora também pelo Relatório Matinal v2
+     (aof-script), que precisa do mesmo cálculo pras linhas de Warmup. */
+  function wmDuracaoHoras(txt){
+    const s=String(txt||'');
+    const d=/(\d+)\s*d/.exec(s),h=/(\d+)\s*h/.exec(s),m=/(\d+)\s*m/.exec(s);
+    if(!d&&!h&&!m)return null;
+    return(d?+d[1]*24:0)+(h?+h[1]:0)+(m?+m[1]/60:0);
   }
   (function(){
     const WM_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
@@ -9148,18 +9222,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         &&(!v('wm-fParceira')||r.parceira===v('wm-fParceira')));
     }
 
-    /* Converte o texto livre de Tempo Decorrido ("334d 4h 34m", "18h 26m") em
-       horas (float) — mesmo formato usado tanto no PDF quanto no Excel. Usado
-       só pra exibir "Horas Decorridas" (coluna que o Excel tem e o PDF não,
-       mas é 100% derivável do próprio texto) e pra agregar Horas médias/Maior
-       aging no bloco de Tratativa — nenhum dado novo, só conta o que já
-       está no texto. */
-    function wmDuracaoHoras(txt){
-      const s=String(txt||'');
-      const d=/(\d+)\s*d/.exec(s),h=/(\d+)\s*h/.exec(s),m=/(\d+)\s*m/.exec(s);
-      if(!d&&!h&&!m)return null;
-      return(d?+d[1]*24:0)+(h?+h[1]:0)+(m?+m[1]/60:0);
-    }
+    /* wmDuracaoHoras() virou global (ver declaração perto de wmLegacyTipos, logo
+       antes desta IIFE) — o Relatório Matinal v2 (aof-script) também precisa
+       converter "Tempo Decorrido" em horas pras linhas de Warmup, mesmo cálculo
+       usado aqui. */
     function wmFmtHoras(txt){const h=wmDuracaoHoras(txt);return h==null?'—':h.toFixed(1).replace('.',',');}
     /* Pedido do usuário (2026-10-03): usar o PDF como base e reportar as
        informações "como no Excel" — o Excel exportado pelo Painel Alloha Fibra
