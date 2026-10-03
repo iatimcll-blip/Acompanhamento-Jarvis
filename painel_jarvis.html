@@ -8458,6 +8458,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
      mergeRecords). */
   #panel-warmap .wm-url-link{display:inline-flex;align-items:center;gap:4px;color:var(--wm-blue);font-weight:600;text-decoration:none;white-space:nowrap}
   #panel-warmap .wm-url-link:hover{text-decoration:underline}
+  /* Seções por categoria + Tratativa do Backlog (pedido do usuário: reportar
+     como no Excel, que separa os chamados em abas por categoria em vez de uma
+     tabela única) — cada categoria é seu próprio .wm-cat-card, empilhado com
+     espaçamento próprio (não participam do grid de 12 colunas internamente,
+     só o container pai ocupa wm-c12). */
+  #panel-warmap .wm-cat-card{margin-bottom:14px}
+  #panel-warmap .wm-cat-card:last-child{margin-bottom:0}
+  #panel-warmap .wm-cat-tbl{font-size:14px}
+  #panel-warmap .wm-tratativa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:4px}
+  #panel-warmap .wm-tratativa-grid h3{margin:0 0 8px;font-size:13.5px;font-weight:700;color:var(--wm-muted)}
+  @media (max-width:980px){#panel-warmap .wm-tratativa-grid{grid-template-columns:1fr}}
   /* Colunas com texto mais longo (código de trecho, área responsável, origem)
      ficavam espremidas com a largura automática da tabela — largura mínima
      evita quebra de linha excessiva/ilegível. */
@@ -8511,6 +8522,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <p class="wm-sub">Situação atual de cada chamado, no recorte filtrado</p>
           <div class="wm-chartbox"><canvas id="wm-chStatus"></canvas></div>
         </div>
+        <div class="wm-c12" id="wm-cat-sections"></div>
+        <div class="wm-c12" id="wm-tratativa-block"></div>
         <div class="wm-card wm-c12" id="wm-last-block">
           <div class="wm-tabletools"><span id="wm-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="wm-tblSearch" placeholder="Buscar na tabela"><button type="button" class="wm-btn" id="wm-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="wm-btn" id="wm-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
           <div class="wm-tablewrap"><table id="wm-tbl"></table></div>
@@ -9034,6 +9047,118 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         &&(!v('wm-fParceira')||r.parceira===v('wm-fParceira')));
     }
 
+    /* Converte o texto livre de Tempo Decorrido ("334d 4h 34m", "18h 26m") em
+       horas (float) — mesmo formato usado tanto no PDF quanto no Excel. Usado
+       só pra exibir "Horas Decorridas" (coluna que o Excel tem e o PDF não,
+       mas é 100% derivável do próprio texto) e pra agregar Horas médias/Maior
+       aging no bloco de Tratativa — nenhum dado novo, só conta o que já
+       está no texto. */
+    function wmDuracaoHoras(txt){
+      const s=String(txt||'');
+      const d=/(\d+)\s*d/.exec(s),h=/(\d+)\s*h/.exec(s),m=/(\d+)\s*m/.exec(s);
+      if(!d&&!h&&!m)return null;
+      return(d?+d[1]*24:0)+(h?+h[1]:0)+(m?+m[1]/60:0);
+    }
+    function wmFmtHoras(txt){const h=wmDuracaoHoras(txt);return h==null?'—':h.toFixed(1).replace('.',',');}
+    /* Pedido do usuário (2026-10-03): usar o PDF como base e reportar as
+       informações "como no Excel" — o Excel exportado pelo Painel Alloha Fibra
+       separa os chamados em abas por categoria (BB Abertos 48h+/Massivas em
+       Andamento/Acesso Abertos 12h+/Backlog 48h Backbone) em vez de uma tabela
+       única com coluna Origem. Reaproveita os MESMOS registros já parseados
+       (PDF ou Excel, mergeRecords() já unifica os dois formatos) — só agrupa e
+       escolhe as colunas relevantes por categoria, sem extrair nada novo.
+       match usa .includes() (não ===) porque um chamado pode legitimamente
+       pertencer a 2 categorias ao mesmo tempo (ex. "Backbone 48h+ + Backlog
+       48h+") — o próprio Excel já lista o mesmo chamado em 2 abas diferentes
+       nesse caso (confirmado comparando a aba "BB Abertos 48h+" com a tabela
+       de Backlog do PDF: requisição 472604 aparece em ambas). */
+    const WM_CAT_SECTIONS=[
+      {titulo:'Backbone — Abertos 48h+',match:r=>r.origem.includes('Backbone 48h+'),
+       cols:[['Requisição',r=>esc(r.requisicao)],['Início Falha',r=>esc(r.inicioFalha)||'—'],
+         ['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],
+         ['Trecho',r=>esc(r.trecho)||'—'],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
+         ['Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],['Parceira',r=>esc(r.parceira)||'—'],
+         ['Status',r=>pill(r.status,STATUS_COLOR[r.status])],['OS',r=>esc(r.os)||'—']]},
+      {titulo:'Massivas em Andamento',match:r=>r.origem==='Massiva',
+       cols:[['Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],['Requisição',r=>esc(r.requisicao)],
+         ['Início Falha',r=>esc(r.inicioFalha)||'—'],['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],
+         ['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
+         ['Cluster',r=>esc(r.cluster)||'—']]},
+      {titulo:'Acesso — Abertos 12h+',match:r=>r.origem==='Acesso 12h+',
+       cols:[['Requisição',r=>esc(r.requisicao)],['Início Falha',r=>esc(r.inicioFalha)||'—'],
+         ['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],
+         ['Trecho/Equip.',r=>esc(r.trecho)||'—'],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
+         ['Cluster',r=>esc(r.cluster)||'—'],['Clientes Impactados',r=>esc(r.clientesB2C)||'—'],
+         ['Status',r=>pill(r.status,STATUS_COLOR[r.status])],['OS',r=>esc(r.os)||'—']]},
+      {titulo:'Backlog 48h+ Backbone',match:r=>r.origem.includes('Backlog 48h+'),
+       cols:[['Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],['Trecho',r=>esc(r.trecho)||'—'],
+         ['Início Falha',r=>esc(r.inicioFalha)||'—'],['Acionamento',r=>esc(r.acionamento)||'—'],
+         ['Requisição',r=>esc(r.requisicao)],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
+         ['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],
+         ['Status',r=>pill(r.status,STATUS_COLOR[r.status])],['Parceira',r=>esc(r.parceira)||'—'],
+         ['OS',r=>esc(r.os)||'—'],['Área Responsável',r=>esc(r.areaResponsavel)||'—']]},
+    ];
+    function renderCategorySections(D){
+      const wrap=document.getElementById('wm-cat-sections');
+      if(!wrap)return;
+      wrap.innerHTML=WM_CAT_SECTIONS.map(sec=>{
+        const rows=D.filter(sec.match);
+        const body=rows.length
+          ?rows.map(r=>`<tr>${sec.cols.map(([,fn])=>`<td>${fn(r)}</td>`).join('')}</tr>`).join('')
+          :`<tr><td colspan="${sec.cols.length}" class="wm-empty">Nenhum chamado nesta categoria no recorte atual.</td></tr>`;
+        return`<div class="wm-card wm-cat-card">
+          <h2>${esc(sec.titulo)}</h2><p class="wm-sub">${fmtN(rows.length)} chamado(s) no recorte atual</p>
+          <div class="wm-tablewrap"><table class="wm-cat-tbl"><thead><tr>${sec.cols.map(([l])=>`<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
+        </div>`;
+      }).join('');
+    }
+    /* Bloco "Tratativa do Backlog" (pedido do usuário) — o PDF já mostra esse
+       resumo em texto antes da tabela de Backlog (página 3: "PARCEIRA/(Blank)/
+       ALLOHA" com contagem, e o detalhamento por parceiro), mas só como rótulo
+       de gráfico, não como dado estruturado. Em vez de tentar extrair esse
+       texto (frágil — nomes de parceira cortados com "…", sem Horas médias/
+       Maior aging escritos em lugar nenhum), calcula tudo a partir dos
+       próprios chamados de Backlog já parseados (mesmo dado usado na seção
+       acima) — Qtd/Horas médias/Maior aging por Parceira e Qtd por Área
+       Responsável são só agregações do que já existe. Confirmado contra o
+       Excel real: os buckets PARCEIRA(16)/(Blank)(6)/ALLOHA(4) e o detalhe por
+       parceiro batem com os números do PDF e do Excel. */
+    function renderTratativaBacklog(D){
+      const wrap=document.getElementById('wm-tratativa-block');
+      if(!wrap)return;
+      const backlog=D.filter(r=>r.origem.includes('Backlog 48h+'));
+      if(!backlog.length){wrap.innerHTML='';return;}
+      const bucketOf=r=>{const p=n(r.parceira).toUpperCase();if(!p)return'(Blank)';if(p==='ALLOHA')return'ALLOHA';return'PARCEIRA';};
+      const buckets={};backlog.forEach(r=>{const b=bucketOf(r);buckets[b]=(buckets[b]||0)+1;});
+      const total=backlog.length;
+      const bucketRows=Object.entries(buckets).sort((a,b)=>b[1]-a[1])
+        .map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v}</td><td>${(v/total*100).toFixed(1).replace('.',',')}%</td></tr>`).join('');
+
+      const byParceira={};
+      backlog.forEach(r=>{
+        const p=n(r.parceira)||'(Blank)';
+        const h=wmDuracaoHoras(r.tempoDecorrido);
+        if(!byParceira[p])byParceira[p]={qtd:0,somaH:0,maxH:0};
+        byParceira[p].qtd++;
+        if(h!=null){byParceira[p].somaH+=h;byParceira[p].maxH=Math.max(byParceira[p].maxH,h);}
+      });
+      const parceiraRows=Object.entries(byParceira).sort((a,b)=>b[1].qtd-a[1].qtd)
+        .map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.qtd}</td><td>${(v.somaH/v.qtd).toFixed(1).replace('.',',')}</td><td>${v.maxH.toFixed(1).replace('.',',')}</td></tr>`).join('');
+
+      const byArea={};
+      backlog.forEach(r=>{const a=n(r.areaResponsavel)||'(Blank)';byArea[a]=(byArea[a]||0)+1;});
+      const areaRows=Object.entries(byArea).sort((a,b)=>b[1]-a[1])
+        .map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('');
+
+      wrap.innerHTML=`<div class="wm-card wm-cat-card">
+        <h2>Tratativa do Backlog</h2><p class="wm-sub">Agregado dos ${fmtN(total)} chamado(s) de Backlog no recorte atual</p>
+        <div class="wm-tratativa-grid">
+          <div><h3>Por tipo de tratativa</h3><div class="wm-tablewrap"><table class="wm-cat-tbl"><thead><tr><th>Tratativa</th><th>Qtd</th><th>%</th></tr></thead><tbody>${bucketRows}<tr><td><b>TOTAL</b></td><td><b>${total}</b></td><td><b>100%</b></td></tr></tbody></table></div></div>
+          <div><h3>Por Parceira</h3><div class="wm-tablewrap"><table class="wm-cat-tbl"><thead><tr><th>Parceira</th><th>Qtd</th><th>Horas médias</th><th>Maior aging (h)</th></tr></thead><tbody>${parceiraRows}</tbody></table></div></div>
+          <div><h3>Por Área Responsável</h3><div class="wm-tablewrap"><table class="wm-cat-tbl"><thead><tr><th>Área Responsável</th><th>Qtd</th></tr></thead><tbody>${areaRows}</tbody></table></div></div>
+        </div>
+      </div>`;
+    }
     function render(){
       const D=filtered();
       document.getElementById('wm-lead').innerHTML=D.length
@@ -9048,6 +9173,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       ];
       document.getElementById('wm-kpis').innerHTML=k.map(([c,v,l,s])=>`<div class="wm-kpi ${c}"><div class="wm-v">${v}</div><div class="wm-l">${l}</div><div class="wm-s">${s}</div></div>`).join('');
       drawCharts(D);drawTable(D);
+      renderCategorySections(D);renderTratativaBacklog(D);
     }
 
     function stackData(D,key,order,colorMap){
