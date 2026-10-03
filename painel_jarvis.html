@@ -8015,7 +8015,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           titleRow(row,'WARMUP');row+=1;
           headerRow(row,wmDefs,NAVY_WM);row+=1;
           wmRows.forEach(r=>{
-            const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
+            /* Bug real (03/10/2026): os limiares mudaram de 48h/12h pra
+               24h/9h num dia pro outro — a checagem antiga nunca reconhecia
+               "Backbone 24h+"/"Acesso 9h+" como vencido. Usa `tipos` (campo
+               estável, não depende do número do limiar) quando presente;
+               cai pro texto genérico "Nh+" só em registro antigo já
+               sincronizado antes desta correção, sem `tipos` ainda. */
+            const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
             wmDefs.forEach(([,fn],i)=>{
               const c=ws.getCell(row,i+1);c.value=fn(r);
               if(overdue)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:RED}};
@@ -8538,6 +8544,24 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
      globais (fora da IIFE) pra serem lidas/gravadas de buildState()/
      applyState()/_mergeGhRemoteIntoLocal(), definidos num script mais abaixo. */
   let WM_SYNC_RECORDS=null,WM_SYNC_FILENAME='',WM_SYNC_AT='',WM_SYNC_CFG=null;
+  /* Global (fora da IIFE) pelo mesmo motivo de WM_SYNC_RECORDS acima: o
+     Relatório Matinal (aof-script, bem mais abaixo no documento) também
+     precisa decidir se um chamado do Warmup está "vencido" sem depender do
+     texto exato do limiar de hora (ver bug de 03/10/2026 nos comentários de
+     parsePages/mergeRecords: a Alloha já trocou 48h/12h→24h/9h uma vez).
+     Registro novo (anexado depois desta correção) já vem com `tipos`; este
+     helper só existe pra continuar reconhecendo registro ANTIGO, ainda sem
+     esse campo, já sincronizado antes da correção. */
+  function wmLegacyTipos(r){
+    if(r&&r.tipos)return r.tipos;
+    const o=String((r&&r.origem)||'');
+    const out=[];
+    if(o==='Massiva')out.push('massiva');
+    if(/backbone/i.test(o))out.push('backbone');
+    if(/acesso/i.test(o))out.push('acesso');
+    if(/backlog/i.test(o))out.push('backlog');
+    return out;
+  }
   (function(){
     const WM_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
     const STORE_KEY='jarvis_warmap_v1';
@@ -8725,7 +8749,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       return chunks;
     }
 
-    function parseTable1(chunk){
+    function parseTable1(chunk,horas){
       const m=/^(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/.exec(chunk);
       if(!m)return null;
       const[,requisicao,inicioFalha,tempoDecorrido,rest]=m;
@@ -8740,10 +8764,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       let clientesB2C='',parceira='';
       if(afterCat.length&&/^\d+$/.test(afterCat[0])){clientesB2C=afterCat[0];parceira=afterCat.slice(1).join(' ');}
       else parceira=afterCat.join(' ');
-      return{origem:'Backbone 48h+',requisicao,inicioFalha,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
+      return{origem:'Backbone '+(horas||'48')+'h+',tipos:['backbone'],requisicao,inicioFalha,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
         cluster:n(clusterNome),categoria,clientesB2C:n(clientesB2C),parceira:n(parceira),status:sp.status,os:n(sp.after),areaResponsavel:'',url:''};
     }
-    function parseTable2(chunk){
+    function parseTable2(chunk,horas){
       const m=/^(\d{4,7})\s+(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM))\s+(\d+d\s*\d+h\s*\d+m|\d+h\s*\d+m)\s+(.*)$/i.exec(chunk);
       if(!m)return null;
       const[,requisicao,inicioFalha,tempoDecorrido,rest]=m;
@@ -8754,7 +8778,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       let clientes='',cluster='';
       if(midTokens.length&&/^\d+$/.test(midTokens[midTokens.length-1])){clientes=midTokens[midTokens.length-1];cluster=midTokens.slice(0,-1).join(' ');}
       else cluster=midTokens.join(' ');
-      return{origem:'Acesso 12h+',requisicao,inicioFalha,tempoDecorrido,trecho:oltEqp,cidade:cu.cidade,uf:cu.uf,
+      return{origem:'Acesso '+(horas||'12')+'h+',tipos:['acesso'],requisicao,inicioFalha,tempoDecorrido,trecho:oltEqp,cidade:cu.cidade,uf:cu.uf,
         cluster:n(cluster),categoria:'Acesso',clientesB2C:n(clientes),parceira:'',status:sp.status,os:n(sp.after),areaResponsavel:'',url:''};
     }
     function parseMassiva(chunk){
@@ -8777,11 +8801,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
          Requisição) tem status vazio, não "Norte". Sem status reconhecido, o campo
          fica vazio mesmo — igual ao caminho do Excel (gS('status') nunca inventa
          valor). */
-      return{origem:'Massiva',requisicao,inicioFalha,tempoDecorrido,trecho:'',cidade:cu.cidade,uf:cu.uf,
+      return{origem:'Massiva',tipos:['massiva'],requisicao,inicioFalha,tempoDecorrido,trecho:'',cidade:cu.cidade,uf:cu.uf,
         cluster:n(cluster),categoria:'Massiva',clientesB2C:nums[0]||'',clientesB2B:nums[1]||'',parceira:'',
         status:sp?sp.status:'',os:'',areaResponsavel:'',url:''};
     }
-    function parseTable3(chunk){
+    function parseTable3(chunk,horas){
       const m=/^(TX|IP)\s+(.*)$/.exec(chunk);
       if(!m)return null;
       const[,categoria,rest0]=m;
@@ -8865,19 +8889,38 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         parceira=tokens.slice(0,i).join(' ');os=tokens.slice(i).join(' ');
       }else os=tokens.join(' ');
       if(osExtra.length)os=n(os+' '+osExtra.join(' '));
-      return{origem:'Backlog 48h+',requisicao,inicioFalha,acionamento,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
+      return{origem:'Backlog '+(horas||'48')+'h+',tipos:['backlog'],requisicao,inicioFalha,acionamento,tempoDecorrido,trecho,cidade:cu.cidade,uf:cu.uf,
         categoria,parceira:n(parceira),os:n(os),status:sp.status,areaResponsavel,cluster:'',clientesB2C:''};
     }
 
+    /* Bug real (03/10/2026): a Alloha trocou o gerador do relatório pra Power
+       BI e mudou os limiares de hora de um dia pro outro (Backbone 48h+→24h+,
+       Acesso 12h+→9h+). O código antigo exigia o número EXATO no título de
+       cada seção ("INCIDENTES ABERTOS.{0,6}48HRS") pra achar onde cada
+       tabela começa — a troca de limiar fez as 3 tabelas (Backbone/Acesso/
+       Backlog) sumirem inteiras e silenciosamente no mesmo dia (só
+       "Massivas" sobreviveu, por não ter limiar no título: confirmado com o
+       PDF real de 03/10, caiu de dezenas de chamados pra 1 só). Agora aceita
+       QUALQUER número de horas nos 2 títulos. "INCIDENTES ABERTOS À Nhrs+"
+       aparece IDÊNTICO nas páginas do Backbone e do Acesso (só o limiar e a
+       página mudam) — por isso usa o cabeçalho da própria página (BACKBONE
+       vs ACESSO, sempre a primeira linha de cada uma nos 2 relatórios reais
+       já vistos) pra decidir qual tabela é qual, em vez de tentar diferenciar
+       pelo número (que agora é igual nas duas ocorrências em dias
+       diferentes, e ainda mudaria de novo no futuro). */
+    const WM_ABERTOS_RE=/INCIDENTES ABERTOS.{0,8}?(\d+)\s*HRS/i;
+    const WM_BACKLOG_RE=/BACKLOG ACIMA\s*(\d+)\s*HRS/i;
     function parsePages(pages,linkMap){
       const all=[];let parsedCount=0,rowAttempts=0;
       linkMap=linkMap||{};
       pages.forEach(lines=>{
         const joinIdx=(re)=>lines.findIndex(l=>re.test(l));
-        const t1i=joinIdx(/INCIDENTES ABERTOS.{0,6}48HRS/i);
-        const t2i=joinIdx(/INCIDENTES ABERTOS.{0,6}12HRS/i);
+        const pageHead=lines.slice(0,6).join(' ').toUpperCase();
+        const isAcessoPage=/ACESSO/.test(pageHead)&&!/BACKBONE/.test(pageHead);
+        const t1i=!isAcessoPage?joinIdx(WM_ABERTOS_RE):-1;
+        const t2i=isAcessoPage?joinIdx(WM_ABERTOS_RE):-1;
         const massi=joinIdx(/MASSIVAS EM ANDAMENTO/i);
-        const t3i=joinIdx(/BACKLOG ACIMA 48HRS/i);
+        const t3i=joinIdx(WM_BACKLOG_RE);
         const encI=joinIdx(/INCIDENTES ENCERRADOS/i);
         /* Bug real (achado com o PDF de produção): a ordem das seções varia de
            relatório pra relatório — nesse aqui "Massivas em Andamento" vem
@@ -8892,9 +8935,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const marks=[t1i,t2i,massi,t3i,encI].filter(i=>i>=0).sort((a,b)=>a-b);
         const endAfter=idx=>{const nxt=marks.find(m=>m>idx);return nxt!=null?nxt:lines.length;};
         if(t1i>=0){
+          const horas=(WM_ABERTOS_RE.exec(lines[t1i])||[])[1]||'48';
           const chunks=chunkRows(lines.slice(t1i+2,endAfter(t1i)),/^\d{4,7}\s/);
           rowAttempts+=chunks.length;
-          chunks.forEach(c=>{const r=parseTable1(c);if(r){all.push(r);parsedCount++;}});
+          chunks.forEach(c=>{const r=parseTable1(c,horas);if(r){all.push(r);parsedCount++;}});
         }
         if(massi>=0){
           const chunks=chunkRows(lines.slice(massi+2,endAfter(massi)),/^Massiva\s/);
@@ -8902,14 +8946,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           chunks.forEach(c=>{const r=parseMassiva(c);if(r){all.push(r);parsedCount++;}});
         }
         if(t2i>=0){
+          const horas=(WM_ABERTOS_RE.exec(lines[t2i])||[])[1]||'12';
           const chunks=chunkRows(lines.slice(t2i+2,endAfter(t2i)),/^\d{4,7}\s/);
           rowAttempts+=chunks.length;
-          chunks.forEach(c=>{const r=parseTable2(c);if(r){all.push(r);parsedCount++;}});
+          chunks.forEach(c=>{const r=parseTable2(c,horas);if(r){all.push(r);parsedCount++;}});
         }
         if(t3i>=0){
+          const horas=(WM_BACKLOG_RE.exec(lines[t3i])||[])[1]||'48';
           const chunks=chunkRows(lines.slice(t3i+2,endAfter(t3i)),/^(TX|IP)\s/);
           rowAttempts+=chunks.length;
-          chunks.forEach(c=>{const r=parseTable3(c);if(r){r.url=linkMap[r.requisicao]||'';all.push(r);parsedCount++;}});
+          chunks.forEach(c=>{const r=parseTable3(c,horas);if(r){r.url=linkMap[r.requisicao]||'';all.push(r);parsedCount++;}});
         }
       });
       return{records:mergeRecords(all),parsedCount,rowAttempts};
@@ -8923,15 +8969,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function mergeRecords(all){
       const byReq=new Map();
       all.forEach(r=>{
-        const key=r.requisicao+'|'+(r.origem==='Massiva'?'massiva':r.origem==='Acesso 12h+'?'acesso':'backbone');
+        const rt=r.tipos||[];
+        const key=r.requisicao+'|'+(rt.includes('massiva')?'massiva':rt.includes('acesso')?'acesso':'backbone');
         const prev=byReq.get(key);
         if(!prev){byReq.set(key,{...r});return;}
-        const richer=r.origem==='Backlog 48h+'?r:prev.origem==='Backlog 48h+'?prev:r;
+        const richer=rt.includes('backlog')?r:(prev.tipos||[]).includes('backlog')?prev:r;
         const merged={...prev,...richer};
         if(!merged.clientesB2C)merged.clientesB2C=prev.clientesB2C||r.clientesB2C||'';
         if(!merged.acionamento)merged.acionamento=prev.acionamento||r.acionamento||'';
         if(!merged.areaResponsavel)merged.areaResponsavel=prev.areaResponsavel||r.areaResponsavel||'';
         merged.origem=[prev.origem,r.origem].filter((v,i,a)=>a.indexOf(v)===i).join(' + ');
+        /* Um chamado pode pertencer a 2 categorias ao mesmo tempo (ex.: aberto
+           no Backbone E já em Backlog) — `tipos` acumula TODAS, pra ele
+           continuar aparecendo nas 2 seções/agregados correspondentes depois
+           do merge (origem, acima, já fazia isso só como texto). */
+        merged.tipos=[...new Set([...(prev.tipos||[]),...rt])];
         byReq.set(key,merged);
       });
       return[...byReq.values()];
@@ -8945,11 +8997,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        começa, como no PDF). Produz o MESMO formato de registro usado pelo PDF,
        então passa pelo mesmo mergeRecords()/render()/tabela/export dali pra
        frente sem nenhuma diferença de tratamento entre os 2 formatos de anexo. ---- */
+    /* Bug real (03/10/2026): a Alloha trocou o gerador do relatório pra Power
+       BI e, junto, mudou os limiares de hora (Backbone 48h+→24h+, Acesso
+       12h+→9h+) E renomeou/fundiu as abas ("BB Abertos 48h+" sumiu, virou
+       parte de "Backlog 24h+ Backbone"; "Acesso Abertos 12h+"→"Acesso Abertos
+       9h+"). As regex antigas exigiam o número EXATO no nome da aba
+       ("acesso.*12"), então a aba de Acesso inteira parava de bater e
+       desaparecia silenciosamente. Agora casam por categoria, não por
+       limiar — e por isso 'backlog' precisa vir ANTES de 'backbone' no
+       array: "Backlog 24h+ Backbone" contém as DUAS palavras, e .find() usa
+       a primeira entrada que bater; se backbone viesse primeiro, a aba de
+       Backlog inteira seria classificada (errado) como Backbone. `tipo` é o
+       identificador ESTÁVEL usado pra toda lógica de agrupamento/merge
+       daqui pra frente — `origem` vira só o texto de exibição (pode mudar
+       de limiar a qualquer dia sem quebrar nada). */
     const WM_EXCEL_SHEETS=[
-      {re:/backbone.*48|bb\s*abertos/i,origem:'Backbone 48h+'},
-      {re:/massivas/i,origem:'Massiva'},
-      {re:/acesso.*12/i,origem:'Acesso 12h+'},
-      {re:/backlog/i,origem:'Backlog 48h+'},
+      {re:/backlog/i,origem:'Backlog 48h+',tipo:'backlog'},
+      {re:/backbone|bb\s*abertos/i,origem:'Backbone 48h+',tipo:'backbone'},
+      {re:/massivas/i,origem:'Massiva',tipo:'massiva'},
+      {re:/acesso/i,origem:'Acesso 12h+',tipo:'acesso'},
     ];
     function wmFindHeaderRow(rows){
       for(let i=0;i<Math.min(rows.length,8);i++){
@@ -8958,17 +9024,40 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }
       return-1;
     }
-    function excelSheetToRecords(rows,origem){
+    /* Pega o número de horas direto do título da aba (linha 1, ex. "BACKLOG
+       ACIMA 24HRS — BACKBONE"/"INCIDENTES DE ACESSO ABERTOS À 9HRS+") — assim
+       o rótulo exibido sempre bate com o limiar real do relatório anexado,
+       em vez de ficar travado no valor hardcoded (48/12) de quando este
+       código foi escrito. */
+    function wmSheetThresholdHoras(rows,fallback){
+      const titulo=String((rows&&rows[0]&&rows[0][0])||'');
+      const m=/(\d+)\s*h\s*r?s?/i.exec(titulo);
+      return m?m[1]:fallback;
+    }
+    function excelSheetToRecords(rows,origem,tipo){
       const hi=wmFindHeaderRow(rows);
       if(hi<0)return[];
       const header=rows[hi].map(c=>n(String(c==null?'':c)));
-      const idx=name=>header.findIndex(h=>h.toLowerCase()===name.toLowerCase());
+      /* "OLT/Equipamento" (PDF/Excel antigo) vira "OLT / Equipamento" (Excel
+         novo, com espaços ao redor da barra) no relatório novo — normaliza
+         os dois lados antes de comparar em vez de exigir grafia exata. */
+      const normH=s=>s.toLowerCase().replace(/\s*\/\s*/g,'/');
+      const idx=name=>header.findIndex(h=>normH(h)===normH(name));
       const I={requisicao:idx('Requisição'),inicioFalha:idx('Início Falha'),acionamento:idx('Acionamento'),
         tempoDecorrido:idx('Tempo Decorrido'),trecho:idx('Trecho'),oltEqp:idx('OLT/Equipamento'),
         cidadeUf:idx('Cidade/UF'),uf:idx('UF'),cluster:idx('Cluster'),categoria:idx('Categoria'),
         parceira:idx('Parceira'),status:idx('Status'),os:idx('OS'),osRedeExterna:idx('OS Rede Externa'),
-        areaResponsavel:idx('Área Responsável'),clientes:idx('Clientes Impactados'),url:idx('URL')};
-      const isMassiva=origem==='Massiva';
+        areaResponsavel:idx('Área Responsável'),clientes:idx('Clientes Impactados'),url:idx('URL'),
+        /* Coluna nova (relatório Power BI, 03/10/2026): "Tratativa" já vem
+           classificada por linha (PARCEIRA/ALLOHA/etc.) — quando presente, é
+           mais confiável que recalcular a partir do texto da Parceira (ver
+           renderTratativaBacklog). Ausente nos formatos antigos — ok, fica
+           vazio e o cálculo local assume o lugar. */
+        tratativa:idx('Tratativa')};
+      const isMassiva=tipo==='massiva';
+      if(tipo==='backbone')origem='Backbone '+wmSheetThresholdHoras(rows,'48')+'h+';
+      else if(tipo==='acesso')origem='Acesso '+wmSheetThresholdHoras(rows,'12')+'h+';
+      else if(tipo==='backlog')origem='Backlog '+wmSheetThresholdHoras(rows,'48')+'h+';
       const out=[];
       for(let r=hi+1;r<rows.length;r++){
         const row=rows[r];if(!row)continue;
@@ -8995,11 +9084,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
            quando não há coluna UF própria (Massivas/Acesso). */
         const uf=ufExplicit&&UF_SET.has(ufExplicit)?ufExplicit:(cu?cu.uf:'');
         const cidade=cu?cu.cidade:cidadeUfText;
-        out.push({origem,requisicao,inicioFalha:gS('inicioFalha'),acionamento:gS('acionamento'),
+        out.push({origem,tipos:[tipo],requisicao,inicioFalha:gS('inicioFalha'),acionamento:gS('acionamento'),
           tempoDecorrido:gS('tempoDecorrido'),trecho:gS('trecho')||gS('oltEqp'),cidade,uf,
-          cluster:gS('cluster'),categoria:gS('categoria')||(isMassiva?'Massiva':origem==='Acesso 12h+'?'Acesso':''),
+          cluster:gS('cluster'),categoria:gS('categoria')||(isMassiva?'Massiva':tipo==='acesso'?'Acesso':''),
           clientesB2C:gS('clientes'),clientesB2B:'',parceira:gS('parceira'),status:gS('status'),
-          os:gS('os')||gS('osRedeExterna'),areaResponsavel:gS('areaResponsavel'),url:gS('url')});
+          os:gS('os')||gS('osRedeExterna'),areaResponsavel:gS('areaResponsavel'),url:gS('url'),tratativa:gS('tratativa')});
       }
       return out;
     }
@@ -9009,7 +9098,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const cfg=WM_EXCEL_SHEETS.find(s=>s.re.test(name));
         if(!cfg)return;
         const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});
-        const recs=excelSheetToRecords(rows,cfg.origem);
+        const recs=excelSheetToRecords(rows,cfg.origem,cfg.tipo);
         if(recs.length||wmFindHeaderRow(rows)>=0){sheetsFound++;rowAttempts+=recs.length;all=all.concat(recs);}
       });
       return{records:mergeRecords(all),parsedCount:all.length,rowAttempts,sheetsFound};
@@ -9062,35 +9151,45 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function wmFmtHoras(txt){const h=wmDuracaoHoras(txt);return h==null?'—':h.toFixed(1).replace('.',',');}
     /* Pedido do usuário (2026-10-03): usar o PDF como base e reportar as
        informações "como no Excel" — o Excel exportado pelo Painel Alloha Fibra
-       separa os chamados em abas por categoria (BB Abertos 48h+/Massivas em
-       Andamento/Acesso Abertos 12h+/Backlog 48h Backbone) em vez de uma tabela
-       única com coluna Origem. Reaproveita os MESMOS registros já parseados
-       (PDF ou Excel, mergeRecords() já unifica os dois formatos) — só agrupa e
+       separa os chamados em abas por categoria (Backbone Abertos/Massivas em
+       Andamento/Acesso Abertos/Backlog Backbone) em vez de uma tabela única
+       com coluna Origem. Reaproveita os MESMOS registros já parseados (PDF ou
+       Excel, mergeRecords() já unifica os dois formatos) — só agrupa e
        escolhe as colunas relevantes por categoria, sem extrair nada novo.
-       match usa .includes() (não ===) porque um chamado pode legitimamente
-       pertencer a 2 categorias ao mesmo tempo (ex. "Backbone 48h+ + Backlog
-       48h+") — o próprio Excel já lista o mesmo chamado em 2 abas diferentes
-       nesse caso (confirmado comparando a aba "BB Abertos 48h+" com a tabela
-       de Backlog do PDF: requisição 472604 aparece em ambas). */
+       match usa `tipos` (campo estável) em vez do texto de `origem` — este
+       último pode trazer QUALQUER limiar de hora (48h/24h/12h/9h/...,
+       conforme o relatório do dia, ver bug de 03/10/2026 corrigido em
+       parsePages/excelSheetToRecords) e um chamado pode legitimamente
+       pertencer a 2 categorias ao mesmo tempo (ex. aberto no Backbone E já
+       em Backlog — o próprio Excel já lista o mesmo chamado em 2 abas
+       diferentes nesse caso, confirmado comparando "BB Abertos 48h+" com a
+       tabela de Backlog do PDF: requisição 472604 aparece em ambas).
+       titulo é uma FUNÇÃO (não texto fixo) — monta o rótulo com o limiar de
+       hora de verdade encontrado nos próprios registros do recorte atual,
+       em vez de ficar travado num número que pode já estar desatualizado. */
+    function wmTituloComHoras(base,rows){
+      const m=rows.map(r=>/(\d+)h\+/i.exec(r.origem||'')).find(Boolean);
+      return base+(m?' '+m[1]+'h+':'');
+    }
     const WM_CAT_SECTIONS=[
-      {titulo:'Backbone — Abertos 48h+',match:r=>r.origem.includes('Backbone 48h+'),
+      {tipo:'backbone',titulo:rows=>wmTituloComHoras('Backbone — Abertos',rows),
        cols:[['Requisição',r=>esc(r.requisicao)],['Início Falha',r=>esc(r.inicioFalha)||'—'],
          ['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],
          ['Trecho',r=>esc(r.trecho)||'—'],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
          ['Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],['Parceira',r=>esc(r.parceira)||'—'],
          ['Status',r=>pill(r.status,STATUS_COLOR[r.status])],['OS',r=>esc(r.os)||'—']]},
-      {titulo:'Massivas em Andamento',match:r=>r.origem==='Massiva',
+      {tipo:'massiva',titulo:()=>'Massivas em Andamento',
        cols:[['Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],['Requisição',r=>esc(r.requisicao)],
          ['Início Falha',r=>esc(r.inicioFalha)||'—'],['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],
          ['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
          ['Cluster',r=>esc(r.cluster)||'—']]},
-      {titulo:'Acesso — Abertos 12h+',match:r=>r.origem==='Acesso 12h+',
+      {tipo:'acesso',titulo:rows=>wmTituloComHoras('Acesso — Abertos',rows),
        cols:[['Requisição',r=>esc(r.requisicao)],['Início Falha',r=>esc(r.inicioFalha)||'—'],
          ['Tempo Decorrido',r=>esc(r.tempoDecorrido)||'—'],['Horas Decorridas',r=>wmFmtHoras(r.tempoDecorrido)],
          ['Trecho/Equip.',r=>esc(r.trecho)||'—'],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
          ['Cluster',r=>esc(r.cluster)||'—'],['Clientes Impactados',r=>esc(r.clientesB2C)||'—'],
          ['Status',r=>pill(r.status,STATUS_COLOR[r.status])],['OS',r=>esc(r.os)||'—']]},
-      {titulo:'Backlog 48h+ Backbone',match:r=>r.origem.includes('Backlog 48h+'),
+      {tipo:'backlog',titulo:rows=>wmTituloComHoras('Backlog',rows)+' Backbone',
        cols:[['Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],['Trecho',r=>esc(r.trecho)||'—'],
          ['Início Falha',r=>esc(r.inicioFalha)||'—'],['Acionamento',r=>esc(r.acionamento)||'—'],
          ['Requisição',r=>esc(r.requisicao)],['Cidade',r=>esc(r.cidade)||'—'],['UF',r=>esc(r.uf)],
@@ -9102,12 +9201,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const wrap=document.getElementById('wm-cat-sections');
       if(!wrap)return;
       wrap.innerHTML=WM_CAT_SECTIONS.map(sec=>{
-        const rows=D.filter(sec.match);
+        const rows=D.filter(r=>wmLegacyTipos(r).includes(sec.tipo));
         const body=rows.length
           ?rows.map(r=>`<tr>${sec.cols.map(([,fn])=>`<td>${fn(r)}</td>`).join('')}</tr>`).join('')
           :`<tr><td colspan="${sec.cols.length}" class="wm-empty">Nenhum chamado nesta categoria no recorte atual.</td></tr>`;
         return`<div class="wm-card wm-cat-card">
-          <h2>${esc(sec.titulo)}</h2><p class="wm-sub">${fmtN(rows.length)} chamado(s) no recorte atual</p>
+          <h2>${esc(sec.titulo(rows))}</h2><p class="wm-sub">${fmtN(rows.length)} chamado(s) no recorte atual</p>
           <div class="wm-tablewrap"><table class="wm-cat-tbl"><thead><tr>${sec.cols.map(([l])=>`<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
         </div>`;
       }).join('');
@@ -9122,13 +9221,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        acima) — Qtd/Horas médias/Maior aging por Parceira e Qtd por Área
        Responsável são só agregações do que já existe. Confirmado contra o
        Excel real: os buckets PARCEIRA(16)/(Blank)(6)/ALLOHA(4) e o detalhe por
-       parceiro batem com os números do PDF e do Excel. */
+       parceiro batem com os números do PDF e do Excel. Atualização
+       (03/10/2026): o relatório novo (Power BI) passou a trazer a própria
+       coluna "Tratativa" já classificada por chamado no Excel — quando
+       presente, usa ela direto (mais autoritativa que recalcular); só cai
+       pro cálculo local (heurística por Parceira) quando ausente — PDF, ou
+       Excel no formato antigo. */
     function renderTratativaBacklog(D){
       const wrap=document.getElementById('wm-tratativa-block');
       if(!wrap)return;
-      const backlog=D.filter(r=>r.origem.includes('Backlog 48h+'));
+      const backlog=D.filter(r=>wmLegacyTipos(r).includes('backlog'));
       if(!backlog.length){wrap.innerHTML='';return;}
-      const bucketOf=r=>{const p=n(r.parceira).toUpperCase();if(!p)return'(Blank)';if(p==='ALLOHA')return'ALLOHA';return'PARCEIRA';};
+      const bucketOf=r=>{
+        if(r.tratativa)return n(r.tratativa).toUpperCase();
+        const p=n(r.parceira).toUpperCase();if(!p)return'(Blank)';if(p==='ALLOHA')return'ALLOHA';return'PARCEIRA';
+      };
       const buckets={};backlog.forEach(r=>{const b=bucketOf(r);buckets[b]=(buckets[b]||0)+1;});
       const total=backlog.length;
       const bucketRows=Object.entries(buckets).sort((a,b)=>b[1]-a[1])
@@ -9242,7 +9349,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const t=document.getElementById('wm-tbl');
       t.innerHTML=`<thead><tr>${cols.map(([,l,,c])=>`<th class="${c||''}">${l}</th>`).join('')}</tr></thead>`
         +`<tbody>${R.length?R.map(r=>{
-          const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
+          const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
           return`<tr${overdue?' class="wm-row-overdue"':''}>${cols.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`;
         }).join(''):`<tr><td colspan="${cols.length}" class="wm-empty">Nenhum chamado no recorte atual.</td></tr>`}</tbody>`;
       document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`;
@@ -9308,7 +9415,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           R.forEach(r=>{
             const row=ws.addRow(defs.map(([,fn])=>fn(r)));
             if(urlColIdx>=0&&r.url)row.getCell(urlColIdx+1).value={text:'Abrir chamado',hyperlink:r.url};
-            const overdue=/48h|12h/i.test(r.origem)&&/d\s/.test(r.tempoDecorrido||'');
+            const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
             if(overdue)row.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDECEC'}};});
           });
           ws.autoFilter={from:{row:1,column:1},to:{row:1,column:defs.length}};
