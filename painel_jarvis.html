@@ -1699,6 +1699,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-mini-row .fap-form-row{flex:1;min-width:100px;margin-bottom:0}
 .fap-mini-btn{border:none;border-radius:8px;padding:8px 15px;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap}
 .fap-mini-btn.fap-set{background:var(--blue)}
+.fap-mini-btn.fap-add{background:var(--green-dk)}
 .fap-aporte-saldo-mini{display:none;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;font-size:12.5px;color:var(--tx3);margin:-2px 0 12px;background:var(--surface2);border:.5px solid var(--bd)}
 .fap-aporte-saldo-mini b{font-size:14.5px}
 .fap-aporte-saldo-mini.fap-ok b{color:var(--green-dk)}
@@ -9636,7 +9637,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="fap-panel">
       <h3 style="margin-bottom:2px">Saldo do Mês</h3>
-      <p class="fap-desc" style="margin:0 0 14px">Saldo disponível pra trabalhar neste mês — é debitado automaticamente a cada aporte registrado.</p>
+      <p class="fap-desc" style="margin:0 0 14px">Saldo disponível pra trabalhar no período (ciclo de competência do dia 15 ao dia 14 do mês seguinte) — é debitado automaticamente a cada aporte registrado. Use "Definir" pra corrigir o total, ou "Mais aportes" pra somar um reforço ao saldo já definido.</p>
       <div id="fap-saldoMesContent"></div>
     </div>
 
@@ -24462,11 +24463,18 @@ function fapPopulateSelects(){
 }
 
 /* Saldo do Mês (pedido do usuário): um único valor geral, editável, que representa
-   quanto há disponível pra trabalhar NESTE MÊS — é debitado automaticamente pela soma
-   de todos os aportes já lançados no mês calendário atual (qualquer placa). Substitui
-   o antigo "Saldo Disponível" por placa (debitado por retiradas) — nesse desenho novo,
-   retiradas não fazem mais sentido (não há mais um saldo por placa pra abater) e
-   saíram do painel a pedido do usuário. */
+   quanto há disponível pra trabalhar NO PERÍODO — é debitado automaticamente pela soma
+   de todos os aportes já lançados no ciclo de competência 15→14 atual (fapAportadoMesAtual,
+   qualquer placa — não mês de calendário, mesma convenção já usada no resto do painel,
+   ver fapCicloAtualIso). Substitui o antigo "Saldo Disponível" por placa (debitado por
+   retiradas) — nesse desenho novo, retiradas não fazem mais sentido (não há mais um saldo
+   por placa pra abater) e saíram do painel a pedido do usuário.
+   "+ Aporte" (pedido do usuário, 2026-10-03): além de "Definir" (substitui o valor por
+   inteiro — útil pra corrigir um valor errado), um segundo campo/botão SOMA um valor ao
+   saldo já definido, pra lançar reforços/aportes extras ao longo do período sem precisar
+   calcular e redigitar o novo total na mão. Input próprio (sempre vazio, nunca pré-
+   preenchido com o total atual como o de "Definir") — evita o erro de clicar "+ Aporte"
+   sem trocar o valor e duplicar o saldo inteiro por engano. */
 function fapRenderSaldoMesCard(){
   const box=document.getElementById('fap-saldoMesContent');
   if(!box)return;
@@ -24479,16 +24487,22 @@ function fapRenderSaldoMesCard(){
     <div class="fap-saldo-grid">
       <div class="fap-saldo-display">
         <div class="fap-saldo-big ${state}">${eh(fapFmtMoney(restante))}</div>
-        <div class="fap-saldo-label">saldo restante no mês</div>
+        <div class="fap-saldo-label">saldo restante no período</div>
         <div class="fap-progress-bar"><div class="fap-progress-fill ${state}" style="width:${pct}%"></div></div>
-        <div class="fap-saldo-sub">Definido: ${eh(fapFmtMoney(fapSaldoMes))} · Aportado este mês: ${eh(fapFmtMoney(aportado))}</div>
+        <div class="fap-saldo-sub">Definido: ${eh(fapFmtMoney(fapSaldoMes))} · Aportado neste período: ${eh(fapFmtMoney(aportado))}</div>
       </div>
       <div class="fap-mini-form" style="align-self:center">
-        <h4>Definir/editar saldo do mês</h4>
+        <h4>Definir/editar saldo do período</h4>
         <form onsubmit="return fapSetSaldoMes(event)">
           <div class="fap-mini-row">
             <div class="fap-form-row"><input type="text" inputmode="decimal" id="fap-saldoMesValor" placeholder="0,00" value="${fapSaldoMes?fapFmtMoney(fapSaldoMes).replace('R\$ ',''):''}" required></div>
             <button type="submit" class="fap-mini-btn fap-set">Definir</button>
+          </div>
+        </form>
+        <form onsubmit="return fapAdicionarAporteSaldoMes(event)" style="margin-top:8px">
+          <div class="fap-mini-row">
+            <div class="fap-form-row"><input type="text" inputmode="decimal" id="fap-saldoMesAporteValor" placeholder="0,00" title="Valor a SOMAR ao saldo já definido (não é o total)" required></div>
+            <button type="submit" class="fap-mini-btn fap-add" title="Soma este valor ao saldo já definido, em vez de substituir"><i class="ti ti-plus"></i> Mais aportes</button>
           </div>
         </form>
       </div>
@@ -24501,6 +24515,19 @@ function fapSetSaldoMes(ev){
   const valor=fapParseValor(document.getElementById('fap-saldoMesValor').value);
   if(isNaN(valor)||valor<0)return false;
   fapSaldoMes=valor;
+  fapAt=new Date().toISOString();saveState();
+  fapRenderSaldoMesCard();
+  fapRenderAporteSaldoMini();
+  return false;
+}
+
+function fapAdicionarAporteSaldoMes(ev){
+  ev.preventDefault();
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
+  const input=document.getElementById('fap-saldoMesAporteValor');
+  const valor=fapParseValor(input.value);
+  if(isNaN(valor)||valor<=0)return false;
+  fapSaldoMes+=valor;
   fapAt=new Date().toISOString();saveState();
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
