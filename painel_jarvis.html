@@ -8953,7 +8953,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const g=k=>{const ix=I[k];if(ix==null||ix<0||ix>=row.length)return'';const v=row[ix];return v==null?'':v;};
         const gS=k=>{const v=g(k);return v instanceof Date?fmtDT(v):n(String(v));};
         const requisicao=gS('requisicao');
-        if(!requisicao)continue;
+        /* Bug real encontrado anexando a base real (Warmup_26_09_2026.xlsx): a aba
+           "Acesso 12h+" termina com uma linha de subtotal ("TOTAL" na coluna
+           Requisição, "Média h →" em Tempo Decorrido, soma de clientes impactados) —
+           sem essa guarda ela entrava como se fosse um chamado de verdade (UF/Cidade
+           vazios, mas Requisição não-vazia passava no único filtro de então),
+           inflando a contagem total e a categoria. Toda Requisição real observada
+           (PDF e Excel) é só dígitos — "TOTAL"/"MÉDIA"/etc. não tem nenhum. */
+        if(!requisicao||!/\d/.test(requisicao))continue;
         let cidadeUfText=gS('cidadeUf');
         /* Mesmo prefixo "COD - " visto no PDF (ex.: "ALQ - ALENQUER/PA") aparece
            igual na aba de Massivas do Excel — mesma limpeza aplicada. */
