@@ -8755,9 +8755,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const tokens=n(beforeStatus).split(' ').filter(Boolean);
       const nums=tokens.filter(t=>/^\d+$/.test(t));
       const cluster=tokens.filter(t=>!/^\d+$/.test(t)).join(' ');
+      /* Bug real encontrado auditando a base real (PDF): quando a linha da Massiva
+         não tem nenhum status reconhecível (splitOnStatus retorna null — sem "status"
+         de verdade pra achar), o fallback antigo reaproveitava `beforeStatus` (o MESMO
+         texto já usado pra extrair `cluster`, ex. "Norte") como se fosse o status —
+         duplicando a região nos dois campos (cluster="Norte" E status="Norte").
+         Confirmado contra o Excel da mesma base: o chamado equivalente (mesma
+         Requisição) tem status vazio, não "Norte". Sem status reconhecido, o campo
+         fica vazio mesmo — igual ao caminho do Excel (gS('status') nunca inventa
+         valor). */
       return{origem:'Massiva',requisicao,inicioFalha,tempoDecorrido,trecho:'',cidade:cu.cidade,uf:cu.uf,
         cluster:n(cluster),categoria:'Massiva',clientesB2C:nums[0]||'',clientesB2B:nums[1]||'',parceira:'',
-        status:sp?sp.status:n(beforeStatus),os:'',areaResponsavel:'',url:''};
+        status:sp?sp.status:'',os:'',areaResponsavel:'',url:''};
     }
     function parseTable3(chunk){
       const m=/^(TX|IP)\s+(.*)$/.exec(chunk);
