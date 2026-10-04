@@ -8004,9 +8004,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
          (true quando o Recurso contém a palavra "CLUSTER" — fila sem técnico
          individual, só no pool do cluster).
        - "Está nas duas bases": cruza o OS do Warmup com o OS da Fila (Fila
-         tem prefixo "BDESK-" quando vem do Bdesk; removido antes de comparar)
-         — confirmado no modelo real: o único par com "Sim" dos 2 lados é
-         exatamente o mesmo número de OS. */
+         tem prefixo "ATRIX-"/"BDESK-" conforme o sistema de origem; removido
+         antes de comparar) — confirmado no modelo real: o único par com "Sim"
+         dos 2 lados é exatamente o mesmo número de OS.
+       - Separação ATRIX/BDESK (pedido do usuário, 2026-10-04): a Fila em
+         aberto OFS, que era um bloco único, passou a ser 1 bloco por sistema
+         de origem (r.sistema, ver sistemaOS() — mesmo critério do filtro
+         "Sistema" do painel), na mesma ordem/estilo visual de antes. */
     const MATINAL_TIPOS_RAW=['Manutenção Corretiva de Rede','Manutenção de Rede Field'];
     /* Mesma lista de UF-alvo do painel Warmup (TARGET_UF, definida dentro da IIFE
        do wm-script — não dá pra importar direto, então repete aqui). O relatório
@@ -8053,7 +8057,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       abCarregarExcelJS(async()=>{
         try{
           const wmOsSet=new Set(wmRows.map(r=>n(r.os)).filter(Boolean));
-          const aofOsNorm=r=>n(r.os).replace(/^BDESK-/i,'');
+          /* Remove o prefixo do sistema de origem (ATRIX-/BDESK-) antes de comparar
+             com a OS do Warmup (que nunca tem prefixo) — antes só removia "BDESK-",
+             então toda OS vinda do Atrix nunca cruzava corretamente com o Warmup
+             (bug latente desde que o prefixo ATRIX- passou a existir na base). */
+          const aofOsNorm=r=>n(r.os).replace(/^(ATRIX|BDESK)-/i,'');
           const aofOsSet=new Set(aofRows.map(aofOsNorm).filter(Boolean));
           const wmEstaNasDuas=r=>n(r.os)&&aofOsSet.has(n(r.os))?'Sim':'Não';
           const aofEstaNasDuas=r=>{const os=aofOsNorm(r);return os&&wmOsSet.has(os)?'Sim':'Não';};
@@ -8111,20 +8119,37 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             row++;
           });
           row++;
-          writeHeader(row);row++;
-          writeSectionTitle(row,`FILA EM ABERTO OFS · ${fmtN(aofRows.length)} registro${aofRows.length===1?'':'s'}`,VERDE);row++;
-          aofRows.forEach(r=>{
-            const sla=aofSlaGet(r.tipo);
-            const estourado=r.aging!=null&&(r.aging-sla>0)?'Sim':'Não';
-            writeDataRow(row,[
-              'Fila OFS',matinalExtrairTicket(r.com),r.os||'',r.tipo||'',matinalExtrairTipoEvento(r.com),
-              r.uf||'',r.cid||'',r.trecho||'',r.ab||'',r.abChamado?pdt(r.abChamado):'',
-              r.aging==null?'':fmtSLA(r.aging),r.aging==null?'':Math.round(r.aging*100)/100,matinalFaixaAging(r.aging),sla,estourado,
-              r.sg||'',r.rec||'','',r.cluster||'',r.nome||'',
-              r.unassigned?'Sim':'Não','Fila em aberto OFS',aofEstaNasDuas(r),r.com||'',OBS_CFG[aofRowKey(r)]||'',
-            ],'Fila OFS',VERDE);
-            row++;
-          });
+          /* Separação Atrix/Bdesk (pedido do usuário, 2026-10-04): a Fila em aberto
+             OFS deixa de ser um bloco único e passa a ser 1 bloco por sistema de
+             origem (r.sistema, ver sistemaOS() — mesmo critério do filtro "Sistema"
+             do painel), cada um com seu próprio cabeçalho/título, igual ao padrão já
+             usado entre Warmup e Fila. OS fora do padrão ATRIX-/BDESK- (base antiga,
+             ou exportada antes dessa convenção) cai num 3º bloco "Sem sistema
+             identificado" — só aparece se houver algum, pra não sujar o relatório
+             em bases 100% identificadas. */
+          const aofRowsAtrix=aofRows.filter(r=>r.sistema==='Atrix');
+          const aofRowsBdesk=aofRows.filter(r=>r.sistema==='Bdesk');
+          const aofRowsOutros=aofRows.filter(r=>r.sistema!=='Atrix'&&r.sistema!=='Bdesk');
+          const writeFilaSection=(label,rowsList)=>{
+            writeHeader(row);row++;
+            writeSectionTitle(row,`FILA EM ABERTO OFS · ${label} · ${fmtN(rowsList.length)} registro${rowsList.length===1?'':'s'}`,VERDE);row++;
+            rowsList.forEach(r=>{
+              const sla=aofSlaGet(r.tipo);
+              const estourado=r.aging!=null&&(r.aging-sla>0)?'Sim':'Não';
+              writeDataRow(row,[
+                'Fila OFS',matinalExtrairTicket(r.com),r.os||'',r.tipo||'',matinalExtrairTipoEvento(r.com),
+                r.uf||'',r.cid||'',r.trecho||'',r.ab||'',r.abChamado?pdt(r.abChamado):'',
+                r.aging==null?'':fmtSLA(r.aging),r.aging==null?'':Math.round(r.aging*100)/100,matinalFaixaAging(r.aging),sla,estourado,
+                r.sg||'',r.rec||'','',r.cluster||'',r.nome||'',
+                r.unassigned?'Sim':'Não','Fila em aberto OFS',aofEstaNasDuas(r),r.com||'',OBS_CFG[aofRowKey(r)]||'',
+              ],'Fila OFS',VERDE);
+              row++;
+            });
+          };
+          writeFilaSection('ATRIX',aofRowsAtrix);
+          row++;
+          writeFilaSection('BDESK',aofRowsBdesk);
+          if(aofRowsOutros.length){row++;writeFilaSection('SEM SISTEMA IDENTIFICADO',aofRowsOutros);}
           const lastRow=row-1;
 
           ws.columns=MATINAL_COLS.map(([,w])=>({width:w}));
