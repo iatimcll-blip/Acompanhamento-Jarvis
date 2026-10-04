@@ -7327,6 +7327,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <label>Categoria<select id="aof-fCat"></select></label>
         <label>Tipo de atividade<div class="msel"><button type="button" class="msel-btn aof-msel-btn" id="msel-btn-aof-tipo" onclick="mselToggleOpen('aof-tipo')"><span class="msel-btn-lbl">Todos os tipos</span></button></div></label>
         <label>Status<select id="aof-fStatus"></select></label>
+        <label>Sistema<select id="aof-fSistema"></select></label>
         <label>Técnico<input type="search" id="aof-fTec" placeholder="Nome do técnico"></label>
         <label class="aof-chk"><input type="checkbox" id="aof-fPausa"> Incluir almoço</label>
       </div>
@@ -7374,6 +7375,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="aof-tablewrap"><table id="aof-drill-tbl"></table></div>
         </div>
         <div class="aof-card aof-c12" id="aof-last-block">
+          <h2>Resumo</h2>
           <div class="aof-quickfilters">
             <select id="aof-fCluster2"></select>
             <select id="aof-fUF2"></select>
@@ -7381,6 +7383,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <select id="aof-fCat2"></select>
             <div class="msel"><button type="button" class="msel-btn aof-msel-btn" id="msel-btn-aof-tipo2" onclick="mselToggleOpen('aof-tipo2')"><span class="msel-btn-lbl">Todos os tipos</span></button></div>
             <select id="aof-fStatus2"></select>
+            <select id="aof-fSistema2"></select>
             <input type="search" id="aof-fTec2" placeholder="Técnico">
             <label class="aof-chk"><input type="checkbox" id="aof-fPausa2"> Incluir almoço</label>
           </div>
@@ -7525,6 +7528,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const slaColor=h=>h>=48?'var(--aof-red)':h>=24?'var(--aof-amber)':'var(--aof-green)';
     function statusGroup(s){s=n(s).toLowerCase();for(const k of ST_ORDER)if(ST[k].keys.includes(s))return k;return'Em aberto';}
     function category(t){for(const k in CAT)if(CAT[k].includes(t))return k;return'Outros';}
+    /* Filtro ATRIX/BDESK (pedido do usuário, 2026-10-04): a Ordem de Serviço vem
+       com o prefixo do sistema de origem — "ATRIX-123456" ou "BDESK-123456".
+       OS fora desse padrão (ou vazia) fica sem sistema identificado ('') — some do
+       filtro (fillSelectPair já omite valores vazios), mas a linha continua
+       aparecendo normalmente com o filtro em "Todos". */
+    function sistemaOS(os){
+      os=n(os).toUpperCase();
+      if(/^ATRIX-\d+/.test(os))return'Atrix';
+      if(/^BDESK-\d+/.test(os))return'Bdesk';
+      return'';
+    }
 
     function build(table){
       const h=table[0].map(x=>n(x).replace(/^﻿/,''));
@@ -7541,7 +7555,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         let uf=n(g(r,'uf')).toUpperCase();uf=UFNAME[uf]||(uf.length===2?uf:'');
         return{rec,unassigned:/CLUSTER/i.test(rec),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:g(r,'nome'),
           cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:fmtAbChamado(g(r,'abChamado'),g(r,'data')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
-          tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),area,pos:g(r,'pos'),com:g(r,'com'),
+          tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),sistema:sistemaOS(g(r,'os')),area,pos:g(r,'pos'),com:g(r,'com'),
           clAr:m?'C'+(+m[1]):'',ufAr:m?m[2].toUpperCase():''};
       });
       const byRec={};
@@ -7634,12 +7648,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       fillSelectPair('fCat',u('cat').sort(),'Todas');
       setupTipoMsel();
       fillSelectPair('fStatus',ST_ORDER.filter(s=>ROWS.some(r=>r.sg===s)),'Todos');
+      fillSelectPair('fSistema',u('sistema').filter(Boolean).sort(),'Todos');
     }
     function filtered(){
       const v=id=>document.getElementById(id).value;
       const tec=n(document.getElementById('aof-fTec').value).toLowerCase(),pausa=document.getElementById('aof-fPausa').checked;
       return ROWS.filter(r=>(!v('aof-fCluster')||r.cluster===v('aof-fCluster'))&&(!v('aof-fUF')||r.uf===v('aof-fUF'))&&(!v('aof-fCid')||nk(r.cid)===v('aof-fCid'))&&(!v('aof-fCat')||r.cat===v('aof-fCat'))
-        &&(!selTipo.length||selTipo.includes(r.tipo))&&(!v('aof-fStatus')||r.sg===v('aof-fStatus'))&&(!tec||r.rec.toLowerCase().includes(tec))
+        &&(!selTipo.length||selTipo.includes(r.tipo))&&(!v('aof-fStatus')||r.sg===v('aof-fStatus'))&&(!v('aof-fSistema')||r.sistema===v('aof-fSistema'))&&(!tec||r.rec.toLowerCase().includes(tec))
         &&(pausa||r.cat!=='Pausa'||v('aof-fCat')==='Pausa'));
     }
 
@@ -8280,7 +8295,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       aofUpdateBadge();
     }
 
-    const AOF_FILTER_KEYS=['fCluster','fUF','fCid','fCat','fStatus','fTec','fPausa'];
+    const AOF_FILTER_KEYS=['fCluster','fUF','fCid','fCat','fStatus','fSistema','fTec','fPausa'];
     AOF_FILTER_KEYS.forEach(key=>{
       const a=document.getElementById('aof-'+key),b=document.getElementById('aof-'+key+'2');
       if(!a||!b)return;
