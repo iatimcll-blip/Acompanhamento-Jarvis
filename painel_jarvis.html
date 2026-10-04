@@ -8066,7 +8066,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const wmEstaNasDuas=r=>n(r.os)&&aofOsSet.has(n(r.os))?'Sim':'Não';
           const aofEstaNasDuas=r=>{const os=aofOsNorm(r);return os&&wmOsSet.has(os)?'Sim':'Não';};
 
-          const AZUL='FF1476C9',VERDE='FF42C34B',NAVY='FF182238',AMARELO_CLARO='FFFFF9DB',BORDA='FFD9DDE3';
+          const AZUL='FF1476C9',VERDE='FF42C34B',NAVY='FF182238',AMARELO_CLARO='FFFFF9DB',BORDA='FFD9DDE3',VERMELHO_CLARO='FFF8D7DA';
+          /* Linha inteira pintada de vermelho (pedido do usuário, 2026-10-04) pra
+             chamado/evento com mais de 8h decorridas — limite FIXO, independente do
+             "SLA Prazo (h)" configurável por tipo (coluna já existente, usada só pra
+             "SLA Estourado" da Fila OFS). Vale pros 2 blocos (confirmado com o
+             usuário): Warmup usa wmDuracaoHoras(r.tempoDecorrido), Fila OFS usa
+             r.aging — cada um já calculado por linha, só comparado aqui. */
+          const SLA_VERMELHO_H=8;
           const wb=new ExcelJS.Workbook();
           const ws=wb.addWorksheet('Base Consolidada');
           const border={bottom:{style:'thin',color:{argb:BORDA}}};
@@ -8091,11 +8098,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             for(let c=1;c<=MATINAL_COLS.length;c++)setCell(row,c,c===1?label:'',{fill:color,font:{color:{argb:'FFFFFFFF'},bold:true,size:12}});
             ws.getRow(row).height=21.75;
           };
-          const writeDataRow=(row,values,origemLabel,accentColor)=>{
+          const writeDataRow=(row,values,origemLabel,accentColor,estourado)=>{
             values.forEach((v,i)=>{
               const col=i+1;
               const extra={};
-              if(col===1){extra.fill=accentColor;extra.font={color:{argb:'FFFFFFFF'},bold:true,size:12};}
+              if(estourado){
+                extra.fill=VERMELHO_CLARO;
+                if(col===1)extra.font={color:{argb:'FF8B0000'},bold:true,size:12};
+              }else if(col===1){extra.fill=accentColor;extra.font={color:{argb:'FFFFFFFF'},bold:true,size:12};}
               else if(col===24)extra.fill=AMARELO_CLARO;
               if(col===9||col===10)extra.numFmt=col===9?'m/d/yy h:mm':'mm-dd-yy';
               if(col===12)extra.numFmt='0.0';
@@ -8115,7 +8125,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               r.tempoDecorrido||'',horas==null?'':Math.round(horas*100)/100,matinalFaixaAging(horas),'','',
               r.status||'',r.parceira||'',r.areaResponsavel||'','','',
               '',r.origem||'',wmEstaNasDuas(r),wmStatusInt[r.requisicao]||'',wmJust[r.requisicao]||'',
-            ],'Warmup',AZUL);
+            ],'Warmup',AZUL,horas!=null&&horas>SLA_VERMELHO_H);
             row++;
           });
           row++;
@@ -8142,7 +8152,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
                 r.aging==null?'':fmtSLA(r.aging),r.aging==null?'':Math.round(r.aging*100)/100,matinalFaixaAging(r.aging),sla,estourado,
                 r.sg||'',r.rec||'','',r.cluster||'',r.nome||'',
                 r.unassigned?'Sim':'Não','Fila em aberto OFS',aofEstaNasDuas(r),r.com||'',OBS_CFG[aofRowKey(r)]||'',
-              ],'Fila OFS',VERDE);
+              ],'Fila OFS',VERDE,r.aging!=null&&r.aging>SLA_VERMELHO_H);
               row++;
             });
           };
