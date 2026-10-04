@@ -10914,6 +10914,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fe-uf" onclick="mselToggleOpen('fe-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fe-semana" onclick="mselToggleOpen('fe-semana')"><span class="msel-btn-lbl">Todas semanas</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fe-seg" onclick="mselToggleOpen('fe-seg')"><span class="msel-btn-lbl">Todos segmentos</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fe-outlier" onclick="mselToggleOpen('fe-outlier')"><span class="msel-btn-lbl">Outlier: todos</span></button></div>
           <input class="finput" id="f-srch-enc" placeholder="Buscar cliente ou protocolo…" oninput="renderTEnc();rChWowEnc()">
         </div>
         <div class="tw"><table id="tbl-enc-main">
@@ -10996,6 +10997,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fsi-uf" onclick="mselToggleOpen('fsi-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fsi-semana" onclick="mselToggleOpen('fsi-semana')"><span class="msel-btn-lbl">Todas semanas</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fsi-seg" onclick="mselToggleOpen('fsi-seg')"><span class="msel-btn-lbl">Todos segmentos</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fsi-outlier" onclick="mselToggleOpen('fsi-outlier')"><span class="msel-btn-lbl">Outlier: todos</span></button></div>
           <input class="finput" id="f-srch-si" placeholder="Buscar cliente ou protocolo…" oninput="renderTSi()">
         </div>
         <div class="tw"><table id="tbl-si-main">
@@ -11083,6 +11085,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-uf" onclick="mselToggleOpen('fpref-uf')"><span class="msel-btn-lbl">Todas UFs</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-semana" onclick="mselToggleOpen('fpref-semana')"><span class="msel-btn-lbl">Todas semanas</span></button></div>
           <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-seg" onclick="mselToggleOpen('fpref-seg')"><span class="msel-btn-lbl">Todos segmentos</span></button></div>
+          <div class="msel"><button type="button" class="msel-btn" id="msel-btn-fpref-outlier" onclick="mselToggleOpen('fpref-outlier')"><span class="msel-btn-lbl">Outlier: todos</span></button></div>
           <input class="finput" id="f-srch-pref" placeholder="Buscar cliente ou protocolo…" oninput="renderTPref();rChMomPref()">
         </div>
         <div class="tw"><table id="tbl-pref-main">
@@ -13138,9 +13141,14 @@ let selRepMes=[],selRepSemana=[],selRepCluster=[],selRepCausa=[],selRepSeg=[],se
 let selAbMop=[],selAbFaixa=[],selAbSub=[],selAbUf=[];
 let selSwapMop=[],selSwapFaixa=[],selSwapSub=[],selSwapUf=[];
 let selEveMop=[],selEveFaixa=[],selEveSub=[],selEveUf=[];
-let selEncCluster=[],selEncAging=[],selEncCausa=[],selEncUf=[],selEncSemana=[],selEncSeg=[];
-let selSiCluster=[],selSiAging=[],selSiCausa=[],selSiUf=[],selSiSemana=[],selSiSeg=[];
-let selPrefCluster=[],selPrefAging=[],selPrefCausa=[],selPrefUf=[],selPrefSemana=[],selPrefSeg=[];
+let selEncCluster=[],selEncAging=[],selEncCausa=[],selEncUf=[],selEncSemana=[],selEncSeg=[],selEncOut=[];
+let selSiCluster=[],selSiAging=[],selSiCausa=[],selSiUf=[],selSiSemana=[],selSiSeg=[],selSiOut=[];
+let selPrefCluster=[],selPrefAging=[],selPrefCausa=[],selPrefUf=[],selPrefSemana=[],selPrefSeg=[],selPrefOut=[];
+/* Filtro "Outlier" (pedido do usuário, 2026-10-04): valor fixo (não vem da base),
+   reaproveita o componente msel já usado pelos outros filtros (Cluster/Causa/UF/
+   Semana/Faixa/Segmento) — 2 opções fixas, igual pros 3 painéis (Encerrados,
+   S/Intervenção, Prefeitura, mesmo critério de encBucket() já compartilhado). */
+const ENC_OUT_OPTIONS=['Outlier (>12h)','Dentro do limite (≤12h)'];
 let selPopUf=[],selPopCidade=[],selPopRegime=[],selPopTier=[];
 let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivSubstatus=[],selAtivProd=[],selAtivTec=[],selAtivSrch='';
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
@@ -15361,7 +15369,7 @@ function shouldApplyRemoteState(st){
    par aqui do lado do PULL. */
 const REMOTE_MERGE_SECTIONS=[
   {at:'lastAbBaseAt',keys:['dAb','dAbCleared','dAbClearedAt','lastAbAt','lastAbBaseAt','lastAbFile','abLastUpd','selAbMop','selAbFaixa','selAbSub','selAbUf','selSwapMop','selSwapFaixa','selSwapSub','selSwapUf','selEveMop','selEveFaixa','selEveSub','selEveUf']},
-  {at:'lastEncBaseAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
+  {at:'lastEncBaseAt',keys:['dEnc','lastEncAt','lastEncBaseAt','lastEncFile','selWeek','selCluster','selMes','selYear','selEncCluster','selEncAging','selEncCausa','selEncUf','selEncSemana','selEncSeg','selEncOut','selSiCluster','selSiAging','selSiCausa','selSiUf','selSiSemana','selSiSeg','selSiOut','selPrefCluster','selPrefAging','selPrefCausa','selPrefUf','selPrefSemana','selPrefSeg','selPrefOut','selRepMes','selRepSemana','selRepCluster','selRepCausa','selRepSeg']},
   {at:'fuelBaseAtIso',keys:['dFuelRequests','dFuelWithdrawals','dFuelAportes','fuelBalanceTotal','fuelCardBalance','fuelCardBalanceAt','fuelCycleStartDay','fuelCycleEndDay','fuelCycleStartDate','fuelCycleEndDate','fuelBaseAt','fuelBaseAtIso','fuelBaseFile','fuelRFilter']},
   {at:'fuelVeiculosBaseAtIso',keys:['dFuelVehicles','fuelVeiculosBaseAt','fuelVeiculosBaseAtIso','fuelVeiculosBaseFile','fuelVeiculosCleared','fuelVeiculosClearedAt','fuelVFilter']},
   {at:'rdeState.at',keys:['rdeState']},
@@ -15409,7 +15417,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -15743,6 +15751,7 @@ function applyState(st,label){
       selEncUf=asArr(st.selEncUf).filter(u=>_encUfs.includes(u));
       selEncSemana=asArr(st.selEncSemana).filter(s=>_encSemanas.includes(s));
       selEncSeg=asArr(st.selEncSeg).filter(s=>_encSegs.includes(s));
+      selEncOut=asArr(st.selEncOut).filter(o=>ENC_OUT_OPTIONS.includes(o));
       if(Object.prototype.hasOwnProperty.call(st,'redirSelAno'))redirSelAno=st.redirSelAno||'';
       /* restaura barra superior (mês/semana/cluster) antes de popular, mesmo
          padrão dos filtros de tabela acima — arrays validados contra os dados
@@ -15781,6 +15790,7 @@ function applyState(st,label){
       selSiUf=asArr(st.selSiUf).filter(u=>_siUfs.includes(u));
       selSiSemana=asArr(st.selSiSemana).filter(s=>_siSemanas.includes(s));
       selSiSeg=asArr(st.selSiSeg).filter(s=>_siSegs.includes(s));
+      selSiOut=asArr(st.selSiOut).filter(o=>ENC_OUT_OPTIONS.includes(o));
       const nbSi=document.getElementById('nb-si');if(nbSi)nbSi.textContent=_siBase.length;
       fillFiltersSi();
       /* restaura filtros do painel B2B Prefeitura — mesmo padrão do S/Intervenção acima:
@@ -15797,6 +15807,7 @@ function applyState(st,label){
       selPrefUf=asArr(st.selPrefUf).filter(u=>_prefUfs.includes(u));
       selPrefSemana=asArr(st.selPrefSemana).filter(s=>_prefSemanas.includes(s));
       selPrefSeg=asArr(st.selPrefSeg).filter(s=>_prefSegs.includes(s));
+      selPrefOut=asArr(st.selPrefOut).filter(o=>ENC_OUT_OPTIONS.includes(o));
       const nbPref=document.getElementById('nb-pref');if(nbPref)nbPref.textContent=_prefBase.length;
       fillFiltersPref();
       renderAllEnc();
@@ -16670,9 +16681,9 @@ function procEnc(raw,fname){
      recorte de sessão anterior sobre um arquivo maior. Agora todo upload novo sempre volta
      pro estado "sem filtro nenhum", igual a clearEncSubbarFilters(). */
   selYear=[];selMes=[];selWeek=[];selCluster=[];
-  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
-  selSiCluster=[];selSiAging=[];selSiCausa=[];selSiUf=[];selSiSemana=[];selSiSeg=[];siChartBucket='';
-  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];prefChartBucket='';
+  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
+  selSiCluster=[];selSiAging=[];selSiCausa=[];selSiUf=[];selSiSemana=[];selSiSeg=[];selSiOut=[];siChartBucket='';
+  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];selPrefOut=[];prefChartBucket='';
   const srchEnc0=document.getElementById('f-srch-enc');if(srchEnc0)srchEnc0.value='';
   const srchSi0=document.getElementById('f-srch-si');if(srchSi0)srchSi0.value='';
   const srchPref0=document.getElementById('f-srch-pref');if(srchPref0)srchPref0.value='';
@@ -17976,9 +17987,9 @@ function clearRepFilters(){
    um único clique aqui realmente volta o painel pro estado "sem filtro nenhum". */
 function clearEncSubbarFilters(){
   selYear=[];selMes=[];selWeek=[];selCluster=[];
-  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
-  selSiCluster=[];selSiAging=[];selSiCausa=[];selSiUf=[];selSiSemana=[];selSiSeg=[];siChartBucket='';
-  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];prefChartBucket='';
+  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
+  selSiCluster=[];selSiAging=[];selSiCausa=[];selSiUf=[];selSiSemana=[];selSiSeg=[];selSiOut=[];siChartBucket='';
+  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];selPrefOut=[];prefChartBucket='';
   const srchEnc=document.getElementById('f-srch-enc');if(srchEnc)srchEnc.value='';
   const srchSi=document.getElementById('f-srch-si');if(srchSi)srchSi.value='';
   const srchPref=document.getElementById('f-srch-pref');if(srchPref)srchPref.value='';
@@ -19547,7 +19558,7 @@ function rCidadeEnc(d){
 }
 
 function clearEncFilters(){
-  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];
+  selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];
   encChartBucket='';
   const srch=document.getElementById('f-srch-enc');if(srch)srch.value='';
   fillFiltersEnc();
@@ -19568,18 +19579,21 @@ function fillFiltersEnc(){
   selEncSemana=selEncSemana.filter(s=>semanas.includes(s));
   selEncAging=selEncAging.filter(f=>SLA_ORDER.includes(f));
   selEncSeg=selEncSeg.filter(s=>segs.includes(s));
+  selEncOut=selEncOut.filter(o=>ENC_OUT_OPTIONS.includes(o));
   mselRender('fe-cluster',clusters,selEncCluster,{allLabel:'Todos clusters',onChange:(v)=>{selEncCluster=v;renderTEnc();rChWowEnc();saveState();}});
   mselRender('fe-causa',causas,selEncCausa,{allLabel:'Todas causas',onChange:(v)=>{selEncCausa=v;renderTEnc();rChWowEnc();saveState();}});
   mselRender('fe-uf',ufs,selEncUf,{allLabel:'Todas UFs',onChange:(v)=>{selEncUf=v;renderTEnc();rChWowEnc();saveState();}});
   mselRender('fe-semana',semanas,selEncSemana,{allLabel:'Todas semanas',onChange:(v)=>{selEncSemana=v;renderTEnc();saveState();}});
   mselRender('fe-aging',SLA_ORDER,selEncAging,{allLabel:'Todas as faixas',onChange:(v)=>{selEncAging=v;renderTEnc();saveState();}});
   mselRender('fe-seg',segs,selEncSeg,{allLabel:'Todos segmentos',onChange:(v)=>{selEncSeg=v;renderTEnc();rChWowEnc();saveState();}});
+  mselRender('fe-outlier',ENC_OUT_OPTIONS,selEncOut,{allLabel:'Outlier: todos',onChange:(v)=>{selEncOut=v;renderTEnc();rChWowEnc();saveState();}});
 }
 
 function gFEnc(){
   const srch=(document.getElementById('f-srch-enc').value||'').toLowerCase();
   let f=encScope();
   if(selEncCluster.length)f=f.filter(d=>clusterRowMatches(selEncCluster,d.cluster));if(selEncAging.length)f=f.filter(d=>selEncAging.includes(d.faixa));
+  if(selEncOut.length)f=f.filter(d=>selEncOut.includes(d.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
   if(selEncCausa.length)f=f.filter(d=>selEncCausa.includes(fmtCausaRaiz(d.causaRaiz)));if(selEncUf.length)f=f.filter(d=>selEncUf.includes(d.uf));
   if(selEncSemana.length)f=f.filter(d=>selEncSemana.includes(d.semana));if(selEncSeg.length)f=f.filter(d=>selEncSeg.includes(repairPtBR(d.segmento)));
   if(srch)f=f.filter(d=>d.cliente.toLowerCase().includes(srch)||d.protocolo.toLowerCase().includes(srch)||(d.titulo||'').toLowerCase().includes(srch));
@@ -19896,12 +19910,14 @@ function fillFiltersSi(){
   selSiSemana=selSiSemana.filter(s=>semanas.includes(s));
   selSiAging=selSiAging.filter(f=>SLA_ORDER.includes(f));
   selSiSeg=selSiSeg.filter(s=>segs.includes(s));
+  selSiOut=selSiOut.filter(o=>ENC_OUT_OPTIONS.includes(o));
   mselRender('fsi-cluster',clusters,selSiCluster,{allLabel:'Todos clusters',onChange:(v)=>{selSiCluster=v;renderTSi();saveState();}});
   mselRender('fsi-causa',causas,selSiCausa,{allLabel:'Todas causas',onChange:(v)=>{selSiCausa=v;renderTSi();saveState();}});
   mselRender('fsi-uf',ufs,selSiUf,{allLabel:'Todas UFs',onChange:(v)=>{selSiUf=v;renderTSi();saveState();}});
   mselRender('fsi-semana',semanas,selSiSemana,{allLabel:'Todas semanas',onChange:(v)=>{selSiSemana=v;renderTSi();saveState();}});
   mselRender('fsi-aging',SLA_ORDER,selSiAging,{allLabel:'Todas as faixas',onChange:(v)=>{selSiAging=v;renderTSi();saveState();}});
   mselRender('fsi-seg',segs,selSiSeg,{allLabel:'Todos segmentos',onChange:(v)=>{selSiSeg=v;renderTSi();saveState();}});
+  mselRender('fsi-outlier',ENC_OUT_OPTIONS,selSiOut,{allLabel:'Outlier: todos',onChange:(v)=>{selSiOut=v;renderTSi();saveState();}});
 }
 
 function gFSi(){
@@ -19909,6 +19925,7 @@ function gFSi(){
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   let f=siScope();
   if(selSiCluster.length)f=f.filter(d=>clusterRowMatches(selSiCluster,d.cluster));if(selSiAging.length)f=f.filter(d=>selSiAging.includes(d.faixa));
+  if(selSiOut.length)f=f.filter(d=>selSiOut.includes(d.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
   if(selSiCausa.length)f=f.filter(d=>selSiCausa.includes(fmtCausaRaiz(d.causaRaiz)));
   if(selSiUf.length)f=f.filter(d=>selSiUf.includes(d.uf));
   if(selSiSemana.length)f=f.filter(d=>selSiSemana.includes(d.semana));if(selSiSeg.length)f=f.filter(d=>selSiSeg.includes(repairPtBR(d.segmento)));
@@ -20189,7 +20206,7 @@ function rUfPref(d){
 }
 
 function clearPrefFilters(){
-  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];
+  selPrefCluster=[];selPrefAging=[];selPrefCausa=[];selPrefUf=[];selPrefSemana=[];selPrefSeg=[];selPrefOut=[];
   prefChartBucket='';
   const srch=document.getElementById('f-srch-pref');if(srch)srch.value='';
   fillFiltersPref();
@@ -20211,12 +20228,14 @@ function fillFiltersPref(){
   selPrefSemana=selPrefSemana.filter(s=>semanas.includes(s));
   selPrefAging=selPrefAging.filter(f=>SLA_ORDER.includes(f));
   selPrefSeg=selPrefSeg.filter(s=>segs.includes(s));
+  selPrefOut=selPrefOut.filter(o=>ENC_OUT_OPTIONS.includes(o));
   mselRender('fpref-cluster',clusters,selPrefCluster,{allLabel:'Todos clusters',onChange:(v)=>{selPrefCluster=v;renderTPref();rChMomPref();saveState();}});
   mselRender('fpref-causa',causas,selPrefCausa,{allLabel:'Todas causas',onChange:(v)=>{selPrefCausa=v;renderTPref();rChMomPref();saveState();}});
   mselRender('fpref-uf',ufs,selPrefUf,{allLabel:'Todas UFs',onChange:(v)=>{selPrefUf=v;renderTPref();rChMomPref();saveState();}});
   mselRender('fpref-semana',semanas,selPrefSemana,{allLabel:'Todas semanas',onChange:(v)=>{selPrefSemana=v;renderTPref();saveState();}});
   mselRender('fpref-aging',SLA_ORDER,selPrefAging,{allLabel:'Todas as faixas',onChange:(v)=>{selPrefAging=v;renderTPref();saveState();}});
   mselRender('fpref-seg',segs,selPrefSeg,{allLabel:'Todos segmentos',onChange:(v)=>{selPrefSeg=v;renderTPref();rChMomPref();saveState();}});
+  mselRender('fpref-outlier',ENC_OUT_OPTIONS,selPrefOut,{allLabel:'Outlier: todos',onChange:(v)=>{selPrefOut=v;renderTPref();saveState();}});
 }
 
 function gFPref(){
@@ -20224,6 +20243,7 @@ function gFPref(){
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   let f=prefScope();
   if(selPrefCluster.length)f=f.filter(d=>clusterRowMatches(selPrefCluster,d.cluster));if(selPrefAging.length)f=f.filter(d=>selPrefAging.includes(d.faixa));
+  if(selPrefOut.length)f=f.filter(d=>selPrefOut.includes(d.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
   if(selPrefCausa.length)f=f.filter(d=>selPrefCausa.includes(fmtCausaRaiz(d.causaRaiz)));
   if(selPrefUf.length)f=f.filter(d=>selPrefUf.includes(d.uf));
   if(selPrefSemana.length)f=f.filter(d=>selPrefSemana.includes(d.semana));if(selPrefSeg.length)f=f.filter(d=>selPrefSeg.includes(repairPtBR(d.segmento)));
@@ -23920,6 +23940,7 @@ function computeEncPptxData(){
   if(selEncUf.length)parts.push(selEncUf.join('+'));
   if(selEncSemana.length)parts.push(selEncSemana.join('+'));
   if(selEncSeg.length)parts.push(selEncSeg.join('+'));
+  if(selEncOut.length)parts.push(selEncOut.join('+'));
   const srchEl=document.getElementById('f-srch-enc');
   if(srchEl&&srchEl.value.trim())parts.push('busca "'+srchEl.value.trim()+'"');
   if(encChartBucket)parts.push(encChartBucket==='prazo'?'no prazo':encChartBucket==='outlier'?'outlier':'8–12h');
@@ -23952,6 +23973,7 @@ function encWoWSeries(){
   if(selEncUf.length)base=base.filter(x=>selEncUf.includes(x.uf));
   if(selEncSemana.length)base=base.filter(x=>selEncSemana.includes(x.semana));
   if(selEncSeg.length)base=base.filter(x=>selEncSeg.includes(repairPtBR(x.segmento)));
+  if(selEncOut.length)base=base.filter(x=>selEncOut.includes(x.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
   const srchEl=document.getElementById('f-srch-enc');
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   if(srch)base=base.filter(x=>x.cliente.toLowerCase().includes(srch)||x.protocolo.toLowerCase().includes(srch)||(x.titulo||'').toLowerCase().includes(srch));
@@ -30184,11 +30206,11 @@ function execSemanaComEquivalentes(semanas){
   });
 }
 function execEncSnapshot(){
-  const saved={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,encChartBucket};
+  const saved={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,encChartBucket};
   try{
     selYear=selExecAno;selMes=selExecMes;selWeek=execSemanaComEquivalentes(selExecSemana);
     selCluster=selExecEncCluster;selEncCluster=[];
-    selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];encChartBucket='';
+    selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
     const scope=encScope();
     if(!scope.length)return{total:0,indicadores:[],wow:[],wowRefIdx:-1,fca:null,nativeReportTxt:null};
     const st=encRuleStats(scope);
@@ -30226,7 +30248,7 @@ function execEncSnapshot(){
   }finally{
     selYear=saved.selYear;selMes=saved.selMes;selWeek=saved.selWeek;selCluster=saved.selCluster;
     selEncCluster=saved.selEncCluster;selEncAging=saved.selEncAging;selEncCausa=saved.selEncCausa;
-    selEncUf=saved.selEncUf;selEncSemana=saved.selEncSemana;selEncSeg=saved.selEncSeg;encChartBucket=saved.encChartBucket;
+    selEncUf=saved.selEncUf;selEncSemana=saved.selEncSemana;selEncSeg=saved.selEncSeg;selEncOut=saved.selEncOut;encChartBucket=saved.encChartBucket;
   }
 }
 
