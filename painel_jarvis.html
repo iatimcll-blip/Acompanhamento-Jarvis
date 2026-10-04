@@ -13147,8 +13147,14 @@ let selPrefCluster=[],selPrefAging=[],selPrefCausa=[],selPrefUf=[],selPrefSemana
 /* Filtro "Outlier" (pedido do usuário, 2026-10-04): valor fixo (não vem da base),
    reaproveita o componente msel já usado pelos outros filtros (Cluster/Causa/UF/
    Semana/Faixa/Segmento) — 2 opções fixas, igual pros 3 painéis (Encerrados,
-   S/Intervenção, Prefeitura, mesmo critério de encBucket() já compartilhado). */
-const ENC_OUT_OPTIONS=['Outlier (>12h)','Dentro do limite (≤12h)'];
+   S/Intervenção, Prefeitura, mesmo critério de encBucket() já compartilhado).
+   Opções são "Outlier"/"Prazo" (pedido do usuário, 2026-10-04, revendo a 1ª versão
+   que tinha "Dentro do limite" como opção oposta) — NÃO é mais um binário outlier/
+   não-outlier: encOutLabel() devolve '' pro intermediário (8-12h, nem prazo nem
+   outlier), que some do recorte sempre que QUALQUER uma das 2 opções estiver
+   selecionada (inclusive as duas juntas) — só aparece com o filtro em "Todos". */
+const ENC_OUT_OPTIONS=['Outlier (>12h)','Prazo (<8h)'];
+function encOutLabel(d){return d.outlier24h?'Outlier (>12h)':d.dentro8h?'Prazo (<8h)':'';}
 let selPopUf=[],selPopCidade=[],selPopRegime=[],selPopTier=[];
 let selAtivUf=[],selAtivCidade=[],selAtivDep=[],selAtivStatusAtual=[],selAtivAging=[],selAtivSeg=[],selAtivFc=[],selAtivSubstatus=[],selAtivProd=[],selAtivTec=[],selAtivSrch='';
 let selAtivCluster=[],selAtivYear=[],ativGran='all',ativPeriod=[];
@@ -19593,7 +19599,7 @@ function gFEnc(){
   const srch=(document.getElementById('f-srch-enc').value||'').toLowerCase();
   let f=encScope();
   if(selEncCluster.length)f=f.filter(d=>clusterRowMatches(selEncCluster,d.cluster));if(selEncAging.length)f=f.filter(d=>selEncAging.includes(d.faixa));
-  if(selEncOut.length)f=f.filter(d=>selEncOut.includes(d.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
+  if(selEncOut.length)f=f.filter(d=>selEncOut.includes(encOutLabel(d)));
   if(selEncCausa.length)f=f.filter(d=>selEncCausa.includes(fmtCausaRaiz(d.causaRaiz)));if(selEncUf.length)f=f.filter(d=>selEncUf.includes(d.uf));
   if(selEncSemana.length)f=f.filter(d=>selEncSemana.includes(d.semana));if(selEncSeg.length)f=f.filter(d=>selEncSeg.includes(repairPtBR(d.segmento)));
   if(srch)f=f.filter(d=>d.cliente.toLowerCase().includes(srch)||d.protocolo.toLowerCase().includes(srch)||(d.titulo||'').toLowerCase().includes(srch));
@@ -19925,7 +19931,7 @@ function gFSi(){
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   let f=siScope();
   if(selSiCluster.length)f=f.filter(d=>clusterRowMatches(selSiCluster,d.cluster));if(selSiAging.length)f=f.filter(d=>selSiAging.includes(d.faixa));
-  if(selSiOut.length)f=f.filter(d=>selSiOut.includes(d.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
+  if(selSiOut.length)f=f.filter(d=>selSiOut.includes(encOutLabel(d)));
   if(selSiCausa.length)f=f.filter(d=>selSiCausa.includes(fmtCausaRaiz(d.causaRaiz)));
   if(selSiUf.length)f=f.filter(d=>selSiUf.includes(d.uf));
   if(selSiSemana.length)f=f.filter(d=>selSiSemana.includes(d.semana));if(selSiSeg.length)f=f.filter(d=>selSiSeg.includes(repairPtBR(d.segmento)));
@@ -20243,7 +20249,7 @@ function gFPref(){
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   let f=prefScope();
   if(selPrefCluster.length)f=f.filter(d=>clusterRowMatches(selPrefCluster,d.cluster));if(selPrefAging.length)f=f.filter(d=>selPrefAging.includes(d.faixa));
-  if(selPrefOut.length)f=f.filter(d=>selPrefOut.includes(d.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
+  if(selPrefOut.length)f=f.filter(d=>selPrefOut.includes(encOutLabel(d)));
   if(selPrefCausa.length)f=f.filter(d=>selPrefCausa.includes(fmtCausaRaiz(d.causaRaiz)));
   if(selPrefUf.length)f=f.filter(d=>selPrefUf.includes(d.uf));
   if(selPrefSemana.length)f=f.filter(d=>selPrefSemana.includes(d.semana));if(selPrefSeg.length)f=f.filter(d=>selPrefSeg.includes(repairPtBR(d.segmento)));
@@ -23973,7 +23979,7 @@ function encWoWSeries(){
   if(selEncUf.length)base=base.filter(x=>selEncUf.includes(x.uf));
   if(selEncSemana.length)base=base.filter(x=>selEncSemana.includes(x.semana));
   if(selEncSeg.length)base=base.filter(x=>selEncSeg.includes(repairPtBR(x.segmento)));
-  if(selEncOut.length)base=base.filter(x=>selEncOut.includes(x.outlier24h?'Outlier (>12h)':'Dentro do limite (≤12h)'));
+  if(selEncOut.length)base=base.filter(x=>selEncOut.includes(encOutLabel(x)));
   const srchEl=document.getElementById('f-srch-enc');
   const srch=(srchEl&&srchEl.value||'').toLowerCase();
   if(srch)base=base.filter(x=>x.cliente.toLowerCase().includes(srch)||x.protocolo.toLowerCase().includes(srch)||(x.titulo||'').toLowerCase().includes(srch));
