@@ -10252,11 +10252,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="redir-desc">Cópia do bloco Redir do B2B Encerrados — Regional R7.2 (MA, PA, PI e AP), mesma regra/meta e mesmo ano selecionado (o filtro de Ano é compartilhado entre as duas telas). Não reage aos demais filtros do Painel Executivo.</div>
         <div class="redir-sub-title">Prazo &lt;8h</div>
         <div style="overflow-x:auto;margin-bottom:18px" id="exec-redir-table-prazo"></div>
-        <div class="redir-sub-title">Outlier &gt;24h</div>
+        <div class="redir-sub-title">Outlier &gt;12h</div>
         <div style="overflow-x:auto" id="exec-redir-table-outlier"></div>
         <div class="redir-sub-title" style="margin-top:18px">FCA — Prazo &lt;8h</div>
         <div class="rede-report-box" id="exec-redir-fca-prazo"></div>
-        <div class="redir-sub-title" style="margin-top:14px">FCA — Outlier &gt;24h</div>
+        <div class="redir-sub-title" style="margin-top:14px">FCA — Outlier &gt;12h</div>
         <div class="rede-report-box" id="exec-redir-fca-outlier"></div>
       </div>
     </div>
@@ -10854,14 +10854,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="card-title">Redir B2B</span>
           <div class="redir-ano-bar"><label for="redir-ano-sel">Ano</label><select id="redir-ano-sel" onchange="redirSetAno(this.value)"></select></div>
         </div>
-        <div class="redir-desc" id="redir-desc-meta">Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta 85% · Outlier &gt;24h: máx. 1,98%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base ou trocar o ano.</div>
+        <div class="redir-desc" id="redir-desc-meta">Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta 85% · Outlier &gt;12h: máx. 1,98%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base ou trocar o ano.</div>
         <div class="redir-sub-title">Prazo &lt;8h</div>
         <div style="overflow-x:auto;margin-bottom:18px" id="redir-table-prazo"></div>
-        <div class="redir-sub-title">Outlier &gt;24h</div>
+        <div class="redir-sub-title">Outlier &gt;12h</div>
         <div style="overflow-x:auto" id="redir-table-outlier"></div>
         <div class="redir-sub-title" style="margin-top:18px">FCA — Prazo &lt;8h</div>
         <div class="rede-report-box" id="redir-fca-prazo"></div>
-        <div class="redir-sub-title" style="margin-top:14px">FCA — Outlier &gt;24h</div>
+        <div class="redir-sub-title" style="margin-top:14px">FCA — Outlier &gt;12h</div>
         <div class="rede-report-box" id="redir-fca-outlier"></div>
       </div>
       <div class="g2">
@@ -12639,7 +12639,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <th>Tempo SLA</th>
             <th>Faixa SLA</th>
             <th>Dentro 8h</th>
-            <th>Outlier +24h</th>
+            <th>Outlier +12h</th>
             <th>Causa Raiz</th>
             <th>Semana</th>
           </tr></thead>
@@ -14468,7 +14468,11 @@ function normClusterByCity(uf,cidade){
   if(u==='AM'||u==='AP')return'AM/AP';
   return'';
 }
-function encBucket(h){if(h>24)return'outlier';if(h>8)return'intermediario';return'prazo'}
+/* Outlier recalculado pra 12h (pedido do usuário, 2026-10-04 — antes era 24h,
+   confirmado que vale pros 3 painéis que compartilham esse cálculo: B2B
+   Encerrados, S/Intervenção e Prefeitura, mesma "regra/meta" já documentada em
+   todo esse bloco). Prazo (8h) não mudou. */
+function encBucket(h){if(h>12)return'outlier';if(h>8)return'intermediario';return'prazo'}
 function titleCasePT(s){if(!s)return s;const sm=new Set(['DE','DA','DO','DAS','DOS','E','A','O','AS','OS','EM','NO','NA','NOS','NAS']);return String(s).toLowerCase().split(' ').map((w,i)=>(!w?w:(i===0||!sm.has(w.toUpperCase()))?w.charAt(0).toUpperCase()+w.slice(1):w)).join(' ')}
 function fmtMesLabel(mes){if(!mes)return'';const[y,m]=mes.split('-');return new Date(Number(y),Number(m)-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}
 function pp(v){return v.toFixed(1).replace('.',',')}
@@ -14763,13 +14767,14 @@ function encStatsClusterAvg(d){
   return{...pooled,pPrazo,pInter,pOut,pFora8,gapPrazo:Math.max(0,ENC_META_PRAZO-pPrazo),excessoOutlier:Math.max(0,pOut-ENC_META_OUTLIER)};
 }
 /* "Redir" (pedido do usuário): bloco fixo acima de "Análise de prazo e outlier"/"Volume /
-   Semana" no B2B Encerrados — 2 tabelas (Prazo <8h / Outlier >24h) por REGIONAL/CLUSTER
+   Semana" no B2B Encerrados — 2 tabelas (Prazo <8h / Outlier >12h) por REGIONAL/CLUSTER
    (Maranhão=C.32, Piauí=C.31, Norte=C.28 — mesmo agrupamento de PA CAP+PA INT+AM/AP já
    usado no filtro "Norte" de Cluster, ver CLUSTER_NORTE_MEMBERS), com os últimos 6 meses
    fechados + mês corrente (MTD) e as últimas 5 semanas fechadas + semana corrente (WTD),
    sempre ancorado na data REAL de hoje — nunca no filtro de Mês/Semana/Cluster do painel
    (pedido explícito do usuário: "sem interação de filtros"). Usa a mesma regra/meta já
-   adotada em encRuleStats() (85% pra Prazo≤8h, 1,98% máx. pra Outlier>24h). Como não lê
+   adotada em encRuleStats() (85% pra Prazo≤8h, 1,98% máx. pra Outlier>12h — limite
+   recalculado de 24h pra 12h, pedido do usuário, 2026-10-04). Como não lê
    nenhum estado de filtro, só muda quando dEnc muda (nova base anexada) — chamado sempre
    que renderAllEnc() roda é suficiente, sem wiring extra. */
 const REDIR_GROUPS=[
@@ -14881,7 +14886,7 @@ function redirSeries(periods,periodKeyFn,metric,groups){
 }
 /* Pedido do usuário: vermelho fora da meta, verde dentro da meta, amarelo quando estiver
    fora da meta mas a até 5 p.p. de distância dela (near-miss). Mesma meta de sempre (85%
-   pra Prazo≤8h, 1,98% máx. pra Outlier>24h).
+   pra Prazo≤8h, 1,98% máx. pra Outlier>12h).
    BUG REAL encontrado e corrigido aqui: esta função devolvia o valor pra um style="color:
    ..." inline no td, mas o app tem uma regra GLOBAL de "unificação de tabelas" (td com
    color:var(--tx2) !important, e tbody td também com color:var(--tx2) !important, perto
@@ -15011,7 +15016,7 @@ function redirFcaCidades(metric){
   const mtdTag=anoAtual?' (MTD)':'';
   const wtdTag=anoAtual?' (WTD)':'';
   const isBad=metric==='prazo'?x=>!x.dentro8h:x=>x.outlier24h;
-  const metricLabel=metric==='prazo'?'fora da meta de Prazo ≤8h':'em Outlier (>24h)';
+  const metricLabel=metric==='prazo'?'fora da meta de Prazo ≤8h':'em Outlier (>12h)';
   function resumo(rows){
     const total=rows.length;
     const bad=rows.filter(isBad);
@@ -15076,7 +15081,7 @@ function redirRenderAll(){
   if(!REDIR_RENDER_TARGETS.some(t=>document.getElementById(t.prazo)))return;
   redirFillAnoSelect();
   const descEl=document.getElementById('redir-desc-meta');
-  if(descEl)descEl.innerHTML=`Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta ${pp(ENC_META_PRAZO)}% · Outlier &gt;24h: máx. ${pp(ENC_META_OUTLIER)}%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base, trocar o ano ou editar a meta.`;
+  if(descEl)descEl.innerHTML=`Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta ${pp(ENC_META_PRAZO)}% · Outlier &gt;12h: máx. ${pp(ENC_META_OUTLIER)}%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base, trocar o ano ou editar a meta.`;
   const fcaPrazoTxt=redirFcaCidades('prazo'),fcaOutlierTxt=redirFcaCidades('outlier');
   REDIR_RENDER_TARGETS.forEach(t=>{
     if(!document.getElementById(t.prazo))return;
@@ -16702,12 +16707,15 @@ function procEnc(raw,fname){
     /* faixa: usa campo pré-calculado da planilha (sla_ticket / aging_ccs) se disponível */
     const _faixaRaw=String(gv(r,['sla_ticket','aging_ccs','AGING_CCS','faixa_sla','Faixa SLA','faixa'])||'').trim();
     const faixa=SLA_ORDER.includes(_faixaRaw)?_faixaRaw:cf(tempoTotal);
-    /* dentro_8h / outlier_24h: usa coluna da planilha (0/1 ou Sim/Não) quando presente */
+    /* dentro_8h: usa coluna da planilha (0/1 ou Sim/Não) quando presente. outlier
+       (pedido do usuário, 2026-10-04): deixou de usar a coluna pronta da planilha
+       ("OUTLIER_SEM_PARADA_RELOGIO" etc.) — ela reflete a regra ANTIGA de 24h do
+       CCS, e o pedido foi recalcular sempre por 12h (encBucket), mesmo quando a
+       base já traz essa coluna. */
     const _bl=v=>{if(v===''||v===null||v===undefined)return null;return v===1||v===true||['1','SIM','S','TRUE'].includes(String(v).toUpperCase().trim())};
     const _d8=_bl(gv(r,['dentro_8h','DENTRO_8H','dentro 8h','Dentro 8h','dentro8h','PRAZO_SEM_PARADA_RELOGIO','no prazo','dentro prazo']));
-    const _o24=_bl(gv(r,['outlier_24h','OUTLIER_24H','outlier 24h','Outlier 24h','outlier24h','OUTLIER_SEM_PARADA_RELOGIO','fora outlier']));
     const dentro8h=_d8!==null?_d8:encBucket(tempoTotal)==='prazo';
-    const outlier24h=_o24!==null?_o24:encBucket(tempoTotal)==='outlier';
+    const outlier24h=encBucket(tempoTotal)==='outlier';
     const mop=normMopByCity(uf,cidade);
     const mes=dataFechamentoParsed?`${dataFechamentoParsed.getFullYear()}-${String(dataFechamentoParsed.getMonth()+1).padStart(2,'0')}`:''
     return{protocolo,ticketId,link,os,cliente,uf,cidade,cidadeRaw,mop,mes,cluster,clusterCalc,clusterNome,causaRaiz,semana,segmento,faixa,tempoTotal,dentro8h,outlier24h,numplan,clienteId,titulo,clientesAfetados,dataAbertura:fmtReportDate(dataAbertura),dataFechamento:fmtReportDate(dataFechamento),periodoAtendimento:`${fmtReportDate(dataAbertura)} - ${fmtReportDate(dataFechamento)}`};
@@ -19371,7 +19379,7 @@ function rBanner(d){
 }
 
 /* Card "Cluster líder" absorve a única informação do antigo prow-enc (pill row)
-   que não duplicava mrow-enc — os outros 3 pills repetiam Prazo/8h-24h/Outlier já
+   que não duplicava mrow-enc — os outros 3 pills repetiam Prazo/8h-12h/Outlier já
    mostrados aqui, só com layout diferente. Removido pra parar de mostrar os
    mesmos 3 números duas vezes seguidas na tela. */
 function rMetEnc(d){
@@ -19382,8 +19390,8 @@ function rMetEnc(d){
   document.getElementById('mrow-enc').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total encerrados</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
     <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</div></div>
-    <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
+    <div class="mc c-orange"><div class="mc-label">8h a 12h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;12h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>
     <div class="mc c-blue"><div class="mc-label">Cluster líder</div><div class="mc-val" style="color:var(--blue)"><b>${eh(tc[0])}</b></div><div class="mc-sub">${tc[1]} chamados · maior volume</div></div>`;
 }
@@ -19408,7 +19416,7 @@ function rClusterCards(d){
       <div class="cc-pct"><b>${pct}%</b></div>
       <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
       <div class="cc-info"><span>${g.dentro}/${g.total}</span><span onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</span></div>
-      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
+      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +12h</div>`:''}
     </div>`;
   }).join('');
 }
@@ -19448,8 +19456,8 @@ function rMeta8(d){
           ${met?'Meta ≥'+pp(ENC_META_PRAZO)+'% atingida':'Faltam '+pp(s.gapPrazo)+' p.p. para a meta de prazo'}
         </div>
         <div class="brow"><div class="blbl">Prazo ≤8h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pPrazo)}%;background:var(--green)"></div></div><div class="bn">${s.prazo} · ${pp(s.pPrazo)}%</div></div>
-        <div class="brow"><div class="blbl">8h a 24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
-        <div class="brow"><div class="blbl">Outlier &gt;24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
+        <div class="brow"><div class="blbl">8h a 12h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
+        <div class="brow"><div class="blbl">Outlier &gt;12h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
         <div style="font-size:9px;color:var(--tx3);margin-top:8px">Fora da meta 8h: ${s.fora8} chamados (${pp(s.pFora8)}%) · Outlier acima do limite ${pp(ENC_META_OUTLIER)}%: ${pp(s.excessoOutlier)} p.p.</div>
       </div>
     </div>`;
@@ -19465,7 +19473,7 @@ function rChEnc(d){
   const BASE=['#34c759','#ff9500','#ff3b30'];
   const BUCKETS=['prazo','inter','outlier'];
   const bgColors=encChartBucket?BASE.map((c,i)=>BUCKETS[i]===encChartBucket?c:'rgba(150,150,150,.22)'):BASE;
-  chEnc=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 24h','Outlier >24h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];encChartBucket=(encChartBucket===b?'':b);renderAllEnc();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
+  chEnc=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 12h','Outlier >12h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];encChartBucket=(encChartBucket===b?'':b);renderAllEnc();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
 }
 
 function rChSem(){
@@ -19619,8 +19627,8 @@ function encBuildFullReportText(d){
   const cidadeOut={};d.filter(x=>x.outlier24h).forEach(x=>{if(x.cidade)cidadeOut[x.cidade]=(cidadeOut[x.cidade]||0)+1});
   const topCidadesOut=se(cidadeOut).slice(0,5).map(([c,n])=>`${c} (${n}/${outlier||1} — ${pp(n/(outlier||1)*100)}%)`).join(', ')||'N/A';
   const linhasOut=outlier>0
-    ?`${outlier} chamado(s) excederam 24h de atendimento, representando ${pOut}% do volume total.\nClusters com registro de outlier: ${clusterLinesOut||'N/A'}.\nPrincipais cidades com outlier: ${topCidadesOut}.`
-    :`Nenhum chamado outlier (>24h) registrado no período.`;
+    ?`${outlier} chamado(s) excederam 12h de atendimento, representando ${pOut}% do volume total.\nClusters com registro de outlier: ${clusterLinesOut||'N/A'}.\nPrincipais cidades com outlier: ${topCidadesOut}.`
+    :`Nenhum chamado outlier (>12h) registrado no período.`;
   /* cidades com maiores desvios (fora da meta de 8h) + causa raiz dominante em cada uma —
      complementa o recorte por cluster acima (que já mostra fora8 por cluster, mas sem
      apontar cidade nem causa) e o ranking de outlier (que mostra cidade mas não causa). */
@@ -19667,7 +19675,7 @@ function encBuildFullReportText(d){
     `Distribuição por cluster: ${clusterLines}.`,
     `Causa raiz mais frequente: ${dominante[0]} — ${dominante[1]} ocorrência(s) (${pCausa}% do total).`,
     '',
-    `▸ OUTLIER (>24 HORAS)`,
+    `▸ OUTLIER (>12 HORAS)`,
     linhasOut,
     '',
     `▸ CIDADES COM MAIORES DESVIOS E CAUSAS`,
@@ -19752,8 +19760,8 @@ function rMetSi(d){
   document.getElementById('mrow-si').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total s/ intervenção</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
     <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</div></div>
-    <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
+    <div class="mc c-orange"><div class="mc-label">8h a 12h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;12h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>`;
 }
 
@@ -19762,8 +19770,8 @@ function rPillSi(d){
   const tc=se(cnt(d,'cluster'))[0]||['-',0];
   document.getElementById('prow-si').innerHTML=`
     <div class="pc"><div class="pico pi-g"><i class="ti ti-circle-check"></i></div><div><div class="pv">${s.prazo}</div><div class="ps">Prazo ≤8h <b>(${pp(s.pPrazo)}%)</b> · meta ≥${pp(ENC_META_PRAZO)}%</div></div></div>
-    <div class="pc"><div class="pico pi-o"><i class="ti ti-clock-exclamation"></i></div><div><div class="pv">${s.intermediario}</div><div class="ps">8h a 24h <b>(${pp(s.pInter)}%)</b> fora da meta</div></div></div>
-    <div class="pc"><div class="pico pi-r"><i class="ti ti-alert-triangle"></i></div><div><div class="pv">${s.outlier}</div><div class="ps">Outlier &gt;24h <b>(${pp(s.pOut)}%)</b> · máx. ${pp(ENC_META_OUTLIER)}%</div></div></div>
+    <div class="pc"><div class="pico pi-o"><i class="ti ti-clock-exclamation"></i></div><div><div class="pv">${s.intermediario}</div><div class="ps">8h a 12h <b>(${pp(s.pInter)}%)</b> fora da meta</div></div></div>
+    <div class="pc"><div class="pico pi-r"><i class="ti ti-alert-triangle"></i></div><div><div class="pv">${s.outlier}</div><div class="ps">Outlier &gt;12h <b>(${pp(s.pOut)}%)</b> · máx. ${pp(ENC_META_OUTLIER)}%</div></div></div>
     <div class="pc"><div class="pico pi-b"><i class="ti ti-map-pin"></i></div><div><div class="pv" style="font-size:14px;letter-spacing:-.01em">${tc[0]}</div><div class="ps">${tc[1]} chamados · cluster maior</div></div></div>`;
 }
 
@@ -19795,7 +19803,7 @@ function rClusterCardsSi(d){
       <div class="cc-pct"><b>${pct}%</b></div>
       <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
       <div class="cc-info"><span>${g.dentro}/${g.total}</span><span onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</span></div>
-      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
+      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +12h</div>`:''}
     </div>`;
   }).join('');
 }
@@ -19830,8 +19838,8 @@ function rMeta8Si(d){
           ${met?'Meta ≥'+pp(ENC_META_PRAZO)+'% atingida':'Faltam '+pp(s.gapPrazo)+' p.p. para a meta de prazo'}
         </div>
         <div class="brow"><div class="blbl">Prazo ≤8h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pPrazo)}%;background:var(--green)"></div></div><div class="bn">${s.prazo} · ${pp(s.pPrazo)}%</div></div>
-        <div class="brow"><div class="blbl">8h a 24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
-        <div class="brow"><div class="blbl">Outlier &gt;24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
+        <div class="brow"><div class="blbl">8h a 12h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
+        <div class="brow"><div class="blbl">Outlier &gt;12h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
         <div style="font-size:9px;color:var(--tx3);margin-top:8px">Fora da meta 8h: ${s.fora8} chamados (${pp(s.pFora8)}%) · Outlier acima do limite ${pp(ENC_META_OUTLIER)}%: ${pp(s.excessoOutlier)} p.p.</div>
       </div>
     </div>`;
@@ -19846,7 +19854,7 @@ function rChSi(d){
   const BASE=['#34c759','#ff9500','#ff3b30'];
   const BUCKETS=['prazo','inter','outlier'];
   const bgColors=siChartBucket?BASE.map((c,i)=>BUCKETS[i]===siChartBucket?c:'rgba(150,150,150,.22)'):BASE;
-  chSi=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 24h','Outlier >24h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];siChartBucket=(siChartBucket===b?'':b);renderAllSi();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
+  chSi=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 12h','Outlier >12h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];siChartBucket=(siChartBucket===b?'':b);renderAllSi();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
 }
 
 function rChSemSi(){
@@ -19950,7 +19958,7 @@ function siAnnObsReadonly(id){const o=siAnnotations[id]||'';return o?`<span clas
 
 function exportSiCSV(){
   const rows=gFSi();
-  const header=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +24h','Semana','Segmento','Observações'];
+  const header=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +12h','Semana','Segmento','Observações'];
   const lines=[header.join(';')].concat(rows.map(d=>[d.protocolo,d.cliente,d.uf,d.cluster,d.tempoTotal,d.faixa,d.dentro8h?'Sim':'Não',d.outlier24h?'Sim':'Não',d.semana,repairPtBR(d.segmento),siAnnotations[d.protocolo]||''].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
@@ -20061,8 +20069,8 @@ function rMetPref(d){
   document.getElementById('mrow-pref').innerHTML=`
     <div class="mc c-teal"><div class="mc-label">Total Prefeitura</div><div class="mc-val" style="color:var(--teal-dk)"><b>${s.total}</b></div><div class="mc-sub">chamados fechados</div></div>
     <div class="mc c-green"><div class="mc-label">Prazo ≤8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${s.prazo}</b></div><div class="mc-sub"><span class="tag tag-green">${pp(s.pPrazo)}%</span> ${s.gapPrazo?pp(s.gapPrazo)+' p.p. fora da meta':'meta atingida'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</div></div>
-    <div class="mc c-orange"><div class="mc-label">8h a 24h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier &gt;24h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
+    <div class="mc c-orange"><div class="mc-label">8h a 12h</div><div class="mc-val" style="color:var(--orange)"><b>${s.intermediario}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(s.pInter)}%</span> fora da meta 8h</div></div>
+    <div class="mc c-red"><div class="mc-label">Outlier &gt;12h</div><div class="mc-val" style="color:var(--red)"><b>${s.outlier}</b></div><div class="mc-sub"><span class="tag tag-red">${pp(s.pOut)}%</span> ${s.excessoOutlier?pp(s.excessoOutlier)+' p.p. acima do máx. '+pp(ENC_META_OUTLIER)+'%':'dentro do máx. '+pp(ENC_META_OUTLIER)+'%'}</div><div class="mc-meta-edit" onclick="event.stopPropagation()">meta ≤<input type="number" step="0.1" min="0.1" max="99" class="mc-meta-input" value="${ENC_META_OUTLIER}" onchange="encMetaInline('outlier',this.value)">%</div></div>
     <div class="mc c-orange"><div class="mc-label">Tempo médio</div><div class="mc-val" style="color:var(--orange)">${fh(avg)}</div><div class="mc-sub">tempo total médio</div></div>`;
 }
 
@@ -20071,8 +20079,8 @@ function rPillPref(d){
   const tc=se(cnt(d,'cluster'))[0]||['-',0];
   document.getElementById('prow-pref').innerHTML=`
     <div class="pc"><div class="pico pi-g"><i class="ti ti-circle-check"></i></div><div><div class="pv">${s.prazo}</div><div class="ps">Prazo ≤8h <b>(${pp(s.pPrazo)}%)</b> · meta ≥${pp(ENC_META_PRAZO)}%</div></div></div>
-    <div class="pc"><div class="pico pi-o"><i class="ti ti-clock-exclamation"></i></div><div><div class="pv">${s.intermediario}</div><div class="ps">8h a 24h <b>(${pp(s.pInter)}%)</b> fora da meta</div></div></div>
-    <div class="pc"><div class="pico pi-r"><i class="ti ti-alert-triangle"></i></div><div><div class="pv">${s.outlier}</div><div class="ps">Outlier &gt;24h <b>(${pp(s.pOut)}%)</b> · máx. ${pp(ENC_META_OUTLIER)}%</div></div></div>
+    <div class="pc"><div class="pico pi-o"><i class="ti ti-clock-exclamation"></i></div><div><div class="pv">${s.intermediario}</div><div class="ps">8h a 12h <b>(${pp(s.pInter)}%)</b> fora da meta</div></div></div>
+    <div class="pc"><div class="pico pi-r"><i class="ti ti-alert-triangle"></i></div><div><div class="pv">${s.outlier}</div><div class="ps">Outlier &gt;12h <b>(${pp(s.pOut)}%)</b> · máx. ${pp(ENC_META_OUTLIER)}%</div></div></div>
     <div class="pc"><div class="pico pi-b"><i class="ti ti-map-pin"></i></div><div><div class="pv" style="font-size:14px;letter-spacing:-.01em">${tc[0]}</div><div class="ps">${tc[1]} chamados · cluster maior</div></div></div>`;
 }
 
@@ -20104,7 +20112,7 @@ function rClusterCardsPref(d){
       <div class="cc-pct"><b>${pct}%</b></div>
       <div class="cc-bar-bg"><div class="cc-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
       <div class="cc-info"><span>${g.dentro}/${g.total}</span><span onclick="event.stopPropagation()">meta ≥<input type="number" step="0.5" min="1" max="100" class="mc-meta-input" value="${ENC_META_PRAZO}" onchange="encMetaInline('prazo',this.value)">%</span></div>
-      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +24h</div>`:''}
+      ${g.outlier>0?`<div class="cc-out">⚠ ${g.outlier} outlier${g.outlier>1?'s':''} +12h</div>`:''}
     </div>`;
   }).join('');
 }
@@ -20139,8 +20147,8 @@ function rMeta8Pref(d){
           ${met?'Meta ≥'+pp(ENC_META_PRAZO)+'% atingida':'Faltam '+pp(s.gapPrazo)+' p.p. para a meta de prazo'}
         </div>
         <div class="brow"><div class="blbl">Prazo ≤8h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pPrazo)}%;background:var(--green)"></div></div><div class="bn">${s.prazo} · ${pp(s.pPrazo)}%</div></div>
-        <div class="brow"><div class="blbl">8h a 24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
-        <div class="brow"><div class="blbl">Outlier &gt;24h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
+        <div class="brow"><div class="blbl">8h a 12h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pInter)}%;background:var(--orange)"></div></div><div class="bn">${s.intermediario} · ${pp(s.pInter)}%</div></div>
+        <div class="brow"><div class="blbl">Outlier &gt;12h</div><div class="btrk"><div class="bfil" style="width:${Math.min(100,s.pOut)}%;background:var(--red)"></div></div><div class="bn">${s.outlier} · ${pp(s.pOut)}%</div></div>
         <div style="font-size:9px;color:var(--tx3);margin-top:8px">Fora da meta 8h: ${s.fora8} chamados (${pp(s.pFora8)}%) · Outlier acima do limite ${pp(ENC_META_OUTLIER)}%: ${pp(s.excessoOutlier)} p.p.</div>
       </div>
     </div>`;
@@ -20155,7 +20163,7 @@ function rChPref(d){
   const BASE=['#34c759','#ff9500','#ff3b30'];
   const BUCKETS=['prazo','inter','outlier'];
   const bgColors=prefChartBucket?BASE.map((c,i)=>BUCKETS[i]===prefChartBucket?c:'rgba(150,150,150,.22)'):BASE;
-  chPref=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 24h','Outlier >24h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];prefChartBucket=(prefChartBucket===b?'':b);renderAllPref();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
+  chPref=new Chart(ctx,{type:'bar',plugins:DL?[DL]:[],data:{labels:['Prazo ≤8h','8h a 12h','Outlier >12h'],datasets:[{data:[s.prazo,s.intermediario,s.outlier],backgroundColor:bgColors,borderRadius:8,borderSkipped:false,cursor:'pointer'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8,callbacks:{label:c2=>c2.label+': '+c2.parsed.y+' chamados'}},datalabels:DL?{anchor:'end',align:'top',formatter:v=>v>0?v:'',font:{size:11,weight:'bold'},color:dk?'#ccc':'#444',clip:false}:{display:false}},onClick:(ev,els)=>{if(!els||!els.length)return;const b=BUCKETS[els[0].index];prefChartBucket=(prefChartBucket===b?'':b);renderAllPref();},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93'}},y:{grid:{color:dk?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.04)'},ticks:{font:{size:9},color:dk?'#636366':'#8e8e93',stepSize:1}}}}});
 }
 
 function rChSemPref(){
@@ -20249,7 +20257,7 @@ function sPref(c){scPref===c?sdPref*=-1:(scPref=c,sdPref=-1);renderTPref()}
 
 function exportPrefCSV(){
   const rows=gFPref();
-  const header=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +24h','Semana','Segmento','Causa Raiz'];
+  const header=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +12h','Semana','Segmento','Causa Raiz'];
   const lines=[header.join(';')].concat(rows.map(d=>[d.protocolo,d.cliente,d.uf,d.cluster,d.tempoTotal,d.faixa,d.dentro8h?'Sim':'Não',d.outlier24h?'Sim':'Não',d.semana,repairPtBR(d.segmento),fmtCausaRaiz(d.causaRaiz)].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
@@ -21139,7 +21147,7 @@ function exportCSV(tipo){
     hdr=['ID Ticket','Cliente','MOP/EPS','Cidade','UF','SLA (h)','Faixa SLA','Status SLA','Substatus','Profissional','Observações'];
     data=rows.map(d=>{const ann=abAnnotations[d.id]||{};return[d.id,d.cliente,d.mop,d.cidade,d.uf,d.slaH.toFixed(2),d.faixa,d.statusSla,d.substatus,ann.prof||'',ann.obs||''];});
   }else{
-    hdr=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +24h','Causa Raiz','Semana','Segmento'];
+    hdr=['Protocolo','Cliente','UF','Cluster','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +12h','Causa Raiz','Semana','Segmento'];
     data=rows.map(d=>[d.protocolo,d.cliente,d.uf,d.cluster,d.tempoTotal.toFixed(2),d.faixa,d.dentro8h?'Sim':'Não',d.outlier24h?'Sim':'Não',fmtCausaRaiz(d.causaRaiz),d.semana,repairPtBR(d.segmento)]);
   }
   const csv=[hdr,...data].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
@@ -21273,7 +21281,7 @@ function renderPanelRepetidos(){
     <div class="mc c-orange"><div class="mc-label">Chamados repetidos</div><div class="mc-val" style="color:var(--orange)"><b>${totalRep}</b></div><div class="mc-sub"><span class="tag tag-orange">${pp(pct)}%</span> da base filtrada</div></div>
     <div class="mc c-red"><div class="mc-label">Maior recorrência</div><div class="mc-val" style="color:var(--red)">${top?top.records.length:0}</div><div class="mc-sub" title="${top?top.nome:''}">${top?top.nome.slice(0,22)+(top.nome.length>22?'…':''):'—'}</div></div>
     <div class="mc c-green"><div class="mc-label">Dentro de 8h</div><div class="mc-val" style="color:var(--green-dk)"><b>${totDentro}</b></div><div class="mc-sub"><span class="tag tag-green">${totalRep?pp(totDentro/totalRep*100):0}%</span> dos repetidos</div></div>
-    <div class="mc c-red"><div class="mc-label">Outlier +24h</div><div class="mc-val" style="color:var(--red-dk)"><b>${totOutlier}</b></div><div class="mc-sub"><span class="tag tag-red">${totalRep?pp(totOutlier/totalRep*100):0}%</span> dos repetidos</div></div>`;
+    <div class="mc c-red"><div class="mc-label">Outlier +12h</div><div class="mc-val" style="color:var(--red-dk)"><b>${totOutlier}</b></div><div class="mc-sub"><span class="tag tag-red">${totalRep?pp(totOutlier/totalRep*100):0}%</span> dos repetidos</div></div>`;
   /* ─ Pills ─ */
   document.getElementById('rep-prow').innerHTML=`
     <div class="pc"><div class="pico pi-p"><i class="ti ti-user-exclamation"></i></div><div><div class="pv" style="font-size:15px" title="${top?top.nome:''}">${top?(top.nome.length>16?top.nome.slice(0,15)+'…':top.nome):'—'}</div><div class="ps">mais recorrente · <b>${top?top.records.length:0}×</b></div></div></div>
@@ -21358,7 +21366,7 @@ function renderRepSLAChart(totDentro,totOutlier,totalRep,dk){
   if(!totalRep)return;
   const pp=v=>totalRep?`${(v/totalRep*100).toFixed(1)}%`:'0%';
   chRepSLA=new Chart(ctx,{type:'doughnut',data:{
-    labels:[`≤8h — No Prazo (${pp(totDentro)})`,`8-24h — Em Atraso (${pp(medio)})`,`+24h — Outlier (${pp(totOutlier)})`],
+    labels:[`≤8h — No Prazo (${pp(totDentro)})`,`8-12h — Em Atraso (${pp(medio)})`,`+12h — Outlier (${pp(totOutlier)})`],
     datasets:[{data:[totDentro,medio,totOutlier],backgroundColor:['rgba(52,199,89,.85)','rgba(255,204,0,.85)','rgba(255,59,48,.85)'],hoverBackgroundColor:['#34c759','#ffcc00','#ff3b30'],borderWidth:2,borderColor:dk?'#1c1c1e':'#ffffff',hoverOffset:8}]
   },options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:14,color:dk?'#ebebf0':'#3a3a3c',boxWidth:12,boxHeight:12}},tooltip:{callbacks:{label:c=>`${c.label.split(' (')[0]}: ${c.parsed} chamados`},backgroundColor:dk?'#1c1c1e':'#ffffff',titleColor:dk?'#f2f2f7':'#1c1c1e',bodyColor:dk?'#ebebf0':'#3a3a3c',borderColor:dk?'rgba(255,255,255,.12)':'rgba(0,0,0,.1)',borderWidth:1,cornerRadius:8,padding:10}}}});
 }
@@ -21422,7 +21430,7 @@ function renderRepAccordion(all){
           </div>
         </div>
         <span class="badge ${pct8>=85?'b-green':pct8>=60?'b-orange':'b-red'}" style="white-space:nowrap;flex-shrink:0">${pct8}% ≤8h</span>
-        ${pctOl>0?`<span class="badge b-red" style="white-space:nowrap;flex-shrink:0">${pctOl}% +24h</span>`:''}
+        ${pctOl>0?`<span class="badge b-red" style="white-space:nowrap;flex-shrink:0">${pctOl}% +12h</span>`:''}
         <i class="ti ti-chevron-down rep-chevron" style="font-size:13px;color:var(--tx3);flex-shrink:0"></i>
       </summary>
       <div style="padding:12px 16px;border-top:.5px solid var(--bd)">
@@ -21453,7 +21461,7 @@ function renderRepAccordion(all){
 function exportRepCSV(){
   const all=buildRepMap(repScope());
   const rows=all.flatMap(v=>v.records.map(r=>({...r,_nome:v.nome,_numplan:v.numplan,_clienteId:v.clienteId,_titulo:v.titulo,_total:v.records.length})));
-  const hdr=['Título / Cliente','Repetições','NumPlan (col F)','Cliente ID (col J)','Título Plano','Total Ocorrências','Semana','Cluster','Cidade','UF','Causa Raiz','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +24h','Segmento'];
+  const hdr=['Título / Cliente','Repetições','NumPlan (col F)','Cliente ID (col J)','Título Plano','Total Ocorrências','Semana','Cluster','Cidade','UF','Causa Raiz','Tempo SLA (h)','Faixa SLA','Dentro 8h','Outlier +12h','Segmento'];
   const data=rows.map(r=>[r._nome,r._total,r._numplan||'',r._clienteId||'',r._titulo||'',r._total,r.semana,r.cluster,r.cidade,r.uf,r.causaRaiz,r.tempoTotal.toFixed(2),r.faixa,r.dentro8h?'Sim':'Não',r.outlier24h?'Sim':'Não',r.segmento]);
   const csv=[hdr,...data].map(r=>r.map(v=>'"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
@@ -23696,7 +23704,7 @@ function rptBuildEncerrados(){
   <div class="chart-grid">${_rI(chEnc,'Distribuição por Regra SLA')}${_rI(chSem,'Volume / Semana')}${_rI(chMetaEnc,'Evolução da Meta Semanal')}</div>
   ${execHtml}
   <div class="stit">Chamados encerrados — ${d.length} registros</div>
-  ${_rT(['Protocolo','Cliente','UF/Cidade','Cluster','Tempo SLA','Faixa','Dentro 8h','Outlier >24h','Causa Raiz','Semana'],tRows,'400px')}
+  ${_rT(['Protocolo','Cliente','UF/Cidade','Cluster','Tempo SLA','Faixa','Dentro 8h','Outlier >12h','Causa Raiz','Semana'],tRows,'400px')}
   ${d.length>500?`<p style="color:#8e8e93;font-size:13px;margin-top:6px">Exibindo 500 de ${d.length} registros.</p>`:''}`;
   return _rSec('✅','B2B Chamados Encerrados',`${d.length} chamados · ${ctx}`,body,true);
 }
@@ -23766,13 +23774,13 @@ function rptBuildExecAging(){
   <p style="font-size:14px;color:#636366;margin-bottom:14px">Período: <strong>${eh(ctxLabel)}</strong> · Fonte: dados carregados no Painel B2B Encerrados · aging pelo tempo total (CCS)</p>
   <div class="exec-decision"><div class="exec-decision-tit">Decisão operacional</div><div class="exec-decision-txt">${eh(execAgingDecisionTxt(info))}</div></div>
   <div class="stit">Performance por cluster — meta prazo ≥${pp(ENC_META_PRAZO)}% · outlier ≤${pp(ENC_META_OUTLIER)}%</div>
-  <div style="overflow-x:auto">${clusterRows?`<table class="rpt-table exec-kpi-table"><thead><tr><th>Cluster</th><th>% no Prazo</th><th>% Outlier</th><th>Fora do Prazo (8–24h)</th><th>Volume</th></tr></thead><tbody>${clusterRows}</tbody></table>`:'<p style="color:#8e8e93;font-size:14px;padding:8px 0">Sem dados.</p>'}</div>
+  <div style="overflow-x:auto">${clusterRows?`<table class="rpt-table exec-kpi-table"><thead><tr><th>Cluster</th><th>% no Prazo</th><th>% Outlier</th><th>Fora do Prazo (8–12h)</th><th>Volume</th></tr></thead><tbody>${clusterRows}</tbody></table>`:'<p style="color:#8e8e93;font-size:14px;padding:8px 0">Sem dados.</p>'}</div>
   <div class="g2r" style="margin-top:14px">
     <div class="rcard">
       <div class="rcardtit">Composição por faixa (aging CCS)</div>
       <div class="brow"><span class="blbl">Prazo ≤8h</span><div class="btrk"><div class="bfil" style="width:${s.pPrazo.toFixed(1)}%;background:#13853a"></div></div><span class="bn">${s.prazo}</span></div>
-      <div class="brow"><span class="blbl">Fora do Prazo 8–24h</span><div class="btrk"><div class="bfil" style="width:${s.pInter.toFixed(1)}%;background:#ff9500"></div></div><span class="bn">${s.intermediario}</span></div>
-      <div class="brow"><span class="blbl">Outlier &gt;24h</span><div class="btrk"><div class="bfil" style="width:${s.pOut.toFixed(1)}%;background:#ff3b30"></div></div><span class="bn">${s.outlier}</span></div>
+      <div class="brow"><span class="blbl">Fora do Prazo 8–12h</span><div class="btrk"><div class="bfil" style="width:${s.pInter.toFixed(1)}%;background:#ff9500"></div></div><span class="bn">${s.intermediario}</span></div>
+      <div class="brow"><span class="blbl">Outlier &gt;12h</span><div class="btrk"><div class="bfil" style="width:${s.pOut.toFixed(1)}%;background:#ff3b30"></div></div><span class="bn">${s.outlier}</span></div>
     </div>
     <div class="rcard">
       <div class="rcardtit">Causa raiz dos chamados</div>
@@ -23820,7 +23828,7 @@ function downloadExecAgingPptx(){
 
   const s1=pptx.addSlide();
   header(s1,`OPERAÇÕES B2B · AGING · ${ctxLabel.toUpperCase()}`,'Performance por Cluster','1 / 3');
-  const headRow=['Cluster','% no Prazo (meta '+pp(ENC_META_PRAZO)+'%)','% Outlier (meta ≤'+pp(ENC_META_OUTLIER)+'%)','Fora do Prazo 8–24h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
+  const headRow=['Cluster','% no Prazo (meta '+pp(ENC_META_PRAZO)+'%)','% Outlier (meta ≤'+pp(ENC_META_OUTLIER)+'%)','Fora do Prazo 8–12h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
   const bodyRows=clusters.map(c=>[
     {text:c.cluster,options:{bold:true,fontSize:11}},
     {text:pp(c.pPrazo)+'%',options:{color:c.pPrazo>=ENC_META_PRAZO?GREEN:RED,bold:true,fontSize:11}},
@@ -23841,7 +23849,7 @@ function downloadExecAgingPptx(){
   const s2=pptx.addSlide();
   header(s2,'Fonte: dados carregados no Painel B2B Encerrados · aging pelo tempo total (CCS)','Diagnóstico de Aging','2 / 3');
   s2.addText(`${d.length} chamados encerrados`,{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
-  s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–24h','Outlier >24h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
+  s2.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–12h','Outlier >12h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
   s2.addText(`% no prazo: ${pp(s.pPrazo)}% (meta ${pp(ENC_META_PRAZO)}%) · % outlier: ${pp(s.pOut)}% (meta ≤${pp(ENC_META_OUTLIER)}%)`,{x:0.4,y:5.75,w:5.8,h:0.4,fontSize:11,color:GREY});
   const topCausas=causas.slice(0,5);
   s2.addText('Causa raiz dos chamados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
@@ -23914,7 +23922,7 @@ function computeEncPptxData(){
   if(selEncSeg.length)parts.push(selEncSeg.join('+'));
   const srchEl=document.getElementById('f-srch-enc');
   if(srchEl&&srchEl.value.trim())parts.push('busca "'+srchEl.value.trim()+'"');
-  if(encChartBucket)parts.push(encChartBucket==='prazo'?'no prazo':encChartBucket==='outlier'?'outlier':'8–24h');
+  if(encChartBucket)parts.push(encChartBucket==='prazo'?'no prazo':encChartBucket==='outlier'?'outlier':'8–12h');
   const ctxLabel=parts.length?parts.join(' · '):'Todos os períodos e filtros';
   return{d,s,clusters,causas,piorCluster,abaixoMeta,ctxLabel};
 }
@@ -23991,7 +23999,7 @@ function downloadEncPptx(){
 
   const s1=pptx.addSlide();
   pptxHeader(s1,`B2B ENCERRADOS · ${ctxLabel.toUpperCase()}`,'Performance por Cluster','1 / 4');
-  const headRow=['Cluster','% no Prazo (meta '+pp(ENC_META_PRAZO)+'%)','% Outlier (meta ≤'+pp(ENC_META_OUTLIER)+'%)','Fora do Prazo 8–24h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
+  const headRow=['Cluster','% no Prazo (meta '+pp(ENC_META_PRAZO)+'%)','% Outlier (meta ≤'+pp(ENC_META_OUTLIER)+'%)','Fora do Prazo 8–12h','Volume'].map(t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:11}}));
   const bodyRows=clusters.map(c=>[
     {text:c.cluster,options:{bold:true,fontSize:11}},
     {text:pp(c.pPrazo)+'%',options:{color:c.pPrazo>=ENC_META_PRAZO?GREEN:RED,bold:true,fontSize:11}},
@@ -24030,7 +24038,7 @@ function downloadEncPptx(){
   const s3=pptx.addSlide();
   pptxHeader(s3,'Fonte: dados carregados no Painel B2B Encerrados, com os filtros ativos na tela','Diagnóstico','3 / 4');
   s3.addText(`${d.length} chamados encerrados`,{x:0.4,y:1.95,w:5.8,h:0.4,fontSize:14,bold:true,color:NAVY});
-  s3.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–24h','Outlier >24h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
+  s3.addChart(pptx.ChartType.bar,[{name:'Chamados',labels:['Prazo ≤8h','Fora 8–12h','Outlier >12h'],values:[s.prazo,s.intermediario,s.outlier]}],{x:0.4,y:2.45,w:5.8,h:3.15,barDir:'col',showValue:true,chartColors:[GREEN,ORANGE,RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:10,dataLabelFontSize:10});
   s3.addText(`% no prazo: ${pp(s.pPrazo)}% (meta ${pp(ENC_META_PRAZO)}%) · % outlier: ${pp(s.pOut)}% (meta ≤${pp(ENC_META_OUTLIER)}%)`,{x:0.4,y:5.75,w:5.8,h:0.4,fontSize:11,color:GREY});
   const topCausas=causas.slice(0,5);
   s3.addText('Causa raiz dos chamados',{x:6.6,y:1.95,w:6.2,h:0.4,fontSize:14,bold:true,color:NAVY});
@@ -24082,7 +24090,7 @@ function rptBuildRepetidos(){
   <div class="chart-grid">${_rI(chRepClients,'Top Clientes Repetidos')}${_rI(chRepCausas,'Causas Raiz')}</div>
   <div class="chart-grid">${_rI(chRepSemana,'Evolução Semanal')}${_rI(chRepSLA,'Distribuição SLA')}</div>
   <div class="stit">Detalhamento — ${totalRep} chamados de ${all.length} clientes recorrentes (${pct.toFixed(1)}%)</div>
-  ${_rT(['Cliente','Qtde Chamados','Protocolo','UF/Cidade','Cluster','Tempo SLA','Dentro 8h','Outlier >24h','Causa Raiz','Semana'],tRows,'420px')}
+  ${_rT(['Cliente','Qtde Chamados','Protocolo','UF/Cidade','Cluster','Tempo SLA','Dentro 8h','Outlier >12h','Causa Raiz','Semana'],tRows,'420px')}
   ${totalRep>500?`<p style="color:#8e8e93;font-size:13px;margin-top:6px">Exibindo 500 de ${totalRep} registros.</p>`:''}`;
   return _rSec('🔁','B2B Chamados Repetidos',`${all.length} clientes · ${pct.toFixed(1)}% recorrência`,body,true);
 }
@@ -30196,7 +30204,7 @@ function execEncSnapshot(){
     const wRef=wowRefIdx>=0?wow[wowRefIdx]:null,wPrev=wowRefIdx>=1?wow[wowRefIdx-1]:null;
     const indicadores=[
       {key:'prazo',label:'No prazo (≤ 8h)',resultado:st.pPrazo,meta:EXEC_ENC_META_PRAZO,dir:'higher',unidade:'%',campoSemana:'pPrazo'},
-      {key:'outlier',label:'Outlier (> 24h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%',campoSemana:'pOut'},
+      {key:'outlier',label:'Outlier (> 12h)',resultado:st.pOut,meta:EXEC_ENC_META_OUTLIER,dir:'lower',unidade:'%',campoSemana:'pOut'},
     ].map(i=>{
       const semAtual=wRef?wRef[i.campoSemana]:null;
       const semAnterior=wPrev?wPrev[i.campoSemana]:null;
