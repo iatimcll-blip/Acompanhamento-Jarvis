@@ -7301,6 +7301,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-footer{text-align:center;color:var(--aof-muted);font-size:12.5px;padding:10px 0 26px}
   #panel-abertos-ofs .aof-empty{padding:26px;text-align:center;color:var(--aof-muted)}
   #panel-abertos-ofs .aof-err{background:#FDECEC;color:#8B1D22;padding:10px 14px;border-radius:10px;margin-top:12px;display:none}
+  #panel-abertos-ofs .aof-bd-alert{background:#FFF4E5;color:#7A4A00;padding:10px 14px;border-radius:10px;margin-top:12px;border:1px solid #F5C77E}
+  #panel-abertos-ofs .aof-bd-alert b{display:block;margin-bottom:6px}
+  #panel-abertos-ofs .aof-bd-alert ul{margin:0;padding-left:18px;font-size:13px;line-height:1.6}
   @media (prefers-reduced-motion: reduce){#panel-abertos-ofs .aof-seg div{transition:none}}
   </style>
   <div class="panel" id="panel-abertos-ofs">
@@ -7316,6 +7319,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <label class="aof-btn aof-primary panel-edit-only" for="aof-fileIn" tabindex="0" title="Você pode selecionar vários arquivos CSV de uma vez — as atividades de todos são somadas no painel">Anexar base(s) (.csv)</label>
           <input type="file" id="aof-fileIn" accept=".csv,text/csv" multiple hidden>
           <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
+          <button class="aof-btn" id="aof-btnNotif" title="Permitir avisos do navegador para chamados Bdesk próximos de vencer o SLA"><i class="ti ti-bell"></i> Avisos</button>
           <button class="aof-btn" id="aof-btnMatinal" title="Gera o Excel no modelo do Matinal: Warmup completo + chamados de Manutenção Corretiva de Rede/Manutenção de Rede Field já acima do SLA"><i class="ti ti-report"></i> Relatório Matinal</button>
           <button class="aof-btn panel-edit-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
           <button class="aof-btn panel-edit-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
@@ -7333,6 +7337,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <label class="aof-chk"><input type="checkbox" id="aof-fPausa"> Incluir almoço</label>
       </div>
       <div class="aof-err" id="aof-err"></div>
+      <div class="aof-bd-alert" id="aof-bd-alert" style="display:none"></div>
     </header>
 
     <div class="aof-main aof-empty-state" id="aof-main">
@@ -7470,11 +7475,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function aofObsSave(){try{localStorage.setItem(OBS_KEY,JSON.stringify(OBS_CFG));}catch(e){}}
     const STATUS_RAW_LABEL={'Em aberto':'Pendente','Concluída':'Concluído','Suspensa':'Suspenso','Cancelada':'Cancelado','Não concluída':'Não concluído'};
     const ST={
-      'Concluída':{c:'--aof-blue',keys:['concluído','concluido']},
+      'Concluída':{c:'--aof-blue',keys:['concluído','concluido','concluída','concluida']},
       'Em aberto':{c:'--aof-green',keys:['pendente','iniciado','em rota']},
-      'Suspensa':{c:'--aof-amber',keys:['suspenso']},
-      'Não concluída':{c:'--aof-red',keys:['não concluído','nao concluido']},
-      'Cancelada':{c:'--aof-gray',keys:['cancelado']}
+      'Suspensa':{c:'--aof-amber',keys:['suspenso','suspensa']},
+      'Não concluída':{c:'--aof-red',keys:['não concluído','nao concluido','não concluída','nao concluida']},
+      'Cancelada':{c:'--aof-gray',keys:['cancelado','cancelada']}
     };
     const ST_ORDER=Object.keys(ST);
     const CAT={
@@ -8493,9 +8498,67 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&s.table)pendingRestore=s;}catch(e){}
     setInterval(()=>{if(!ROWS.length||aofCopyInProgress)return;const D=filtered();drawAlerts(D);if(tab==='fila')drawTable(D);},60000);
 
+    /* Avisos de SLA Bdesk (pedido do usuário, 2026-10-06): chamados Bdesk (OS "BDESK-...")
+       em aberto cujo SLA do tipo vence em até AOF_NOTIF_WINDOW_H horas são avisados
+       uma vez ao entrar na janela (toast do Jarvis + notificação do navegador, se
+       permitida) e, a cada AOF_NOTIF_REMIND_MS enquanto o Jarvis estiver aberto, um
+       lembrete pra reportar as atualizações desses chamados. O prazo é medido em
+       horário real (abertura + SLA do tipo), não pelo aging do arquivo. */
+    const AOF_NOTIF_WINDOW_H=4,AOF_NOTIF_REMIND_MS=90*60*1000;
+    const aofNotified=new Set();
+    let aofLastReminderAt=Date.now();
+    function aofBdeskPrestes(now=Date.now()){
+      return ROWS.filter(r=>r.sistema==='Bdesk'&&r.ab&&OPEN.includes(r.sg)&&r.cat!=='Pausa')
+        .map(r=>({r,restH:(r.ab.getTime()+aofSlaGet(r.tipo)*3600000-now)/3600000}))
+        .filter(x=>x.restH>0&&x.restH<=AOF_NOTIF_WINDOW_H)
+        .sort((a,b)=>a.restH-b.restH);
+    }
+    function aofFmtRestante(h){const m=Math.max(0,Math.round(h*60));return Math.floor(m/60)+'h'+String(m%60).padStart(2,'0')+'min';}
+    function aofNotifyNativo(titulo,corpo){
+      if(!('Notification' in window)||Notification.permission!=='granted')return;
+      try{new Notification(titulo,{body:corpo,tag:'aof-bdesk-sla'});}catch(e){}
+    }
+    function aofRenderBdeskBox(lista){
+      const box=document.getElementById('aof-bd-alert');if(!box)return;
+      if(!lista.length){box.style.display='none';box.innerHTML='';return;}
+      box.innerHTML=`<b>${lista.length} chamado(s) Bdesk próximo(s) de vencer o SLA — reportar atualização</b><ul>`+
+        lista.slice(0,20).map(x=>`<li>${esc(x.r.os||'—')} · ${esc(x.r.cid||'—')} · ${esc(x.r.tipo||'—')} · faltam ${aofFmtRestante(x.restH)}</li>`).join('')+
+        (lista.length>20?`<li>… e mais ${lista.length-20}</li>`:'')+'</ul>';
+      box.style.display='';
+    }
+    function aofBdeskChecar(){
+      if(!ROWS.length&&pendingRestore){const s=pendingRestore;pendingRestore=null;load(s.table,s.name,false);}
+      if(!ROWS.length)return;
+      const lista=aofBdeskPrestes();
+      const novos=lista.filter(x=>!aofNotified.has(aofRowKey(x.r)));
+      novos.forEach(x=>aofNotified.add(aofRowKey(x.r)));
+      if(novos.length){
+        const msg=`${novos.length} chamado(s) Bdesk com SLA vencendo em até ${AOF_NOTIF_WINDOW_H}h`;
+        _ghToast('⚠ '+msg,'var(--red)',6000);
+        aofNotifyNativo('Abertos OFS — SLA Bdesk',msg+': '+novos.slice(0,5).map(x=>x.r.os).join(', '));
+      }
+      if(lista.length&&Date.now()-aofLastReminderAt>=AOF_NOTIF_REMIND_MS){
+        aofLastReminderAt=Date.now();
+        const msg=`Atenção: ${lista.length} chamado(s) Bdesk próximos de vencer o SLA — reportar as atualizações`;
+        _ghToast('🔔 '+msg,'var(--orange)',8000);
+        aofNotifyNativo('Abertos OFS — atenção',msg);
+      }
+      aofRenderBdeskBox(lista);
+    }
+    setInterval(aofBdeskChecar,60000);
+    const aofBtnNotif=document.getElementById('aof-btnNotif');
+    function aofAtualizarBtnNotif(){
+      if(!aofBtnNotif)return;
+      const p=('Notification' in window)?Notification.permission:'unsupported';
+      aofBtnNotif.innerHTML=p==='granted'?'<i class="ti ti-bell-ringing"></i> Avisos ativos':p==='denied'?'<i class="ti ti-bell-off"></i> Avisos bloqueados':'<i class="ti ti-bell"></i> Ativar avisos';
+    }
+    if(aofBtnNotif)aofBtnNotif.onclick=()=>{if(!('Notification' in window))return;Notification.requestPermission().then(aofAtualizarBtnNotif);};
+    aofAtualizarBtnNotif();
+
     window.aofRenderAll=function(){
       if(pendingRestore){const s=pendingRestore;pendingRestore=null;load(s.table,s.name,false);}
       else if(ROWS.length){render();}
+      aofBdeskChecar();
     };
   })();
   </script>
