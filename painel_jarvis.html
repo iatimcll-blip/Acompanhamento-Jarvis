@@ -14976,13 +14976,18 @@ function redirRenderTable(elId,metric){
     const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
     return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
+  /* ΔMoM (pedido do usuário, 2026-10-06): o p.p. do mês é a distância do MTD até a META,
+     não até o mês anterior. ΔWoW continua sendo semana contra a semana anterior. */
+  const meta=metric==='prazo'?ENC_META_PRAZO:ENC_META_OUTLIER;
   function buildRowHtml(row,wrow,clusterLabelHtml,extraCls,onclickAttr){
     const monthCells=row.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
     const weekCells=wrow.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
     const projMes=redirProjecao(row.cells,diaMes,diasMes);
     const projSem=redirProjecao(wrow.cells,diaSemana,7);
     const projCell=p=>`<td class="redir-proj-col ${redirPctColor(metric,p)}">${p===null?'—':pp(p)+'%'}</td>`;
-    return`<tr class="${extraCls}"${onclickAttr||''}><td class="redir-cluster-cell">${clusterLabelHtml}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
+    const lastMes=row.cells[row.cells.length-1];
+    const deltaMoM=lastMes&&lastMes.pct!==null?+(lastMes.pct-meta).toFixed(1):null;
+    return`<tr class="${extraCls}"${onclickAttr||''}><td class="redir-cluster-cell">${clusterLabelHtml}</td>${monthCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,deltaMoM)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${redirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
   }
   el.innerHTML=`<table class="redir-table"><thead><tr><th>Cluster</th>${monthHead}<th class="redir-delta-col">ΔMoM<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Mês)</span></th>${weekHead}<th class="redir-delta-col">ΔWoW<br><span class="redir-th-sub">(p.p.)</span></th><th class="redir-proj-col">Projetada<br><span class="redir-th-sub">(Semana)</span></th></tr></thead><tbody>${
     monthSeries.map((row,i)=>{
@@ -26613,13 +26618,19 @@ function rdeRedirRenderTable(elId,metric){
     const num=(/-W(\d{2})$/.exec(k)||[])[1]||'';
     return`<th>S${num}<br><span class="redir-th-sub">${eh(rdeRedirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
+  /* ΔMoM (pedido do usuário, 2026-10-06): p.p./h do mês = MTD − META (não vs mês anterior).
+     Métricas sem meta (volumes) mantêm a comparação com o mês anterior, já que não há
+     referência de meta pra medir a distância. ΔWoW continua semana contra a anterior. */
+  const metaMoM=RDE_REDIR_METRICS[metric].metaGetter?RDE_REDIR_METRICS[metric].metaGetter():null;
   const buildRow=(row,wrow,clusterLabelHtml,extraCls,onclickAttr)=>{
     const monthCells=row.cells.map(c=>`<td class="${rdeRedirValColor(metric,c.val)}">${rdeRedirFmtVal(metric,c.val)}</td>`).join('');
     const weekCells=wrow.cells.map(c=>`<td class="${rdeRedirValColor(metric,c.val)}">${rdeRedirFmtVal(metric,c.val)}</td>`).join('');
     const projMes=rdeRedirProjecao(row.cells,diaMes,diasMes);
     const projSem=rdeRedirProjecao(wrow.cells,diaSemana,7);
     const projCell=v=>`<td class="redir-proj-col ${rdeRedirValColor(metric,v)}">${rdeRedirFmtVal(metric,v)}</td>`;
-    return`<tr class="${extraCls||''}"${onclickAttr||''}><td class="redir-cluster-cell">${clusterLabelHtml}</td>${monthCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,row.delta)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
+    const lastMes=row.cells[row.cells.length-1];
+    const deltaMoM=metaMoM!==null?(lastMes&&lastMes.val!==null?+(lastMes.val-metaMoM).toFixed(2):null):row.delta;
+    return`<tr class="${extraCls||''}"${onclickAttr||''}><td class="redir-cluster-cell">${clusterLabelHtml}</td>${monthCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,deltaMoM)}</td>${projCell(projMes)}${weekCells}<td class="redir-delta redir-delta-col">${rdeRedirDeltaBadge(metric,wrow.delta)}</td>${projCell(projSem)}</tr>`;
   };
   const bodyHtml=monthSeries.map((row,i)=>{
     const wrow=weekSeries[i];
@@ -27414,6 +27425,12 @@ function rdeCallRowHtml(r,i,toggleFn){
   const excParts=[];
   if(r.p===0&&r.t>0)excParts.push('Prazo +'+Math.max(0,r.t-RDE_MTME).toFixed(2)+'h');
   if(r.o===1&&r.t>0)excParts.push('Outlier +'+Math.max(0,r.t-RDE_OUT_H).toFixed(2)+'h');
+  /* Desvio MTTR (pedido do usuário, 2026-10-06 — "apontar os chamados que desviaram no
+     MTTR"): mesma regra de rdeMttrOfensores() — tempo decorrido (elapsedH, a base do
+     card MTTR) acima da meta e acima do piso de 15min que descarta lançamento errado.
+     Marca a linha em vermelho e mostra o excedente, na mesma coluna de Excedente. */
+  const desvioMttr=r.elapsedH!==null&&r.elapsedH>RDE_MTTR_MIN_H&&r.elapsedH>RDE_MTME;
+  if(desvioMttr)excParts.push('MTTR +'+(r.elapsedH-RDE_MTME).toFixed(2)+'h');
   const exc=excParts.length?excParts.join(' · '):'—';
   const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:{};
   const os=String(det.os||det.id||'—'),uf=String(det.uf||'—'),dataFechamento=String(det.dataFechamento||'—');
@@ -27421,7 +27438,8 @@ function rdeCallRowHtml(r,i,toggleFn){
   const expCell=chave
     ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="${toggleFn}(${i})"></label>`
     :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
-  return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(exc)}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl}</span></td><td style="text-align:center">${expCell}</td></tr>`;
+  const rowStyle=marcado?'opacity:.55':(desvioMttr?'background:rgba(255,59,48,.10)':'');
+  return`<tr${rowStyle?` style="${rowStyle}"`:''}${desvioMttr?' title="Desviou da meta de MTTR"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(exc)}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl}</span></td><td style="text-align:center">${expCell}</td></tr>`;
 }
 function rdeShowCalls(title,flatRecs){
   const el=document.getElementById('rde-calls'),tbody=document.getElementById('rde-calls-body'),tit=document.getElementById('rde-calls-title');
