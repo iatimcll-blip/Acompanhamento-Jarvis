@@ -27125,8 +27125,14 @@ function _rde4Destroy(k){if(rde4Ch[k]){try{rde4Ch[k].destroy();}catch(e){}rde4Ch
 function _rde4DestroyAll(){Object.keys(rde4Ch).forEach(_rde4Destroy);}
 function _rde4AggMonth(recs){
   const map={};
-  recs.forEach(r=>{const mk=r.m||'';if(!mk)return;if(!map[mk])map[mk]={key:mk,n:0,p:0,o:0,tSum:0};map[mk].n++;map[mk].p+=r.p;map[mk].o+=r.o;map[mk].tSum+=(r.t||0);});
-  return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key)).map(x=>({...x,prazo:x.n?x.p/x.n*100:0,outlier:x.n?x.o/x.n*100:0,tme:x.n?x.tSum/x.n:0}));
+  /* Bug real: tme=tSum/n dividia pelo total de registros, inclusive os com t<=0
+     (tempo zerado/ausente) — diluindo a média pra baixo. rdeAgg2() (card principal
+     de TME/TMR e o gráfico "Evolução") exclui t<=0 do numerador E do denominador;
+     aqui dividia só por n, sem excluir do denominador, então os dois podiam mostrar
+     médias diferentes pro mesmo mês/recorte sempre que houvesse registro com tempo
+     zerado/ausente. Agora usa o mesmo critério (tN = só os com t>0). */
+  recs.forEach(r=>{const mk=r.m||'';if(!mk)return;if(!map[mk])map[mk]={key:mk,n:0,p:0,o:0,tSum:0,tN:0};const g=map[mk];g.n++;g.p+=r.p;g.o+=r.o;if(r.t>0){g.tSum+=r.t;g.tN++;}});
+  return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key)).map(x=>({...x,prazo:x.n?x.p/x.n*100:0,outlier:x.n?x.o/x.n*100:0,tme:x.tN?x.tSum/x.tN:0}));
 }
 function _rde4AggDay(recs,mesKey){
   const map={};
@@ -27143,11 +27149,13 @@ function _rde4AggDay(recs,mesKey){
     const mk=det.mesKey||r.m||'';
     if(mk!==mesKey)return;
     const dia=det.dia;if(!dia)return;
-    if(!map[dia])map[dia]={dia,n:0,p:0,o:0,tSum:0};
-    map[dia].n++;map[dia].p+=r.p;map[dia].o+=r.o;map[dia].tSum+=(r.t||0);
+    if(!map[dia])map[dia]={dia,n:0,p:0,o:0,tSum:0,tN:0};
+    const g=map[dia];g.n++;g.p+=r.p;g.o+=r.o;if(r.t>0){g.tSum+=r.t;g.tN++;}
   });
+  /* Mesmo fix de _rde4AggMonth: tme exclui t<=0 do denominador (tN), não só do
+     numerador, pra bater com rdeAgg2()/o card principal quando há tempo zerado. */
   const [y,mo]=(mesKey||'').split('-');
-  return Object.values(map).sort((a,b)=>a.dia-b.dia).map(x=>({...x,prazo:x.n?x.p/x.n*100:0,outlier:x.n?x.o/x.n*100:0,tme:x.n?x.tSum/x.n:0,label:y&&mo?`${String(x.dia).padStart(2,'0')}/${mo}/${y}`:String(x.dia)}));
+  return Object.values(map).sort((a,b)=>a.dia-b.dia).map(x=>({...x,prazo:x.n?x.p/x.n*100:0,outlier:x.n?x.o/x.n*100:0,tme:x.tN?x.tSum/x.tN:0,label:y&&mo?`${String(x.dia).padStart(2,'0')}/${mo}/${y}`:String(x.dia)}));
 }
 function _rde4BarColors(vals,meta,higherOk){return vals.map(v=>higherOk?(v>=meta?'#1a3060':'#c84b6a'):(v<=meta?'#1a3060':'#c84b6a'));}
 function _rde4DotColors(vals,meta,higherOk){return vals.map(v=>higherOk?(v>=meta?'#34c759':'#ff3b30'):(v<=meta?'#34c759':'#ff3b30'));}
