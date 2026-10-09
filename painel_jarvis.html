@@ -16269,7 +16269,14 @@ function clienteAbertoNome(r){
 async function clearAb(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de B2B Abertos? Essa ação não pode ser desfeita.'))return;
-  dAb=[];dAbCleared=true;dAbClearedAt=new Date().toISOString();lastAbAt='';lastAbBaseAt='';lastAbFile='';abLastUpd='';updateUploadTimes();
+  /* lastAbBaseAt precisa virar um timestamp NOVO (não ''), pelo mesmo motivo já
+     corrigido em clearEnc(): _mergeGhRemoteIntoLocal/REMOTE_MERGE_SECTIONS comparam
+     esse campo com `>` pra decidir se o remoto é "mais novo" — '' nunca vence essa
+     comparação (string vazia é sempre "mais antiga"), então outros dispositivos na
+     sincronização periódica (5 em 5 min) nunca percebiam que a base tinha sido
+     limpa aqui, e a base antiga continuava aparecendo pra eles. Tratar a limpeza
+     como um "upload novo" (vazio) resolve com a mesma lógica já usada pra uploads. */
+  dAb=[];dAbCleared=true;dAbClearedAt=new Date().toISOString();lastAbAt='';lastAbBaseAt=new Date().toISOString();lastAbFile='';abLastUpd='';updateUploadTimes();
   const nb=document.getElementById('nb-ab');if(nb)nb.textContent='0';
   const empty=document.getElementById('empty-ab');if(empty)empty.style.display='';
   const dash=document.getElementById('dash-ab');if(dash)dash.style.display='none';
@@ -20576,7 +20583,12 @@ function exportFuelVeiculosXlsx(){
 async function clearFuelVeiculos(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar toda a base de Veículos e condutores? Essa ação não pode ser desfeita.'))return;
-  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosClearedAt=new Date().toISOString();fuelVeiculosBaseAt='';fuelVeiculosBaseAtIso='';fuelVeiculosBaseFile='';
+  /* fuelVeiculosBaseAtIso precisa virar um timestamp NOVO (não ''), mesmo motivo de
+     lastEncBaseAt em clearEnc/rdeBaseAt em clearRede/lastAbBaseAt em clearAb: '' é
+     tratado como "mais antigo que qualquer coisa" pelo merge de recência em
+     _mergeGhRemoteIntoLocal/REMOTE_MERGE_SECTIONS, então outros dispositivos na
+     sincronização periódica nunca percebiam que a base tinha sido limpa aqui. */
+  dFuelVehicles=[];fuelVeiculosCleared=true;fuelVeiculosClearedAt=new Date().toISOString();fuelVeiculosBaseAt='';fuelVeiculosBaseAtIso=new Date().toISOString();fuelVeiculosBaseFile='';
   const tsEl=document.getElementById('fv-base-ts');if(tsEl)tsEl.textContent='';
   renderFuel();
   await persistClearedBase('Veículos e condutores');
@@ -22976,7 +22988,12 @@ async function autoLoadOfsDefault(){
 async function clearOfs(){
   if(!canEdit()){alert('Apenas administradores podem limpar a base.');return;}
   if(!confirm('Limpar base OFS? Os dados serão removidos.'))return;
-  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:'',uploadedAtIso:''};ofsFilter={uf:[],grupo:[],dtStart:'',dtEnd:'',months:[],weeks:[]};
+  /* uploadedAtIso precisa virar um timestamp NOVO (não ''), mesmo motivo já corrigido
+     em clearEnc/clearRede/clearAtiv/clearAb/clearFuelVeiculos: '' nunca vence a
+     comparação `>` no merge de recência (_mergeGhRemoteIntoLocal), então outros
+     dispositivos na sincronização periódica nunca percebiam que a base OFS tinha
+     sido limpa aqui (a proteção "cleared" só cobre o dispositivo que limpou). */
+  ofsRows=[];ofsMeta={fname:'',loaded:false,cleared:true,clearedAt:new Date().toISOString(),uploadedAt:'',uploadedAtIso:new Date().toISOString()};ofsFilter={uf:[],grupo:[],dtStart:'',dtEnd:'',months:[],weeks:[]};
   saveOfsState();
   [ofsChRank,ofsChStatus,ofsChTaxa,ofsChTipo,ofsChDia].forEach(c=>{try{if(c)c.destroy();}catch(e){}});
   ofsChRank=ofsChStatus=ofsChTaxa=ofsChTipo=ofsChDia=null;
