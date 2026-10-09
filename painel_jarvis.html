@@ -8038,6 +8038,19 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       if(h>=8)return'8-24h';
       return'0-8h';
     }
+    /* Pedido do usuário (2026-10-08): o relatório sai ordenado do chamado com mais
+       horas de SLA decorridas pro de menos horas, dentro de cada bloco (Warmup,
+       Fila ATRIX, Fila BDESK, Sem sistema) — maior urgência primeiro. Chamados sem
+       horas calculáveis (null) vão sempre pro final, independente do valor. */
+    function matinalSortByHorasDesc(rows,getHoras){
+      return[...rows].sort((a,b)=>{
+        const ha=getHoras(a),hb=getHoras(b);
+        if(ha==null&&hb==null)return 0;
+        if(ha==null)return 1;
+        if(hb==null)return-1;
+        return hb-ha;
+      });
+    }
     /* Os marcadores "- TICKET: 123" / "- TIPO: RUPTURA" vêm no texto que o próprio
        OFS já escreve na abertura do chamado (coluna "Comentários Gerais", r.com) —
        não é um campo próprio, é extraído do texto livre. Nem todo chamado tem esse
@@ -8120,10 +8133,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             ws.getRow(row).height=45;
           };
 
+          const wmRowsOrdenadas=matinalSortByHorasDesc(wmRows,r=>wmDuracaoHoras(r.tempoDecorrido));
           let row=4;
           writeHeader(row);row++;
           writeSectionTitle(row,`WARMUP · ${fmtN(wmRows.length)} registro${wmRows.length===1?'':'s'}`,AZUL);row++;
-          wmRows.forEach(r=>{
+          wmRowsOrdenadas.forEach(r=>{
             const horas=wmDuracaoHoras(r.tempoDecorrido);
             writeDataRow(row,[
               'Warmup',r.requisicao,r.os||'',r.categoria||'','',
@@ -8149,7 +8163,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const writeFilaSection=(label,rowsList)=>{
             writeHeader(row);row++;
             writeSectionTitle(row,`FILA EM ABERTO OFS · ${label} · ${fmtN(rowsList.length)} registro${rowsList.length===1?'':'s'}`,VERDE);row++;
-            rowsList.forEach(r=>{
+            matinalSortByHorasDesc(rowsList,r=>r.aging).forEach(r=>{
               const sla=aofSlaGet(r.tipo);
               const estourado=r.aging!=null&&(r.aging-sla>0)?'Sim':'Não';
               writeDataRow(row,[
