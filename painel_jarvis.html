@@ -8024,12 +8024,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        hora de renderizar a tela, pedido do usuário: "trazer apenas os chamados
        das UF PI, MA, PA, AM, AP no resumo do Warmup"). */
     const MATINAL_WM_UF=['PI','MA','PA','AM','AP'];
+    /* Sequência de colunas pedida pelo usuário (2026-10-08, print do header real) —
+       remove SLA Prazo (h)/SLA Estourado/Cluster/Cliente/Sem Técnico/Status Interno
+       que existiam antes; qualquer índice de coluna hardcoded abaixo (datas, nº,
+       wrapText) tem que ser reconferido contra esta lista se ela mudar de novo. */
     const MATINAL_COLS=[
       ['Base Origem',12],['Ticket / Requisição',22],['OS',26],['Categoria / Tipo',28],['Tipo Evento',13],
       ['UF',6],['Cidade',18],['Trecho / Equipamento',38],['Início Falha / Abertura OS',19],['Abertura Chamado',13],
-      ['Tempo Decorrido (original)',15],['Tempo Decorrido (h)',11],['Faixa Aging',13],['SLA Prazo (h)',9],['SLA Estourado',10],
-      ['Status',28],['Parceira / Recurso',30],['Área Responsável',13],['Cluster',14],['Cliente',34],
-      ['Sem Técnico',15],['Origem no Relatório',26],['Está nas duas bases',18],['Status Interno',21],['Justificativa / Comentários',60],
+      ['Tempo Decorrido (original)',15],['Tempo Decorrido (h)',11],['Faixa Aging',13],
+      ['Status',28],['Parceira / Recurso',30],['Área Responsável',13],
+      ['Origem no Relatório',26],['Está nas duas bases',18],['Justificativa / Comentários',60],
     ];
     function matinalFaixaAging(h){
       if(h==null)return'';
@@ -8065,10 +8069,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const matinalTiposNk=MATINAL_TIPOS_RAW.map(nk);
       const wmRows=(Array.isArray(WM_SYNC_RECORDS)?WM_SYNC_RECORDS:[]).filter(r=>MATINAL_WM_UF.includes(r.uf));
       const wmJust=(WM_SYNC_CFG&&WM_SYNC_CFG.just&&typeof WM_SYNC_CFG.just==='object')?WM_SYNC_CFG.just:{};
-      const wmStatusInt=(WM_SYNC_CFG&&WM_SYNC_CFG.status&&typeof WM_SYNC_CFG.status==='object')?WM_SYNC_CFG.status:{};
       /* Diferença de regra vs a v1 (confirmada no modelo real): não filtra mais só
          os vencidos (r.aging-aofSlaGet(r.tipo)>0) — traz TODA a fila aberta dos 2
-         tipos-alvo, e "SLA Estourado" vira coluna informativa em vez de filtro. */
+         tipos-alvo (a coluna "SLA Estourado" por tipo foi removida do relatório
+         em 2026-10-08 a pedido do usuário; o destaque vermelho de linha continua
+         usando o limite fixo SLA_VERMELHO_H, independente disso). */
       const aofRows=ROWS.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa'&&r.tipo&&matinalTiposNk.includes(nk(r.tipo)));
       if(!wmRows.length&&!aofRows.length){alert('Não há base do Warmup anexada nem chamados de Manutenção Corretiva/Field em aberto no Abertos OFS — nada pra colocar no relatório.');return;}
       const btn=document.getElementById('aof-btnMatinal');
@@ -8085,7 +8090,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const wmEstaNasDuas=r=>n(r.os)&&aofOsSet.has(n(r.os))?'Sim':'Não';
           const aofEstaNasDuas=r=>{const os=aofOsNorm(r);return os&&wmOsSet.has(os)?'Sim':'Não';};
 
-          const AZUL='FF1476C9',VERDE='FF42C34B',NAVY='FF182238',AMARELO_CLARO='FFFFF9DB',BORDA='FFD9DDE3',VERMELHO_CLARO='FFF8D7DA';
+          const AZUL='FF1476C9',VERDE='FF42C34B',NAVY='FF182238',BORDA='FFD9DDE3',VERMELHO_CLARO='FFF8D7DA';
           /* Linha inteira pintada de vermelho (pedido do usuário, 2026-10-04) pra
              chamado/evento com mais de 8h decorridas — limite FIXO, independente do
              "SLA Prazo (h)" configurável por tipo (coluna já existente, usada só pra
@@ -8100,7 +8105,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             const cell=ws.getCell(r,c);
             if(val!==''&&val!=null)cell.value=val;
             cell.border=border;
-            cell.alignment={vertical:'top',wrapText:c===24||c===25,...(extra&&extra.alignment)};
+            cell.alignment={vertical:'top',wrapText:c===MATINAL_COLS.length,...(extra&&extra.alignment)};
             if(extra&&extra.fill)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:extra.fill}};
             if(extra&&extra.font)cell.font=extra.font;
             if(extra&&extra.numFmt)cell.numFmt=extra.numFmt;
@@ -8125,7 +8130,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
                 extra.fill=VERMELHO_CLARO;
                 if(col===1)extra.font={color:{argb:'FF8B0000'},bold:true,size:12};
               }else if(col===1){extra.fill=accentColor;extra.font={color:{argb:'FFFFFFFF'},bold:true,size:12};}
-              else if(col===24)extra.fill=AMARELO_CLARO;
               if(col===9||col===10)extra.numFmt=col===9?'m/d/yy h:mm':'mm-dd-yy';
               if(col===12)extra.numFmt='0.0';
               setCell(row,col,v,extra);
@@ -8142,9 +8146,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             writeDataRow(row,[
               'Warmup',r.requisicao,r.os||'',r.categoria||'','',
               r.uf||'',r.cidade||'',r.trecho||'',pdt(r.inicioFalha)||r.inicioFalha||'','',
-              r.tempoDecorrido||'',horas==null?'':Math.round(horas*100)/100,matinalFaixaAging(horas),'','',
-              r.status||'',r.parceira||'',r.areaResponsavel||'','','',
-              '',r.origem||'',wmEstaNasDuas(r),wmStatusInt[r.requisicao]||'',wmJust[r.requisicao]||'',
+              r.tempoDecorrido||'',horas==null?'':Math.round(horas*100)/100,matinalFaixaAging(horas),
+              r.status||'',r.parceira||'',r.areaResponsavel||'',
+              r.origem||'',wmEstaNasDuas(r),wmJust[r.requisicao]||'',
             ],'Warmup',AZUL,horas!=null&&horas>SLA_VERMELHO_H);
             row++;
           });
@@ -8164,14 +8168,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             writeHeader(row);row++;
             writeSectionTitle(row,`FILA EM ABERTO OFS · ${label} · ${fmtN(rowsList.length)} registro${rowsList.length===1?'':'s'}`,VERDE);row++;
             matinalSortByHorasDesc(rowsList,r=>r.aging).forEach(r=>{
-              const sla=aofSlaGet(r.tipo);
-              const estourado=r.aging!=null&&(r.aging-sla>0)?'Sim':'Não';
               writeDataRow(row,[
                 'Fila OFS',matinalExtrairTicket(r.com),r.os||'',r.tipo||'',matinalExtrairTipoEvento(r.com),
                 r.uf||'',r.cid||'',r.trecho||'',r.ab||'',r.abChamado?pdt(r.abChamado):'',
-                r.aging==null?'':fmtSLA(r.aging),r.aging==null?'':Math.round(r.aging*100)/100,matinalFaixaAging(r.aging),sla,estourado,
-                r.sg||'',r.rec||'','',r.cluster||'',r.nome||'',
-                r.unassigned?'Sim':'Não','Fila em aberto OFS',aofEstaNasDuas(r),r.com||'',OBS_CFG[aofRowKey(r)]||'',
+                r.aging==null?'':fmtSLA(r.aging),r.aging==null?'':Math.round(r.aging*100)/100,matinalFaixaAging(r.aging),
+                r.sg||'',r.rec||'','',
+                'Fila em aberto OFS',aofEstaNasDuas(r),OBS_CFG[aofRowKey(r)]||'',
               ],'Fila OFS',VERDE,r.aging!=null&&r.aging>SLA_VERMELHO_H);
               row++;
             });
