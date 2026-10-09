@@ -24873,14 +24873,14 @@ function fapPopulateSelects(){
   /* Filtro de GO no bloco E-mail (pedido do usuário): GO é texto livre digitado no
      cadastro da placa (fap-pGo), não um enum fixo como UF — por isso a lista de opções
      é montada dinamicamente a partir dos GOs realmente cadastrados, igual ao padrão já
-     usado pra Placa acima. "Sem GO vinculado" agrupa placas sem GO preenchido, mesmo
-     rótulo já usado em fapRenderGoWeekTable()/fapEmailText(). */
+     usado pra Placa acima. Opção "Sem GO vinculado" removida (pedido do usuário,
+     2026-10-09) — placas sem GO nunca têm aporte na prática (geradores cadastrados
+     sem uso), então essa opção só juntava uma lista vazia. */
   const fGo=document.getElementById('fap-fEmailGo');
   if(fGo){
     const curGo=fGo.value;
     const gos=[...new Set(FAP_PLACAS.map(p=>p.go&&p.go.trim()?p.go.trim():''))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'));
-    const temSemGo=FAP_PLACAS.some(p=>!(p.go&&p.go.trim()));
-    fGo.innerHTML='<option value="">Todos os GOs</option>'+gos.map(g=>`<option value="${eh(g)}">${eh(g)}</option>`).join('')+(temSemGo?'<option value="__sem_go__">Sem GO vinculado</option>':'');
+    fGo.innerHTML='<option value="">Todos os GOs</option>'+gos.map(g=>`<option value="${eh(g)}">${eh(g)}</option>`).join('');
     fGo.value=curGo;
   }
 }
@@ -25129,13 +25129,19 @@ function fapRenderGoWeekTable(){
   const semanas=fapSemanasDoCicloIso();
   const hoje=fapTodayIso();
   head.innerHTML='<th>GO</th>'+semanas.map((s,i)=>`<th>Semana ${i+1}<br><span style="font-weight:400;color:var(--tx3);font-size:12px">${eh(fapFmtDiaMesIso(s.start))}–${eh(fapFmtDiaMesIso(s.end))}</span></th>`).join('');
+  /* Placas sem GO preenchido (pedido do usuário, 2026-10-09: "retirar dos resumos e
+     blocos o 'Sem GO vinculado'") ficam de fora desta tabela por completo — antes
+     caíam num grupo catch-all "Sem GO vinculado" que, na prática, nunca tem aporte
+     nenhum (são os geradores cadastrados sem GO, GER0001/0002/0006/0010 na base
+     real) e só aparecia como uma linha zerada o tempo todo, sem utilidade. */
   const gruposMap=new Map();
   FAP_PLACAS.forEach(p=>{
-    const chave=p.go&&p.go.trim()?p.go.trim():'Sem GO vinculado';
+    if(!(p.go&&p.go.trim()))return;
+    const chave=p.go.trim();
     if(!gruposMap.has(chave))gruposMap.set(chave,[]);
     gruposMap.get(chave).push(p.id);
   });
-  if(!gruposMap.size){body.innerHTML=`<tr><td colspan="${semanas.length+1}"><div class="fap-empty">Nenhuma placa cadastrada ainda.</div></td></tr>`;return;}
+  if(!gruposMap.size){body.innerHTML=`<tr><td colspan="${semanas.length+1}"><div class="fap-empty">Nenhuma placa com GO vinculado cadastrada ainda.</div></td></tr>`;return;}
   body.innerHTML=[...gruposMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([go,placaIds])=>{
     const cels=semanas.map(s=>{
       const consumido=FAP_APORTES.filter(a=>placaIds.includes(a.placaId)&&a.data>=s.start&&a.data<=s.end).reduce((sum,a)=>sum+a.valor,0);
@@ -26085,7 +26091,7 @@ function fapEmailFiltroResumo(){
   if(f.de)partes.push('De: '+fapFmtDate(f.de));
   if(f.ate)partes.push('Até: '+fapFmtDate(f.ate));
   const go=fapEmailGoSelecionado();
-  if(go)partes.push('GO: '+(go==='__sem_go__'?'Sem GO vinculado':go));
+  if(go)partes.push('GO: '+go);
   return partes.length?partes.join(' · '):'Todo o período (sem filtro aplicado)';
 }
 function fapEmailText(){
@@ -26094,7 +26100,7 @@ function fapEmailText(){
     if(!go)return true;
     const p=fapPlacaById(a.placaId);
     const pGo=p&&p.go&&p.go.trim()?p.go.trim():'';
-    return go==='__sem_go__'?!pGo:pGo===go;
+    return pGo===go;
   });
   const total=list.reduce((s,a)=>s+a.valor,0);
   const linhas=list.map(a=>{
