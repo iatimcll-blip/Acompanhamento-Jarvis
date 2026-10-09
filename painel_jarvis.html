@@ -7434,7 +7434,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
      SB_STOCK/sbStockAt e as variáveis fapAt do painel de Aportes Combustível.
      AOF_SYNC_AT é a fonte da verdade de "mais recente" nos dois sentidos
      (publicar local -> remoto e receber remoto -> local). */
-  let AOF_SYNC_TABLE=null,AOF_SYNC_FILENAME='',AOF_SYNC_AT='',AOF_SYNC_CFG=null;
+  let AOF_SYNC_TABLE=null,AOF_SYNC_FILENAME='',AOF_SYNC_AT='',AOF_SYNC_CFG=null,aofSyncTimer=null;
   (function(){
     const AOF_FONT="Barlow, Calibri, 'Segoe UI', Roboto, Arial, sans-serif";
     const STORE_KEY='jarvis_abertos_ofs_v1';
@@ -8284,8 +8284,27 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }
       AOF_SYNC_CFG=aofBuildCfg();
       aofUpdateBadge();
-      if(typeof saveState==='function')saveState();
-      if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
+      /* Pedido do usuário (2026-10-09): Abertos OFS sincronizava com o GitHub quase
+         instantaneamente a cada edição de observação/SLA/status/tipos OU anexo de
+         base nova — gerando sincronizações/commits com frequência demais. Havia DOIS
+         caminhos disparando o push, não só autoSyncAfterBaseUpload (300ms): a chamada
+         genérica saveState() abaixo também agenda, por conta própria, um
+         saveGhState() em 800ms (remoteSaveTimer, compartilhado por todo o app) — então
+         mesmo removendo/atrasando o autoSyncAfterBaseUpload, esse segundo caminho
+         continuaria publicando quase instantaneamente. Troca pra saveLocalState()
+         (só grava local/IndexedDB, sem rede — mesma função que saveState() usa por
+         baixo) e agenda o push remoto num debounce PRÓPRIO de 5 minutos (mesmo
+         intervalo já usado pro pull periódico geral, iniciarSincronizacaoAutomatica),
+         só pra este painel — sem alterar saveState()/autoSyncAfterBaseUpload, que
+         continuam iguais pros demais painéis. */
+      if(typeof saveLocalState==='function')saveLocalState();
+      if(!label)return;
+      if(!canEdit()&&!_hasSrEditRights())return;
+      clearTimeout(aofSyncTimer);
+      aofSyncTimer=setTimeout(async()=>{
+        _ghToast('Sincronizando '+label+'…','var(--blue)',3500);
+        await saveGhState(false);
+      },5*60*1000);
     }
     /* Chamado por applyState()/_mergeGhRemoteIntoLocal() (script mais abaixo) sempre
        que uma base mais recente chegar de outro dispositivo. Se o painel não estiver
