@@ -18626,6 +18626,26 @@ async function loadAtrixUpdates(){
     Object.entries(updates).forEach(([tid,up])=>{
       if(up.updatedAt){atrixUpdateMap[tid]=up.updatedAt;if(up.updatedAt>latestAt)latestAt=up.updatedAt;}
     });
+    /* Circuito de segurança (bug real de produção, 2026-10-09): quando o agente Atrix
+       não consegue abrir a página do chamado (site fora, sessão expirada, mudança de
+       layout), scraper/atrix_agent.js classifica o ticket como {substatus:'Fechado',
+       source:'fechado'} — Regra 3, "nenhum select carregou, sem Status e sem
+       Substatus". Isso não significa "o chamado fechou", significa "não consegui
+       checar". Sem essa proteção, uma falha geral do agente sobrescrevia o substatus
+       de 100% da base recém-anexada pra "Fechado" de uma vez (confirmado em produção:
+       39/39 chamados), fazendo badges/contadores de ativos (que filtram Fechado) irem
+       a zero mesmo com a base carregada e os chamados genuinamente abertos na
+       planilha — o usuário via isso como "o painel zerou ao anexar a base". Se ≥90%
+       dos chamados casados vierem dessa origem de baixa confiança, ignora a
+       atualização inteira desta rodada em vez de aplicar — mais seguro que confiar
+       numa falha em massa do agente como se fosse dado real. */
+    const atrixMatched=dAb.filter(ticket=>updates[ticket.id]||updates[ticket.ticketId]);
+    const atrixFechadoFallback=atrixMatched.filter(ticket=>(updates[ticket.id]||updates[ticket.ticketId]).source==='fechado');
+    if(atrixMatched.length>=5&&atrixFechadoFallback.length/atrixMatched.length>=0.9){
+      console.warn(`[Atrix Agent] ${atrixFechadoFallback.length}/${atrixMatched.length} chamados vieram como "Fechado" por falha de leitura (source:'fechado') — atualização de substatus ignorada nesta rodada (suspeita de falha geral do agente).`);
+      if(latestAt){atrixLastSyncAt=latestAt;_atrixRenderTimerBadge();}
+      return'';
+    }
     let count=0;
     dAb.forEach(ticket=>{
       const up=updates[ticket.id]||updates[ticket.ticketId]||null;
