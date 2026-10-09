@@ -13390,6 +13390,28 @@ function _mergeArraysByKey(localArr,remoteArr,keyFn){
   localArr.forEach(x=>{const k=keyFn(x);if(k!==undefined&&k!==null&&k!=='')map.set(k,x)});
   return[...map.values()];
 }
+/* Tombstones de exclusão individual (Aportes Combustível, ver FAP_PLACAS_DEL/
+   FAP_APORTES_DEL) — união por id, mantendo o registro mais recente (`at`) de cada
+   id quando o mesmo id aparecer dos dois lados (não deveria acontecer na prática,
+   já que cada exclusão só acontece uma vez, mas não custa ser determinístico). */
+function _fapMergeTombstones(local,remote){
+  const map=new Map();
+  (Array.isArray(local)?local:[]).forEach(t=>{if(t&&t.id)map.set(t.id,t)});
+  (Array.isArray(remote)?remote:[]).forEach(t=>{
+    if(!t||!t.id)return;
+    const cur=map.get(t.id);
+    if(!cur||(t.at||'')>(cur.at||''))map.set(t.id,t);
+  });
+  return[...map.values()];
+}
+/* Remove do array mesclado qualquer item cujo id tenha uma tombstone — aplicado
+   DEPOIS do _mergeArraysByKey, pra garantir que um item excluído nunca reapareça
+   mesmo que o lado remoto ainda não soubesse da exclusão. */
+function _fapApplyTombstones(arr,delList){
+  if(!Array.isArray(arr)||!Array.isArray(delList)||!delList.length)return arr;
+  const delIds=new Set(delList.map(t=>t&&t.id).filter(Boolean));
+  return arr.filter(x=>!delIds.has(x&&x.id));
+}
 let currentUser=null;
 let remoteSaveTimer=null;
 let remoteSaveWarned=false;
@@ -14040,13 +14062,33 @@ function _mergeGhRemoteIntoLocal(remoteSt){
          Audit Material/Saldo SAP — placas/aportes são registros de vida longa que
          precisam mesclar entre dispositivos, não substituir por inteiro. fapSaldoMes é
          um valor único (Saldo do Mês, editável, debitado pelos aportes) — troca só
-         quando o remoto for comprovadamente mais recente (fapAt). */
-      if(Array.isArray(remoteSt.FAP_PLACAS)||Array.isArray(remoteSt.FAP_APORTES)||Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes')){
-        if(Array.isArray(remoteSt.FAP_PLACAS))FAP_PLACAS=_mergeArraysByKey(FAP_PLACAS,remoteSt.FAP_PLACAS,x=>x.id);
-        if(Array.isArray(remoteSt.FAP_APORTES))FAP_APORTES=_mergeArraysByKey(FAP_APORTES,remoteSt.FAP_APORTES,x=>x.id);
-        if(Object.prototype.hasOwnProperty.call(remoteSt,'fapAt')&&remoteSt.fapAt>(fapAt||'')){
-          fapAt=remoteSt.fapAt;
+         quando o remoto for comprovadamente mais recente (fapAt).
+         Bug real (2026-10-09): merge por união nunca remove nada — excluir 1 placa/
+         aporte (fapDelPlaca/fapDelAporte) ou zerar tudo (fapResetTudo) era desfeito
+         bem aqui, já que saveGhState() SEMPRE chama este merge com o remoto (ainda sem
+         saber da exclusão) antes de publicar — o item "ressuscitava" e era republicado.
+         Tombstones (FAP_PLACAS_DEL/FAP_APORTES_DEL) resolvem a exclusão individual;
+         fapCleared protege o reset completo — mesmo padrão de dAbCleared. */
+      if(Array.isArray(remoteSt.FAP_PLACAS)||Array.isArray(remoteSt.FAP_APORTES)||Array.isArray(remoteSt.FAP_PLACAS_DEL)||Array.isArray(remoteSt.FAP_APORTES_DEL)||Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes')){
+        FAP_PLACAS_DEL=_fapMergeTombstones(FAP_PLACAS_DEL,remoteSt.FAP_PLACAS_DEL);
+        FAP_APORTES_DEL=_fapMergeTombstones(FAP_APORTES_DEL,remoteSt.FAP_APORTES_DEL);
+        const _remoteFapCleared=!!remoteSt.fapCleared;
+        const _remoteFapNewerThanClear=!!(fapClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>fapClearedAt);
+        if(fapCleared&&!_remoteFapCleared&&_remoteFapNewerThanClear&&((Array.isArray(remoteSt.FAP_PLACAS)&&remoteSt.FAP_PLACAS.length)||(Array.isArray(remoteSt.FAP_APORTES)&&remoteSt.FAP_APORTES.length))){
+          FAP_PLACAS=_fapApplyTombstones(Array.isArray(remoteSt.FAP_PLACAS)?remoteSt.FAP_PLACAS:[],FAP_PLACAS_DEL);
+          FAP_APORTES=_fapApplyTombstones(Array.isArray(remoteSt.FAP_APORTES)?remoteSt.FAP_APORTES:[],FAP_APORTES_DEL);
+          fapAt=remoteSt.fapAt||fapAt;
           if(Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes'))fapSaldoMes=Number(remoteSt.fapSaldoMes)||0;
+          fapCleared=false;fapClearedAt='';
+        }else if(fapCleared){
+          FAP_PLACAS=[];FAP_APORTES=[];
+        }else{
+          if(Array.isArray(remoteSt.FAP_PLACAS))FAP_PLACAS=_fapApplyTombstones(_mergeArraysByKey(FAP_PLACAS,remoteSt.FAP_PLACAS,x=>x.id),FAP_PLACAS_DEL);
+          if(Array.isArray(remoteSt.FAP_APORTES))FAP_APORTES=_fapApplyTombstones(_mergeArraysByKey(FAP_APORTES,remoteSt.FAP_APORTES,x=>x.id),FAP_APORTES_DEL);
+          if(Object.prototype.hasOwnProperty.call(remoteSt,'fapAt')&&remoteSt.fapAt>(fapAt||'')){
+            fapAt=remoteSt.fapAt;
+            if(Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes'))fapSaldoMes=Number(remoteSt.fapSaldoMes)||0;
+          }
         }
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
       }
@@ -14063,13 +14105,32 @@ function _mergeGhRemoteIntoLocal(remoteSt){
           if(typeof remoteSt.fapCotaCondutorOverrides[k]==='number')FAP_COTA_CONDUTOR_OVERRIDES[k]=remoteSt.fapCotaCondutorOverrides[k];
         });
       }
-      if(Array.isArray(remoteSt.FAP_CONSUMO_CONDUTOR)){
-        FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,remoteSt.FAP_CONSUMO_CONDUTOR,x=>x.id);
+      /* fapLimparBase()/fapLimparBaseMesCorrente() são reset completo (não exclusão
+         individual) — mesma trava "cleared" de FAP_PLACAS/FAP_APORTES acima, pelo
+         mesmo motivo (senão o merge por união desfaria a limpeza no próprio push). */
+      if(Array.isArray(remoteSt.FAP_CONSUMO_CONDUTOR)||remoteSt.fapConsumoCleared){
+        const _remoteConsCleared=!!remoteSt.fapConsumoCleared;
+        const _remoteConsNewerThanClear=!!(fapConsumoClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>fapConsumoClearedAt);
+        if(fapConsumoCleared&&!_remoteConsCleared&&_remoteConsNewerThanClear&&Array.isArray(remoteSt.FAP_CONSUMO_CONDUTOR)&&remoteSt.FAP_CONSUMO_CONDUTOR.length){
+          FAP_CONSUMO_CONDUTOR=remoteSt.FAP_CONSUMO_CONDUTOR;fapConsumoCleared=false;fapConsumoClearedAt='';
+        }else if(fapConsumoCleared){
+          FAP_CONSUMO_CONDUTOR=[];
+        }else if(Array.isArray(remoteSt.FAP_CONSUMO_CONDUTOR)){
+          FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,remoteSt.FAP_CONSUMO_CONDUTOR,x=>x.id);
+        }
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoAt')&&remoteSt.fapConsumoAt>(fapConsumoAt||''))fapConsumoAt=remoteSt.fapConsumoAt;
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
       }
-      if(Array.isArray(remoteSt.FAP_CONSUMO_MC)){
-        FAP_CONSUMO_MC=_mergeArraysByKey(FAP_CONSUMO_MC,remoteSt.FAP_CONSUMO_MC,x=>x.id);
+      if(Array.isArray(remoteSt.FAP_CONSUMO_MC)||remoteSt.fapConsumoMcCleared){
+        const _remoteMcCleared=!!remoteSt.fapConsumoMcCleared;
+        const _remoteMcNewerThanClear=!!(fapConsumoMcClearedAt&&remoteSt.savedAt&&remoteSt.savedAt>fapConsumoMcClearedAt);
+        if(fapConsumoMcCleared&&!_remoteMcCleared&&_remoteMcNewerThanClear&&Array.isArray(remoteSt.FAP_CONSUMO_MC)&&remoteSt.FAP_CONSUMO_MC.length){
+          FAP_CONSUMO_MC=remoteSt.FAP_CONSUMO_MC;fapConsumoMcCleared=false;fapConsumoMcClearedAt='';
+        }else if(fapConsumoMcCleared){
+          FAP_CONSUMO_MC=[];
+        }else if(Array.isArray(remoteSt.FAP_CONSUMO_MC)){
+          FAP_CONSUMO_MC=_mergeArraysByKey(FAP_CONSUMO_MC,remoteSt.FAP_CONSUMO_MC,x=>x.id);
+        }
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoMcAt')&&remoteSt.fapConsumoMcAt>(fapConsumoMcAt||''))fapConsumoMcAt=remoteSt.fapConsumoMcAt;
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderConsumoVeiculoCiclo==='function')fapRenderConsumoVeiculoCiclo();
       }
@@ -15488,9 +15549,9 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'lastPreventAt',keys:['dPrevent','dPrevTecnicos','lastPreventAt']},
   {at:'amLastEditAt',keys:['amTickets','amTicketsClearedAt','amLastEditAt']},
   {at:'sbStockAt',keys:['SB_STOCK','sbStockAt']},
-  {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','fapAt','fapSaldoMes']},
-  {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt']},
-  {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt']},
+  {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','FAP_PLACAS_DEL','FAP_APORTES_DEL','fapCleared','fapClearedAt','fapAt','fapSaldoMes']},
+  {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt','fapConsumoCleared','fapConsumoClearedAt']},
+  {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt','fapConsumoMcCleared','fapConsumoMcClearedAt']},
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT']},
   {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
   {at:'usersAt',keys:['users','usersAt']},
@@ -15526,7 +15587,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,FAP_CONSUMO_MC,fapConsumoMcAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -15769,11 +15830,31 @@ function applyState(st,label){
        dispositivo B publicou, e a substituição direta descartava tudo que não estava
        nesse snapshot. _mergeArraysByKey (já usado por Audit Material/SB_STOCK/Fuel)
        faz a união dos dois lados por id, preservando cadastros feitos em qualquer
-       dispositivo — só desaparecem se alguém excluir de propósito (fapDelPlaca/
-       fapDelAporte). */
-    if(Array.isArray(st.FAP_PLACAS)){FAP_PLACAS=_mergeArraysByKey(FAP_PLACAS,st.FAP_PLACAS,x=>x.id);changed=true;}
-    if(Array.isArray(st.FAP_APORTES)){FAP_APORTES=_mergeArraysByKey(FAP_APORTES,st.FAP_APORTES,x=>x.id);changed=true;}
-    if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
+       dispositivo.
+       Bug real nº2 (2026-10-09): esse mesmo merge por união NUNCA remove nada, então
+       excluir 1 placa/aporte (fapDelPlaca/fapDelAporte) ou zerar tudo (fapResetTudo)
+       era desfeito pelo próprio ciclo de sincronização seguinte (o remoto, que ainda
+       não sabia da exclusão, "ressuscitava" o item de volta). Tombstones
+       (FAP_PLACAS_DEL/FAP_APORTES_DEL) removem pra sempre qualquer id excluído, e a
+       flag fapCleared protege o reset completo, mesmo padrão já usado em
+       dAbCleared/fuelVeiculosCleared/ofsMeta.cleared. */
+    if(Array.isArray(st.FAP_PLACAS_DEL))FAP_PLACAS_DEL=_fapMergeTombstones(FAP_PLACAS_DEL,st.FAP_PLACAS_DEL);
+    if(Array.isArray(st.FAP_APORTES_DEL))FAP_APORTES_DEL=_fapMergeTombstones(FAP_APORTES_DEL,st.FAP_APORTES_DEL);
+    const _remoteFapCleared=!!st.fapCleared;
+    const _remoteFapNewerThanClear=!!(fapClearedAt&&st.savedAt&&st.savedAt>fapClearedAt);
+    if(fapCleared&&!_remoteFapCleared&&_remoteFapNewerThanClear&&((Array.isArray(st.FAP_PLACAS)&&st.FAP_PLACAS.length)||(Array.isArray(st.FAP_APORTES)&&st.FAP_APORTES.length))){
+      FAP_PLACAS=_fapApplyTombstones(Array.isArray(st.FAP_PLACAS)?st.FAP_PLACAS:[],FAP_PLACAS_DEL);
+      FAP_APORTES=_fapApplyTombstones(Array.isArray(st.FAP_APORTES)?st.FAP_APORTES:[],FAP_APORTES_DEL);
+      if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
+      fapCleared=false;fapClearedAt='';
+      changed=true;
+    }else if(fapCleared){
+      FAP_PLACAS=[];FAP_APORTES=[];
+    }else{
+      if(Array.isArray(st.FAP_PLACAS)){FAP_PLACAS=_fapApplyTombstones(_mergeArraysByKey(FAP_PLACAS,st.FAP_PLACAS,x=>x.id),FAP_PLACAS_DEL);changed=true;}
+      if(Array.isArray(st.FAP_APORTES)){FAP_APORTES=_fapApplyTombstones(_mergeArraysByKey(FAP_APORTES,st.FAP_APORTES,x=>x.id),FAP_APORTES_DEL);changed=true;}
+      if(Object.prototype.hasOwnProperty.call(st,'fapSaldoMes'))fapSaldoMes=Number(st.fapSaldoMes)||0;
+    }
     if(Object.prototype.hasOwnProperty.call(st,'fapAt'))fapAt=st.fapAt||'';
     /* Cota por categoria: mesmo padrão "override simples" de b2cMetaOverrides logo
        abaixo — sem timestamp próprio, aplica sempre que o estado restaurado trouxer. */
@@ -15792,14 +15873,32 @@ function applyState(st,label){
   }catch(e){console.warn('applyState: falha ao restaurar Aportes Combustível:',e);}
   try{
     /* Consumo por Condutor (base anexada) — sem relação com Saldo/aportes, timestamp
-       e merge por id próprios (fapConsumoAt), mesmo padrão do bloco acima. */
-    if(Array.isArray(st.FAP_CONSUMO_CONDUTOR)){FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,st.FAP_CONSUMO_CONDUTOR,x=>x.id);changed=true;}
+       e merge por id próprios (fapConsumoAt), mesmo padrão do bloco acima. fapLimparBase()
+       é um reset completo (não exclusão individual) — mesma trava fapConsumoCleared de
+       fapCleared acima, pelo mesmo motivo (senão o merge por união desfaria a limpeza). */
+    const _remoteConsCleared=!!st.fapConsumoCleared;
+    const _remoteConsNewerThanClear=!!(fapConsumoClearedAt&&st.savedAt&&st.savedAt>fapConsumoClearedAt);
+    if(fapConsumoCleared&&!_remoteConsCleared&&_remoteConsNewerThanClear&&Array.isArray(st.FAP_CONSUMO_CONDUTOR)&&st.FAP_CONSUMO_CONDUTOR.length){
+      FAP_CONSUMO_CONDUTOR=st.FAP_CONSUMO_CONDUTOR;fapConsumoCleared=false;fapConsumoClearedAt='';changed=true;
+    }else if(fapConsumoCleared){
+      FAP_CONSUMO_CONDUTOR=[];
+    }else if(Array.isArray(st.FAP_CONSUMO_CONDUTOR)){
+      FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,st.FAP_CONSUMO_CONDUTOR,x=>x.id);changed=true;
+    }
     if(Object.prototype.hasOwnProperty.call(st,'fapConsumoAt'))fapConsumoAt=st.fapConsumoAt||'';
   }catch(e){console.warn('applyState: falha ao restaurar Consumo por Condutor:',e);}
   try{
     /* Consumo Mês Corrente por veículo (base dedicada, dia 15+) — mesmo padrão do
-       bloco Consumo por Condutor acima, timestamp/merge próprios. */
-    if(Array.isArray(st.FAP_CONSUMO_MC)){FAP_CONSUMO_MC=_mergeArraysByKey(FAP_CONSUMO_MC,st.FAP_CONSUMO_MC,x=>x.id);changed=true;}
+       bloco Consumo por Condutor acima, timestamp/merge/trava de limpeza próprios. */
+    const _remoteMcCleared=!!st.fapConsumoMcCleared;
+    const _remoteMcNewerThanClear=!!(fapConsumoMcClearedAt&&st.savedAt&&st.savedAt>fapConsumoMcClearedAt);
+    if(fapConsumoMcCleared&&!_remoteMcCleared&&_remoteMcNewerThanClear&&Array.isArray(st.FAP_CONSUMO_MC)&&st.FAP_CONSUMO_MC.length){
+      FAP_CONSUMO_MC=st.FAP_CONSUMO_MC;fapConsumoMcCleared=false;fapConsumoMcClearedAt='';changed=true;
+    }else if(fapConsumoMcCleared){
+      FAP_CONSUMO_MC=[];
+    }else if(Array.isArray(st.FAP_CONSUMO_MC)){
+      FAP_CONSUMO_MC=_mergeArraysByKey(FAP_CONSUMO_MC,st.FAP_CONSUMO_MC,x=>x.id);changed=true;
+    }
     if(Object.prototype.hasOwnProperty.call(st,'fapConsumoMcAt'))fapConsumoMcAt=st.fapConsumoMcAt||'';
   }catch(e){console.warn('applyState: falha ao restaurar Consumo Mês Corrente:',e);}
   try{
@@ -24549,11 +24648,33 @@ function downloadCurrentReport(){
    o arquivo original usava nomes genéricos (uid, fmtMoney, #cTotal, .card...) que
    certamente colidiriam num arquivo com ~20 painéis. */
 let FAP_PLACAS=[],FAP_APORTES=[],fapAt='',fapSaldoMes=0;
+/* Bug real de produção (2026-10-09): FAP_PLACAS/FAP_APORTES mesclam por chave (id)
+   entre dispositivos — proposital, pra não perder cadastro feito em outro aparelho
+   (ver comentário em applyState()). Mas um merge por UNIÃO nunca remove nada: excluir
+   uma placa/aporte (fapDelPlaca/fapDelAporte) some localmente, porém a próxima
+   sincronização (saveGhState sempre mescla o remoto ANTES de enviar, pra preservar
+   edição concorrente) trazia o item de volta do remoto — que ainda não sabia da
+   exclusão — e republicava o item "ressuscitado". Fix: tombstones (FAP_PLACAS_DEL/
+   FAP_APORTES_DEL, {id,at}) — todo id excluído entra aqui e nunca mais volta a
+   aparecer em nenhum merge futuro, nem no remoto nem localmente (ids são gerados por
+   fapUid(), nunca reaproveitados, então "excluído pra sempre" é seguro). Os dois
+   dispositivos passam a saber da exclusão porque as listas de tombstone TAMBÉM
+   mesclam entre si (união, sem nunca remover uma tombstone). */
+let FAP_PLACAS_DEL=[],FAP_APORTES_DEL=[];
+/* "Zerar tudo" (fapResetTudo) é diferente de excluir 1 item: é um reset completo e
+   deliberado. Mesmo padrão já usado em dAbCleared/fuelVeiculosCleared/ofsMeta.cleared
+   — sem isso, o MESMO bug do parágrafo acima se aplicaria (o reset inteiro seria
+   desfeito pela mesclagem com o remoto ainda não atualizado). */
+let fapCleared=false,fapClearedAt='';
 /* Consumo por Condutor (pedido do usuário): dado de uma base anexada (export do
    Portal Alelo), SEM relação nenhuma com Saldo do Mês/aportes — é só análise gráfica
    de consumo por condutor, consolidada por condutor+placa+semana. Timestamp próprio
    (fapConsumoAt) pra entrar no mesmo esquema de guarda por seção do resto do app. */
 let FAP_CONSUMO_CONDUTOR=[],fapConsumoAt='';
+/* fapLimparBase() — mesmo bug/fix de fapCleared acima: sem essa trava, o reset deste
+   bloco também seria desfeito na primeira sincronização (merge com remoto ainda não
+   atualizado trazendo os registros de volta). */
+let fapConsumoCleared=false,fapConsumoClearedAt='';
 /* Consumo Mês Corrente por veículo (pedido do usuário, 2026-09-17): base anexada
    DEDICADA a este bloco, separada de FAP_CONSUMO_CONDUTOR — anexar aqui NÃO troca a
    análise de Consumo por Condutor (que pode ser um arquivo maior/menos frequente),
@@ -24563,6 +24684,8 @@ let FAP_CONSUMO_CONDUTOR=[],fapConsumoAt='';
    mesmo que o arquivo anexado venha com dias de antes do dia 15. Mesmo padrão de
    timestamp/merge próprio de FAP_CONSUMO_CONDUTOR. */
 let FAP_CONSUMO_MC=[],fapConsumoMcAt='';
+/* fapLimparBaseMesCorrente() — mesma trava de fapConsumoCleared acima. */
+let fapConsumoMcCleared=false,fapConsumoMcClearedAt='';
 let fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null,fapChVeicList=[];
 
 function fapUid(){return Math.random().toString(36).slice(2,10);}
@@ -24674,6 +24797,7 @@ function fapAddPlaca(ev){
   }else{
     FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico,go,tipo});
   }
+  fapCleared=false;fapClearedAt=''; // volta a cadastrar depois de um "zerar tudo": a limpeza anterior fica obsoleta
   fapAt=new Date().toISOString();saveState();
   document.getElementById('fap-formPlaca').reset();
   document.getElementById('fap-formPlaca').style.display='none';
@@ -24693,6 +24817,7 @@ function fapAddLancamento(ev){
   const obs=document.getElementById('fap-lObs').value.trim();
   if(!placaId||!valor||!data||!hora)return false;
   FAP_APORTES.push({id:fapUid(),placaId,valor,data,hora,obs});
+  fapCleared=false;fapClearedAt=''; // volta a lançar depois de um "zerar tudo": a limpeza anterior fica obsoleta
   fapAt=new Date().toISOString();saveState();
   document.getElementById('fap-formLanc').reset();
   document.getElementById('fap-lData').value=fapTodayIso();
@@ -24704,15 +24829,19 @@ function fapAddLancamento(ev){
 function fapDelAporte(id){
   if(!canEdit())return;
   FAP_APORTES=FAP_APORTES.filter(a=>a.id!==id);
+  FAP_APORTES_DEL.push({id,at:new Date().toISOString()});
   fapAt=new Date().toISOString();saveState();
   fapRenderAll();
 }
 function fapDelPlaca(id){
   if(!canEdit())return;
   if(!confirm('Remover esta placa e todo o seu histórico de aportes?'))return;
+  const nowIso=new Date().toISOString();
+  FAP_APORTES.filter(a=>a.placaId===id).forEach(a=>FAP_APORTES_DEL.push({id:a.id,at:nowIso}));
   FAP_PLACAS=FAP_PLACAS.filter(p=>p.id!==id);
   FAP_APORTES=FAP_APORTES.filter(a=>a.placaId!==id);
-  fapAt=new Date().toISOString();saveState();
+  FAP_PLACAS_DEL.push({id,at:nowIso});
+  fapAt=nowIso;saveState();
   fapRenderAll();
 }
 
@@ -24727,6 +24856,7 @@ function fapResetTudo(){
   FAP_PLACAS=[];
   FAP_APORTES=[];
   fapSaldoMes=0;
+  fapCleared=true;fapClearedAt=new Date().toISOString();
   fapAt=new Date().toISOString();saveState();
   fapRenderAll();
   _ghToast('Dados de Aportes Combustível zerados ✓','var(--green-dk)',5000);
@@ -24808,6 +24938,7 @@ function fapSetSaldoMes(ev){
   const valor=fapParseValor(document.getElementById('fap-saldoMesValor').value);
   if(isNaN(valor)||valor<0)return false;
   fapSaldoMes=valor;
+  fapCleared=false;fapClearedAt='';
   fapAt=new Date().toISOString();saveState();
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
@@ -24821,6 +24952,7 @@ function fapAdicionarAporteSaldoMes(ev){
   const valor=fapParseValor(input.value);
   if(isNaN(valor)||valor<=0)return false;
   fapSaldoMes+=valor;
+  fapCleared=false;fapClearedAt='';
   fapAt=new Date().toISOString();saveState();
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
@@ -25192,6 +25324,7 @@ function fapProcessarImportacao(rows){
      passa a conter só o que está na base anexada MAIS RECENTE, nunca histórico de
      uploads anteriores. */
   FAP_CONSUMO_CONDUTOR=[];
+  fapConsumoCleared=false;fapConsumoClearedAt=''; // base nova anexada: a limpeza anterior (se houve) fica obsoleta
   let novos=0;
   /* fapPlacaByPlaca(g.placa) é uma busca O(n) em FAP_PLACAS a cada grupo — indexada
      aqui (mesmo motivo de performance já documentado nesta sessão: roda uma vez
@@ -25224,6 +25357,7 @@ function fapLimparBase(){
   if(!FAP_CONSUMO_CONDUTOR.length){alert('Não há dados de base anexada pra limpar.');return;}
   if(!confirm('Isso vai apagar TODA a análise de consumo por condutor gerada a partir da base anexada — em todos os dispositivos sincronizados.\n\nNão afeta placas, aportes nem o Saldo do Mês.\n\nEssa ação não pode ser desfeita. Continuar?'))return;
   FAP_CONSUMO_CONDUTOR=[];
+  fapConsumoCleared=true;fapConsumoClearedAt=new Date().toISOString();
   fapConsumoAt=new Date().toISOString();saveState();
   fapRenderConsumoCondutor();
   _ghToast('Base de consumo por condutor limpa ✓','var(--green-dk)',4000);
@@ -25257,6 +25391,7 @@ function fapProcessarImportacaoMesCorrente(rows){
   const{grupos,ignoradas,processadas}=fapConsolidarImportacao(filtradas);
   if(!grupos.length){alert('Nenhuma transação válida a partir do dia 15 encontrada nas colunas esperadas (L=Placa, T=Motorista, AF=Valor, A=Data/hora).');return;}
   FAP_CONSUMO_MC=[];
+  fapConsumoMcCleared=false;fapConsumoMcClearedAt=''; // base nova anexada: a limpeza anterior (se houve) fica obsoleta
   grupos.forEach(g=>{
     const id='imp-mc-'+g.condutor+'-'+g.placa+'-'+g.semanaStart;
     FAP_CONSUMO_MC.push({id,condutor:g.condutor,placa:g.placa,veiculo:g.veiculo,categoria:g.categoria||'',uf:g.uf||'',tipoCombustivel:g.tipoCombustivel||'',valor:Math.round(g.valor*100)/100,valorAbastecimento:Math.round((g.valorAbastecimento||0)*100)/100,valorConfirmado:Math.round((g.valorConfirmado||0)*100)/100,transacoesConfirmadas:g.transacoesConfirmadas||0,semanaStart:g.semanaStart,transacoes:g.transacoes,primeiraData:g.primeiraData,ultimaData:g.ultimaData});
@@ -25294,6 +25429,7 @@ function fapLimparBaseMesCorrente(){
   if(!FAP_CONSUMO_MC.length){alert('Não há dados de base anexada pra limpar neste bloco.');return;}
   if(!confirm('Isso vai apagar a base anexada do bloco "Consumo Mês Corrente" — em todos os dispositivos sincronizados.\n\nNão afeta Consumo por Condutor, placas, aportes nem o Saldo do Mês.\n\nEssa ação não pode ser desfeita. Continuar?'))return;
   FAP_CONSUMO_MC=[];
+  fapConsumoMcCleared=true;fapConsumoMcClearedAt=new Date().toISOString();
   fapConsumoMcAt=new Date().toISOString();saveState();
   fapRenderConsumoVeiculoCiclo();
   _ghToast('Base do bloco Consumo Mês Corrente limpa ✓','var(--green-dk)',4000);
