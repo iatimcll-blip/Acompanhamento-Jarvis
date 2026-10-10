@@ -9962,7 +9962,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const colfIds=new Set(WM_COLF_DEFS.map(([k])=>k));
       t.innerHTML=`<thead><tr>${cols.map(([k,l,,c])=>`<th class="${c||''}">${l}${colfIds.has(k)?wmColfBtnHtml(k):''}</th>`).join('')}</tr></thead>`
         +`<tbody>${R.length?R.map(r=>{
-          const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
+          /* Pedido do usuário (2026-10-10): chamado com SLA (tempo decorrido em
+             horas, mesma coluna "SLA" acima) acima de 9h também pinta a linha
+             inteira — reaproveita a classe .wm-row-overdue já existente (regra
+             antiga, por dias+categoria) em vez de criar uma 2ª cor, já que as
+             duas significam a mesma coisa pro usuário: "chamado precisa de
+             atenção". */
+          const h=wmDuracaoHoras(r.tempoDecorrido);
+          const overdue=(wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||''))||(h!=null&&h>9);
           return`<tr${overdue?' class="wm-row-overdue"':''}>${cols.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`;
         }).join(''):`<tr><td colspan="${cols.length}" class="wm-empty">Nenhum chamado no recorte atual.</td></tr>`}</tbody>`;
       document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`+(Object.values(wmColFilters).some(v=>v&&v.length)?' · filtro de coluna ativo':'');
