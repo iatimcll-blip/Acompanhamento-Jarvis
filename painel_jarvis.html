@@ -7557,11 +7557,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const g=(r,k)=>I[k]>=0?n(r[I[k]]):'';
       const rows=table.slice(1).filter(r=>r.length>5&&g(r,'rec'));
       const out=rows.map(r=>{
-        const rec=g(r,'rec'),area=g(r,'area'),tipo=g(r,'tipo')||'(sem tipo)';
+        const recRaw=g(r,'rec'),area=g(r,'area'),tipo=g(r,'tipo')||'(sem tipo)';
         const m=/C\.\s*(\d+)\s*-\s*([A-Z]{2})\s*-/i.exec(area);
         let uf=n(g(r,'uf')).toUpperCase();uf=UFNAME[uf]||(uf.length===2?uf:'');
-        return{rec,unassigned:/CLUSTER/i.test(rec),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:g(r,'nome'),
-          cid:g(r,'cid'),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:fmtAbChamado(g(r,'abChamado'),g(r,'data')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
+        /* Padrão de capitalização (pedido do usuário, 2026-10-10): Recurso/Cliente/
+           Cidade vêm em CAIXA ALTA no export do OFS — titleCasePT() (já usado em
+           Preventivas/Warmup) normaliza pra "Primeira Maiúscula", preservando
+           artigos/preposições (de/da/do/e...) em minúscula. unassigned é calculado
+           a partir do texto ORIGINAL antes de normalizar (irrelevante aqui, já que
+           o teste é case-insensitive, mas evita qualquer dependência de ordem). */
+        const rec=titleCasePT(recRaw);
+        return{rec,unassigned:/CLUSTER/i.test(recRaw),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:titleCasePT(g(r,'nome')),
+          cid:titleCasePT(g(r,'cid')),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:fmtAbChamado(g(r,'abChamado'),g(r,'data')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
           tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),sistema:sistemaOS(g(r,'os')),area,pos:g(r,'pos'),com:g(r,'com'),
           clAr:m?'C'+(+m[1]):'',ufAr:m?m[2].toUpperCase():''};
       });
@@ -9714,7 +9721,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const wrap=document.getElementById('wm-cat-sections');
       if(!wrap)return;
       wrap.innerHTML=WM_CAT_SECTIONS.map(sec=>{
-        const rows=D.filter(r=>wmLegacyTipos(r).includes(sec.tipo));
+        /* Mesma ordenação (maior SLA pro menor) da tabela principal — pedido do
+           usuário, 2026-10-10. */
+        const rows=D.filter(r=>wmLegacyTipos(r).includes(sec.tipo)).sort((a,b)=>{
+          const ha=wmDuracaoHoras(a.tempoDecorrido),hb=wmDuracaoHoras(b.tempoDecorrido);
+          if(ha==null&&hb==null)return 0;
+          if(ha==null)return 1;
+          if(hb==null)return-1;
+          return hb-ha;
+        });
         const body=rows.length
           ?rows.map(r=>`<tr>${sec.cols.map(([,fn])=>`<td>${fn(r)}</td>`).join('')}</tr>`).join('')
           :`<tr><td colspan="${sec.cols.length}" class="wm-empty">Nenhum chamado nesta categoria no recorte atual.</td></tr>`;
@@ -9826,9 +9841,21 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const pill=(text,colorVar)=>`<span class="wm-pill" style="background:var(${colorVar||'--wm-gray'})">${esc(text)}</span>`;
     function drawTable(D){
       const q=n(document.getElementById('wm-tblSearch').value).toLowerCase();
-      const R=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))
+      const Rfilt=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))
         ||(WM_JUST_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)
         ||(WM_STATUS_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)):D;
+      /* Pedido do usuário (2026-10-10): sempre classificar do maior SLA (tempo
+         decorrido) pro menor — a tabela não tinha NENHUMA ordenação antes (vinha
+         na ordem bruta do upload/merge). wmDuracaoHoras() é a mesma conversão já
+         usada pelo Relatório Matinal (ver comentário na declaração, acima da IIFE
+         deste painel) — chamados sem tempo decorrido calculável vão pro final. */
+      const R=[...Rfilt].sort((a,b)=>{
+        const ha=wmDuracaoHoras(a.tempoDecorrido),hb=wmDuracaoHoras(b.tempoDecorrido);
+        if(ha==null&&hb==null)return 0;
+        if(ha==null)return 1;
+        if(hb==null)return-1;
+        return hb-ha;
+      });
       const cols=[
         ['requisicao','Requisição',r=>esc(r.requisicao),'wm-nowrap'],
         ['categoria','Categoria',r=>pill(r.categoria,CAT_COLOR[r.categoria])],
