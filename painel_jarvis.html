@@ -9145,7 +9145,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       'Aguardando baixa':'--wm-green','Em Andamento':'--wm-red','Suspenso':'--wm-gray'
     };
 
-    let ROWS=[],FILE_NAME='',charts={},LAST_PDF_NAME='';
+    let ROWS=[],FILE_NAME='',charts={},LAST_PDF_NAME='',wmSyncTimer=null;
     /* Filtros por coluna no bloco "Resumo" (pedido do usuário, 2026-10-10) — além
        dos filtros já existentes no topo do painel (.wm-filters, que afetam o
        painel inteiro: KPIs/gráficos/seções por categoria), cada coluna filtrável
@@ -10080,6 +10080,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     /* baseChanged=true só quando a base muda (anexo). Editar justificativa/status
        interno publica só a config — mesmo motivo do aofSyncPublish (uma edição não
        pode "vencer" e sobrescrever uma base mais nova anexada em outro dispositivo). */
+    /* Pedido do usuário (2026-10-10): Warmup sincronizava com o GitHub quase
+       instantaneamente (300ms+800ms, via saveState()/autoSyncAfterBaseUpload) a
+       cada edição de justificativa/status interno OU anexo de base nova —
+       mesmo bug já corrigido no Abertos OFS (ver comentário em aofSyncPublish,
+       acima da IIFE deste painel) só que o equivalente deste painel nunca
+       recebeu o mesmo fix. Troca pro mesmo padrão: saveLocalState() (só
+       local/IndexedDB, sem rede) + debounce PRÓPRIO de 5 minutos pro push
+       remoto, só pra este painel — sem alterar saveState()/
+       autoSyncAfterBaseUpload, que continuam iguais pros demais painéis. */
     function wmSyncPublish(label,baseChanged){
       if(baseChanged){
         WM_SYNC_AT=new Date().toISOString();
@@ -10088,8 +10097,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       }
       WM_SYNC_CFG=wmBuildCfg();
       wmUpdateBadge();
-      if(typeof saveState==='function')saveState();
-      if(label&&typeof autoSyncAfterBaseUpload==='function')autoSyncAfterBaseUpload(label);
+      if(typeof saveLocalState==='function')saveLocalState();
+      if(!label)return;
+      if(!canEdit()&&!_hasSrEditRights())return;
+      clearTimeout(wmSyncTimer);
+      wmSyncTimer=setTimeout(async()=>{
+        _ghToast('Sincronizando '+label+'…','var(--blue)',3500);
+        await saveGhState(false);
+      },5*60*1000);
     }
     /* Chamado por applyState()/_mergeGhRemoteIntoLocal() sempre que uma base
        mais recente chegar de outro dispositivo — mesmo padrão do aofSyncBoot,
