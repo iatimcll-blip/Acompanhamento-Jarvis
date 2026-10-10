@@ -8979,7 +8979,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
      cobria tudo por padrão). */
   #panel-warmap #wm-tbl{table-layout:fixed;font-size:13px}
   #panel-warmap #wm-tbl th,#panel-warmap #wm-tbl td{white-space:normal;word-break:break-word;overflow-wrap:break-word}
-  #panel-warmap #wm-tbl td.wm-nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Pedido do usuário (2026-10-10): "não suprimir informações" — a 1ª versão
+     cortava com "…" (overflow:hidden/text-overflow:ellipsis) o conteúdo das
+     colunas curtas (Requisição/UF/Início da falha/Tempo decorrido/SLA/OS/URL)
+     que não coubesse na largura fixa da coluna. Removido: essas colunas agora
+     quebram linha igual às demais (herdam o white-space:normal/word-break do
+     seletor acima) em vez de perder texto — só o cabeçalho continua nowrap
+     (rótulo sempre curto, nunca precisou disso). */
   #panel-warmap #wm-tbl th.wm-nowrap{white-space:nowrap}
   #panel-warmap #wm-tbl .wm-pill{white-space:normal;text-align:center}
   #panel-warmap th{position:sticky;top:0;background:var(--wm-soft);font-weight:600;cursor:pointer;user-select:none;z-index:1}
@@ -10065,7 +10071,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           R.forEach(r=>{
             const row=ws.addRow(defs.map(([,fn])=>fn(r)));
             if(urlColIdx>=0&&r.url)row.getCell(urlColIdx+1).value={text:'Abrir chamado',hyperlink:r.url};
-            const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
+            /* Pedido do usuário (2026-10-10): exportação deve seguir a mesma
+               regra de linha vermelha da tela (drawTable, mesmo OR de
+               condições) — SLA (tempo decorrido em horas) acima de 9h, somado
+               à regra antiga por dias+categoria. */
+            const _h=wmDuracaoHoras(r.tempoDecorrido);
+            const overdue=(wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||''))||(_h!=null&&_h>9);
             if(overdue)row.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDECEC'}};});
           });
           ws.autoFilter={from:{row:1,column:1},to:{row:1,column:defs.length}};
