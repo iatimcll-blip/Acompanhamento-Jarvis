@@ -7321,6 +7321,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="aof-btn" id="aof-btnReset">Limpar filtros</button>
           <button class="aof-btn" id="aof-btnNotif" title="Permitir avisos do navegador para chamados Bdesk próximos de vencer o SLA"><i class="ti ti-bell"></i> Avisos</button>
           <button class="aof-btn" id="aof-btnMatinal" title="Gera o Excel no modelo do Matinal: Warmup completo + chamados de Manutenção Corretiva de Rede/Manutenção de Rede Field já acima do SLA"><i class="ti ti-report"></i> Relatório Matinal</button>
+          <button class="aof-btn" id="aof-btnMatinalNovo" title="Gera o Excel no novo modelo (Resumo + base + Parceiros): Warmup completo + Fila OFS respeitando os filtros já aplicados acima, com corte de SLA em 9h"><i class="ti ti-report-analytics"></i> NV Relatório Matinal</button>
           <button class="aof-btn panel-edit-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
           <button class="aof-btn panel-edit-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
         </div>
@@ -8200,6 +8201,222 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
     }
 
+    /* ── "NV Relatório Matinal" (pedido do usuário, 2026-10-09) ──
+       Segundo modelo de relatório, no formato pedido pelo usuário (print de
+       C:\Users\Wanderson Marcellus\Downloads\novo modelo\backlog_09-10_Previa.xlsx:
+       abas "Resumo" + "base" + "Parceiros"), com 2 regras novas em relação ao
+       relatório já existente (aofGerarRelatorioMatinal):
+       1) Corte de SLA em 9h (OUTLIER ≥9h / VENCIDO 6-9h / DENTRO DO SLA ≤6h) — em
+          vez do limite fixo de 8h (SLA_VERMELHO_H) usado no relatório antigo.
+       2) Chamados do Warmup com a coluna "Parceira" preenchida ganham uma aba
+          própria "Parceiros" (além de continuarem nas listas normais).
+       Diferença deliberada de escopo (pedido do usuário, "usará os filtros já
+       aplicados no painel"): a Fila OFS aqui usa filtered() — o MESMO filtro que
+       já está ativo na tela (Cluster/UF/Cidade/Categoria/Tipo/Status/Sistema/
+       Técnico/Pausa) — em vez do recorte fixo (só "Em aberto" + só Manutenção
+       Corretiva/Field) do relatório antigo. O Warmup continua com a mesma regra
+       de sempre (MATINAL_WM_UF), já que não tem filtro equivalente nesta tela.
+       A seção "SLA de MTTR por Gerente" do modelo original foi substituída por
+       "por Cluster": a base do Abertos OFS/Warmup não tem nenhum campo de
+       Gerente/Regional (esse campo só existe em outras exportações, como o
+       MAX.xlsx do B2C) — confirmado com o usuário antes de implementar. A aba
+       "Planilha2" (pivot solto, sem relação clara com o resto do modelo) não foi
+       replicada — só "Resumo"/"base"/"Parceiros", que são as abas com conteúdo
+       realmente definido no modelo.
+       Função deliberadamente independente de aofGerarRelatorioMatinal (duplica os
+       pequenos helpers de cruzamento Warmup×Fila que precisa) — mesmo princípio já
+       usado nesta sessão pros blocos "Redir" (Encerrados/Rede): não reaproveitar
+       funções do relatório já publicado, pra não arriscar quebrar aquele ao editar
+       este. */
+    const MATINAL2_META_H=6,MATINAL2_OUTLIER_H=9;
+    function matinal2Bucket(h){return h>=MATINAL2_OUTLIER_H?'OUTLIER':h>MATINAL2_META_H?'VENCIDO':'DENTRO DO SLA';}
+    const MATINAL2_COLS=[
+      ['Base Origem',12],['Ticket / Requisição',22],['OS',26],['Tipo Evento',13],['UF',6],['Cidade',18],['Cluster',16],
+      ['Início Falha / Abertura OS',19],['Abertura Chamado',13],['Tempo Decorrido (original)',15],['Tempo Decorrido (h)',11],
+      ['SLA MTTR',14],['Status',24],['Parceiro',22],['Recurso / Área Responsável',26],['Está nas duas bases',18],['Justificativa / Comentários',60],
+    ];
+    function aofGerarRelatorioMatinalNovo(){
+      const wmRows=(Array.isArray(WM_SYNC_RECORDS)?WM_SYNC_RECORDS:[]).filter(r=>MATINAL_WM_UF.includes(r.uf));
+      const wmJust=(WM_SYNC_CFG&&WM_SYNC_CFG.just&&typeof WM_SYNC_CFG.just==='object')?WM_SYNC_CFG.just:{};
+      const aofRows=filtered();
+      if(!wmRows.length&&!aofRows.length){alert('Não há base do Warmup anexada nem chamados na Fila OFS com os filtros atuais — nada pra colocar no relatório.');return;}
+      const btn=document.getElementById('aof-btnMatinalNovo');
+      const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
+      abCarregarExcelJS(async()=>{
+        try{
+          const wmOsSet=new Set(wmRows.map(r=>n(r.os)).filter(Boolean));
+          const aofOsNorm=r=>n(r.os).replace(/^(ATRIX|BDESK)-/i,'');
+          const aofOsSet=new Set(aofRows.map(aofOsNorm).filter(Boolean));
+          const wmEstaNasDuas=r=>n(r.os)&&aofOsSet.has(n(r.os))?'Sim':'Não';
+          const aofEstaNasDuas=r=>{const os=aofOsNorm(r);return os&&wmOsSet.has(os)?'Sim':'Não';};
+
+          /* Unifica Warmup + Fila OFS num único formato de registro — só os que têm
+             horas decorridas calculáveis entram (mesmo critério de "ordens abertas"
+             do modelo: COUNTA das horas). */
+          const registros=[];
+          wmRows.forEach(r=>{
+            const h=wmDuracaoHoras(r.tempoDecorrido);
+            if(h==null)return;
+            registros.push({origem:'Warmup',ticket:r.requisicao||'',os:r.os||'',tipoEvento:r.categoria||'',uf:r.uf||'',cidade:r.cidade||'',
+              cluster:'Warmup',ab:pdt(r.inicioFalha)||r.inicioFalha||'',abChamado:'',tempoOriginal:r.tempoDecorrido||'',horas:h,
+              status:r.status||'',parceiro:r.parceira||'',recurso:r.areaResponsavel||'',estaNasDuas:wmEstaNasDuas(r),obs:wmJust[r.requisicao]||''});
+          });
+          aofRows.forEach(r=>{
+            const h=r.aging;
+            if(h==null)return;
+            registros.push({origem:'Fila OFS',ticket:matinalExtrairTicket(r.com),os:r.os||'',tipoEvento:matinalExtrairTipoEvento(r.com),uf:r.uf||'',cidade:r.cid||'',
+              cluster:r.cluster||'Sem cluster',ab:r.ab||'',abChamado:r.abChamado?pdt(r.abChamado):'',tempoOriginal:fmtSLA(h),horas:h,
+              status:r.sg||'',parceiro:'',recurso:r.rec||'',estaNasDuas:aofEstaNasDuas(r),obs:OBS_CFG[aofRowKey(r)]||''});
+          });
+          if(!registros.length){alert('Nenhum chamado com tempo decorrido calculável no recorte atual — nada pra colocar no relatório.');btn.disabled=false;btn.innerHTML=origHtml;return;}
+
+          const AZUL_TIT='FF1F3864',AZUL_HEAD='FF2E5496',AZUL_HEAD2='FF1F3864',FUNDO_CARD='FFF2F6FC',BORDA='FFD9D9D9',BORDA_CLARA='FFBFBFBF';
+          const VERM_TXT='FFC00000',VERM_FUNDO='FFFCE4E4',AMBAR_TXT='FFC65911',AMBAR_FUNDO='FFFFF2CC',VERDE_TXT='FF548235';
+          const wb=new ExcelJS.Workbook();
+
+          /* ── Aba "Resumo" ── */
+          const ws=wb.addWorksheet('Resumo');
+          const border={top:{style:'thin',color:{argb:BORDA}},bottom:{style:'thin',color:{argb:BORDA}},left:{style:'thin',color:{argb:BORDA}},right:{style:'thin',color:{argb:BORDA}}};
+          const setCell=(r,c,val,extra)=>{
+            const cell=ws.getCell(r,c);
+            if(val!==''&&val!=null)cell.value=val;
+            if(extra&&extra.border!==false)cell.border=border;
+            cell.alignment={vertical:'middle',...(extra&&extra.alignment)};
+            if(extra&&extra.fill)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:extra.fill}};
+            if(extra&&extra.font)cell.font=extra.font;
+            if(extra&&extra.numFmt)cell.numFmt=extra.numFmt;
+            return cell;
+          };
+
+          const total=registros.length;
+          const nOutlier=registros.filter(r=>r.horas>=MATINAL2_OUTLIER_H).length;
+          const nVencido=registros.filter(r=>r.horas>MATINAL2_META_H&&r.horas<MATINAL2_OUTLIER_H).length;
+          const nDentro=total-nOutlier-nVencido;
+          const pctFora=total?((nOutlier+nVencido)/total*100):0;
+
+          setCell(1,1,'PRÉVIA DE FECHAMENTO DO DIA',{fill:AZUL_TIT,font:{color:{argb:'FFFFFFFF'},bold:true,size:18},border:false});
+          ws.mergeCells(1,1,1,6);ws.getRow(1).height=26;
+          for(let c=2;c<=6;c++)setCell(1,c,'',{fill:AZUL_TIT,border:false});
+          setCell(2,1,`Ordens abertas — Outlier ≥ ${MATINAL2_OUTLIER_H}h | SLA MTTR ${MATINAL2_META_H}h | fora do SLA: ${pctFora.toFixed(1)}% do backlog`,{fill:AZUL_TIT,font:{color:{argb:'FFD9E1F2'},size:11},border:false});
+          ws.mergeCells(2,1,2,6);
+          for(let c=2;c<=6;c++)setCell(2,c,'',{fill:AZUL_TIT,border:false});
+          setCell(3,1,`Base: ${fmtN(total)} ordens abertas   |   Gerado em: ${now2().slice(0,10)}   |   Filtros do painel aplicados`,{fill:AZUL_TIT,font:{color:{argb:'FFD9E1F2'},size:10},border:false});
+          ws.mergeCells(3,1,3,6);
+          for(let c=2;c<=6;c++)setCell(3,c,'',{fill:AZUL_TIT,border:false});
+
+          const cardLabels=['ORDENS ABERTAS',`OUTLIER (≥${MATINAL2_OUTLIER_H}h)`,`VENCIDO (${MATINAL2_META_H}h–${MATINAL2_OUTLIER_H}h)`,'DENTRO DO SLA','META MTTR (h)','RÉGUA OUTLIER (h)'];
+          cardLabels.forEach((lbl,i)=>setCell(5,i+1,lbl,{fill:AZUL_HEAD,font:{color:{argb:'FFFFFFFF'},bold:true,size:10},alignment:{horizontal:'center',vertical:'middle'}}));
+          const cardVals=[[total,'FF1F3864',null],[nOutlier,VERM_TXT,null],[nVencido,AMBAR_TXT,null],[nDentro,VERDE_TXT,null],[MATINAL2_META_H,'FF0000FF','0"h"'],[MATINAL2_OUTLIER_H,'FF0000FF','0"h"']];
+          cardVals.forEach(([val,color,fmt],i)=>setCell(6,i+1,val,{fill:FUNDO_CARD,font:{color:{argb:color},bold:true,size:22},alignment:{horizontal:'center',vertical:'middle'},numFmt:fmt||'0'}));
+          ws.getRow(6).height=32;
+
+          setCell(8,1,'SLA DE MTTR POR CLUSTER',{font:{color:{argb:AZUL_HEAD2},bold:true,size:12},border:false});
+          const clusterHead=['Cluster',`OUTLIER (≥${MATINAL2_OUTLIER_H}h)`,`VENCIDO (${MATINAL2_META_H}h–${MATINAL2_OUTLIER_H}h)`,'DENTRO DO SLA','Total','% Fora do SLA'];
+          clusterHead.forEach((lbl,i)=>setCell(9,i+1,lbl,{fill:AZUL_HEAD2,font:{color:{argb:'FFFFFFFF'},bold:true,size:11},alignment:{horizontal:i===0?'left':'center',vertical:'middle'}}));
+          const porCluster=new Map();
+          registros.forEach(r=>{
+            const k=r.cluster||'Sem cluster';
+            if(!porCluster.has(k))porCluster.set(k,{outlier:0,vencido:0,dentro:0});
+            const g=porCluster.get(k);
+            const b=matinal2Bucket(r.horas);
+            if(b==='OUTLIER')g.outlier++;else if(b==='VENCIDO')g.vencido++;else g.dentro++;
+          });
+          let rowIdx=10;
+          [...porCluster.entries()].sort((a,b)=>a[0].localeCompare(b[0],'pt-BR')).forEach(([cl,g])=>{
+            const tot=g.outlier+g.vencido+g.dentro,pf=tot?(g.outlier+g.vencido)/tot*100:0;
+            setCell(rowIdx,1,cl,{font:{bold:true},border:{top:{style:'thin',color:{argb:BORDA_CLARA}},bottom:{style:'thin',color:{argb:BORDA_CLARA}},left:{style:'thin',color:{argb:BORDA_CLARA}},right:{style:'thin',color:{argb:BORDA_CLARA}}}});
+            setCell(rowIdx,2,g.outlier,{font:{bold:true,color:{argb:VERM_TXT}},alignment:{horizontal:'center'},numFmt:'0;\\-0;\\-'});
+            setCell(rowIdx,3,g.vencido,{font:{bold:true,color:{argb:AMBAR_TXT}},alignment:{horizontal:'center'},numFmt:'0;\\-0;\\-'});
+            setCell(rowIdx,4,g.dentro,{font:{bold:true,color:{argb:VERDE_TXT}},alignment:{horizontal:'center'},numFmt:'0;\\-0;\\-'});
+            setCell(rowIdx,5,tot,{font:{bold:true},alignment:{horizontal:'center'},numFmt:'0;\\-0;\\-'});
+            setCell(rowIdx,6,pf/100,{font:{bold:true},alignment:{horizontal:'center'},numFmt:'0.0%;\\-0.0%;\\-'});
+            rowIdx++;
+          });
+          setCell(rowIdx,1,'Total Geral',{font:{bold:true},fill:'FFDDE6F3'});
+          setCell(rowIdx,2,nOutlier,{font:{bold:true,color:{argb:VERM_TXT}},alignment:{horizontal:'center'},fill:'FFDDE6F3',numFmt:'0;\\-0;\\-'});
+          setCell(rowIdx,3,nVencido,{font:{bold:true,color:{argb:AMBAR_TXT}},alignment:{horizontal:'center'},fill:'FFDDE6F3',numFmt:'0;\\-0;\\-'});
+          setCell(rowIdx,4,nDentro,{font:{bold:true,color:{argb:VERDE_TXT}},alignment:{horizontal:'center'},fill:'FFDDE6F3',numFmt:'0;\\-0;\\-'});
+          setCell(rowIdx,5,total,{font:{bold:true},alignment:{horizontal:'center'},fill:'FFDDE6F3',numFmt:'0;\\-0;\\-'});
+          setCell(rowIdx,6,pctFora/100,{font:{bold:true},alignment:{horizontal:'center'},fill:'FFDDE6F3',numFmt:'0.0%;\\-0.0%;\\-'});
+          rowIdx+=2;
+
+          setCell(rowIdx,1,'ORDENS ABERTAS — (maior tempo primeiro)',{font:{color:{argb:AZUL_HEAD2},bold:true,size:12},border:false});
+          rowIdx++;
+          const listHead=['OS','Cluster','Cidade','Tipo Evento','Horas','Status','SLA MTTR'];
+          listHead.forEach((lbl,i)=>setCell(rowIdx,i+1,lbl,{fill:AZUL_HEAD2,font:{color:{argb:'FFFFFFFF'},bold:true,size:11},alignment:{horizontal:i>=4?'center':'left',vertical:'middle'}}));
+          rowIdx++;
+          const registrosOrdenados=matinalSortByHorasDesc(registros,r=>r.horas);
+          registrosOrdenados.forEach(r=>{
+            const b=matinal2Bucket(r.horas);
+            const corTxt=b==='OUTLIER'?VERM_TXT:b==='VENCIDO'?AMBAR_TXT:null;
+            const fundo=b==='OUTLIER'?VERM_FUNDO:b==='VENCIDO'?AMBAR_FUNDO:null;
+            const vals=[r.os||r.ticket||'',r.cluster,r.cidade,r.tipoEvento,Math.round(r.horas*10)/10,r.status,b];
+            vals.forEach((v,i)=>{
+              const extra={border:{top:{style:'thin',color:{argb:BORDA}},bottom:{style:'thin',color:{argb:BORDA}},left:{style:'thin',color:{argb:BORDA}},right:{style:'thin',color:{argb:BORDA}}},alignment:{horizontal:i>=4?'center':'left'}};
+              if(fundo)extra.fill=fundo;
+              if(corTxt)extra.font={color:{argb:corTxt}};
+              if(i===4)extra.numFmt='0.0';
+              setCell(rowIdx,i+1,v,extra);
+            });
+            rowIdx++;
+          });
+          const lastRow=rowIdx-1;
+          ws.columns=[['Cluster',22],['',20],['',20],['',18],['',12],['',22]].map(([,w])=>({width:w||14}));
+          ws.getColumn(1).width=26;
+
+          /* ── Aba "base" (export plano de tudo que entrou no relatório) ── */
+          const wsBase=wb.addWorksheet('base');
+          const writeBaseSheet=(sheet,lista)=>{
+            MATINAL2_COLS.forEach(([label],i)=>{
+              const cell=sheet.getCell(1,i+1);
+              cell.value=label;
+              cell.font={color:{argb:'FFFFFFFF'},bold:true};
+              cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:AZUL_HEAD2}};
+              cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};
+            });
+            sheet.getRow(1).height=24;
+            matinalSortByHorasDesc(lista,r=>r.horas).forEach((r,idx)=>{
+              const row=idx+2;
+              const vals=[r.origem,r.ticket,r.os,r.tipoEvento,r.uf,r.cidade,r.cluster,r.ab,r.abChamado,r.tempoOriginal,
+                Math.round(r.horas*100)/100,matinal2Bucket(r.horas),r.status,r.parceiro,r.recurso,r.estaNasDuas,r.obs];
+              vals.forEach((v,i)=>{
+                const cell=sheet.getCell(row,i+1);
+                if(v!==''&&v!=null)cell.value=v;
+                cell.border={bottom:{style:'thin',color:{argb:BORDA}}};
+                cell.alignment={vertical:'top',wrapText:i===MATINAL2_COLS.length-1};
+                if(i===10)cell.numFmt='0.0';
+              });
+            });
+            sheet.columns=MATINAL2_COLS.map(([,w])=>({width:w}));
+            sheet.views=[{state:'frozen',xSplit:3,ySplit:1}];
+            if(lista.length)sheet.autoFilter={from:{row:1,column:1},to:{row:lista.length+1,column:MATINAL2_COLS.length}};
+          };
+          writeBaseSheet(wsBase,registros);
+
+          /* ── Aba "Parceiros" (pedido do usuário: Warmup com a coluna Parceira
+             preenchida, numa aba separada — além de continuarem na aba "base" e
+             na lista da aba "Resumo", sem exclusão) ── */
+          const parceiros=registros.filter(r=>r.origem==='Warmup'&&String(r.parceiro||'').trim());
+          const wsParc=wb.addWorksheet('Parceiros');
+          if(parceiros.length){
+            writeBaseSheet(wsParc,parceiros);
+          }else{
+            wsParc.getCell(1,1).value='Nenhum chamado do Warmup com a coluna "Parceira" preenchida no recorte atual.';
+            wsParc.getColumn(1).width=70;
+          }
+
+          const buf=await wb.xlsx.writeBuffer();
+          const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+          const url=URL.createObjectURL(blob);
+          const a=document.createElement('a');
+          a.href=url;a.download=`relatorio-matinal-novo-modelo-${new Date().toISOString().slice(0,10)}.xlsx`;
+          document.body.appendChild(a);a.click();a.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),4000);
+        }catch(e){console.error('Erro ao gerar NV Relatório Matinal:',e);alert('Não foi possível gerar o relatório: '+e.message);}
+        finally{btn.disabled=false;btn.innerHTML=origHtml;}
+      },()=>{btn.disabled=false;btn.innerHTML=origHtml;});
+    }
+
     /* Combina N tabelas brutas (uma por arquivo CSV selecionado de uma vez no input
        multiple) numa única tabela, pra contabilizar as atividades de todos os
        arquivos juntas no painel. O cabeçalho combinado é a UNIÃO das colunas de
@@ -8488,6 +8705,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     };
     document.getElementById('aof-btnExport').onclick=()=>aofExportXlsx();
     document.getElementById('aof-btnMatinal').onclick=()=>aofGerarRelatorioMatinal();
+    document.getElementById('aof-btnMatinalNovo').onclick=()=>aofGerarRelatorioMatinalNovo();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
 
     function aofRenderCfgLists(){
