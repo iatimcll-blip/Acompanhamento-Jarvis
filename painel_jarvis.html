@@ -8227,11 +8227,29 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        pequenos helpers de cruzamento Warmup×Fila que precisa) — mesmo princípio já
        usado nesta sessão pros blocos "Redir" (Encerrados/Rede): não reaproveitar
        funções do relatório já publicado, pra não arriscar quebrar aquele ao editar
-       este. */
+       este.
+       Ajustes seguintes do usuário (mesmo dia): (a) coluna "Cluster" da lista da
+       aba Resumo relabelada "TIPO" (só o título, o dado continua sendo o cluster/
+       origem); (b) justificativas/observações do painel (mesma fonte do relatório
+       antigo: wmJust/OBS_CFG) também aparecem na lista da aba Resumo, não só na
+       aba "base"; (c) Concluído/Cancelado NUNCA entram, em nenhuma aba
+       (matinal2ExcluirStatus, nk() cobre as variações de gênero); (d) Warmup com
+       Parceira preenchida sai de "base"/Resumo e vira EXCLUSIVO da aba "Parceiros"
+       (antes só duplicava); (e) coluna "Ticket / Requisição" removida — OS e
+       Ticket/Requisição viram uma coluna só ("OS"). */
     const MATINAL2_META_H=6,MATINAL2_OUTLIER_H=9;
     function matinal2Bucket(h){return h>=MATINAL2_OUTLIER_H?'OUTLIER':h>MATINAL2_META_H?'VENCIDO':'DENTRO DO SLA';}
+    /* Pedido do usuário (2026-10-09, ajuste): Concluído/Cancelado nunca entram neste
+       relatório, em nenhuma aba — nk() cobre as variações de gênero (concluído/
+       concluída, cancelado/cancelada) nas duas origens (Warmup r.status é texto
+       livre; Fila OFS r.sg já vem normalizado por statusGroup(), mas o teste por
+       substring funciona igual pros dois sem precisar saber qual é qual aqui). */
+    function matinal2ExcluirStatus(status){const k=nk(status||'');return k.includes('CONCLU')||k.includes('CANCEL');}
+    /* Ticket/Requisição e OS viram UMA coluna só (pedido do usuário) — cada registro
+       já guarda os dois campos separados (útil pra outras colunas/lógica), só a
+       EXIBIÇÃO combina os.||ticket num único valor. */
     const MATINAL2_COLS=[
-      ['Base Origem',12],['Ticket / Requisição',22],['OS',26],['Tipo Evento',13],['UF',6],['Cidade',18],['Cluster',16],
+      ['Base Origem',12],['OS',26],['Tipo Evento',13],['UF',6],['Cidade',18],['Cluster',16],
       ['Início Falha / Abertura OS',19],['Abertura Chamado',13],['Tempo Decorrido (original)',15],['Tempo Decorrido (h)',11],
       ['SLA MTTR',14],['Status',24],['Parceiro',22],['Recurso / Área Responsável',26],['Está nas duas bases',18],['Justificativa / Comentários',60],
     ];
@@ -8252,23 +8270,31 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
           /* Unifica Warmup + Fila OFS num único formato de registro — só os que têm
              horas decorridas calculáveis entram (mesmo critério de "ordens abertas"
-             do modelo: COUNTA das horas). */
-          const registros=[];
+             do modelo: COUNTA das horas), e Concluído/Cancelado nunca entram (pedido
+             do usuário — ver matinal2ExcluirStatus). */
+          const registrosTodos=[];
           wmRows.forEach(r=>{
             const h=wmDuracaoHoras(r.tempoDecorrido);
-            if(h==null)return;
-            registros.push({origem:'Warmup',ticket:r.requisicao||'',os:r.os||'',tipoEvento:r.categoria||'',uf:r.uf||'',cidade:r.cidade||'',
+            if(h==null||matinal2ExcluirStatus(r.status))return;
+            registrosTodos.push({origem:'Warmup',ticket:r.requisicao||'',os:r.os||'',tipoEvento:r.categoria||'',uf:r.uf||'',cidade:r.cidade||'',
               cluster:'Warmup',ab:pdt(r.inicioFalha)||r.inicioFalha||'',abChamado:'',tempoOriginal:r.tempoDecorrido||'',horas:h,
               status:r.status||'',parceiro:r.parceira||'',recurso:r.areaResponsavel||'',estaNasDuas:wmEstaNasDuas(r),obs:wmJust[r.requisicao]||''});
           });
           aofRows.forEach(r=>{
             const h=r.aging;
-            if(h==null)return;
-            registros.push({origem:'Fila OFS',ticket:matinalExtrairTicket(r.com),os:r.os||'',tipoEvento:matinalExtrairTipoEvento(r.com),uf:r.uf||'',cidade:r.cid||'',
+            if(h==null||matinal2ExcluirStatus(r.sg))return;
+            registrosTodos.push({origem:'Fila OFS',ticket:matinalExtrairTicket(r.com),os:r.os||'',tipoEvento:matinalExtrairTipoEvento(r.com),uf:r.uf||'',cidade:r.cid||'',
               cluster:r.cluster||'Sem cluster',ab:r.ab||'',abChamado:r.abChamado?pdt(r.abChamado):'',tempoOriginal:fmtSLA(h),horas:h,
               status:r.sg||'',parceiro:'',recurso:r.rec||'',estaNasDuas:aofEstaNasDuas(r),obs:OBS_CFG[aofRowKey(r)]||''});
           });
-          if(!registros.length){alert('Nenhum chamado com tempo decorrido calculável no recorte atual — nada pra colocar no relatório.');btn.disabled=false;btn.innerHTML=origHtml;return;}
+          if(!registrosTodos.length){alert('Nenhum chamado com tempo decorrido calculável no recorte atual — nada pra colocar no relatório.');btn.disabled=false;btn.innerHTML=origHtml;return;}
+          /* Pedido do usuário (ajuste): chamados do Warmup com a coluna Parceira
+             preenchida saem das listas/contagens principais (Resumo + aba "base") e
+             vivem SÓ na aba "Parceiros" — partição exclusiva, não duplicação, pra
+             "Base: N ordens abertas" bater exatamente com o que está listado. */
+          const isParceria=r=>r.origem==='Warmup'&&String(r.parceiro||'').trim();
+          const registros=registrosTodos.filter(r=>!isParceria(r));
+          const parceiros=registrosTodos.filter(isParceria);
 
           const AZUL_TIT='FF1F3864',AZUL_HEAD='FF2E5496',AZUL_HEAD2='FF1F3864',FUNDO_CARD='FFF2F6FC',BORDA='FFD9D9D9',BORDA_CLARA='FFBFBFBF';
           const VERM_TXT='FFC00000',VERM_FUNDO='FFFCE4E4',AMBAR_TXT='FFC65911',AMBAR_FUNDO='FFFFF2CC',VERDE_TXT='FF548235';
@@ -8342,17 +8368,19 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
           setCell(rowIdx,1,'ORDENS ABERTAS — (maior tempo primeiro)',{font:{color:{argb:AZUL_HEAD2},bold:true,size:12},border:false});
           rowIdx++;
-          const listHead=['OS','Cluster','Cidade','Tipo Evento','Horas','Status','SLA MTTR'];
-          listHead.forEach((lbl,i)=>setCell(rowIdx,i+1,lbl,{fill:AZUL_HEAD2,font:{color:{argb:'FFFFFFFF'},bold:true,size:11},alignment:{horizontal:i>=4?'center':'left',vertical:'middle'}}));
+          /* Col B relabelada "Cluster"→"TIPO" a pedido do usuário (só o título —
+             o dado continua sendo o cluster/origem de cada registro). */
+          const listHead=['OS','TIPO','Cidade','Tipo Evento','Horas','Status','SLA MTTR','Justificativa'];
+          listHead.forEach((lbl,i)=>setCell(rowIdx,i+1,lbl,{fill:AZUL_HEAD2,font:{color:{argb:'FFFFFFFF'},bold:true,size:11},alignment:{horizontal:i>=4&&i<7?'center':'left',vertical:'middle'}}));
           rowIdx++;
           const registrosOrdenados=matinalSortByHorasDesc(registros,r=>r.horas);
           registrosOrdenados.forEach(r=>{
             const b=matinal2Bucket(r.horas);
             const corTxt=b==='OUTLIER'?VERM_TXT:b==='VENCIDO'?AMBAR_TXT:null;
             const fundo=b==='OUTLIER'?VERM_FUNDO:b==='VENCIDO'?AMBAR_FUNDO:null;
-            const vals=[r.os||r.ticket||'',r.cluster,r.cidade,r.tipoEvento,Math.round(r.horas*10)/10,r.status,b];
+            const vals=[r.os||r.ticket||'',r.cluster,r.cidade,r.tipoEvento,Math.round(r.horas*10)/10,r.status,b,r.obs];
             vals.forEach((v,i)=>{
-              const extra={border:{top:{style:'thin',color:{argb:BORDA}},bottom:{style:'thin',color:{argb:BORDA}},left:{style:'thin',color:{argb:BORDA}},right:{style:'thin',color:{argb:BORDA}}},alignment:{horizontal:i>=4?'center':'left'}};
+              const extra={border:{top:{style:'thin',color:{argb:BORDA}},bottom:{style:'thin',color:{argb:BORDA}},left:{style:'thin',color:{argb:BORDA}},right:{style:'thin',color:{argb:BORDA}}},alignment:{horizontal:i>=4&&i<7?'center':'left',wrapText:i===7}};
               if(fundo)extra.fill=fundo;
               if(corTxt)extra.font={color:{argb:corTxt}};
               if(i===4)extra.numFmt='0.0';
@@ -8361,7 +8389,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             rowIdx++;
           });
           const lastRow=rowIdx-1;
-          ws.columns=[['Cluster',22],['',20],['',20],['',18],['',12],['',22]].map(([,w])=>({width:w||14}));
+          ws.columns=[['Cluster',22],['TIPO',16],['',20],['',18],['',12],['',22],['',16],['Justificativa',40]].map(([,w])=>({width:w||14}));
           ws.getColumn(1).width=26;
 
           /* ── Aba "base" (export plano de tudo que entrou no relatório) ── */
@@ -8377,14 +8405,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             sheet.getRow(1).height=24;
             matinalSortByHorasDesc(lista,r=>r.horas).forEach((r,idx)=>{
               const row=idx+2;
-              const vals=[r.origem,r.ticket,r.os,r.tipoEvento,r.uf,r.cidade,r.cluster,r.ab,r.abChamado,r.tempoOriginal,
+              /* OS/Ticket numa coluna só (pedido do usuário) — usa o que existir;
+                 Warmup normalmente só tem requisição (r.os vazio), Fila OFS normalmente
+                 só tem OS (r.ticket vazio quando o comentário não tem o padrão
+                 "- TICKET: 123"). */
+              const vals=[r.origem,r.os||r.ticket||'',r.tipoEvento,r.uf,r.cidade,r.cluster,r.ab,r.abChamado,r.tempoOriginal,
                 Math.round(r.horas*100)/100,matinal2Bucket(r.horas),r.status,r.parceiro,r.recurso,r.estaNasDuas,r.obs];
               vals.forEach((v,i)=>{
                 const cell=sheet.getCell(row,i+1);
                 if(v!==''&&v!=null)cell.value=v;
                 cell.border={bottom:{style:'thin',color:{argb:BORDA}}};
                 cell.alignment={vertical:'top',wrapText:i===MATINAL2_COLS.length-1};
-                if(i===10)cell.numFmt='0.0';
+                if(i===9)cell.numFmt='0.0';
               });
             });
             sheet.columns=MATINAL2_COLS.map(([,w])=>({width:w}));
@@ -8393,10 +8425,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           };
           writeBaseSheet(wsBase,registros);
 
-          /* ── Aba "Parceiros" (pedido do usuário: Warmup com a coluna Parceira
-             preenchida, numa aba separada — além de continuarem na aba "base" e
-             na lista da aba "Resumo", sem exclusão) ── */
-          const parceiros=registros.filter(r=>r.origem==='Warmup'&&String(r.parceiro||'').trim());
+          /* ── Aba "Parceiros" (Warmup com a coluna Parceira preenchida — partição
+             exclusiva, calculada mais acima junto com `registros`; não aparecem
+             na aba "base" nem na lista da aba "Resumo", a pedido do usuário) ── */
           const wsParc=wb.addWorksheet('Parceiros');
           if(parceiros.length){
             writeBaseSheet(wsParc,parceiros);
