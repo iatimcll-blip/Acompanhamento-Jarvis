@@ -8923,6 +8923,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-warmap .wm-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
   #panel-warmap .wm-filters label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#9FB0CF;font-weight:500}
   #panel-warmap .wm-filters select,#panel-warmap .wm-filters input[type=search]{font:500 14px var(--wm-sans);padding:8px 10px;border-radius:9px;border:1px solid #33415F;background:#173252;color:#fff;width:100%}
+  /* Botão de filtro por coluna, dentro do cabeçalho da tabela "Resumo" (pedido do
+     usuário, 2026-10-10) — versão compacta (só ícone) do .msel-btn genérico, que
+     por padrão é um botão de texto largo ("Todos ...") — aqui precisa caber
+     dentro de um <th>, ao lado do rótulo da coluna. */
+  #panel-warmap .wm-colf-btn{padding:1px 5px;margin-left:4px;background-image:none;font-size:12px;min-width:0;border-radius:6px;vertical-align:middle;box-shadow:none}
+  #panel-warmap .wm-colf-btn i{font-size:13px}
   #panel-warmap .wm-uf-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(66,195,75,.16);border:1px solid var(--wm-green);color:#8CE996;border-radius:20px;padding:6px 12px;font-size:14px;font-weight:600;white-space:nowrap}
   #panel-warmap .wm-err{background:#FDECEC;color:#8B1D22;padding:10px 14px;border-radius:10px;margin-top:12px;display:none}
   #panel-warmap .wm-main{padding:22px clamp(16px,4vw,40px) 30px;max-width:1500px;margin:0 auto}
@@ -9140,6 +9146,64 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     };
 
     let ROWS=[],FILE_NAME='',charts={},LAST_PDF_NAME='';
+    /* Filtros por coluna no bloco "Resumo" (pedido do usuário, 2026-10-10) — além
+       dos filtros já existentes no topo do painel (.wm-filters, que afetam o
+       painel inteiro: KPIs/gráficos/seções por categoria), cada coluna filtrável
+       da tabela ganha seu próprio botão de filtro (ícone de funil no cabeçalho),
+       reaproveitando o componente msel já usado em ~30 filtros do app inteiro
+       (mselRender/mselToggleValue/mselToggleOpen) — zero componente novo, só
+       registra um id por coluna. Aplicado SOMENTE dentro deste bloco (nunca afeta
+       KPIs/gráficos/seções por categoria, só a tabela "Resumo"), por isso vive
+       como estado próprio (wmColFilters), não como mais uma entrada em filtered().
+       {} (vazio) = sem filtro em nenhuma coluna. */
+    let wmColFilters={};
+    /* [coluna, rótulo pro botão, getter do valor BRUTO (não o HTML renderizado) —
+       as opções do dropdown vêm desses valores, não da célula formatada]. Só as
+       colunas com um conjunto razoável de valores distintos entram aqui — texto
+       livre quase sempre único por linha (Requisição/Trecho/Início da
+       falha/Tempo decorrido/OS/Justificativa) não ganha filtro, não ajudaria. */
+    const WM_COLF_DEFS=[
+      ['categoria',r=>r.categoria||''],
+      ['uf',r=>r.uf||''],
+      ['cidade',r=>r.cidade||''],
+      ['status',r=>r.status||''],
+      ['parceira',r=>r.parceira||'(Nenhuma)'],
+      ['areaResponsavel',r=>r.areaResponsavel||'(Nenhuma)'],
+      ['origem',r=>r.origem||''],
+      ['statusInterno',r=>WM_STATUS_CFG[wmRowKey(r)]||'(Nenhum)'],
+    ];
+    function wmColFilterApply(rows){
+      const active=WM_COLF_DEFS.filter(([k])=>wmColFilters[k]&&wmColFilters[k].length);
+      if(!active.length)return rows;
+      return rows.filter(r=>active.every(([k,get])=>wmColFilters[k].includes(get(r))));
+    }
+    /* Botão de filtro (ícone de funil) no cabeçalho da coluna — reusa 100% do
+       componente msel já existente (mselToggleOpen/mselRender), só registra o id
+       'wmcol-<coluna>'. O <span class="msel-btn-lbl"> fica escondido (display:
+       none) de propósito: _mselUpdateBtn() escreve nele o texto "N selecionados"
+       pra atualizar o rótulo nos outros ~30 filtros do app, mas aqui o botão é só
+       o ícone — a cor dele já muda sozinha via .msel-btn.has-sel (CSS existente)
+       quando há seleção, sem precisar de texto nenhum. */
+    function wmColfBtnHtml(k){
+      const id='wmcol-'+k;
+      return` <button type="button" class="wm-colf-btn msel-btn" id="msel-btn-${id}" onclick="mselToggleOpen('${id}')" title="Filtrar esta coluna"><i class="ti ti-filter"></i><span class="msel-btn-lbl" style="display:none"></span></button>`;
+    }
+    /* Preenche/atualiza os ~8 dropdowns de filtro por coluna — chamado a cada
+       drawTable(), já que as opções precisam refletir o recorte atual (filtros do
+       topo + busca). Opções vêm de `base` (ANTES dos filtros por coluna, pra cada
+       coluna continuar oferecendo todos os seus próprios valores possíveis,
+       mesmo que outra coluna já tenha reduzido a lista — mesmo princípio já usado
+       nos filtros do topo deste painel). */
+    function wmRenderColFilters(base){
+      WM_COLF_DEFS.forEach(([k,get])=>{
+        const id='wmcol-'+k;
+        const options=[...new Set(base.map(get).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+        mselRender(id,options,wmColFilters[k]||[],{
+          allLabel:'',
+          onChange:v=>{wmColFilters[k]=v;drawTable(filtered());}
+        });
+      });
+    }
 
     const css=v=>getComputedStyle(document.getElementById('panel-warmap')).getPropertyValue(v).trim();
     const n=s=>(s==null?'':String(s)).replace(/\s+/g,' ').trim();
@@ -9844,12 +9908,19 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const Rfilt=q?D.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))
         ||(WM_JUST_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)
         ||(WM_STATUS_CFG[wmRowKey(r)]||'').toLowerCase().includes(q)):D;
+      /* Filtros por coluna (pedido do usuário, 2026-10-10) — aplicados DEPOIS da
+         busca livre, igual a mais um "E" na combinação de filtros. As opções dos
+         dropdowns (wmRenderColFilters, mais abaixo) usam `D` inteiro (antes da
+         busca/filtro por coluna), não `Rfilt`/`R` — senão a lista de opções de
+         uma coluna encolheria/sumiria por causa do texto digitado na busca ou de
+         OUTRA coluna já filtrada, confundindo o usuário. */
+      const Rcol=wmColFilterApply(Rfilt);
       /* Pedido do usuário (2026-10-10): sempre classificar do maior SLA (tempo
          decorrido) pro menor — a tabela não tinha NENHUMA ordenação antes (vinha
          na ordem bruta do upload/merge). wmDuracaoHoras() é a mesma conversão já
          usada pelo Relatório Matinal (ver comentário na declaração, acima da IIFE
          deste painel) — chamados sem tempo decorrido calculável vão pro final. */
-      const R=[...Rfilt].sort((a,b)=>{
+      const R=[...Rcol].sort((a,b)=>{
         const ha=wmDuracaoHoras(a.tempoDecorrido),hb=wmDuracaoHoras(b.tempoDecorrido);
         if(ha==null&&hb==null)return 0;
         if(ha==null)return 1;
@@ -9887,12 +9958,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         },'wm-just-col'],
       ];
       const t=document.getElementById('wm-tbl');
-      t.innerHTML=`<thead><tr>${cols.map(([,l,,c])=>`<th class="${c||''}">${l}</th>`).join('')}</tr></thead>`
+      const colfIds=new Set(WM_COLF_DEFS.map(([k])=>k));
+      t.innerHTML=`<thead><tr>${cols.map(([k,l,,c])=>`<th class="${c||''}">${l}${colfIds.has(k)?wmColfBtnHtml(k):''}</th>`).join('')}</tr></thead>`
         +`<tbody>${R.length?R.map(r=>{
           const overdue=wmLegacyTipos(r).some(t=>t!=='massiva')&&/d\s/.test(r.tempoDecorrido||'');
           return`<tr${overdue?' class="wm-row-overdue"':''}>${cols.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`;
         }).join(''):`<tr><td colspan="${cols.length}" class="wm-empty">Nenhum chamado no recorte atual.</td></tr>`}</tbody>`;
-      document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`;
+      document.getElementById('wm-tblInfo').textContent=`${R.length} chamado(s) — sempre restrito a PI/MA/PA/AM/AP`+(Object.values(wmColFilters).some(v=>v&&v.length)?' · filtro de coluna ativo':'');
+      wmRenderColFilters(D);
       t.querySelectorAll('.wm-just-input').forEach(inp=>{
         inp.onclick=e=>e.stopPropagation();
         inp.onchange=()=>{
@@ -9974,6 +10047,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     function loadRecords(records,name,save){
       ROWS=records;FILE_NAME=name;
+      wmColFilters={}; // base nova: filtros por coluna de uma base anterior não fazem sentido aqui
       if(save){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,records,savedAt:Date.now()}));}catch(e){}}
       document.getElementById('wm-main').classList.remove('wm-empty-state');
       const emUf=ROWS.filter(r=>TARGET_UF.includes(r.uf)).length;
