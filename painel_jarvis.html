@@ -1677,6 +1677,20 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-grid-2{display:grid;grid-template-columns:1fr 1.35fr;gap:16px}
 .fap-grid-2b{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
 @media(max-width:900px){.fap-grid-2,.fap-grid-2b{grid-template-columns:1fr}.fap-cards{grid-template-columns:repeat(2,1fr)}}
+/* Celular (análise 12/10/2026, item 5): filhos de grid com min-width:auto não encolhiam
+   — o formulário "Novo aporte" ocupava 530px numa tela de 390px. */
+.fap-grid-2>*,.fap-grid-2b>*{min-width:0}
+@media(max-width:600px){.fap-form-two{grid-template-columns:1fr}.fap-cards{grid-template-columns:1fr}.fap-novo-head{flex-wrap:wrap}.fap-filterbar select,.fap-filterbar input{min-width:0;width:100%}.fap-filterbar .fap-field{flex:1 1 140px}}
+.fap-dup-row td{background:var(--orange-bg)}
+.fap-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 16px;border-bottom:.5px solid var(--bd);padding-bottom:8px}
+.fap-subtab{border:.5px solid var(--bd2);background:var(--surface);color:var(--tx2);border-radius:999px;padding:7px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.fap-subtab.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.fap-conc-st{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.fap-conc-ok{color:var(--green-dk);background:var(--green-bg)}
+.fap-conc-data{color:var(--teal-dk);background:var(--teal-bg)}
+.fap-conc-painel{color:var(--orange);background:var(--orange-bg)}
+.fap-conc-alelo{color:var(--red);background:var(--red-bg)}
+.fap-dup-tag,.fap-incompleto{display:inline-block;padding:1px 6px;border-radius:5px;font-size:11px;font-weight:700;color:var(--orange);background:var(--orange-bg);border:.5px solid var(--orange);white-space:nowrap}
 .fap-form-row{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
 .fap-form-row label{font-size:14px;font-weight:600;color:var(--tx3)}
 .fap-form-row input,.fap-form-row select{border:.5px solid var(--bd2);border-radius:8px;padding:8px 10px;font-size:15px;background:var(--surface);color:var(--tx);font-family:inherit}
@@ -10322,14 +10336,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <p>Aportes de saldo lançados por placa específica, com registro de dia, hora e valor de cada lançamento.</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-        <label class="dash-action admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF) só pra análise de consumo por condutor, abaixo — nunca gera aporte, nem mexe no Saldo do Mês, no Total aportado ou no Total por Placa. Anexar uma base nova SUBSTITUI a análise anterior por inteiro (não acumula).">
+        <label class="dash-action admin-only" style="cursor:pointer" title="Botão único (análise 12/10/2026): reconhece sozinho o relatório anexado — relatório de transações do Portal Alelo (Placa na coluna C, Tipo de transação na AA) vai para a Auditoria/Conciliação; export de abastecimentos do Portal Alelo (Placa na coluna L) pergunta se é para o Consumo por Condutor, o Consumo Mês Corrente (dia 15+) ou os dois. Anexar SUBSTITUI a base anterior do destino escolhido." data-old-title="Aceita .csv/.xlsx no formato do Portal Alelo — usa Placa (col. L), Nome do veículo (col. M), Motorista (col. T) e Valor da transação (col. AF) só pra análise de consumo por condutor, abaixo — nunca gera aporte, nem mexe no Saldo do Mês, no Total aportado ou no Total por Placa. Anexar uma base nova SUBSTITUI a análise anterior por inteiro (não acumula).">
           <i class="ti ti-file-upload"></i> Anexar base
-          <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarBase(event)">
+          <input type="file" id="fap-anexoInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapAnexarBase(event)">
         </label>
         <button class="dash-action admin-only" style="background:var(--red);border-color:var(--red);color:#fff" onclick="fapResetTudo()"><i class="ti ti-trash"></i> Limpar todos os dados</button>
       </div>
     </div>
 
+    <div class="fap-subtabs" role="tablist" aria-label="Seções do painel Aportes Combustível">
+      <button type="button" role="tab" class="fap-subtab" data-sub="aportes" onclick="fapSetSub('aportes')"><i class="ti ti-gas-station"></i> Aportes e Saldo</button>
+      <button type="button" role="tab" class="fap-subtab" data-sub="consumo" onclick="fapSetSub('consumo')"><i class="ti ti-chart-bar"></i> Consumo</button>
+      <button type="button" role="tab" class="fap-subtab" data-sub="auditoria" onclick="fapSetSub('auditoria')"><i class="ti ti-zoom-check"></i> Auditoria e Conciliação</button>
+    </div>
+    <div class="fap-sub" id="fap-sub-aportes" role="tabpanel">
     <div class="fap-filterbar">
       <div class="fap-field"><label>UF</label>
         <select id="fap-fUf" autocomplete="off"><option value="">Todas</option><option value="PI">PI</option><option value="MA">MA</option><option value="PA">PA</option><option value="AM">AM</option><option value="AP">AP</option></select>
@@ -10352,11 +10372,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <h3 style="margin-bottom:2px">Saldo do Mês</h3>
       <p class="fap-desc" style="margin:0 0 14px">Saldo disponível pra trabalhar no período (ciclo de competência do dia 15 ao dia 14 do mês seguinte) — é debitado automaticamente a cada aporte registrado. Use "Definir" pra corrigir o total, ou "Mais aportes" pra somar um reforço ao saldo já definido.</p>
       <div id="fap-saldoMesContent"></div>
+      <div id="fap-saldoHist" style="margin-top:14px"></div>
     </div>
 
     <div class="fap-grid-2">
       <div class="fap-panel">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div class="fap-novo-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div>
             <h3>Novo aporte</h3>
             <p class="fap-desc">Registre um aporte de saldo para uma placa específica.</p>
@@ -10396,7 +10417,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
 
       <div class="fap-panel">
-        <h3>Total por placa</h3>
+        <div class="fap-hist-head" style="margin-bottom:4px">
+          <h3 style="margin:0">Total por placa</h3>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="fap-export-btn" onclick="fapBaixarPlanilhaPlacas()" title="Baixa o cadastro atual + as placas da base Alelo ainda não cadastradas, para completar GO/UF e importar de volta"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Planilha de placas</button>
+            <label class="fap-export-btn admin-only" style="cursor:pointer" title="Cadastra/atualiza placas em lote a partir de uma planilha com as colunas Placa, UF, GO, Técnico e Categoria"><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar placas<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarPlacas(event)"></label>
+          </div>
+        </div>
         <p class="fap-desc">Soma dos aportes registrados para cada placa.</p>
         <div style="max-height:400px;overflow-y:auto">
           <table class="fap-table" id="fap-placaTable">
@@ -10455,12 +10482,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="fap-email-preview" id="fap-emailPreview"></div>
     </div>
 
+    </div>
+    <div class="fap-sub" id="fap-sub-consumo" role="tabpanel" style="display:none">
     <div class="fap-panel">
       <div class="fap-hist-head">
         <div><h3 style="margin-bottom:2px">Consumo por Condutor</h3><p class="fap-desc" style="margin:0">Análise gerada a partir da base anexada (Portal Alelo) — não afeta placas, aportes nem o Saldo do Mês.</p></div>
         <button class="fap-export-btn admin-only" style="background:var(--red-bg);color:var(--red);border-color:var(--red)" onclick="fapLimparBase()"><i class="ti ti-trash" style="font-size:13px;vertical-align:-1px"></i> Limpar base</button>
       </div>
-      <div id="fap-condutorEmpty" class="fap-empty">Nenhuma base anexada ainda — use o botão "Anexar base" no topo do painel.</div>
+      <div id="fap-condutorEmpty" class="fap-empty">Nenhuma base anexada ainda — use o botão "Anexar base" no topo do painel (escolha "Consumo por Condutor").</div>
       <div id="fap-condutorChartWrap" style="display:none">
         <div class="fap-ciclo-bar">
           <label for="fap-condutorCiclo"><i class="ti ti-calendar-time" style="font-size:12px;vertical-align:-1px"></i> Ciclo (dia 15 ao dia 14)</label>
@@ -10478,13 +10507,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div style="max-height:240px;overflow-y:auto">
           <table class="fap-table">
-            <thead><tr><th>Categoria</th><th>Qtd. de veículos</th><th>Cota do mês</th><th>Consumido no mês</th><th>Total consumido</th></tr></thead>
+            <thead><tr><th>Categoria</th><th>Qtd. de veículos</th><th>Limite mensal</th><th>Consumido no mês</th><th>Total consumido</th></tr></thead>
             <tbody id="fap-tipoTableBody"></tbody>
           </table>
         </div>
         <div id="fap-condutorTableWrap" style="max-height:360px;overflow-y:auto;margin-top:14px">
           <table class="fap-table">
-            <thead><tr><th>Condutor</th><th>Placa(s)</th><th>Total consumido</th><th>Abastecimentos</th><th>Período</th><th>Cota do mês</th></tr></thead>
+            <thead><tr><th>Condutor</th><th>Placa(s)</th><th>Total consumido</th><th>Abastecimentos</th><th>Período</th><th>Limite do condutor</th></tr></thead>
             <tbody id="fap-condutorTableBody"></tbody>
           </table>
         </div>
@@ -10507,10 +10536,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="fap-hist-head">
         <div><h3 style="margin-bottom:2px">Consumo Mês Corrente</h3><p class="fap-desc" style="margin:0">Aportado no ciclo de competência em andamento (dia 15 até hoje) — mesmo valor do card "Aportado no mês" acima — com projeção de fechamento (dia 14 do mês seguinte) e comparação com o ciclo anterior completo. Os cards/gráfico acima não usam base anexada; o consumo confirmado por veículo abaixo usa a base anexada aqui.</p></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-          <label class="fap-export-btn admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do Portal Alelo (mesmas colunas da base geral: Placa, Veículo, Motorista, Valor, Compra/Aprovada/Confirmado). Só entram registros com data a partir do dia 15 — linhas de antes são descartadas automaticamente. Alimenta o 'Consumo confirmado por veículo' abaixo. Anexar uma base nova SUBSTITUI a anterior deste bloco (não acumula) e não afeta o Consumo por Condutor nem os cards de Aportes.">
-            <i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Anexar base (dia 15+)
-            <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarBaseMesCorrente(event)">
-          </label>
           <button class="fap-export-btn admin-only" style="background:var(--red-bg);color:var(--red);border-color:var(--red)" onclick="fapLimparBaseMesCorrente()"><i class="ti ti-trash" style="font-size:13px;vertical-align:-1px"></i> Limpar base</button>
         </div>
       </div>
@@ -10528,7 +10553,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <h4 style="margin:0 0 4px;font-size:15px">Consumo confirmado por veículo (base anexada acima)</h4>
           <p class="fap-desc" style="margin:0 0 8px">Consumo do ciclo atual (dia 15 até hoje) por veículo, somando só abastecimentos com Compra/Aprovada/Confirmado na base anexada com o botão "Anexar base (dia 15+)" acima, com tendência semanal e projeção de fechamento. Adicionado junto aos cards de Aportes acima (não os substitui).</p>
           <p class="fap-desc" id="fap-mcVeicTruncNote" style="display:none;margin:0 0 8px;color:var(--orange)"></p>
-          <div id="fap-mcVeicEmpty" class="fap-empty">Nenhum abastecimento confirmado (Compra/Aprovada/Confirmado) no ciclo atual — use o botão "Anexar base (dia 15+)" acima.</div>
+          <div id="fap-mcVeicEmpty" class="fap-empty">Nenhum abastecimento confirmado (Compra/Aprovada/Confirmado) no ciclo atual — use o botão "Anexar base" no topo do painel (escolha "Consumo Mês Corrente").</div>
           <div id="fap-mcVeicTableWrap" style="display:none;max-height:520px;overflow-y:auto">
             <table class="fap-table">
               <thead><tr><th>Placa</th><th>Veículo</th><th>Consumo confirmado</th><th>Projeção de fechamento</th><th style="min-width:160px">Tendência semanal</th></tr></thead>
@@ -10538,29 +10563,27 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
     </div>
+    </div>
+    <div class="fap-sub" id="fap-sub-auditoria" role="tabpanel" style="display:none">
     <div class="fap-panel" id="fap-auditoriaPanel">
       <div class="fap-hist-head">
         <div><h3 style="margin-bottom:2px">Auditoria</h3><p class="fap-desc" style="margin:0">Audita as transações de uma ou mais placas por tipo de transação, a partir do relatório de transações do Portal Alelo (coluna C = Placa do veículo, coluna AA = Tipo de transação, coluna G = Valor da transação). Base própria deste bloco — não afeta placas, aportes, Saldo do Mês nem as outras análises.</p></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-          <label class="fap-export-btn admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do relatório de transações do Portal Alelo (Placa na coluna C, Tipo de transação na coluna AA). Anexar uma base nova SUBSTITUI a anterior deste bloco (não acumula).">
-            <i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Anexar base auditoria
-            <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapAudImportar(event)">
-          </label>
           <button class="fap-export-btn" onclick="fapAudExportar()"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar</button>
           <button class="fap-export-btn admin-only" style="background:var(--red-bg);color:var(--red);border-color:var(--red)" onclick="fapAudLimparBase()"><i class="ti ti-trash" style="font-size:13px;vertical-align:-1px"></i> Limpar base</button>
         </div>
       </div>
       <p class="fap-desc" id="fap-audBaseInfo" style="margin:0 0 12px;display:none"></p>
-      <div id="fap-audEmpty" class="fap-empty">Nenhuma base de auditoria anexada ainda — use o botão "Anexar base auditoria" acima.</div>
+      <div id="fap-audEmpty" class="fap-empty">Nenhuma base de auditoria anexada ainda — use o botão "Anexar base" no topo do painel com o relatório de transações do Portal Alelo.</div>
       <div id="fap-audWrap" style="display:none">
         <div class="fap-filterbar">
           <div class="fap-field"><label>Placas</label><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fap-aud-placa" onclick="mselToggleOpen('fap-aud-placa')"><span class="msel-btn-lbl">Todas as placas</span></button></div></div>
           <div class="fap-field"><label>Tipo de transação</label><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fap-aud-tipo" onclick="mselToggleOpen('fap-aud-tipo')"><span class="msel-btn-lbl">Todos os tipos</span></button></div></div>
-          <div class="fap-field"><label>Período de aferição</label>
+          <div class="fap-field"><label for="fap-audPreset">Período de aferição</label>
             <select id="fap-audPreset" autocomplete="off" onchange="fapAudAplicarPreset(this.value)"><option value="">Personalizado</option><option value="base">Base inteira</option><option value="ciclo">Ciclo atual (15→14)</option><option value="cicloAnt">Ciclo anterior (15→14)</option><option value="mes">Mês atual</option><option value="7d">Últimos 7 dias</option></select>
           </div>
-          <div class="fap-field"><label>Data inicial</label><input type="date" id="fap-audDe" autocomplete="off" onchange="fapAudDataManual()"></div>
-          <div class="fap-field"><label>Data final</label><input type="date" id="fap-audAte" autocomplete="off" onchange="fapAudDataManual()"></div>
+          <div class="fap-field"><label for="fap-audDe">Data inicial</label><input type="date" id="fap-audDe" autocomplete="off" onchange="fapAudDataManual()"></div>
+          <div class="fap-field"><label for="fap-audAte">Data final</label><input type="date" id="fap-audAte" autocomplete="off" onchange="fapAudDataManual()"></div>
           <label class="fap-aud-chk" title="Transações com status Negada ou Cancelada não representam gasto real — marcado, ficam fora dos totais (o valor desconsiderado aparece no card Valor total)."><input type="checkbox" id="fap-audIgnorarNegadas" checked autocomplete="off" onchange="fapAudRenderResultados()"> Desconsiderar negadas/canceladas</label>
           <div class="fap-spacer"></div>
           <button class="fap-reset-btn" onclick="fapAudLimparFiltros()">Limpar filtros</button>
@@ -10615,9 +10638,54 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
     </div>
+    <div class="fap-panel" id="fap-concPanel">
+      <div class="fap-hist-head">
+        <div><h3 style="margin-bottom:2px">Conciliação Aportes × Alelo</h3><p class="fap-desc" style="margin:0">Cruza os aportes lançados neste painel com os "Crédito Emergencial de Limite" do relatório de transações do Portal Alelo (base da Auditoria), para as placas cadastradas: mesmo valor no mesmo dia = conciliado; mesmo valor com até 3 dias de diferença = conciliado com data diferente; o que sobra aparece como "só no painel" ou "só no Alelo".</p></div>
+        <button class="fap-export-btn" onclick="fapConcExportar()"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar</button>
+      </div>
+      <div id="fap-concEmpty" class="fap-empty">Anexe o relatório de transações do Portal Alelo (botão "Anexar base" no topo) para conciliar.</div>
+      <div id="fap-concWrap" style="display:none">
+        <div class="fap-filterbar">
+          <div class="fap-field"><label for="fap-concPreset">Período</label>
+            <select id="fap-concPreset" autocomplete="off" onchange="fapConcAplicarPreset(this.value)"><option value="">Personalizado</option><option value="ciclo">Ciclo atual (15→14)</option><option value="cicloAnt">Ciclo anterior (15→14)</option><option value="base">Base inteira</option></select>
+          </div>
+          <div class="fap-field"><label for="fap-concDe">Data inicial</label><input type="date" id="fap-concDe" autocomplete="off" onchange="fapConcDataManual()"></div>
+          <div class="fap-field"><label for="fap-concAte">Data final</label><input type="date" id="fap-concAte" autocomplete="off" onchange="fapConcDataManual()"></div>
+          <div class="fap-field"><label for="fap-concStatus">Situação</label>
+            <select id="fap-concStatus" autocomplete="off" onchange="fapRenderConciliacao()"><option value="">Todas</option><option value="ok">Conciliado</option><option value="data">Conciliado (data diferente)</option><option value="painel">Só no painel</option><option value="alelo">Só no Alelo</option></select>
+          </div>
+        </div>
+        <div id="fap-concAviso" class="fap-aud-aviso" style="display:none"></div>
+        <div class="fap-cards" id="fap-concCards"></div>
+        <div style="overflow:auto;max-height:480px">
+          <table class="fap-table">
+            <thead><tr><th>Situação</th><th>Placa</th><th>GO</th><th>Aporte (painel)</th><th>Valor</th><th>Crédito (Alelo)</th><th>Valor</th><th>Dif. dias</th></tr></thead>
+            <tbody id="fap-concBody"></tbody>
+          </table>
+        </div>
+        <p class="fap-desc" id="fap-concNote" style="display:none;margin:6px 0 0;color:var(--orange)"></p>
+      </div>
+    </div>
+    </div>
   </div>
 
   <!-- MODAL: veículos de uma categoria (Leve/Médio/Pesado) — editar categoria (pedido do usuário, 2026-09-17) -->
+  <div class="modal-overlay" id="fap-modal-anexo" style="display:none" onclick="if(event.target===this)fapAnexoDestino('')">
+    <div class="modal-box" style="max-width:520px" role="dialog" aria-modal="true" aria-labelledby="fap-modal-anexo-title">
+      <div class="modal-hd">
+        <span class="modal-title" id="fap-modal-anexo-title"><i class="ti ti-file-upload"></i> Para onde vai esta base?</span>
+        <button class="modal-close" onclick="fapAnexoDestino('')" aria-label="Cancelar"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="fap-desc" id="fap-modal-anexo-desc" style="margin:0 0 12px"></p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="fap-submit-btn" onclick="fapAnexoDestino('condutor')">Consumo por Condutor (base completa)</button>
+          <button class="fap-submit-btn fap-secondary" onclick="fapAnexoDestino('mc')">Consumo Mês Corrente (só registros do dia 15 em diante)</button>
+          <button class="fap-submit-btn fap-secondary" onclick="fapAnexoDestino('ambos')">Os dois</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal-overlay" id="fap-modal-categoria" style="display:none" onclick="if(event.target===this)fapFecharModalCategoria()">
     <div class="modal-box" style="max-width:560px">
       <div class="modal-hd">
@@ -14717,6 +14785,9 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         fapAuditAt=remoteSt.fapAuditAt;
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
+      if(remoteSt.FAP_SALDO_CICLOS&&typeof remoteSt.FAP_SALDO_CICLOS==='object'&&fapSaldoCiclosMerge(remoteSt.FAP_SALDO_CICLOS)){
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
+      }
       if(remoteSt.FAP_AUDIT_JUST&&typeof remoteSt.FAP_AUDIT_JUST==='object'&&fapAudMergeJust(remoteSt.FAP_AUDIT_JUST)){
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
@@ -14886,7 +14957,7 @@ function _remoteNewerSectionsOnly(remoteSt){
   });
   /* Configuração por chave (obs/status manual/SLA do AOF; justificativa/status interno do
      Warmup) é sempre mesclada chave a chave — idempotente, então é seguro reenviar. */
-  ['AOF_SYNC_CFG','WM_SYNC_CFG','FAP_AUDIT_JUST'].forEach(k=>{
+  ['AOF_SYNC_CFG','WM_SYNC_CFG','FAP_AUDIT_JUST','FAP_SALDO_CICLOS'].forEach(k=>{
     if(remoteSt[k]&&typeof remoteSt[k]==='object'){part[k]=remoteSt[k];any=true;}
   });
   return any?part:null;
@@ -16184,7 +16255,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -16506,6 +16577,7 @@ function applyState(st,label){
       fapAuditAt=st.fapAuditAt;changed=true;
     }
     if(st.FAP_AUDIT_JUST&&typeof st.FAP_AUDIT_JUST==='object'&&fapAudMergeJust(st.FAP_AUDIT_JUST))changed=true;
+    if(st.FAP_SALDO_CICLOS&&typeof st.FAP_SALDO_CICLOS==='object'&&fapSaldoCiclosMerge(st.FAP_SALDO_CICLOS))changed=true;
   }catch(e){console.warn('applyState: falha ao restaurar Auditoria:',e);}
   try{
     /* B2C: só o resumo agregado por indicador sincroniza (poucas dezenas de
@@ -25359,6 +25431,11 @@ let FAP_CONSUMO_MC=[],fapConsumoMcAt='';
    dicionário (ver fapAudProcessar) — null = sem base. Sincroniza replace-by-latest por
    fapAuditAt. Filtros do bloco (placas/tipos/período) são estado de tela, não sincronizam. */
 let FAP_AUDIT=null,fapAuditAt='';
+/* Histórico do Saldo do Mês por ciclo (análise 12/10/2026, item 13): fapSaldoMes é um
+   valor único, sobrescrito a cada ciclo — aqui fica o saldo definido de CADA ciclo
+   (chave = início do ciclo 'YYYY-MM-15'), gravado sempre que o saldo é definido/somado.
+   Mesmo merge chave a chave das justificativas (_cfgMergePerKey). */
+let FAP_SALDO_CICLOS={saldo:{},ts:{saldo:{}}};
 /* Justificativas por transação da Auditoria (pedido 2026-10-12, coluna "Justificativa" do
    subbloco Transações). Independentes da base: chave = placa|data/hora|centavos|tipo|#n
    (ver fapAudChaves), então reanexar o mesmo relatório (ou um export maior que contenha
@@ -25375,7 +25452,13 @@ let fapConsumoMcCleared=false,fapConsumoMcClearedAt='';
 let fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null,fapChVeicList=[];
 
 function fapUid(){return Math.random().toString(36).slice(2,10);}
-function fapTodayIso(){return new Date().toISOString().slice(0,10);}
+/* Data de HOJE no fuso local (análise 12/10/2026, item 1): era toISOString() = UTC,
+   3h à frente de Brasília — depois das 21h "hoje" virava amanhã: aporte lançado à
+   noite nascia com a data do dia seguinte (o formulário pré-preenche com esta função),
+   "Aportado hoje" errava e o ciclo 15→14 virava 3h antes (às 21h30 do dia 14 o painel
+   já estava no ciclo novo). Continua global/sobrescrevível (testes congelam "hoje"). */
+function fapIsoLocal(d){const p2=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());}
+function fapTodayIso(){return fapIsoLocal(new Date());}
 function fapNowHora(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 function fapFmtMoney(v){return'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 /* Bug real reportado pelo usuário: os campos de valor eram <input type="number">, que
@@ -25398,6 +25481,10 @@ function fapParseValor(str){
 }
 function fapFmtDate(iso){if(!iso)return'—';const[y,m,d]=String(iso).split('-');return`${d}/${m}/${y}`;}
 
+/* Nome do GO padronizado (item 4): espaços repetidos e caixa diferentes criavam GOs
+   "diferentes" ("Walmir  Fernandes", "WELLINGTON FIGUEIRA"). Aplicado ao salvar e em
+   todo agrupamento/exibição (cobre também os cadastros antigos, sem migrar dado). */
+function fapGoNome(go){return fapNomeProprio(String(go||'').replace(/\s+/g,' ').trim());}
 function fapPlacaById(id){return FAP_PLACAS.find(p=>p.id===id);}
 function fapPlacaByPlaca(placa){return FAP_PLACAS.find(p=>p.placa===placa);}
 /* Prioridade EFETIVA de categoria por placa (pedido do usuário, 2026-09-17: poder
@@ -25470,12 +25557,15 @@ function fapCancelEditPlaca(){
 function fapAddPlaca(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
-  const placa=document.getElementById('fap-pPlaca').value.trim().toUpperCase();
+  const placa=document.getElementById('fap-pPlaca').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   const uf=document.getElementById('fap-pUf').value;
   const tecnico=document.getElementById('fap-pTec').value.trim();
-  const go=document.getElementById('fap-pGo').value.trim();
+  const go=fapGoNome(document.getElementById('fap-pGo').value);
   const tipo=document.getElementById('fap-pTipo').value;
   if(!placa)return false;
+  /* Placa já cadastrada (item 4) — no modo edição, ignora o próprio registro. */
+  const jaExiste=FAP_PLACAS.find(x=>x.placa===placa&&x.id!==fapEditingPlacaId);
+  if(jaExiste){alert('A placa '+placa+' já está cadastrada'+(jaExiste.go?' (GO: '+fapGoNome(jaExiste.go)+')':'')+'. Use o lápis em "Total por placa" para editar o cadastro existente.');return false;}
   if(fapEditingPlacaId){
     const idx=FAP_PLACAS.findIndex(x=>x.id===fapEditingPlacaId);
     if(idx>=0)FAP_PLACAS[idx]={...FAP_PLACAS[idx],placa,uf,tecnico,go,tipo};
@@ -25502,6 +25592,19 @@ function fapAddLancamento(ev){
   const hora=document.getElementById('fap-lHora').value;
   const obs=document.getElementById('fap-lObs').value.trim();
   if(!placaId||!valor||!data||!hora)return false;
+  /* Possível duplicidade (item 3): mesma placa + data + valor já lançado. */
+  const dup=FAP_APORTES.find(a=>a.placaId===placaId&&a.data===data&&Math.round(a.valor*100)===Math.round(valor*100));
+  if(dup){
+    const pd=fapPlacaById(placaId);
+    if(!confirm('Já existe um aporte igual: '+(pd?pd.placa:'')+' em '+fapFmtDate(data)+' às '+(dup.hora||'—')+' de '+fapFmtMoney(valor)+'.\n\nRegistrar mesmo assim (não é duplicado)?'))return false;
+  }
+  /* Saldo do Mês negativo (item 8): só pra aporte dentro do ciclo atual (é o que
+     debita o saldo) e quando há saldo definido. */
+  const cic=fapCicloAtualIso();
+  if(fapSaldoMes>0&&data>=cic.start&&data<=cic.end){
+    const restante=fapSaldoMes-fapAportadoMesAtual();
+    if(valor>restante+0.004&&!confirm('Este aporte deixa o Saldo do Mês negativo.\n\nSaldo restante: '+fapFmtMoney(restante)+'\nAporte: '+fapFmtMoney(valor)+'\nFicaria: '+fapFmtMoney(restante-valor)+'\n\nRegistrar mesmo assim?'))return false;
+  }
   FAP_APORTES.push({id:fapUid(),placaId,valor,data,hora,obs});
   fapCleared=false;fapClearedAt=''; // volta a lançar depois de um "zerar tudo": a limpeza anterior fica obsoleta
   fapAt=new Date().toISOString();saveState();
@@ -25514,6 +25617,11 @@ function fapAddLancamento(ev){
 
 function fapDelAporte(id){
   if(!canEdit())return;
+  /* Confirmação (análise 12/10/2026, item 2): antes 1 clique apagava o aporte em
+     todos os dispositivos, sem volta. */
+  const a0=FAP_APORTES.find(a=>a.id===id);if(!a0)return;
+  const p0=fapPlacaById(a0.placaId);
+  if(!confirm('Excluir este aporte?\n\nPlaca: '+(p0?p0.placa:'—')+'\nData: '+fapFmtDate(a0.data)+' às '+(a0.hora||'—')+'\nValor: '+fapFmtMoney(a0.valor)+'\n\nA exclusão vale para todos os dispositivos sincronizados e não pode ser desfeita.'))return;
   FAP_APORTES=FAP_APORTES.filter(a=>a.id!==id);
   FAP_APORTES_DEL.push({id,at:new Date().toISOString()});
   fapAt=new Date().toISOString();saveState();
@@ -25565,7 +25673,7 @@ function fapPopulateSelects(){
   const fGo=document.getElementById('fap-fEmailGo');
   if(fGo){
     const curGo=fGo.value;
-    const gos=[...new Set(FAP_PLACAS.map(p=>p.go&&p.go.trim()?p.go.trim():''))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+    const gos=[...new Set(FAP_PLACAS.map(p=>fapGoNome(p.go)))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'));
     fGo.innerHTML='<option value="">Todos os GOs</option>'+gos.map(g=>`<option value="${eh(g)}">${eh(g)}</option>`).join('');
     fGo.value=curGo;
   }
@@ -25624,6 +25732,7 @@ function fapSetSaldoMes(ev){
   const valor=fapParseValor(document.getElementById('fap-saldoMesValor').value);
   if(isNaN(valor)||valor<0)return false;
   fapSaldoMes=valor;
+  fapRegistrarSaldoCiclo();
   fapCleared=false;fapClearedAt='';
   fapAt=new Date().toISOString();saveState();
   fapRenderSaldoMesCard();
@@ -25638,6 +25747,7 @@ function fapAdicionarAporteSaldoMes(ev){
   const valor=fapParseValor(input.value);
   if(isNaN(valor)||valor<=0)return false;
   fapSaldoMes+=valor;
+  fapRegistrarSaldoCiclo();
   fapCleared=false;fapClearedAt='';
   fapAt=new Date().toISOString();saveState();
   fapRenderSaldoMesCard();
@@ -25686,11 +25796,11 @@ function fapRenderPlacaTable(){
     const ult=fapUltimoAporte(p.id);
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm">${eh(p.placa)}</div><div class="fap-sub">${eh(p.tecnico||'sem técnico vinculado')}</div></td>
-      <td><span class="fap-uf-chip">${eh(p.uf)}</span></td>
-      <td>${eh(p.go||'—')}</td>
+      <td>${p.uf?`<span class="fap-uf-chip">${eh(p.uf)}</span>`:'<span class="fap-incompleto" title="Cadastro incompleto: sem UF">sem UF</span>'}</td>
+      <td>${fapGoNome(p.go)?eh(fapGoNome(p.go)):'<span class="fap-incompleto" title="Cadastro incompleto: sem GO — fica fora do Consumo do GO e cai em &quot;Sem GO vinculado&quot; nos e-mails">sem GO</span>'}</td>
       <td class="fap-saldo-val">${eh(fapFmtMoney(total))}</td>
       <td>${ult?eh(fapFmtDate(ult.data)+' às '+ult.hora):'—'}</td>
-      <td style="white-space:nowrap"><button class="fap-del-icon" onclick="fapEditPlaca('${eh(p.id)}')" title="Editar"><i class="ti ti-pencil"></i></button><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover">✕</button></td>
+      <td style="white-space:nowrap"><button class="fap-del-icon" onclick="fapEditPlaca('${eh(p.id)}')" title="Editar" aria-label="Editar placa ${eh(p.placa)}"><i class="ti ti-pencil"></i></button><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover" aria-label="Remover placa ${eh(p.placa)}">✕</button></td>
     </tr>`;
   }).join('');
 }
@@ -25699,16 +25809,21 @@ function fapRenderHist(){
   const body=document.getElementById('fap-histBody');
   const list=fapAportesFiltrados();
   if(!list.length){body.innerHTML=`<tr><td colspan="7"><div class="fap-empty">Nenhum aporte no período/filtro selecionado.</div></td></tr>`;return;}
+  /* Possíveis duplicados (item 3): mesma placa + data + valor em mais de um aporte —
+     só sinaliza (pode ser legítimo), quem confere decide e exclui se for o caso. */
+  const cont=new Map();
+  FAP_APORTES.forEach(a=>{const k=a.placaId+'|'+a.data+'|'+Math.round(a.valor*100);cont.set(k,(cont.get(k)||0)+1);});
   body.innerHTML=list.map(a=>{
     const p=fapPlacaById(a.placaId);
-    return`<tr>
+    const dup=cont.get(a.placaId+'|'+a.data+'|'+Math.round(a.valor*100))>1;
+    return`<tr${dup?' class="fap-dup-row" title="Possível duplicado: mesma placa, data e valor de outro aporte"':''}>
       <td>${eh(fapFmtDate(a.data))}</td>
       <td>${eh(a.hora)}</td>
       <td>${p?eh(p.placa):'—'}</td>
       <td><span class="fap-uf-chip">${p?eh(p.uf):'—'}</span></td>
       <td class="fap-val">+ ${eh(fapFmtMoney(a.valor))}</td>
-      <td>${eh(a.obs||'—')}</td>
-      <td><button class="fap-del-icon" onclick="fapDelAporte('${eh(a.id)}')" title="Excluir">✕</button></td>
+      <td>${dup?'<span class="fap-dup-tag">possível duplicado</span> ':''}${eh(a.obs||'—')}</td>
+      <td><button class="fap-del-icon" onclick="fapDelAporte('${eh(a.id)}')" title="Excluir" aria-label="Excluir aporte de ${p?eh(p.placa):''} em ${eh(fapFmtDate(a.data))}">✕</button></td>
     </tr>`;
   }).join('');
 }
@@ -25731,7 +25846,7 @@ function fapRenderCards(){
 
 function fapRenderCharts(){
   const days=[];const now=new Date();
-  for(let i=13;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);days.push(d.toISOString().slice(0,10));}
+  for(let i=13;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);days.push(fapIsoLocal(d));}
   const list=fapAportesFiltrados();
   const porDia=days.map(d=>list.filter(a=>a.data===d).reduce((s,a)=>s+a.valor,0));
   const labels=days.map(d=>{const[,m,dd]=d.split('-');return dd+'/'+m;});
@@ -25822,8 +25937,8 @@ function fapRenderGoWeekTable(){
      real) e só aparecia como uma linha zerada o tempo todo, sem utilidade. */
   const gruposMap=new Map();
   FAP_PLACAS.forEach(p=>{
-    if(!(p.go&&p.go.trim()))return;
-    const chave=p.go.trim();
+    const chave=fapGoNome(p.go);
+    if(!chave)return;
     if(!gruposMap.has(chave))gruposMap.set(chave,[]);
     gruposMap.get(chave).push(p.id);
   });
@@ -26127,6 +26242,257 @@ function fapLimparBaseMesCorrente(){
   _ghToast('Base do bloco Consumo Mês Corrente limpa ✓','var(--green-dk)',4000);
 }
 
+/* ─── Anexar base ÚNICO (análise 12/10/2026, item 10) ───
+   Antes eram 3 botões (topo = Consumo por Condutor, "dia 15+" = Consumo Mês Corrente,
+   "Anexar base auditoria"). Agora 1: reconhece o relatório pelo cabeçalho —
+   • relatório de TRANSAÇÕES (C = "Placa do veículo", AA = "Tipo de transação") →
+     Auditoria/Conciliação (fapAudProcessar, parser com aspas);
+   • export de ABASTECIMENTOS (30+ colunas, Placa na L) → pergunta o destino (Consumo
+     por Condutor, Consumo Mês Corrente ou os dois) e usa EXATAMENTE os mesmos
+     processadores/leitura de antes (fapProcessarImportacao /
+     fapProcessarImportacaoMesCorrente com split(';')), sem mudar o resultado. */
+let _fapAnexoPendente=null;
+function fapDetectarBase(h){
+  h=Array.isArray(h)?h:[];
+  const n=i=>fapAudNorm(h[i]);
+  if(n(FAP_AUD_COL.placa).includes('placa')&&n(FAP_AUD_COL.tipo).includes('tipo'))return'auditoria';
+  if(h.length>=30)return'consumo';
+  return'';
+}
+async function fapAnexarBase(ev){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
+  const file=ev.target.files[0];
+  if(!file)return;
+  try{
+    const buf=await file.arrayBuffer();
+    const isXls=/\.(xlsx|xls)$/i.test(file.name);
+    let text='',header=[];
+    if(isXls){
+      const wb=XLSX.read(buf,{type:'array',cellDates:true});
+      const sh=wb.Sheets[wb.SheetNames[0]];
+      header=(XLSX.utils.sheet_to_json(sh,{header:1,raw:false,defval:'',sheetRows:1})[0])||[];
+      const tipo=fapDetectarBase(header);
+      if(tipo==='auditoria'){fapAudProcessar(XLSX.utils.sheet_to_json(sh,{header:1,raw:true,defval:''}),file.name);fapSetSub('auditoria');return;}
+      if(tipo==='consumo'){
+        const wb2=XLSX.read(buf,{type:'array'});
+        _fapAnexoPendente={rows:XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]],{header:1,raw:false,defval:''}),nome:file.name};
+        fapAbrirModalAnexo();return;
+      }
+    }else{
+      text=new TextDecoder('utf-8').decode(buf);
+      if((text.match(/\uFFFD/g)||[]).length>5)text=new TextDecoder('windows-1252').decode(buf);
+      text=text.replace(/^\uFEFF/,'');
+      const nl=text.search(/\r?\n/);
+      header=(fapAudParseCsv(nl<0?text:text.slice(0,nl))[0])||[];
+      const tipo=fapDetectarBase(header);
+      if(tipo==='auditoria'){fapAudProcessar(fapAudParseCsv(text),file.name);fapSetSub('auditoria');return;}
+      if(tipo==='consumo'){
+        _fapAnexoPendente={rows:text.split(/\r?\n/).filter(l=>l.trim()).map(l=>l.split(';')),nome:file.name};
+        fapAbrirModalAnexo();return;
+      }
+    }
+    alert('Formato de arquivo não reconhecido.\n\nO painel aceita:\n• Relatório de transações do Portal Alelo (Placa na coluna C e Tipo de transação na coluna AA) → Auditoria e Conciliação;\n• Export de abastecimentos do Portal Alelo (Placa na coluna L, 30+ colunas) → Consumo.');
+  }catch(e){
+    alert('Erro ao ler o arquivo: '+e.message);
+  }finally{
+    ev.target.value='';
+  }
+}
+function fapAbrirModalAnexo(){
+  const d=document.getElementById('fap-modal-anexo-desc');
+  if(d)d.textContent='"'+(_fapAnexoPendente&&_fapAnexoPendente.nome||'')+'" foi reconhecido como export de abastecimentos do Portal Alelo ('+((_fapAnexoPendente&&_fapAnexoPendente.rows.length||1)-1)+' linhas). A base escolhida SUBSTITUI a anterior daquele bloco; placas, aportes e Saldo do Mês não são afetados.';
+  const m=document.getElementById('fap-modal-anexo');if(m)m.style.display='flex';
+}
+function fapAnexoDestino(dest){
+  const m=document.getElementById('fap-modal-anexo');if(m)m.style.display='none';
+  const p=_fapAnexoPendente;_fapAnexoPendente=null;
+  if(!p||!dest)return;
+  if(dest==='condutor'||dest==='ambos')fapProcessarImportacao(p.rows);
+  if(dest==='mc'||dest==='ambos')fapProcessarImportacaoMesCorrente(p.rows);
+  fapSetSub('consumo');
+}
+
+/* ─── Planilha de placas: baixar / importar em lote (análise 12/10/2026, item 7) ───
+   Só 12 das ~400 placas da base Alelo estavam cadastradas — quase tudo caía em "Sem GO
+   vinculado" nos e-mails. "Planilha de placas" baixa o cadastro atual + as placas da
+   base da Auditoria ainda não cadastradas (GO/UF em branco pra preencher); "Importar
+   placas" lê a planilha de volta: atualiza as existentes (só campos preenchidos) e
+   cadastra as novas que tenham ao menos UF ou GO. Colunas achadas pelo NOME. */
+function fapBaixarPlanilhaPlacas(){
+  const linhas=FAP_PLACAS.slice().sort((a,b)=>a.placa.localeCompare(b.placa)).map(p=>({'Placa':p.placa,'UF':p.uf||'','GO':fapGoNome(p.go),'Técnico':p.tecnico||'','Categoria':p.tipo||''}));
+  const cad=new Set(FAP_PLACAS.map(p=>p.placa));
+  if(FAP_AUDIT)FAP_AUDIT.dic.placa.filter(pl=>!cad.has(pl)).sort().forEach(pl=>linhas.push({'Placa':pl,'UF':'','GO':'','Técnico':'','Categoria':''}));
+  if(!linhas.length){alert('Nenhuma placa cadastrada nem base da Auditoria anexada.');return;}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(linhas),'Placas');
+  XLSX.writeFile(wb,'placas_aportes_combustivel.xlsx');
+}
+async function fapImportarPlacas(ev){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
+  const file=ev.target.files[0];if(!file)return;
+  try{
+    const buf=await file.arrayBuffer();
+    let rows;
+    if(/\.(xlsx|xls)$/i.test(file.name)){const wb=XLSX.read(buf,{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});}
+    else{let t=new TextDecoder('utf-8').decode(buf);if((t.match(/\uFFFD/g)||[]).length>5)t=new TextDecoder('windows-1252').decode(buf);rows=fapAudParseCsv(t.replace(/^\uFEFF/,''));}
+    fapProcessarPlanilhaPlacas(rows);
+  }catch(e){alert('Erro ao ler o arquivo: '+e.message);}
+  finally{ev.target.value='';}
+}
+function fapProcessarPlanilhaPlacas(rows){
+  if(!rows||rows.length<2){alert('Planilha vazia.');return;}
+  const h=rows[0];
+  const ci={placa:fapFindColIdx(h,['placa','placa do veiculo']),uf:fapFindColIdx(h,['uf','estado']),go:fapFindColIdx(h,['go','nome do go','gestor','gestor operacional']),tec:fapFindColIdx(h,['tecnico','técnico','tecnico responsavel']),cat:fapFindColIdx(h,['categoria','tipo','categoria do veiculo'])};
+  if(ci.placa<0){alert('Coluna "Placa" não encontrada no cabeçalho da planilha.');return;}
+  const UFS=['PI','MA','PA','AM','AP'],CATS=['Leve','Médio','Pesado','Gerador'];
+  const porPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  let novas=0,atual=0,ignor=0;
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r]||[];
+    const placa=String(row[ci.placa]||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(!placa)continue;
+    const ufRaw=ci.uf>=0?String(row[ci.uf]||'').trim().toUpperCase():'';
+    const uf=UFS.includes(ufRaw)?ufRaw:'';
+    const go=ci.go>=0?fapGoNome(row[ci.go]):'';
+    const tec=ci.tec>=0?String(row[ci.tec]||'').trim():'';
+    const catN=ci.cat>=0?fapNormCategoria(row[ci.cat]):'';
+    const cat=CATS.includes(catN)?catN:'';
+    const p=porPlaca.get(placa);
+    if(p){
+      const novo={...p};let mudou=false;
+      if(uf&&uf!==p.uf){novo.uf=uf;mudou=true;}
+      if(go&&go!==fapGoNome(p.go)){novo.go=go;mudou=true;}
+      if(tec&&tec!==p.tecnico){novo.tecnico=tec;mudou=true;}
+      if(cat&&cat!==p.tipo){novo.tipo=cat;novo.tipoManual=true;mudou=true;}
+      if(mudou){FAP_PLACAS[FAP_PLACAS.indexOf(p)]=novo;porPlaca.set(placa,novo);atual++;}
+    }else if(uf||go){
+      const n={id:fapUid(),placa,uf,tecnico:tec,go,tipo:cat};if(cat)n.tipoManual=true;
+      FAP_PLACAS.push(n);porPlaca.set(placa,n);novas++;
+    }else ignor++;
+  }
+  if(!novas&&!atual){alert('Nada para atualizar: nenhuma placa nova com UF/GO preenchidos e nenhuma alteração nas existentes.'+(ignor?'\n\n'+ignor+' placa(s) nova(s) sem UF nem GO foram ignoradas.':''));return;}
+  fapCleared=false;fapClearedAt='';
+  fapAt=new Date().toISOString();saveState();
+  fapRenderAll();
+  _ghToast('Placas importadas ✓ '+novas+' nova(s), '+atual+' atualizada(s)'+(ignor?', '+ignor+' sem UF/GO ignorada(s)':''),'var(--green-dk)',6000);
+}
+
+/* ─── Histórico do Saldo do Mês por ciclo (item 13) ─── */
+function fapSaldoCiclosMerge(remote){
+  if(!FAP_SALDO_CICLOS||typeof FAP_SALDO_CICLOS!=='object')FAP_SALDO_CICLOS={saldo:{},ts:{saldo:{}}};
+  if(!FAP_SALDO_CICLOS.saldo)FAP_SALDO_CICLOS.saldo={};
+  if(!FAP_SALDO_CICLOS.ts)FAP_SALDO_CICLOS.ts={saldo:{}};
+  return _cfgMergePerKey(['saldo'],FAP_SALDO_CICLOS,FAP_SALDO_CICLOS.ts,remote);
+}
+function fapRegistrarSaldoCiclo(){
+  const k=fapCicloAtualIso().start;
+  if(!FAP_SALDO_CICLOS.ts.saldo)FAP_SALDO_CICLOS.ts.saldo={};
+  FAP_SALDO_CICLOS.saldo[k]=Math.round(fapSaldoMes*100)/100;
+  FAP_SALDO_CICLOS.ts.saldo[k]=new Date().toISOString();
+}
+function fapRenderSaldoHist(){
+  const box=document.getElementById('fap-saldoHist');if(!box)return;
+  const atual=fapCicloAtualIso().start;
+  const ciclos=new Set([atual,...Object.keys(FAP_SALDO_CICLOS.saldo||{})]);
+  FAP_APORTES.forEach(a=>ciclos.add(fapCicloParaData(a.data).start));
+  const linhas=[...ciclos].filter(k=>k<=atual).sort().reverse().map(k=>{
+    const{start,end}=fapCicloParaData(k);
+    const aportado=FAP_APORTES.filter(a=>a.data>=start&&a.data<=end).reduce((x,a)=>x+Math.round(a.valor*100),0)/100;
+    const def=k===atual?fapSaldoMes:(FAP_SALDO_CICLOS.saldo||{})[k];
+    const temDef=typeof def==='number'&&(k!==atual||fapSaldoMes>0);
+    const fim=temDef?def-aportado:null;
+    return`<tr><td>${eh(fapFmtDate(start)+' a '+fapFmtDate(end))}</td><td>${k===atual?'<b>Em andamento</b>':'Encerrado'}</td><td>${temDef?eh(fapFmtMoney(def)):'<span style="color:var(--tx3)">não registrado</span>'}</td><td>${eh(fapFmtMoney(aportado))}</td><td class="fap-val"${fim!==null&&fim<0?' style="color:var(--red)"':''}>${fim===null?'—':eh(fapFmtMoney(fim))}</td></tr>`;
+  });
+  box.innerHTML='<h4 style="margin:0 0 6px;font-size:15px">Histórico por ciclo</h4>'+
+    '<p class="fap-desc" style="margin:0 0 8px">Saldo definido em cada ciclo (15→14), quanto foi aportado e o saldo final. Ciclos anteriores a esta função mostram "não registrado" no saldo definido.</p>'+
+    '<div style="overflow-x:auto"><table class="fap-table"><thead><tr><th>Ciclo</th><th>Situação</th><th>Saldo definido</th><th>Aportado</th><th>Saldo final</th></tr></thead><tbody>'+linhas.join('')+'</tbody></table></div>';
+}
+
+/* ─── Conciliação Aportes × Alelo (análise 12/10/2026, item 6) ───
+   Na base real só 37 de 95 aportes batiam com um Crédito Emergencial no mesmo dia/valor.
+   Casamento 1-para-1, só placas cadastradas, por placa + valor em centavos:
+   1ª passada = mesmo dia (conciliado); 2ª = até 3 dias de diferença (conciliado com
+   data diferente, o mais próximo); o que sobra = só no painel / só no Alelo. */
+const FAP_CONC_TOL_DIAS=3;
+let _fapConcIniciado=false;
+function fapConcAplicarPreset(v){
+  const de=document.getElementById('fap-concDe'),ate=document.getElementById('fap-concAte');if(!de||!ate)return;
+  const hoje=fapTodayIso();
+  if(v==='ciclo'){const c=fapCicloParaData(hoje);de.value=c.start;ate.value=c.end;}
+  else if(v==='cicloAnt'){const c=fapCicloParaData(fapIsoAddDays(fapCicloParaData(hoje).start,-1));de.value=c.start;ate.value=c.end;}
+  else if(v==='base'){de.value=FAP_AUDIT&&FAP_AUDIT.de||'';ate.value=FAP_AUDIT&&FAP_AUDIT.ate||'';}
+  fapRenderConciliacao();
+}
+function fapConcDataManual(){const p=document.getElementById('fap-concPreset');if(p)p.value='';fapRenderConciliacao();}
+function fapConciliar(){
+  const de=(document.getElementById('fap-concDe')||{}).value||'',ate=(document.getElementById('fap-concAte')||{}).value||'';
+  const res={erro:'',de,ate,linhas:[]};
+  if(!FAP_AUDIT)return res;
+  if(de&&ate&&de>ate){res.erro='A Data inicial é posterior à Data final.';return res;}
+  const dentro=d=>(!de||d>=de)&&(!ate||d<=ate);
+  const porPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  const{dic,rows}=FAP_AUDIT;
+  const credPorChave=new Map();
+  rows.forEach(r=>{
+    if(String(dic.tipo[r[1]]||'').trim().toLowerCase()!==FAP_AUD_CRED_TIPO)return;
+    const placa=dic.placa[r[0]];if(!porPlaca.has(placa))return;
+    const d=String(r[3]||'').slice(0,10);if(!d||!dentro(d))return;
+    const c={placa,data:d,hora:String(r[3]||'').slice(11,16),valor:r[2],usado:false};
+    const k=placa+'|'+Math.round(r[2]*100);
+    if(!credPorChave.has(k))credPorChave.set(k,[]);credPorChave.get(k).push(c);
+  });
+  const aps=FAP_APORTES.map(a=>({a,p:fapPlacaById(a.placaId)})).filter(x=>x.p&&dentro(x.a.data)).sort((x,y)=>(x.a.data+x.a.hora).localeCompare(y.a.data+y.a.hora));
+  const casado=new Map();
+  aps.forEach(x=>{const l=credPorChave.get(x.p.placa+'|'+Math.round(x.a.valor*100))||[];const c=l.find(c=>!c.usado&&c.data===x.a.data);if(c){c.usado=true;casado.set(x.a.id,{c,st:'ok'});}});
+  aps.forEach(x=>{
+    if(casado.has(x.a.id))return;
+    const l=(credPorChave.get(x.p.placa+'|'+Math.round(x.a.valor*100))||[]).filter(c=>!c.usado);
+    let melhor=null,md=99;
+    l.forEach(c=>{const dd=Math.abs(fapIsoDiffDays(x.a.data,c.data));if(dd<=FAP_CONC_TOL_DIAS&&dd<md){md=dd;melhor=c;}});
+    if(melhor){melhor.usado=true;casado.set(x.a.id,{c:melhor,st:'data'});}
+  });
+  aps.forEach(x=>{
+    const m=casado.get(x.a.id);
+    res.linhas.push({st:m?m.st:'painel',placa:x.p.placa,go:fapGoNome(x.p.go),aData:x.a.data,aHora:x.a.hora||'',aValor:x.a.valor,cData:m?m.c.data:'',cHora:m?m.c.hora:'',cValor:m?m.c.valor:null,dias:m?Math.abs(fapIsoDiffDays(x.a.data,m.c.data)):null});
+  });
+  credPorChave.forEach(l=>l.forEach(c=>{if(!c.usado){const p=porPlaca.get(c.placa);res.linhas.push({st:'alelo',placa:c.placa,go:fapGoNome(p&&p.go),aData:'',aHora:'',aValor:null,cData:c.data,cHora:c.hora,cValor:c.valor,dias:null});}}));
+  res.linhas.sort((x,y)=>(x.aData||x.cData).localeCompare(y.aData||y.cData)||x.placa.localeCompare(y.placa));
+  return res;
+}
+const FAP_CONC_ST={ok:'Conciliado',data:'Conciliado (data diferente)',painel:'Só no painel',alelo:'Só no Alelo'};
+function fapRenderConciliacao(){
+  const empty=document.getElementById('fap-concEmpty'),wrap=document.getElementById('fap-concWrap');if(!empty||!wrap)return;
+  if(!FAP_AUDIT){empty.style.display='';wrap.style.display='none';return;}
+  empty.style.display='none';wrap.style.display='';
+  if(!_fapConcIniciado){_fapConcIniciado=true;const p=document.getElementById('fap-concPreset');if(p&&!document.getElementById('fap-concDe').value){p.value='ciclo';fapConcAplicarPreset('ciclo');return;}}
+  const r=fapConciliar();
+  const av=document.getElementById('fap-concAviso');
+  const avisos=[];
+  if(r.erro)avisos.push(r.erro);
+  else if(FAP_AUDIT.de&&FAP_AUDIT.ate&&((r.de&&r.de<FAP_AUDIT.de)||(r.ate&&r.ate>FAP_AUDIT.ate)))avisos.push('O período vai além da cobertura da base Alelo anexada ('+fapFmtDate(FAP_AUDIT.de)+' a '+fapFmtDate(FAP_AUDIT.ate)+') — aportes fora dela aparecem como "só no painel" por falta de dado, não necessariamente por erro.');
+  const naoCad=FAP_PLACAS.length?0:1;
+  if(naoCad)avisos.push('Nenhuma placa cadastrada — a conciliação só considera placas cadastradas.');
+  av.style.display=avisos.length?'':'none';av.classList.toggle('fap-aud-erro',!!r.erro);av.innerHTML=avisos.map(eh).join('<br>');
+  const tot={ok:[0,0],data:[0,0],painel:[0,0],alelo:[0,0]};
+  r.linhas.forEach(l=>{tot[l.st][0]++;tot[l.st][1]+=Math.round((l.aValor!==null?l.aValor:l.cValor)*100);});
+  document.getElementById('fap-concCards').innerHTML=Object.keys(FAP_CONC_ST).map(k=>`<div class="fap-card"><div class="fap-label"><span class="fap-conc-st fap-conc-${k}">${FAP_CONC_ST[k]}</span></div><div class="fap-value">${tot[k][0]}</div><div class="fap-foot">${eh(fapFmtMoney(tot[k][1]/100))}</div></div>`).join('');
+  const f=(document.getElementById('fap-concStatus')||{}).value||'';
+  const vis=r.linhas.filter(l=>!f||l.st===f);
+  const LIM=500;
+  document.getElementById('fap-concBody').innerHTML=vis.length?vis.slice(0,LIM).map(l=>`<tr><td><span class="fap-conc-st fap-conc-${l.st}">${FAP_CONC_ST[l.st]}</span></td><td><b>${eh(l.placa)}</b></td><td>${eh(l.go||'—')}</td><td>${l.aData?eh(fapFmtDate(l.aData)+(l.aHora?' '+l.aHora:'')):'—'}</td><td>${l.aValor!==null?eh(fapFmtMoney(l.aValor)):'—'}</td><td>${l.cData?eh(fapFmtDate(l.cData)+(l.cHora?' '+l.cHora:'')):'—'}</td><td>${l.cValor!==null?eh(fapFmtMoney(l.cValor)):'—'}</td><td>${l.dias!==null?l.dias:'—'}</td></tr>`).join(''):'<tr><td colspan="8"><div class="fap-empty">Nada nesta situação/período.</div></td></tr>';
+  const note=document.getElementById('fap-concNote');
+  if(vis.length>LIM){note.style.display='';note.textContent='Mostrando '+LIM+' de '+vis.length+' — use "Exportar" para a lista completa.';}else note.style.display='none';
+}
+function fapConcExportar(){
+  if(!FAP_AUDIT){alert('Anexe o relatório de transações do Portal Alelo para conciliar.');return;}
+  const r=fapConciliar();if(r.erro){alert(r.erro);return;}
+  if(!r.linhas.length){alert('Nada para exportar no período.');return;}
+  const det=r.linhas.map(l=>({'Situação':FAP_CONC_ST[l.st],'Placa':l.placa,'GO':l.go||'','Data aporte':l.aData?fapFmtDate(l.aData):'','Hora aporte':l.aHora,'Valor aporte (R$)':l.aValor!==null?l.aValor:'','Data crédito Alelo':l.cData?fapFmtDate(l.cData):'','Hora crédito':l.cHora,'Valor crédito (R$)':l.cValor!==null?l.cValor:'','Dif. dias':l.dias!==null?l.dias:''}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(det),'Conciliação');
+  XLSX.writeFile(wb,'conciliacao_aportes_alelo_'+(r.de||FAP_AUDIT.de)+'_a_'+(r.ate||FAP_AUDIT.ate)+'.xlsx');
+}
+
 /* ─── Auditoria (pedido do usuário, 2026-10-12) ───
    Audita as transações de uma ou mais placas por Tipo de transação, a partir do
    relatório de transações do Portal Alelo (modelo em /auditoria — 28 colunas, ';',
@@ -26258,7 +26624,7 @@ function fapAudLimparFiltros(){
 }
 /* Data de hoje LOCAL (fapTodayIso usa toISOString = UTC, que depois das 21h de Brasília
    já é o dia seguinte — pros atalhos de período isso deslocaria 1 dia). */
-function fapAudHojeLocal(){const d=new Date(),p2=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
+function fapAudHojeLocal(){return fapTodayIso();}
 /* Atalhos do "Período de aferição" — só preenchem Data inicial/Data final; o cálculo é
    sempre pelas duas datas (inclusive nas pontas). Ciclo = competência 15→14 (mesma
    convenção do resto do painel, fapCicloParaData). */
@@ -26461,7 +26827,7 @@ function fapAudTransLimpar(){
 let fapAudDetAtual=[];
 function fapAudGoDaPlaca(placa){
   const p=FAP_PLACAS.find(x=>x.placa===placa);
-  return{go:p&&p.go&&p.go.trim()?p.go.trim():'',uf:p&&p.uf?p.uf:''};
+  return{go:p?fapGoNome(p.go):'',uf:p&&p.uf?p.uf:''};
 }
 /* E-mail das Transações (pedido 12/10/2026): mesmo modelo/estrutura do bloco "E-mail"
    do painel (Assunto, saudação, Filtro aplicado, relação, totais, encerramento), com a
@@ -26749,11 +27115,11 @@ function fapAudRenderResultados(){
       /* Só a opção atual vai no HTML; as 60 são criadas ao abrir a lista
          (fapAudCotaOpcoes) — 500 linhas × 61 opções eram ~30 mil elementos por render. */
       const opts='<option value="">—</option>'+(cota?'<option value="'+cota+'" selected>'+fapAudCotaLabel(cota)+'</option>':'');
-      cCell='<select class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onmousedown="fapAudCotaOpcoes(this,'+i+')" onfocus="fapAudCotaOpcoes(this,'+i+')" onkeydown="fapAudCotaOpcoes(this,'+i+')" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
+      cCell='<select aria-label="Cota de Combustível da transação '+eh(t.placa)+' de '+eh(fapAudFmtDataHora(t.data))+'" class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onmousedown="fapAudCotaOpcoes(this,'+i+')" onfocus="fapAudCotaOpcoes(this,'+i+')" onkeydown="fapAudCotaOpcoes(this,'+i+')" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
     }else cCell=cota?eh(fapAudCotaLabel(cota)):'—';
     const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(alto?' class="fap-aud-alto" title="Crédito Emergencial de Limite a partir de R$ 1.000"':(debB?' class="fap-aud-deb" title="Débito Emergencial de Limite abaixo de R$ 1.000"':(inval?' style="color:var(--red)"':'')));
     const jCell=podeEditar
-      ?`<input type="text" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
+      ?`<input type="text" aria-label="Justificativa da transação ${eh(t.placa)} de ${eh(fapAudFmtDataHora(t.data))}" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
       :(just?eh(just):(alto?'<span style="color:var(--red)">Pendente</span>':'—'));
     return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
   }).join('');
@@ -26877,7 +27243,7 @@ function fapAlterarCotaCondutor(condutor,novoValor){
   fapAt=new Date().toISOString();saveState();
   fapRenderAll();
   fapRenderModalCondutorBody();
-  _ghToast(`Cota do mês de ${condutor} atualizada ✓`,'var(--green-dk)',3000);
+  _ghToast(`Limite do condutor ${condutor} atualizado ✓`,'var(--green-dk)',3000);
 }
 /* Farol de consumo x cota — mesmo padrão visual/limiares já usado em
    fuelFarolOrcamento() (Painel Combustível: verde <80%, amarelo 80-100%, vermelho
@@ -26920,7 +27286,7 @@ function fapRenderTipoVeiculo(){
     const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
     fapChTipo=new Chart(cv,{type:'bar',data:{labels:lista.map(t=>t.tipo),datasets:[
       {label:'Consumido no mês',data:lista.map(t=>t.noCiclo),backgroundColor:'#007aff',borderRadius:4},
-      {label:'Cota do mês',data:lista.map(t=>FAP_COTA_CATEGORIA[t.tipo]?FAP_COTA_CATEGORIA[t.tipo]*t.placas.size:0),backgroundColor:'#8fb3e0',borderRadius:4}
+      {label:'Limite mensal',data:lista.map(t=>FAP_COTA_CATEGORIA[t.tipo]?FAP_COTA_CATEGORIA[t.tipo]*t.placas.size:0),backgroundColor:'#8fb3e0',borderRadius:4}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
   }
   /* Link pra abrir a lista de veículos daquela categoria (pedido do usuário,
@@ -27024,7 +27390,7 @@ function fapAlterarCategoriaManual(placa,novaCategoria){
 function fapRenderCotaCategoriaInputs(){
   const el=document.getElementById('fap-modal-condutor-cotas');
   if(!el)return;
-  el.innerHTML='<div class="fap-cota-label">Cota mensal por categoria — edite se estiver errada:</div>'
+  el.innerHTML='<div class="fap-cota-label">Limite mensal por categoria — edite se estiver errado:</div>'
     +'<div class="fap-cota-grid">'
     +FAP_CATEGORIAS_COTA.map(cat=>`<label class="fap-cota-item"><span>${eh(cat)}</span><input type="number" min="0" step="1" inputmode="decimal" value="${FAP_COTA_CATEGORIA[cat]||0}" ${canEdit()?'':'disabled'} onchange="fapAlterarCotaCategoria('${cat}',this.value)"></label>`).join('')
     +'</div>';
@@ -27037,7 +27403,7 @@ function fapAlterarCotaCategoria(categoria,novoValor){
   fapRenderAll();
   fapRenderModalCategoriaBody();
   fapRenderModalCondutorBody();
-  _ghToast(`Cota de ${categoria} atualizada para ${fapFmtMoney(v)} ✓`,'var(--green-dk)',3000);
+  _ghToast(`Limite mensal de ${categoria} atualizado para ${fapFmtMoney(v)} ✓`,'var(--green-dk)',3000);
 }
 /* Modal "consumo e datas de transação" de um condutor (pedido do usuário): clicar no
    nome na tabela de Consumo por Condutor abre o detalhamento — cada lançamento
@@ -27086,7 +27452,7 @@ function fapRenderModalCondutorBody(){
   if(ownEl){
     const temOverride=Object.prototype.hasOwnProperty.call(FAP_COTA_CONDUTOR_OVERRIDES,fapModalCondutorAtual);
     ownEl.innerHTML=`<label class="fap-cota-item" style="max-width:260px">
-      <span>Cota do mês deste condutor${temOverride?' <span style="color:var(--orange)">(corrigida manualmente)</span>':' (calculada: '+eh(fapFmtMoney(cotaCalculada))+')'}</span>
+      <span>Limite do mês deste condutor${temOverride?' <span style="color:var(--orange)">(corrigida manualmente)</span>':' (calculada: '+eh(fapFmtMoney(cotaCalculada))+')'}</span>
       <input type="number" min="0" step="1" inputmode="decimal" placeholder="${eh(fapFmtMoney(cotaCalculada))}" value="${temOverride?FAP_COTA_CONDUTOR_OVERRIDES[fapModalCondutorAtual]:''}" ${canEdit()?'':'disabled'} onchange="fapAlterarCotaCondutor('${fapModalCondutorAtual.replace(/'/g,"\\'")}',this.value)">
     </label>`
     +(temOverride&&canEdit()?`<span class="fap-nm-click" style="font-size:13px;display:inline-block;margin-top:4px" onclick="fapAlterarCotaCondutor('${fapModalCondutorAtual.replace(/'/g,"\\'")}','')">Voltar para o cálculo automático</span>`:'');
@@ -27488,7 +27854,7 @@ function fapEmailText(){
   const list=fapAportesFiltrados().filter(a=>{
     if(!go)return true;
     const p=fapPlacaById(a.placaId);
-    const pGo=p&&p.go&&p.go.trim()?p.go.trim():'';
+    const pGo=p?fapGoNome(p.go):'';
     return pGo===go;
   });
   const total=list.reduce((s,a)=>s+a.valor,0);
@@ -27496,7 +27862,7 @@ function fapEmailText(){
     const p=fapPlacaById(a.placaId);
     const placa=p?p.placa:'—';
     const uf=p?p.uf:'—';
-    const go=p&&p.go?p.go:'sem GO vinculado';
+    const go=p&&fapGoNome(p.go)?fapGoNome(p.go):'sem GO vinculado';
     return`${placa} (${uf}) — GO: ${go} — ${fapFmtDate(a.data)} — ${fapFmtMoney(a.valor)}`;
   });
   const corpo=linhas.length?linhas.join('\n'):'Nenhum aporte no período/filtro selecionado.';
@@ -27548,7 +27914,7 @@ function fapPrefillForms(){
      card "Saldo do mês", que não usa filtro, continua mostrando o valor certo — foi
      assim que o usuário percebeu a divergência). Sempre força os filtros pro estado
      "Todas/vazio" no boot, nunca confia no valor que o navegador colocou no DOM. */
-  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte','fap-audPreset'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte','fap-audPreset','fap-concDe','fap-concAte','fap-concPreset','fap-concStatus'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const audChk=document.getElementById('fap-audIgnorarNegadas');if(audChk)audChk.checked=true;
 }
 
@@ -27584,8 +27950,33 @@ function fapScheduleRenderAll(){
     if(activeTab==='aportes')fapRenderAll();
   },0);
 }
+/* ─── Sub-abas do painel (análise 12/10/2026, item 9) ───
+   O painel tinha ~11 mil px de altura e redesenhava TUDO (~1,2 s) a cada mudança. Agora
+   são 3 seções; só a aberta é desenhada (as outras são desenhadas ao abrir — gráficos
+   Chart.js precisam do canvas visível pra medir o tamanho). A seção aberta é
+   preferência deste navegador (localStorage), não sincroniza. */
+const FAP_SUBS=['aportes','consumo','auditoria'];
+let fapSubAtiva=(()=>{try{const v=localStorage.getItem('fap:subaba');return FAP_SUBS.includes(v)?v:'aportes';}catch(_){return'aportes';}})();
+function fapRenderSubBar(){
+  FAP_SUBS.forEach(k=>{
+    const el=document.getElementById('fap-sub-'+k);if(el)el.style.display=k===fapSubAtiva?'':'none';
+  });
+  document.querySelectorAll('#panel-aportes .fap-subtab').forEach(b=>{
+    const on=b.dataset.sub===fapSubAtiva;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false');
+  });
+}
+function fapSetSub(k){
+  if(!FAP_SUBS.includes(k))k='aportes';
+  fapSubAtiva=k;
+  try{localStorage.setItem('fap:subaba',k);}catch(_){}
+  mselCloseAll();
+  fapRenderAll();
+}
 function fapRenderAll(){
+  fapRenderSubBar();
   fapPopulateSelects();
+  if(fapSubAtiva==='consumo'){fapRenderConsumoCondutor();return;}
+  if(fapSubAtiva==='auditoria'){fapRenderAuditoria();fapRenderConciliacao();return;}
   fapRenderPlacaTable();
   fapRenderHist();
   fapRenderCards();
@@ -27595,7 +27986,7 @@ function fapRenderAll(){
   fapRenderGoWeekTable();
   fapRenderConsumoCondutor();
   fapRenderEmailBlock();
-  fapRenderAuditoria();
+  fapRenderSaldoHist();
 }
 
 /* ─── REDE PANEL ─── */
