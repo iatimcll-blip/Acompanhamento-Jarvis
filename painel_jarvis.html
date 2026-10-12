@@ -777,6 +777,10 @@ body {
 .msel-opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:6px;font-size:11.5px;color:var(--tx);cursor:pointer}
 .msel-opt:hover{background:var(--surface2)}
 .msel-empty{padding:8px;font-size:13px;color:var(--tx3)}
+.msel-panel-hd{gap:6px;align-items:center}
+.msel-search{flex:1;min-width:0;border:.5px solid var(--bd2);border-radius:6px;padding:4px 7px;font-size:12px;color:var(--tx);background:var(--surface);font-family:inherit}
+.fap-aud-chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--tx2);font-weight:600;padding-bottom:8px;cursor:pointer}
+.fap-filterbar .fap-aud-chk input{min-width:0;width:auto;padding:0;margin:0}
 .quick-mop {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin: 0 0 12px; padding: 10px;
@@ -10509,6 +10513,64 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
     </div>
+    <div class="fap-panel" id="fap-auditoriaPanel">
+      <div class="fap-hist-head">
+        <div><h3 style="margin-bottom:2px">Auditoria</h3><p class="fap-desc" style="margin:0">Audita as transações de uma ou mais placas por tipo de transação, a partir do relatório de transações do Portal Alelo (coluna C = Placa do veículo, coluna AA = Tipo de transação, coluna G = Valor da transação). Base própria deste bloco — não afeta placas, aportes, Saldo do Mês nem as outras análises.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          <label class="fap-export-btn admin-only" style="cursor:pointer" title="Aceita .csv/.xlsx no formato do relatório de transações do Portal Alelo (Placa na coluna C, Tipo de transação na coluna AA). Anexar uma base nova SUBSTITUI a anterior deste bloco (não acumula).">
+            <i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Anexar base auditoria
+            <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapAudImportar(event)">
+          </label>
+          <button class="fap-export-btn" onclick="fapAudExportar()"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar</button>
+          <button class="fap-export-btn admin-only" style="background:var(--red-bg);color:var(--red);border-color:var(--red)" onclick="fapAudLimparBase()"><i class="ti ti-trash" style="font-size:13px;vertical-align:-1px"></i> Limpar base</button>
+        </div>
+      </div>
+      <p class="fap-desc" id="fap-audBaseInfo" style="margin:0 0 12px;display:none"></p>
+      <div id="fap-audEmpty" class="fap-empty">Nenhuma base de auditoria anexada ainda — use o botão "Anexar base auditoria" acima.</div>
+      <div id="fap-audWrap" style="display:none">
+        <div class="fap-filterbar">
+          <div class="fap-field"><label>Placas</label><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fap-aud-placa" onclick="mselToggleOpen('fap-aud-placa')"><span class="msel-btn-lbl">Todas as placas</span></button></div></div>
+          <div class="fap-field"><label>Tipo de transação</label><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fap-aud-tipo" onclick="mselToggleOpen('fap-aud-tipo')"><span class="msel-btn-lbl">Todos os tipos</span></button></div></div>
+          <div class="fap-field"><label>De</label><input type="date" id="fap-audDe" autocomplete="off" onchange="fapAudRenderResultados()"></div>
+          <div class="fap-field"><label>Até</label><input type="date" id="fap-audAte" autocomplete="off" onchange="fapAudRenderResultados()"></div>
+          <label class="fap-aud-chk" title="Transações com status Negada ou Cancelada não representam gasto real — marcado, ficam fora dos totais (o valor desconsiderado aparece no card Valor total)."><input type="checkbox" id="fap-audIgnorarNegadas" checked autocomplete="off" onchange="fapAudRenderResultados()"> Desconsiderar negadas/canceladas</label>
+          <div class="fap-spacer"></div>
+          <button class="fap-reset-btn" onclick="fapAudLimparFiltros()">Limpar filtros</button>
+        </div>
+        <div class="fap-cards">
+          <div class="fap-card fap-accent-green"><div class="fap-label">Valor total</div><div class="fap-value" id="fap-aud-cTotal">R$ 0,00</div><div class="fap-foot" id="fap-aud-cTotalFoot">—</div></div>
+          <div class="fap-card fap-accent-blue"><div class="fap-label">Transações</div><div class="fap-value" id="fap-aud-cQtd">0</div><div class="fap-foot" id="fap-aud-cQtdFoot">—</div></div>
+          <div class="fap-card"><div class="fap-label">Placas</div><div class="fap-value" id="fap-aud-cPlacas">0</div><div class="fap-foot">com transação no recorte</div></div>
+          <div class="fap-card"><div class="fap-label">Valor médio por transação</div><div class="fap-value" id="fap-aud-cMedia">R$ 0,00</div><div class="fap-foot" id="fap-aud-cMediaFoot">—</div></div>
+        </div>
+        <div id="fap-audVazio" class="fap-empty" style="display:none">Nenhuma transação encontrada para as placas/tipos/período selecionados.</div>
+        <div id="fap-audResultados">
+          <h4 style="margin:0 0 6px;font-size:15px">Valores por tipo de transação</h4>
+          <div style="overflow-x:auto;margin-bottom:18px">
+            <table class="fap-table">
+              <thead><tr><th>Tipo de transação</th><th>Transações</th><th>Valor</th><th>% do valor</th></tr></thead>
+              <tbody id="fap-audTipoBody"></tbody>
+            </table>
+          </div>
+          <h4 style="margin:0 0 6px;font-size:15px">Placa × tipo de transação</h4>
+          <div style="overflow:auto;max-height:420px;margin-bottom:18px">
+            <table class="fap-table">
+              <thead><tr id="fap-audMatrizHead"></tr></thead>
+              <tbody id="fap-audMatrizBody"></tbody>
+              <tfoot id="fap-audMatrizFoot"></tfoot>
+            </table>
+          </div>
+          <h4 style="margin:0 0 6px;font-size:15px">Transações</h4>
+          <p class="fap-desc" id="fap-audDetNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
+          <div style="overflow:auto;max-height:420px">
+            <table class="fap-table">
+              <thead><tr><th>Data/hora</th><th>Placa</th><th>Motorista</th><th>Tipo de transação</th><th>Status</th><th>Cidade</th><th>Valor</th></tr></thead>
+              <tbody id="fap-audDetBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: veículos de uma categoria (Leve/Médio/Pesado) — editar categoria (pedido do usuário, 2026-09-17) -->
@@ -14603,6 +14665,14 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoMcAt')&&remoteSt.fapConsumoMcAt>(fapConsumoMcAt||''))fapConsumoMcAt=remoteSt.fapConsumoMcAt;
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderConsumoVeiculoCiclo==='function')fapRenderConsumoVeiculoCiclo();
       }
+      /* Auditoria (Aportes Combustível): base única, replace-by-latest (mesmo padrão do
+         Abertos OFS) — cada anexo é o relatório completo; "Limpar base" grava
+         FAP_AUDIT=null com fapAuditAt novo, então a limpeza também vence pelo timestamp. */
+      if(Object.prototype.hasOwnProperty.call(remoteSt,'fapAuditAt')&&remoteSt.fapAuditAt&&remoteSt.fapAuditAt>(fapAuditAt||'')){
+        FAP_AUDIT=remoteSt.FAP_AUDIT&&Array.isArray(remoteSt.FAP_AUDIT.rows)?remoteSt.FAP_AUDIT:null;
+        fapAuditAt=remoteSt.fapAuditAt;
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAuditoria==='function')fapRenderAuditoria();
+      }
       /* B2C: cada upload recalcula o resumo inteiro (não são registros editados um a
          um) — mesmo padrão de Ativações/POP acima, troca por inteiro só quando o
          resumo remoto for comprovadamente mais recente que o calculado neste
@@ -16021,6 +16091,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapAt',keys:['FAP_PLACAS','FAP_APORTES','FAP_PLACAS_DEL','FAP_APORTES_DEL','fapCleared','fapClearedAt','fapAt','fapSaldoMes']},
   {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt','fapConsumoCleared','fapConsumoClearedAt']},
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt','fapConsumoMcCleared','fapConsumoMcClearedAt']},
+  {at:'fapAuditAt',keys:['FAP_AUDIT','fapAuditAt']},
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT']},
   {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
   {at:'usersAt',keys:['users','usersAt']},
@@ -16056,7 +16127,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -16370,6 +16441,14 @@ function applyState(st,label){
     }
     if(Object.prototype.hasOwnProperty.call(st,'fapConsumoMcAt'))fapConsumoMcAt=st.fapConsumoMcAt||'';
   }catch(e){console.warn('applyState: falha ao restaurar Consumo Mês Corrente:',e);}
+  try{
+    /* Auditoria — base única replace-by-latest (ver _mergeGhRemoteIntoLocal); quando o
+       local é mais novo, mergeRemoteStateForRestore() já removeu estas chaves. */
+    if(Object.prototype.hasOwnProperty.call(st,'fapAuditAt')&&st.fapAuditAt){
+      FAP_AUDIT=st.FAP_AUDIT&&Array.isArray(st.FAP_AUDIT.rows)?st.FAP_AUDIT:null;
+      fapAuditAt=st.fapAuditAt;changed=true;
+    }
+  }catch(e){console.warn('applyState: falha ao restaurar Auditoria:',e);}
   try{
     /* B2C: só o resumo agregado por indicador sincroniza (poucas dezenas de
        números) — as bases brutas (até ~50 mil linhas por arquivo) ficam só no
@@ -18805,7 +18884,7 @@ function mselRender(id,options,selectedArr,opts){
     const portal=document.getElementById('msel-portal');
     if(portal)portal.appendChild(panel);
   }
-  panel.innerHTML='<div class="msel-panel-hd"><button type="button" class="msel-mini" onclick="mselClear(\''+id+'\')">Limpar seleção</button></div>'+
+  panel.innerHTML='<div class="msel-panel-hd">'+(opts.search?'<input type="text" class="msel-search" placeholder="Buscar..." autocomplete="off" oninput="mselFilter(\''+id+'\',this.value)">':'')+'<button type="button" class="msel-mini" onclick="mselClear(\''+id+'\')">Limpar seleção</button></div>'+
     (options.length?options.map(o=>{
       const val=typeof o==='object'?o.value:o;
       const lbl=typeof o==='object'?o.label:(opts.labelFn?opts.labelFn(o):o);
@@ -18829,6 +18908,14 @@ function mselToggleValue(id,value){
   cfg.selected=next;
   _mselUpdateBtn(id,next,cfg.allLabel,cfg.labelFn);
   cfg.onChange(next);
+}
+/* Busca dentro do popover (opts.search em mselRender, desligada por padrão) — só
+   esconde/mostra as opções já renderizadas, não mexe na seleção. Usada em listas
+   longas (ex.: Placas da Auditoria, ~400 placas). */
+function mselFilter(id,q){
+  const panel=document.getElementById('msel-panel-'+id);if(!panel)return;
+  const s=String(q||'').trim().toLowerCase();
+  panel.querySelectorAll('.msel-opt').forEach(l=>{l.style.display=!s||l.textContent.toLowerCase().includes(s)?'':'none';});
 }
 function mselClear(id){
   const cfg=MSEL_REGISTRY[id];if(!cfg)return;
@@ -25153,6 +25240,10 @@ let fapConsumoCleared=false,fapConsumoClearedAt='';
    mesmo que o arquivo anexado venha com dias de antes do dia 15. Mesmo padrão de
    timestamp/merge próprio de FAP_CONSUMO_CONDUTOR. */
 let FAP_CONSUMO_MC=[],fapConsumoMcAt='';
+/* Auditoria (bloco próprio): relatório de transações do Portal Alelo, compactado por
+   dicionário (ver fapAudProcessar) — null = sem base. Sincroniza replace-by-latest por
+   fapAuditAt. Filtros do bloco (placas/tipos/período) são estado de tela, não sincronizam. */
+let FAP_AUDIT=null,fapAuditAt='';
 /* fapLimparBaseMesCorrente() — mesma trava de fapConsumoCleared acima. */
 let fapConsumoMcCleared=false,fapConsumoMcClearedAt='';
 let fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null,fapChVeicList=[];
@@ -25909,6 +26000,258 @@ function fapLimparBaseMesCorrente(){
   fapRenderConsumoVeiculoCiclo();
   _ghToast('Base do bloco Consumo Mês Corrente limpa ✓','var(--green-dk)',4000);
 }
+
+/* ─── Auditoria (pedido do usuário, 2026-10-12) ───
+   Audita as transações de uma ou mais placas por Tipo de transação, a partir do
+   relatório de transações do Portal Alelo (modelo em /auditoria — 28 colunas, ';',
+   campos entre aspas, Windows-1252). Colunas por POSIÇÃO fixa, mesmo princípio do resto
+   do painel: B=Motorista, C=Placa, E=Status, F=Data/hora, G=Valor, Q=Cidade do EC,
+   AA=Tipo de transação. Base própria (FAP_AUDIT), substituída a cada anexo — nunca
+   mexe em placas/aportes/Saldo/Consumo. Compactada por dicionário (cada linha guarda
+   índices das strings repetidas) pra não pesar no estado sincronizado (~13 mil linhas
+   ≈ 0,5 MB em vez de ~3 MB do arquivo bruto). */
+const FAP_AUD_COL={motorista:1,placa:2,status:4,data:5,valor:6,cidade:16,tipo:26};
+let fapAudSelPlacas=[],fapAudSelTipos=null; // null = ainda não inicializado (padrão: Compra)
+function fapAudNorm(s){return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+/* CSV com aspas (o export do Portal Alelo põe TODO campo entre aspas — o split(';')
+   simples usado pelas outras importações deixaria as aspas no valor). */
+function fapAudParseCsv(text){
+  const nl=text.indexOf('\n');
+  const first=nl<0?text:text.slice(0,nl);
+  const sep=(first.split(';').length>=first.split(',').length)?';':',';
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}
+      else cell+=c;
+    }else if(c==='"')q=true;
+    else if(c===sep){row.push(cell);cell='';}
+    else if(c==='\n'||c==='\r'){
+      if(c==='\r'&&text[i+1]==='\n')i++;
+      row.push(cell);cell='';
+      if(row.some(x=>String(x).trim()))rows.push(row);
+      row=[];
+    }else cell+=c;
+  }
+  row.push(cell);if(row.some(x=>String(x).trim()))rows.push(row);
+  return rows;
+}
+/* Data/hora → 'YYYY-MM-DD HH:MM' (string ordenável, sem new Date(iso) — ver fapIsoParts).
+   Aceita dd/mm/aaaa[ hh:mm[:ss]] (CSV), Date (xlsx com cellDates) e serial do Excel. */
+function fapAudDataIso(v){
+  const p2=n=>String(n).padStart(2,'0');
+  if(v instanceof Date&&!isNaN(v))return`${v.getFullYear()}-${p2(v.getMonth()+1)}-${p2(v.getDate())} ${p2(v.getHours())}:${p2(v.getMinutes())}`;
+  if(typeof v==='number'&&typeof XLSX!=='undefined'){
+    const d=XLSX.SSF.parse_date_code(v);
+    if(d)return`${d.y}-${p2(d.m)}-${p2(d.d)} ${p2(d.H||0)}:${p2(d.M||0)}`;
+  }
+  const s=String(v||'').trim();
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ ,T]+(\d{1,2}):(\d{2}))?/);
+  if(m){const y=m[3].length===2?'20'+m[3]:m[3];return`${y}-${p2(m[2])}-${p2(m[1])} ${p2(m[4]||0)}:${p2(m[5]||0)}`;}
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if(m)return`${m[1]}-${m[2]}-${m[3]} ${m[4]||'00'}:${m[5]||'00'}`;
+  return'';
+}
+function fapAudFmtDataHora(s){return s?fapFmtDate(s.slice(0,10))+' '+s.slice(11,16):'—';}
+async function fapAudImportar(ev){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
+  const file=ev.target.files[0];
+  if(!file)return;
+  try{
+    const buf=await file.arrayBuffer();
+    let rows;
+    if(/\.(xlsx|xls)$/i.test(file.name)){
+      const wb=XLSX.read(buf,{type:'array',cellDates:true});
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
+    }else{
+      let text=new TextDecoder('utf-8').decode(buf);
+      const invalidas=(text.match(/�/g)||[]).length;
+      if(invalidas>5)text=new TextDecoder('windows-1252').decode(buf);
+      rows=fapAudParseCsv(text.replace(/^﻿/,''));
+    }
+    fapAudProcessar(rows,file.name);
+  }catch(e){
+    alert('Erro ao ler o arquivo: '+e.message);
+  }finally{
+    ev.target.value='';
+  }
+}
+function fapAudProcessar(rows,fileName){
+  if(!rows||rows.length<2){alert('Arquivo vazio ou em formato inesperado.');return;}
+  const h=rows[0]||[];
+  if(!fapAudNorm(h[FAP_AUD_COL.placa]).includes('placa')||!fapAudNorm(h[FAP_AUD_COL.tipo]).includes('tipo')){
+    alert('Formato inesperado: a coluna C deve ser "Placa do veículo" e a coluna AA "Tipo de transação" (relatório de transações do Portal Alelo, mesmo modelo da pasta auditoria).\n\nEncontrado: C = "'+String(h[FAP_AUD_COL.placa]||'')+'", AA = "'+String(h[FAP_AUD_COL.tipo]||'')+'".');
+    return;
+  }
+  const dic={placa:[],tipo:[],status:[],motorista:[],cidade:[]};
+  const idx={placa:new Map(),tipo:new Map(),status:new Map(),motorista:new Map(),cidade:new Map()};
+  const put=(k,v)=>{let i=idx[k].get(v);if(i===undefined){i=dic[k].length;dic[k].push(v);idx[k].set(v,i);}return i;};
+  const out=[];let ignoradas=0,de='',ate='';
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r];if(!row)continue;
+    const placa=String(row[FAP_AUD_COL.placa]||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    const tipo=String(row[FAP_AUD_COL.tipo]||'').trim();
+    const rawV=row[FAP_AUD_COL.valor];
+    const valor=typeof rawV==='number'?rawV:fapParseValor(rawV);
+    if(!placa||!tipo||isNaN(valor)){ignoradas++;continue;}
+    const data=fapAudDataIso(row[FAP_AUD_COL.data]);
+    if(data){const d=data.slice(0,10);if(!de||d<de)de=d;if(!ate||d>ate)ate=d;}
+    out.push([put('placa',placa),put('tipo',tipo),Math.round(valor*100)/100,data,
+      put('status',String(row[FAP_AUD_COL.status]||'').trim()),
+      put('motorista',fapNomeProprio(row[FAP_AUD_COL.motorista])),
+      put('cidade',String(row[FAP_AUD_COL.cidade]||'').trim())]);
+  }
+  if(!out.length){alert('Nenhuma transação válida encontrada (coluna C = Placa, AA = Tipo de transação, G = Valor).');return;}
+  const now=new Date().toISOString();
+  FAP_AUDIT={v:1,file:String(fileName||''),importedAt:now,de,ate,dic,rows:out};
+  fapAuditAt=now;
+  saveState();
+  fapRenderAuditoria();
+  _ghToast(`Base de auditoria importada ✓ ${out.length} transação(ões), ${dic.placa.length} placa(s), ${dic.tipo.length} tipo(s) de transação${ignoradas?`, ${ignoradas} linha(s) ignorada(s)`:''} (substituiu a anterior)`,'var(--green-dk)',6500);
+}
+function fapAudLimparBase(){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+  if(!FAP_AUDIT){alert('Não há base de auditoria anexada pra limpar.');return;}
+  if(!confirm('Isso vai apagar a base anexada do bloco "Auditoria" — em todos os dispositivos sincronizados.\n\nNão afeta placas, aportes, Saldo do Mês nem as outras análises.\n\nEssa ação não pode ser desfeita. Continuar?'))return;
+  FAP_AUDIT=null;
+  fapAuditAt=new Date().toISOString();
+  saveState();
+  fapRenderAuditoria();
+  _ghToast('Base do bloco Auditoria limpa ✓','var(--green-dk)',4000);
+}
+function fapAudLimparFiltros(){
+  fapAudSelPlacas=[];fapAudSelTipos=[];
+  ['fap-audDe','fap-audAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const chk=document.getElementById('fap-audIgnorarNegadas');if(chk)chk.checked=true;
+  fapRenderAuditoria();
+}
+function fapAudStatusInvalido(status){const s=fapAudNorm(status);return s.includes('negad')||s.includes('cancel');}
+/* Recorte atual (placas × tipos × período × negadas). Seleção vazia = todos. */
+function fapAudFiltrar(){
+  const res={list:[],exclN:0,exclValor:0};
+  if(!FAP_AUDIT)return res;
+  const{dic,rows}=FAP_AUDIT;
+  const pSet=fapAudSelPlacas.length?new Set(fapAudSelPlacas):null;
+  const tSet=fapAudSelTipos&&fapAudSelTipos.length?new Set(fapAudSelTipos):null;
+  const de=(document.getElementById('fap-audDe')||{}).value||'';
+  const ate=(document.getElementById('fap-audAte')||{}).value||'';
+  const chk=document.getElementById('fap-audIgnorarNegadas');
+  const ignorar=chk?chk.checked:true;
+  const invalido=dic.status.map(fapAudStatusInvalido);
+  for(const r of rows){
+    const placa=dic.placa[r[0]],tipo=dic.tipo[r[1]];
+    if(pSet&&!pSet.has(placa))continue;
+    if(tSet&&!tSet.has(tipo))continue;
+    const d=String(r[3]||'').slice(0,10);
+    if(de&&(!d||d<de))continue;
+    if(ate&&(!d||d>ate))continue;
+    if(ignorar&&invalido[r[4]]){res.exclN++;res.exclValor+=r[2];continue;}
+    res.list.push({placa,tipo,valor:r[2],data:r[3]||'',status:dic.status[r[4]]||'',motorista:dic.motorista[r[5]]||'',cidade:dic.cidade[r[6]]||''});
+  }
+  return res;
+}
+/* Agregados compartilhados entre a tela e a exportação (nunca divergem). */
+function fapAudAgregar(list){
+  const porTipo=new Map(),porPlaca=new Map();let total=0;
+  list.forEach(t=>{
+    total+=t.valor;
+    let pt=porTipo.get(t.tipo);if(!pt){pt={tipo:t.tipo,qtd:0,valor:0};porTipo.set(t.tipo,pt);}
+    pt.qtd++;pt.valor+=t.valor;
+    let pp=porPlaca.get(t.placa);if(!pp){pp={placa:t.placa,qtd:0,total:0,porTipo:{},motoristas:new Set()};porPlaca.set(t.placa,pp);}
+    pp.qtd++;pp.total+=t.valor;pp.porTipo[t.tipo]=(pp.porTipo[t.tipo]||0)+t.valor;
+    if(t.motorista)pp.motoristas.add(t.motorista);
+  });
+  const tipos=[...porTipo.values()].sort((a,b)=>b.valor-a.valor);
+  const placas=[...porPlaca.values()].sort((a,b)=>b.total-a.total||a.placa.localeCompare(b.placa));
+  return{total,tipos,placas};
+}
+function fapAudRenderResultados(){
+  if(!FAP_AUDIT)return;
+  const{list,exclN,exclValor}=fapAudFiltrar();
+  const{total,tipos,placas}=fapAudAgregar(list);
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('fap-aud-cTotal',fapFmtMoney(total));
+  set('fap-aud-cTotalFoot',exclN?`${fapFmtMoney(exclValor)} em ${exclN} negada(s)/cancelada(s) desconsiderada(s)`:'soma do recorte selecionado');
+  set('fap-aud-cQtd',list.length.toLocaleString('pt-BR'));
+  set('fap-aud-cQtdFoot',tipos.length?`${tipos.length} tipo(s) de transação`:'—');
+  set('fap-aud-cPlacas',placas.length.toLocaleString('pt-BR'));
+  set('fap-aud-cMedia',fapFmtMoney(list.length?total/list.length:0));
+  set('fap-aud-cMediaFoot',list.length?'valor total ÷ transações':'—');
+  const vazio=!list.length;
+  document.getElementById('fap-audVazio').style.display=vazio?'':'none';
+  document.getElementById('fap-audResultados').style.display=vazio?'none':'';
+  if(vazio)return;
+  document.getElementById('fap-audTipoBody').innerHTML=tipos.map(t=>
+    `<tr><td>${eh(t.tipo)}</td><td>${t.qtd.toLocaleString('pt-BR')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${total?(t.valor/total*100).toLocaleString('pt-BR',{maximumFractionDigits:1}):'0'}%</td></tr>`
+  ).join('')+`<tr style="font-weight:700"><td>Total</td><td>${list.length.toLocaleString('pt-BR')}</td><td class="fap-val">${eh(fapFmtMoney(total))}</td><td>100%</td></tr>`;
+  document.getElementById('fap-audMatrizHead').innerHTML='<th>Placa</th><th>Motorista(s)</th><th>Transações</th>'+tipos.map(t=>`<th>${eh(t.tipo)}</th>`).join('')+'<th>Total</th>';
+  document.getElementById('fap-audMatrizBody').innerHTML=placas.map(p=>{
+    const mot=[...p.motoristas];
+    const motTxt=mot.length?mot.slice(0,2).join(', ')+(mot.length>2?` +${mot.length-2}`:''):'—';
+    return`<tr><td><b>${eh(p.placa)}</b></td><td title="${eh(mot.join(', '))}">${eh(motTxt)}</td><td>${p.qtd}</td>`+
+      tipos.map(t=>`<td>${p.porTipo[t.tipo]?eh(fapFmtMoney(p.porTipo[t.tipo])):'—'}</td>`).join('')+
+      `<td class="fap-val">${eh(fapFmtMoney(p.total))}</td></tr>`;
+  }).join('');
+  document.getElementById('fap-audMatrizFoot').innerHTML=`<tr style="font-weight:700"><td>Total</td><td></td><td>${list.length}</td>`+
+    tipos.map(t=>`<td>${eh(fapFmtMoney(t.valor))}</td>`).join('')+`<td class="fap-val">${eh(fapFmtMoney(total))}</td></tr>`;
+  const LIM=500;
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data));
+  const note=document.getElementById('fap-audDetNote');
+  if(det.length>LIM){note.style.display='';note.textContent=`Mostrando as ${LIM} transações mais recentes de ${det.length.toLocaleString('pt-BR')} — use "Exportar" para a lista completa.`;}
+  else note.style.display='none';
+  document.getElementById('fap-audDetBody').innerHTML=det.slice(0,LIM).map(t=>{
+    const inval=fapAudStatusInvalido(t.status);
+    return`<tr${inval?' style="color:var(--red)"':''}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td></tr>`;
+  }).join('');
+}
+function fapRenderAuditoria(){
+  const empty=document.getElementById('fap-audEmpty'),wrap=document.getElementById('fap-audWrap'),info=document.getElementById('fap-audBaseInfo');
+  if(!empty||!wrap)return;
+  if(!FAP_AUDIT||!Array.isArray(FAP_AUDIT.rows)||!FAP_AUDIT.rows.length){
+    empty.style.display='';wrap.style.display='none';if(info)info.style.display='none';
+    return;
+  }
+  empty.style.display='none';wrap.style.display='';
+  const{dic,rows}=FAP_AUDIT;
+  if(info){
+    const imp=FAP_AUDIT.importedAt?new Date(FAP_AUDIT.importedAt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    info.style.display='';
+    info.textContent=`Base: ${FAP_AUDIT.file||'—'} · ${rows.length.toLocaleString('pt-BR')} transações · ${dic.placa.length} placas · período ${FAP_AUDIT.de?fapFmtDate(FAP_AUDIT.de):'—'} a ${FAP_AUDIT.ate?fapFmtDate(FAP_AUDIT.ate):'—'}${imp?` · anexada em ${imp}`:''}`;
+  }
+  const placasOpt=dic.placa.slice().sort();
+  const tiposOpt=dic.tipo.slice().sort((a,b)=>a.localeCompare(b,'pt'));
+  /* Padrão do filtro de tipo: "Compra" (o gasto de fato) — o usuário pode trocar/limpar. */
+  if(fapAudSelTipos===null)fapAudSelTipos=tiposOpt.includes('Compra')?['Compra']:[];
+  fapAudSelPlacas=fapAudSelPlacas.filter(p=>placasOpt.includes(p));
+  fapAudSelTipos=fapAudSelTipos.filter(t=>tiposOpt.includes(t));
+  mselRender('fap-aud-placa',placasOpt,fapAudSelPlacas,{allLabel:'Todas as placas',search:true,onChange:v=>{fapAudSelPlacas=v;fapAudRenderResultados();}});
+  mselRender('fap-aud-tipo',tiposOpt,fapAudSelTipos,{allLabel:'Todos os tipos',onChange:v=>{fapAudSelTipos=v;fapAudRenderResultados();}});
+  fapAudRenderResultados();
+}
+function fapAudExportar(){
+  if(!FAP_AUDIT){alert('Nenhuma base de auditoria anexada.');return;}
+  const{list}=fapAudFiltrar();
+  if(!list.length){alert('Nenhuma transação no recorte atual para exportar.');return;}
+  const{total,tipos,placas}=fapAudAgregar(list);
+  const r2=v=>Math.round(v*100)/100;
+  const matriz=placas.map(p=>{
+    const o={'Placa':p.placa,'Motorista(s)':[...p.motoristas].join(', '),'Transações':p.qtd};
+    tipos.forEach(t=>{o[t.tipo]=r2(p.porTipo[t.tipo]||0);});
+    o['Total (R$)']=r2(p.total);return o;
+  });
+  const totRow={'Placa':'TOTAL','Motorista(s)':'','Transações':list.length};
+  tipos.forEach(t=>{totRow[t.tipo]=r2(t.valor);});totRow['Total (R$)']=r2(total);
+  matriz.push(totRow);
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor}));
+  const resumo=tipos.map(t=>({'Tipo de transação':t.tipo,'Transações':t.qtd,'Valor (R$)':r2(t.valor)}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumo),'Por tipo');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(matriz),'Placa x Tipo');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(det),'Transações');
+  XLSX.writeFile(wb,'auditoria_combustivel_'+fapTodayIso()+'.xlsx');
+}
 /* "Veículos por tipo" (pedido do usuário): quantos veículos DISTINTOS realizaram
    transações na base anexada, classificados por categoria (Leve/Médio/Pesado) — vem
    da própria base anexada (coluna "Categoria do veículo" do Portal Alelo, ver
@@ -26628,7 +26971,8 @@ function fapPrefillForms(){
      card "Saldo do mês", que não usa filtro, continua mostrando o valor certo — foi
      assim que o usuário percebeu a divergência). Sempre força os filtros pro estado
      "Todas/vazio" no boot, nunca confia no valor que o navegador colocou no DOM. */
-  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const audChk=document.getElementById('fap-audIgnorarNegadas');if(audChk)audChk.checked=true;
 }
 
 /* Mini-card de saldo dentro do bloco "Novo aporte" (pedido do usuário) — mostra o
@@ -26659,6 +27003,7 @@ function fapRenderAll(){
   fapRenderGoWeekTable();
   fapRenderConsumoCondutor();
   fapRenderEmailBlock();
+  fapRenderAuditoria();
 }
 
 /* ─── REDE PANEL ─── */
