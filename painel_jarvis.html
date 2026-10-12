@@ -14647,7 +14647,7 @@ function _mergeGhRemoteIntoLocal(remoteSt){
             if(Object.prototype.hasOwnProperty.call(remoteSt,'fapSaldoMes'))fapSaldoMes=Number(remoteSt.fapSaldoMes)||0;
           }
         }
-        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
       /* Cota por categoria: mesmo padrão "override simples sem timestamp próprio" de
          b2cMetaOverrides logo abaixo — aplica sempre que o remoto trouxer. */
@@ -14676,7 +14676,7 @@ function _mergeGhRemoteIntoLocal(remoteSt){
           FAP_CONSUMO_CONDUTOR=_mergeArraysByKey(FAP_CONSUMO_CONDUTOR,remoteSt.FAP_CONSUMO_CONDUTOR,x=>x.id);
         }
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoAt')&&remoteSt.fapConsumoAt>(fapConsumoAt||''))fapConsumoAt=remoteSt.fapConsumoAt;
-        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAll==='function')fapRenderAll();
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
       if(Array.isArray(remoteSt.FAP_CONSUMO_MC)||remoteSt.fapConsumoMcCleared){
         const _remoteMcCleared=!!remoteSt.fapConsumoMcCleared;
@@ -14689,7 +14689,7 @@ function _mergeGhRemoteIntoLocal(remoteSt){
           FAP_CONSUMO_MC=_mergeArraysByKey(FAP_CONSUMO_MC,remoteSt.FAP_CONSUMO_MC,x=>x.id);
         }
         if(Object.prototype.hasOwnProperty.call(remoteSt,'fapConsumoMcAt')&&remoteSt.fapConsumoMcAt>(fapConsumoMcAt||''))fapConsumoMcAt=remoteSt.fapConsumoMcAt;
-        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderConsumoVeiculoCiclo==='function')fapRenderConsumoVeiculoCiclo();
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
       /* Auditoria (Aportes Combustível): base única, replace-by-latest (mesmo padrão do
          Abertos OFS) — cada anexo é o relatório completo; "Limpar base" grava
@@ -14697,10 +14697,10 @@ function _mergeGhRemoteIntoLocal(remoteSt){
       if(Object.prototype.hasOwnProperty.call(remoteSt,'fapAuditAt')&&remoteSt.fapAuditAt&&remoteSt.fapAuditAt>(fapAuditAt||'')){
         FAP_AUDIT=remoteSt.FAP_AUDIT&&Array.isArray(remoteSt.FAP_AUDIT.rows)?remoteSt.FAP_AUDIT:null;
         fapAuditAt=remoteSt.fapAuditAt;
-        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapRenderAuditoria==='function')fapRenderAuditoria();
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
       if(remoteSt.FAP_AUDIT_JUST&&typeof remoteSt.FAP_AUDIT_JUST==='object'&&fapAudMergeJust(remoteSt.FAP_AUDIT_JUST)){
-        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapAudRenderResultados==='function')fapAudRenderResultados();
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
       /* B2C: cada upload recalcula o resumo inteiro (não são registros editados um a
          um) — mesmo padrão de Ativações/POP acima, troca por inteiro só quando o
@@ -14777,8 +14777,18 @@ async function saveGhState(manual=false){
         throw e;
       }
       _mergeGhRemoteIntoLocal(remoteSt);
-      renderAllAb();renderAllEnc();renderPanelRepetidos();renderFuel();renderRede();
-      renderPanelAtivacoes();renderAllPop();renderPreventAll();
+      /* Performance (bug "travamento a cada informação salva", 2026-10-12): redesenhar
+         TODOS os painéis aqui custava ~6,5 s de tela congelada a cada sincronização
+         (que roda 0,8 s depois de qualquer edição). Combustível/Rede/Ativações/POP/
+         Preventivas só redesenham se forem a aba aberta — switchTab() já redesenha cada
+         um ao ser aberto, então nada fica desatualizado na tela. Abertos/Encerrados/
+         Repetidos continuam sempre (alimentam os contadores das abas). */
+      renderAllAb();renderAllEnc();renderPanelRepetidos();
+      if(activeTab==='combustivel')renderFuel();
+      if(activeTab==='rede')renderRede();
+      if(activeTab==='ativacoes')renderPanelAtivacoes();
+      if(activeTab==='pop')renderAllPop();
+      if(activeTab==='preventivas')renderPreventAll();else updatePreventReminder();
       const builtState=buildState();
       const content=await _ghStateToB64(builtState);
       try{
@@ -16689,6 +16699,7 @@ function applyState(st,label){
   try{if(changed)applyPermissions();}catch(e){console.warn('applyState: falha ao aplicar permissões:',e);}
   return changed;
 }
+let _lsQuotaExceeded=false;
 function saveLocalState(st){
   const state=st||buildState();
   /* B2C_RAW (as ~13 bases anexadas, até ~150 mil linhas cada no MAX.xlsx) nunca entra em
@@ -16703,8 +16714,18 @@ function saveLocalState(st){
      estava salvo localmente. */
   const localState=(state&&typeof state==='object')?{...state,b2cRaw:B2C_RAW,b2cFiles:B2C_FILES}:state;
   idbSet(STORAGE_KEY,localState).catch(e=>console.warn('Não foi possível salvar as bases no IndexedDB:',e));
+  /* Performance: com o estado acima da cota do localStorage (~13 MB hoje), cada save
+     gastava ~150 ms serializando tudo só pra receber QuotaExceededError. Depois da 1ª
+     falha na sessão, vai direto pro caminho do catch (remove a chave antiga + meta) —
+     mesmo resultado; o IndexedDB acima continua com a cópia completa. */
+  if(_lsQuotaExceeded){
+    try{localStorage.removeItem(STORAGE_KEY)}catch(_){}
+    try{localStorage.setItem(STORAGE_META_KEY,JSON.stringify(stateMeta(state)))}catch(_){}
+    return;
+  }
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(localState))}
   catch(e){
+    _lsQuotaExceeded=true;
     /* Causa raiz de "os dados voltam para o passado" mesmo anexando a base mais recente:
        quando a base cresce (ex.: Encerrados 7180 + Rede 5000+ linhas juntos passam da cota
        do localStorage, ~5-10MB), este setItem lança QuotaExceededError — mas o localStorage
@@ -22005,8 +22026,28 @@ function exportCSV(tipo){
 /* ─── PAINEL B2B REPETIDOS ─── */
 let chRepClients=null,chRepCausas=null,chRepSemana=null,chRepSLA=null;
 
-function repCausa(v){return fmtCausaRaiz(repairPtBR(v))||'Não informada'}
+/* Memo (performance) — mesma razão do repText abaixo; função pura. */
+const _repCausaMemo=new Map();
+function repCausa(v){
+  const key=String(v==null?'':v);
+  let out=_repCausaMemo.get(key);
+  if(out===undefined){out=fmtCausaRaiz(repairPtBR(v))||'Não informada';if(_repCausaMemo.size>50000)_repCausaMemo.clear();_repCausaMemo.set(key,out);}
+  return out;
+}
+/* Memo (performance): repScope/fillRepFilters chamam repText ~5x por chamado do dEnc
+   (~7 mil) a cada render — ~2,5 s por render, e o render roda em toda sincronização
+   (mantém o contador nb-rep da aba). repText é pura (só depende do texto). */
+const _repTextMemo=new Map();
 function repText(v){
+  const key=String(v==null?'':v);
+  const hit=_repTextMemo.get(key);
+  if(hit!==undefined)return hit;
+  const out=_repTextRaw(v);
+  if(_repTextMemo.size>50000)_repTextMemo.clear();
+  _repTextMemo.set(key,out);
+  return out;
+}
+function _repTextRaw(v){
   const s=repairPtBR(String(v||'').replace(/\s+/g,' ').trim());
   if(!s)return'';
   const acr={B2b:'B2B',Sla:'SLA',Id:'ID',Uf:'UF',Pop:'POP',Mop:'MOP',Eps:'EPS',Cnpj:'CNPJ',Cpf:'CPF'};
@@ -23275,7 +23316,33 @@ function ofsNormalizeRow(r){
   const status=ofsStatusKey(r.status||r['Status da Atividade']||'');
   return{...r,tecnico,status,uf:getOfsUF(tecnico),grupo:getOfsGrupo(tecnico)};
 }
-function ofsSanitizeRows(rows){return ofsDedupeRows((Array.isArray(rows)?rows:[]).map(ofsNormalizeRow).filter(Boolean));}
+/* Performance (bug "travamento a cada informação salva", 2026-10-12): ofsNormalizeRow
+   faz casamento aproximado (Levenshtein) do nome do técnico contra todo o cadastro e
+   recria a lista de técnicos cadastrados A CADA LINHA — ~6 mil linhas do OFS levavam
+   ~14 s, e isto roda em toda sincronização (_mergeGhRemoteIntoLocal, 0,8 s depois de
+   qualquer edição em qualquer painel). Só há algumas dezenas de técnicos distintos:
+   memoriza o resultado por nome/status dentro desta chamada (o cadastro não muda no
+   meio dela), produzindo exatamente o mesmo retorno de ofsNormalizeRow. */
+function ofsSanitizeRows(rows){
+  const tecMemo=new Map(),stMemo=new Map();
+  const norm=r=>{
+    if(!r)return null;
+    const rawTec=String(r.tecnico||r.Recurso||r['Técnico']||'').trim();
+    let m=tecMemo.get(rawTec);
+    if(!m){
+      const tecnico=canonicTec(rawTec);
+      const ok=isOfsRegisteredTec(tecnico);
+      m={tecnico,ok,uf:ok?getOfsUF(tecnico):'',grupo:ok?getOfsGrupo(tecnico):''};
+      tecMemo.set(rawTec,m);
+    }
+    if(!m.ok)return null;
+    const rawSt=r.status||r['Status da Atividade']||'';
+    let status=stMemo.get(rawSt);
+    if(status===undefined){status=ofsStatusKey(rawSt);stMemo.set(rawSt,status);}
+    return{...r,tecnico:m.tecnico,status,uf:m.uf,grupo:m.grupo};
+  };
+  return ofsDedupeRows((Array.isArray(rows)?rows:[]).map(norm).filter(Boolean));
+}
 function getOfsUF(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.uf||'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.MA))return'MA';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'PA';return'ND';}
 function getOfsGrupo(tec){const c=ofsTecCustom.find(t=>normN(t.nome)===normN(tec));if(c)return c.grupo||'SLN MA';if(ofsNameMatch(tec,OFS_MOP_NAMES))return'GIGA+ MA';if(ofsNameMatch(tec,OFS_UF_NAMES.PA))return'SLN PA';if(ofsNameMatch(tec,OFS_UF_NAMES.MA))return'SLN MA';return'NÃO IDENTIFICADO';}
 function openOfsTecModal(){if(!canEdit())return;ofsTecCancelEdit();ofsTecRenderList();const m=document.getElementById('modal-ofs-tec');if(m)m.style.display='flex';}
@@ -26273,10 +26340,10 @@ function fapAudMergeJust(remote){
   if(!FAP_AUDIT_JUST.ts)FAP_AUDIT_JUST.ts={just:{},cota:{}};
   return _cfgMergePerKey(['just','cota'],FAP_AUDIT_JUST,FAP_AUDIT_JUST.ts,remote);
 }
-/* ─── Cota de Combustível (1ª a 15ª) ─── lista suspensa por transação; o resumo soma os
+/* ─── Cota de Combustível (1ª a 60ª — ampliada de 15 pra 60 a pedido, 2026-10-12) ─── lista suspensa por transação; o resumo soma os
    valores das transações classificadas (total + por cota), no recorte de placas/período
    — sem o filtro de Tipo, igual ao contador de Crédito Emergencial acima. */
-const FAP_AUD_COTA_MAX=15;
+const FAP_AUD_COTA_MAX=60;
 function fapAudCotaLabel(n){return n?n+'ª Cota de Combustível':'';}
 let fapAudSoCota=false;
 function fapAudCotaDe(t){const k=fapAudChaves()[t.ri];const v=k&&FAP_AUDIT_JUST.cota&&FAP_AUDIT_JUST.cota[k];const n=Number(v);return n>=1&&n<=FAP_AUD_COTA_MAX?n:0;}
@@ -26293,6 +26360,13 @@ function fapAudSalvarCota(idx,el){
   saveState();
   el.classList.toggle('fap-aud-cota-set',!!n);
   fapAudRenderCotas();
+}
+function fapAudCotaOpcoes(sel){
+  if(!sel||sel.dataset.full)return;
+  const atual=Number(sel.value)||0;
+  let h='<option value="">—</option>';
+  for(let n=1;n<=FAP_AUD_COTA_MAX;n++)h+='<option value="'+n+'"'+(n===atual?' selected':'')+'>'+fapAudCotaLabel(n)+'</option>';
+  sel.innerHTML=h;sel.dataset.full='1';
 }
 function fapAudSetSoCota(v){fapAudSoCota=!!v;fapAudRenderResultados();}
 function fapAudCotaLista(){
@@ -26437,9 +26511,10 @@ function fapAudRenderResultados(){
     const inval=fapAudStatusInvalido(t.status),alto=fapAudEhCredAlto(t),just=fapAudJustDe(t),cota=fapAudCotaDe(t);
     let cCell;
     if(podeEditar){
-      let opts='<option value="">—</option>';
-      for(let n=1;n<=FAP_AUD_COTA_MAX;n++)opts+='<option value="'+n+'"'+(n===cota?' selected':'')+'>'+fapAudCotaLabel(n)+'</option>';
-      cCell='<select class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
+      /* Só a opção atual vai no HTML; as 60 são criadas ao abrir a lista
+         (fapAudCotaOpcoes) — 500 linhas × 61 opções eram ~30 mil elementos por render. */
+      const opts='<option value="">—</option>'+(cota?'<option value="'+cota+'" selected>'+fapAudCotaLabel(cota)+'</option>':'');
+      cCell='<select class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onmousedown="fapAudCotaOpcoes(this)" onfocus="fapAudCotaOpcoes(this)" onkeydown="fapAudCotaOpcoes(this)" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
     }else cCell=cota?eh(fapAudCotaLabel(cota)):'—';
     const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(alto?' class="fap-aud-alto" title="Crédito Emergencial de Limite acima de R$ 1.000"':(inval?' style="color:var(--red)"':''));
     const jCell=podeEditar
@@ -27259,6 +27334,21 @@ function fapRenderAporteSaldoMini(){
   box.innerHTML=`<span>Saldo do mês restante</span><b>${eh(fapFmtMoney(restante))}</b>`;
 }
 
+/* Um único fapRenderAll() por ciclo, mesmo que a sincronização mude várias seções do
+   painel (antes: até 4 redesenhos completos seguidos por sync). Também não redesenha
+   enquanto o usuário está digitando num campo do painel — o próximo render (ao sair do
+   campo/trocar filtro) já pega o estado novo, e o texto em edição não é apagado. */
+let _fapRenderPending=false;
+function fapScheduleRenderAll(){
+  if(_fapRenderPending)return;
+  _fapRenderPending=true;
+  setTimeout(function run(){
+    const a=document.activeElement;
+    if(a&&a.closest&&a.closest('#panel-aportes')&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){setTimeout(run,1500);return;}
+    _fapRenderPending=false;
+    if(activeTab==='aportes')fapRenderAll();
+  },0);
+}
 function fapRenderAll(){
   fapPopulateSelects();
   fapRenderPlacaTable();
