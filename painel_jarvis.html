@@ -26419,7 +26419,22 @@ function fapAudGoDaPlaca(placa){
    independente das opções de listar) — transação sem cota nunca sobe pro e-mail.
    Placa com cota mas sem GO no cadastro vai em "Sem GO vinculado" (no fim), pra
    nenhum valor de cota sumir do total. Fecha com o resumo por cota. */
-function fapAudEmailText(){
+/* Negrito da placa (pedido 12/10/2026): texto puro não tem negrito — a linha da placa
+   é marcada com FAP_AUD_B (caractere de controle) em fapAudEmailRaw(); a versão texto
+   (fapAudEmailText) remove a marca e a versão HTML (fapAudEmailHtml, usada na prévia e
+   copiada como text/html) vira <b>. Assim colar no Outlook/Gmail mantém o negrito, e
+   onde só cabe texto simples o conteúdo é o mesmo. */
+const FAP_AUD_B='\u0001';
+function fapAudEmailText(){return fapAudEmailRaw().split(FAP_AUD_B).join('');}
+function fapAudEmailHtml(){
+  return fapAudEmailRaw().split('\n').map(l=>{
+    const m=l.match(/^( *)(.*)$/);
+    const ind='&nbsp;'.repeat(m[1].length);
+    const partes=m[2].split(FAP_AUD_B);
+    return ind+partes.map((p,i)=>i%2?'<b>'+eh(p)+'</b>':eh(p)).join('');
+  }).join('<br>');
+}
+function fapAudEmailRaw(){
   const list=FAP_AUDIT?fapAudCotaLista():[];
   const de=(document.getElementById('fap-audDe')||{}).value||(FAP_AUDIT&&FAP_AUDIT.de)||'';
   const ate=(document.getElementById('fap-audAte')||{}).value||(FAP_AUDIT&&FAP_AUDIT.ate)||'';
@@ -26439,10 +26454,14 @@ function fapAudEmailText(){
   [...porGo.keys()].sort((a,b)=>(a==='Sem GO vinculado')-(b==='Sem GO vinculado')||a.localeCompare(b,'pt')).forEach(gk=>{
     const pm=porGo.get(gk);let goC=0,goN=0;
     const linhasPlaca=[];
+    /* Cada placa em negrito, com uma linha em branco antes e outra depois; as cotas
+       da placa em ordem de data/hora (mais antiga primeiro). */
     [...pm.keys()].sort().forEach(placa=>{
       const g=pm.get(placa);goC+=g.c;goN+=g.itens.length;
-      linhasPlaca.push(`  Placa ${placa}${g.uf?' ('+g.uf+')':''} — ${g.itens.length} transação(ões) — ${fapFmtMoney(g.c/100)}`);
-      g.itens.forEach(t=>{
+      linhasPlaca.push('');
+      linhasPlaca.push(FAP_AUD_B+`Placa ${placa}${g.uf?' ('+g.uf+')':''} — ${g.itens.length} transação(ões) — ${fapFmtMoney(g.c/100)}`+FAP_AUD_B);
+      linhasPlaca.push('');
+      g.itens.slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(t=>{
         const cota=fapAudCotaDe(t),just=fapAudJustDe(t);
         linhasPlaca.push(`    • ${fapAudFmtDataHora(t.data)} — ${t.tipo} — ${fapFmtMoney(t.valor)}${cota?' — '+fapAudCotaLabel(cota):''}${just?' — Justificativa: '+just:''}`);
       });
@@ -26475,7 +26494,7 @@ Atenciosamente,`;
 function fapAudRenderEmail(){
   const w=document.getElementById('fap-audEmailWrap'),box=document.getElementById('fap-audEmailPreview');
   if(!w||!box||w.style.display==='none')return;
-  box.textContent=fapAudEmailText();
+  box.innerHTML=fapAudEmailHtml();
 }
 function fapAudToggleEmail(){
   const w=document.getElementById('fap-audEmailWrap');if(!w)return;
@@ -26484,6 +26503,19 @@ function fapAudToggleEmail(){
 }
 function fapAudCopiarEmail(){
   const texto=fapAudEmailText();
+  /* Copia como HTML (mantém o negrito das placas ao colar no e-mail) + texto simples
+     como alternativa; navegador sem ClipboardItem cai no texto simples. */
+  if(navigator.clipboard&&navigator.clipboard.write&&window.ClipboardItem){
+    const html='<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">'+fapAudEmailHtml()+'</div>';
+    navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([texto],{type:'text/plain'})})])
+      .then(()=>_ghToast('Texto do e-mail copiado ✓ (placas em negrito)','var(--green-dk)',3000))
+      .catch(()=>{
+        navigator.clipboard.writeText(texto)
+          .then(()=>_ghToast('Texto do e-mail copiado ✓ (sem formatação)','var(--green-dk)',3000))
+          .catch(()=>alert('Não foi possível copiar automaticamente. Selecione o texto no bloco e copie manualmente.'));
+      });
+    return;
+  }
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(texto)
       .then(()=>_ghToast('Texto do e-mail copiado ✓','var(--green-dk)',3000))
