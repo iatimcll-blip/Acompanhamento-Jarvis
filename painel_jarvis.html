@@ -791,6 +791,12 @@ body {
 .fap-aud-just{width:100%;min-width:220px;border:.5px solid var(--bd2);border-radius:6px;padding:4px 7px;font-size:12.5px;font-family:inherit;color:var(--tx);background:var(--surface)}
 #fap-audDetBody input.fap-aud-just.fap-aud-just-pend{border:1px solid var(--red)!important;background:var(--surface)!important;box-shadow:inset 3px 0 0 var(--red)}
 tr.fap-aud-alto td{background:var(--purple-bg)}
+tr.fap-aud-deb td{background:var(--yellow-bg)}
+.fap-aud-deb-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:5px;font-size:11px;font-weight:700;color:#8a6d00;background:var(--yellow-bg);border:.5px solid var(--yellow)}
+[data-theme=dark] .fap-aud-deb-tag{color:var(--yellow)}
+.fap-aud-debbaixo{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;font-size:13px;color:var(--tx2);background:var(--yellow-bg);border-radius:8px;padding:8px 12px;margin:0 0 8px}
+.fap-aud-debbaixo b{color:var(--tx)}
+.fap-aud-debbaixo label{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;margin-left:auto}
 .fap-aud-cotas{font-size:13px;color:var(--tx2);background:var(--green-bg);border-radius:8px;padding:8px 12px;margin:0 0 8px}
 .fap-aud-cotas-hd{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px}
 .fap-aud-cotas-hd b{color:var(--tx)}
@@ -10597,6 +10603,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div class="fap-email-preview" id="fap-audEmailPreview"></div>
           </div>
           <div class="fap-aud-credalto" id="fap-audCredAlto"></div>
+          <div class="fap-aud-debbaixo" id="fap-audDebBaixo"></div>
           <div class="fap-aud-cotas" id="fap-audCotas"></div>
           <p class="fap-desc" id="fap-audDetNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
           <div style="overflow:auto;max-height:420px">
@@ -26244,7 +26251,7 @@ function fapAudLimparBase(){
   _ghToast('Base do bloco Auditoria limpa ✓','var(--green-dk)',4000);
 }
 function fapAudLimparFiltros(){
-  fapAudSelPlacas=[];fapAudSelTipos=[];fapAudSoCredAlto=false;fapAudSoCota=false;
+  fapAudSelPlacas=[];fapAudSelTipos=[];fapAudSoCredAlto=false;fapAudSoCota=false;fapAudSoDebBaixo=false;
   ['fap-audDe','fap-audAte','fap-audPreset'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const chk=document.getElementById('fap-audIgnorarNegadas');if(chk)chk.checked=true;
   fapRenderAuditoria();
@@ -26327,6 +26334,22 @@ function fapAudFiltrar(opts){
    zerado no padrão). */
 const FAP_AUD_CRED_TIPO='crédito emergencial de limite',FAP_AUD_CRED_LIMITE=1000;
 let fapAudSoCredAlto=false,fapAudDetShown=[];
+/* Débito Emergencial de Limite ABAIXO de R$ 1.000 (até R$ 999,99) — pedido 12/10/2026:
+   sinalizado na lista de Transações (linha amarela + etiqueta), com contador no
+   recorte placas+período (sem o filtro de tipo, como o de crédito) e opção de listar. */
+const FAP_AUD_DEB_TIPO='débito emergencial de limite';
+let fapAudSoDebBaixo=false;
+function fapAudEhDebBaixo(t){return String(t.tipo||'').trim().toLowerCase()===FAP_AUD_DEB_TIPO&&t.valor<FAP_AUD_CRED_LIMITE;}
+function fapAudSetSoDebBaixo(v){fapAudSoDebBaixo=!!v;fapAudRenderResultados();}
+function fapAudRenderDebBaixo(){
+  const box=document.getElementById('fap-audDebBaixo');if(!box)return;
+  const r=fapAudFiltrar({ignorarTipo:true});
+  const lista=r.erro?[]:r.list.filter(fapAudEhDebBaixo);
+  const totC=lista.reduce((a,t)=>a+Math.round(t.valor*100),0);
+  box.innerHTML='<span><b>Débito Emergencial de Limite abaixo de R$ 1.000</b> (placas e período selecionados):</span>'+
+    '<span><b>'+lista.length.toLocaleString('pt-BR')+'</b> transação(ões)</span><span><b>'+eh(fapFmtMoney(totC/100))+'</b></span>'+
+    '<label><input type="checkbox" id="fap-audSoDebBaixo"'+(fapAudSoDebBaixo?' checked':'')+' onchange="fapAudSetSoDebBaixo(this.checked)"> Listar só estes</label>';
+}
 function fapAudEhCredAlto(t){return String(t.tipo||'').trim().toLowerCase()===FAP_AUD_CRED_TIPO&&t.valor>=FAP_AUD_CRED_LIMITE;}
 /* Chave estável por transação (independe da ordem/recorte): placa|data/hora|centavos|tipo
    + nº da ocorrência entre linhas idênticas (possíveis duplicidades ganham chaves
@@ -26352,10 +26375,10 @@ function fapAudMergeJust(remote){
   if(!FAP_AUDIT_JUST.ts)FAP_AUDIT_JUST.ts={just:{},cota:{}};
   return _cfgMergePerKey(['just','cota'],FAP_AUDIT_JUST,FAP_AUDIT_JUST.ts,remote);
 }
-/* ─── Cota de Combustível (1ª a 60ª — ampliada de 15 pra 60 a pedido, 2026-10-12) ─── lista suspensa por transação; o resumo soma os
+/* ─── Cota de Combustível (1ª a 200ª — ampliada 15 → 60 → 200 a pedido, 2026-10-12) ─── lista suspensa por transação; o resumo soma os
    valores das transações classificadas (total + por cota), no recorte de placas/período
    — sem o filtro de Tipo, igual ao contador de Crédito Emergencial acima. */
-const FAP_AUD_COTA_MAX=60;
+const FAP_AUD_COTA_MAX=200;
 function fapAudCotaLabel(n){return n?n+'ª Cota de Combustível':'';}
 let fapAudSoCota=false;
 function fapAudCotaDe(t){const k=fapAudChaves()[t.ri];const v=k&&FAP_AUDIT_JUST.cota&&FAP_AUDIT_JUST.cota[k];const n=Number(v);return n>=1&&n<=FAP_AUD_COTA_MAX?n:0;}
@@ -26371,15 +26394,44 @@ function fapAudSalvarCota(idx,el){
   FAP_AUDIT_JUST.ts.cota[k]=new Date().toISOString();
   saveState();
   el.classList.toggle('fap-aud-cota-set',!!n);
+  fapAudCotaVer++;el.dataset.ver=String(fapAudCotaVer); // as outras listas da tela se refazem ao abrir
   fapAudRenderCotas();
   fapAudRenderEmail();
 }
-function fapAudCotaOpcoes(sel){
-  if(!sel||sel.dataset.full)return;
+/* Só as cotas ainda LIVRES (pedido 12/10/2026): a numeração é por placa — some da
+   lista o número já usado em outra transação da MESMA placa dentro do período
+   selecionado (Data inicial/final; sem período = base inteira). A cota da própria
+   transação continua na lista dela. Versão (fapAudCotaVer) refaz as listas já abertas
+   de outras linhas depois que uma cota muda. */
+let fapAudCotaVer=0;
+function fapAudCotasUsadas(placa,exceptKey){
+  const usadas=new Set();
+  if(!FAP_AUDIT)return usadas;
+  const{dic,rows}=FAP_AUDIT,keys=fapAudChaves(),cotas=FAP_AUDIT_JUST.cota||{};
+  const pi=dic.placa.indexOf(placa);if(pi<0)return usadas;
+  const de=(document.getElementById('fap-audDe')||{}).value||'';
+  const ate=(document.getElementById('fap-audAte')||{}).value||'';
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];if(r[0]!==pi)continue;
+    const k=keys[i];if(k===exceptKey)continue;
+    const n=Number(cotas[k]);if(!n)continue;
+    const d=String(r[3]||'').slice(0,10);
+    if(de&&d<de)continue;if(ate&&d>ate)continue;
+    usadas.add(n);
+  }
+  return usadas;
+}
+function fapAudCotaOpcoes(sel,idx){
+  if(!sel||sel.dataset.ver===String(fapAudCotaVer))return;
+  const t=fapAudDetShown[idx];
   const atual=Number(sel.value)||0;
+  const usadas=t?fapAudCotasUsadas(t.placa,fapAudChaves()[t.ri]):new Set();
   let h='<option value="">—</option>';
-  for(let n=1;n<=FAP_AUD_COTA_MAX;n++)h+='<option value="'+n+'"'+(n===atual?' selected':'')+'>'+fapAudCotaLabel(n)+'</option>';
-  sel.innerHTML=h;sel.dataset.full='1';
+  for(let n=1;n<=FAP_AUD_COTA_MAX;n++){
+    if(usadas.has(n)&&n!==atual)continue;
+    h+='<option value="'+n+'"'+(n===atual?' selected':'')+'>'+fapAudCotaLabel(n)+'</option>';
+  }
+  sel.innerHTML=h;sel.dataset.ver=String(fapAudCotaVer);
 }
 /* Botão "Limpar" do subbloco Transações (pedido 12/10/2026): zera as opções de
    listagem DESTE subbloco, fecha o e-mail e — pedido seguinte, mesmo dia — também
@@ -26401,7 +26453,7 @@ function fapAudTransLimpar(){
       _ghToast('Cotas limpas ✓ '+lista.length+' transação(ões)','var(--green-dk)',4000);
     }
   }
-  fapAudSoCredAlto=false;fapAudSoCota=false;
+  fapAudSoCredAlto=false;fapAudSoCota=false;fapAudSoDebBaixo=false;
   const w=document.getElementById('fap-audEmailWrap');if(w)w.style.display='none';
   fapAudRenderResultados();
 }
@@ -26654,14 +26706,15 @@ function fapAudRenderResultados(){
   fapAudRenderCotas();
   /* "Listar só estes" (crédito > 1000) e "Listar só com cota" partem do recorte SEM o
      filtro de Tipo e se combinam (os dois marcados = interseção). */
+  fapAudRenderDebBaixo();
   let credLista=null;
-  if((fapAudSoCredAlto||fapAudSoCota)&&!erro){
+  if((fapAudSoCredAlto||fapAudSoDebBaixo||fapAudSoCota)&&!erro){
     credLista=fapAudFiltrar({ignorarTipo:true}).list;
-    if(fapAudSoCredAlto)credLista=credLista.filter(fapAudEhCredAlto);
+    if(fapAudSoCredAlto||fapAudSoDebBaixo)credLista=credLista.filter(t=>(fapAudSoCredAlto&&fapAudEhCredAlto(t))||(fapAudSoDebBaixo&&fapAudEhDebBaixo(t)));
     if(fapAudSoCota)credLista=credLista.filter(t=>fapAudCotaDe(t));
   }
   const vazio=!list.length&&!(credLista&&credLista.length);
-  if(vazio)fapAudDetAtual=[];
+  if(vazio){fapAudDetAtual=[];fapAudDetShown=[];}
   setTimeout(fapAudRenderEmail,0);
   const vz=document.getElementById('fap-audVazio');
   vz.textContent=erro?'Período inválido — nada calculado.':'Nenhuma transação encontrada para as placas/tipos/período selecionados.';
@@ -26690,19 +26743,19 @@ function fapAudRenderResultados(){
   fapAudDetAtual=det;
   const podeEditar=canEdit();
   document.getElementById('fap-audDetBody').innerHTML=fapAudDetShown.map((t,i)=>{
-    const inval=fapAudStatusInvalido(t.status),alto=fapAudEhCredAlto(t),just=fapAudJustDe(t),cota=fapAudCotaDe(t);
+    const inval=fapAudStatusInvalido(t.status),alto=fapAudEhCredAlto(t),debB=fapAudEhDebBaixo(t),just=fapAudJustDe(t),cota=fapAudCotaDe(t);
     let cCell;
     if(podeEditar){
       /* Só a opção atual vai no HTML; as 60 são criadas ao abrir a lista
          (fapAudCotaOpcoes) — 500 linhas × 61 opções eram ~30 mil elementos por render. */
       const opts='<option value="">—</option>'+(cota?'<option value="'+cota+'" selected>'+fapAudCotaLabel(cota)+'</option>':'');
-      cCell='<select class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onmousedown="fapAudCotaOpcoes(this)" onfocus="fapAudCotaOpcoes(this)" onkeydown="fapAudCotaOpcoes(this)" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
+      cCell='<select class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onmousedown="fapAudCotaOpcoes(this,'+i+')" onfocus="fapAudCotaOpcoes(this,'+i+')" onkeydown="fapAudCotaOpcoes(this,'+i+')" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
     }else cCell=cota?eh(fapAudCotaLabel(cota)):'—';
-    const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(alto?' class="fap-aud-alto" title="Crédito Emergencial de Limite a partir de R$ 1.000"':(inval?' style="color:var(--red)"':''));
+    const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(alto?' class="fap-aud-alto" title="Crédito Emergencial de Limite a partir de R$ 1.000"':(debB?' class="fap-aud-deb" title="Débito Emergencial de Limite abaixo de R$ 1.000"':(inval?' style="color:var(--red)"':'')));
     const jCell=podeEditar
       ?`<input type="text" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
       :(just?eh(just):(alto?'<span style="color:var(--red)">Pendente</span>':'—'));
-    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
+    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
   }).join('');
 }
 function fapRenderAuditoria(){
@@ -26744,7 +26797,7 @@ function fapAudExportar(){
   const totRow={'Placa':'TOTAL','Motorista(s)':'','Transações':list.length};
   tipos.forEach(t=>{totRow[t.tipo]=r2(t.valor);});totRow['Total (R$)']=r2(total);
   matriz.push(totRow);
-  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Débito Emerg. < R$ 1.000':fapAudEhDebBaixo(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
   const cotaLista=fapAudCotaLista();
   const cotaRes=fapAudCotaResumo(cotaLista);
   const cotaSheet=cotaRes.cotas.map(c=>({'Cota':fapAudCotaLabel(c.n),'Transações':c.qtd,'Valor (R$)':r2(c.valor)}));
