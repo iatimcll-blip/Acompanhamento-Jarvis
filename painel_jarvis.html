@@ -781,6 +781,9 @@ body {
 .msel-search{flex:1;min-width:0;border:.5px solid var(--bd2);border-radius:6px;padding:4px 7px;font-size:12px;color:var(--tx);background:var(--surface);font-family:inherit}
 .fap-aud-chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--tx2);font-weight:600;padding-bottom:8px;cursor:pointer}
 .fap-filterbar .fap-aud-chk input{min-width:0;width:auto;padding:0;margin:0}
+.fap-aud-periodo{font-size:13.5px;color:var(--tx2);background:var(--blue-bg);border-radius:8px;padding:8px 12px;margin:-4px 0 10px}
+.fap-aud-aviso{font-size:13px;border-radius:8px;padding:8px 12px;margin:0 0 12px;color:var(--orange);background:var(--orange-bg)}
+.fap-aud-aviso.fap-aud-erro{color:var(--red);background:var(--red-bg)}
 .quick-mop {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin: 0 0 12px; padding: 10px;
@@ -10531,12 +10534,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fap-filterbar">
           <div class="fap-field"><label>Placas</label><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fap-aud-placa" onclick="mselToggleOpen('fap-aud-placa')"><span class="msel-btn-lbl">Todas as placas</span></button></div></div>
           <div class="fap-field"><label>Tipo de transação</label><div class="msel"><button type="button" class="msel-btn" id="msel-btn-fap-aud-tipo" onclick="mselToggleOpen('fap-aud-tipo')"><span class="msel-btn-lbl">Todos os tipos</span></button></div></div>
-          <div class="fap-field"><label>De</label><input type="date" id="fap-audDe" autocomplete="off" onchange="fapAudRenderResultados()"></div>
-          <div class="fap-field"><label>Até</label><input type="date" id="fap-audAte" autocomplete="off" onchange="fapAudRenderResultados()"></div>
+          <div class="fap-field"><label>Período de aferição</label>
+            <select id="fap-audPreset" autocomplete="off" onchange="fapAudAplicarPreset(this.value)"><option value="">Personalizado</option><option value="base">Base inteira</option><option value="ciclo">Ciclo atual (15→14)</option><option value="cicloAnt">Ciclo anterior (15→14)</option><option value="mes">Mês atual</option><option value="7d">Últimos 7 dias</option></select>
+          </div>
+          <div class="fap-field"><label>Data inicial</label><input type="date" id="fap-audDe" autocomplete="off" onchange="fapAudDataManual()"></div>
+          <div class="fap-field"><label>Data final</label><input type="date" id="fap-audAte" autocomplete="off" onchange="fapAudDataManual()"></div>
           <label class="fap-aud-chk" title="Transações com status Negada ou Cancelada não representam gasto real — marcado, ficam fora dos totais (o valor desconsiderado aparece no card Valor total)."><input type="checkbox" id="fap-audIgnorarNegadas" checked autocomplete="off" onchange="fapAudRenderResultados()"> Desconsiderar negadas/canceladas</label>
           <div class="fap-spacer"></div>
           <button class="fap-reset-btn" onclick="fapAudLimparFiltros()">Limpar filtros</button>
         </div>
+        <div id="fap-audPeriodoInfo" class="fap-aud-periodo"></div>
+        <div id="fap-audAviso" class="fap-aud-aviso" style="display:none"></div>
         <div class="fap-cards">
           <div class="fap-card fap-accent-green"><div class="fap-label">Valor total</div><div class="fap-value" id="fap-aud-cTotal">R$ 0,00</div><div class="fap-foot" id="fap-aud-cTotalFoot">—</div></div>
           <div class="fap-card fap-accent-blue"><div class="fap-label">Transações</div><div class="fap-value" id="fap-aud-cQtd">0</div><div class="fap-foot" id="fap-aud-cQtdFoot">—</div></div>
@@ -26037,23 +26045,26 @@ function fapAudParseCsv(text){
   row.push(cell);if(row.some(x=>String(x).trim()))rows.push(row);
   return rows;
 }
-/* Data/hora → 'YYYY-MM-DD HH:MM' (string ordenável, sem new Date(iso) — ver fapIsoParts).
-   Aceita dd/mm/aaaa[ hh:mm[:ss]] (CSV), Date (xlsx com cellDates) e serial do Excel. */
+/* Data/hora → 'YYYY-MM-DD HH:MM:SS' (string ordenável, sem new Date(iso) — ver fapIsoParts).
+   Aceita dd/mm/aaaa[ hh:mm[:ss]] (CSV), Date (xlsx com cellDates) e serial do Excel.
+   Guarda os SEGUNDOS: a detecção de possível duplicidade (fapAudFiltrar) compara
+   data/hora exata — só com minutos, duas transações legítimas no mesmo minuto virariam
+   falso positivo. */
 function fapAudDataIso(v){
   const p2=n=>String(n).padStart(2,'0');
-  if(v instanceof Date&&!isNaN(v))return`${v.getFullYear()}-${p2(v.getMonth()+1)}-${p2(v.getDate())} ${p2(v.getHours())}:${p2(v.getMinutes())}`;
+  if(v instanceof Date&&!isNaN(v))return`${v.getFullYear()}-${p2(v.getMonth()+1)}-${p2(v.getDate())} ${p2(v.getHours())}:${p2(v.getMinutes())}:${p2(v.getSeconds())}`;
   if(typeof v==='number'&&typeof XLSX!=='undefined'){
     const d=XLSX.SSF.parse_date_code(v);
-    if(d)return`${d.y}-${p2(d.m)}-${p2(d.d)} ${p2(d.H||0)}:${p2(d.M||0)}`;
+    if(d)return`${d.y}-${p2(d.m)}-${p2(d.d)} ${p2(d.H||0)}:${p2(d.M||0)}:${p2(Math.floor(d.S||0))}`;
   }
   const s=String(v||'').trim();
-  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ ,T]+(\d{1,2}):(\d{2}))?/);
-  if(m){const y=m[3].length===2?'20'+m[3]:m[3];return`${y}-${p2(m[2])}-${p2(m[1])} ${p2(m[4]||0)}:${p2(m[5]||0)}`;}
-  m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
-  if(m)return`${m[1]}-${m[2]}-${m[3]} ${m[4]||'00'}:${m[5]||'00'}`;
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){const y=m[3].length===2?'20'+m[3]:m[3];return`${y}-${p2(m[2])}-${p2(m[1])} ${p2(m[4]||0)}:${p2(m[5]||0)}:${p2(m[6]||0)}`;}
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m)return`${m[1]}-${m[2]}-${m[3]} ${m[4]||'00'}:${m[5]||'00'}:${m[6]||'00'}`;
   return'';
 }
-function fapAudFmtDataHora(s){return s?fapFmtDate(s.slice(0,10))+' '+s.slice(11,16):'—';}
+function fapAudFmtDataHora(s){return s?fapFmtDate(s.slice(0,10))+' '+s.slice(11,19):'—';}
 async function fapAudImportar(ev){
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
   const file=ev.target.files[0];
@@ -26123,23 +26134,56 @@ function fapAudLimparBase(){
 }
 function fapAudLimparFiltros(){
   fapAudSelPlacas=[];fapAudSelTipos=[];
-  ['fap-audDe','fap-audAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fap-audDe','fap-audAte','fap-audPreset'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const chk=document.getElementById('fap-audIgnorarNegadas');if(chk)chk.checked=true;
   fapRenderAuditoria();
 }
+/* Data de hoje LOCAL (fapTodayIso usa toISOString = UTC, que depois das 21h de Brasília
+   já é o dia seguinte — pros atalhos de período isso deslocaria 1 dia). */
+function fapAudHojeLocal(){const d=new Date(),p2=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
+/* Atalhos do "Período de aferição" — só preenchem Data inicial/Data final; o cálculo é
+   sempre pelas duas datas (inclusive nas pontas). Ciclo = competência 15→14 (mesma
+   convenção do resto do painel, fapCicloParaData). */
+function fapAudAplicarPreset(v){
+  const de=document.getElementById('fap-audDe'),ate=document.getElementById('fap-audAte');
+  if(!de||!ate)return;
+  const hoje=fapAudHojeLocal();
+  let ini='',fim='';
+  if(v==='base'&&FAP_AUDIT){ini=FAP_AUDIT.de||'';fim=FAP_AUDIT.ate||'';}
+  else if(v==='ciclo'){const c=fapCicloParaData(hoje);ini=c.start;fim=c.end;}
+  else if(v==='cicloAnt'){const c=fapCicloParaData(fapIsoAddDays(fapCicloParaData(hoje).start,-1));ini=c.start;fim=c.end;}
+  else if(v==='mes'){ini=hoje.slice(0,8)+'01';fim=hoje;}
+  else if(v==='7d'){ini=fapIsoAddDays(hoje,-6);fim=hoje;}
+  if(v){de.value=ini;ate.value=fim;}
+  fapAudRenderResultados();
+}
+function fapAudDataManual(){
+  const p=document.getElementById('fap-audPreset');if(p)p.value='';
+  fapAudRenderResultados();
+}
 function fapAudStatusInvalido(status){const s=fapAudNorm(status);return s.includes('negad')||s.includes('cancel');}
-/* Recorte atual (placas × tipos × período × negadas). Seleção vazia = todos. */
+/* Recorte atual (placas × tipos × período × negadas). Seleção vazia = todos.
+   Período: Data inicial e Data final INCLUSIVAS, comparadas pela data da TRANSAÇÃO
+   (coluna F) — não pela "Data de postagem" (coluna Z), que nas compras costuma cair
+   dias depois. Data inicial > final = erro (nada é calculado, em vez de um zero
+   silencioso que pareceria "sem gasto").
+   Possível duplicidade: transações com placa, data/hora até o segundo, valor, tipo,
+   status e motorista idênticos (no modelo de 12/10/2026 havia 4 assim). Só sinaliza,
+   NÃO remove do total — pode ser lançamento legítimo repetido; quem audita decide. */
 function fapAudFiltrar(){
-  const res={list:[],exclN:0,exclValor:0};
+  const res={list:[],exclN:0,exclValor:0,erro:'',de:'',ate:'',dupN:0,dupValor:0};
   if(!FAP_AUDIT)return res;
   const{dic,rows}=FAP_AUDIT;
   const pSet=fapAudSelPlacas.length?new Set(fapAudSelPlacas):null;
   const tSet=fapAudSelTipos&&fapAudSelTipos.length?new Set(fapAudSelTipos):null;
   const de=(document.getElementById('fap-audDe')||{}).value||'';
   const ate=(document.getElementById('fap-audAte')||{}).value||'';
+  res.de=de;res.ate=ate;
+  if(de&&ate&&de>ate){res.erro='A Data inicial ('+fapFmtDate(de)+') é posterior à Data final ('+fapFmtDate(ate)+') — corrija o período para calcular.';return res;}
   const chk=document.getElementById('fap-audIgnorarNegadas');
   const ignorar=chk?chk.checked:true;
   const invalido=dic.status.map(fapAudStatusInvalido);
+  const vistos=new Map();
   for(const r of rows){
     const placa=dic.placa[r[0]],tipo=dic.tipo[r[1]];
     if(pSet&&!pSet.has(placa))continue;
@@ -26148,30 +26192,65 @@ function fapAudFiltrar(){
     if(de&&(!d||d<de))continue;
     if(ate&&(!d||d>ate))continue;
     if(ignorar&&invalido[r[4]]){res.exclN++;res.exclValor+=r[2];continue;}
-    res.list.push({placa,tipo,valor:r[2],data:r[3]||'',status:dic.status[r[4]]||'',motorista:dic.motorista[r[5]]||'',cidade:dic.cidade[r[6]]||''});
+    const t={placa,tipo,valor:r[2],data:r[3]||'',status:dic.status[r[4]]||'',motorista:dic.motorista[r[5]]||'',cidade:dic.cidade[r[6]]||'',dup:false};
+    /* Só com segundos na data (bases anexadas depois desta versão) — sem eles, o
+       mesmo minuto geraria falso positivo. */
+    if(t.data.length>=19){
+      const k=r[0]+'|'+r[1]+'|'+r[2]+'|'+t.data+'|'+r[4]+'|'+r[5];
+      const prev=vistos.get(k);
+      if(prev){if(!prev.dup){prev.dup=true;}t.dup=true;res.dupN++;res.dupValor+=t.valor;}
+      else vistos.set(k,t);
+    }
+    res.list.push(t);
   }
   return res;
 }
 /* Agregados compartilhados entre a tela e a exportação (nunca divergem). */
 function fapAudAgregar(list){
-  const porTipo=new Map(),porPlaca=new Map();let total=0;
+  /* Soma em CENTAVOS inteiros e converte no fim — somar milhares de valores em reais
+     direto em ponto flutuante acumula resíduo (ex.: 682494.1100000002). */
+  const porTipo=new Map(),porPlaca=new Map();let totalC=0;
   list.forEach(t=>{
-    total+=t.valor;
-    let pt=porTipo.get(t.tipo);if(!pt){pt={tipo:t.tipo,qtd:0,valor:0};porTipo.set(t.tipo,pt);}
-    pt.qtd++;pt.valor+=t.valor;
-    let pp=porPlaca.get(t.placa);if(!pp){pp={placa:t.placa,qtd:0,total:0,porTipo:{},motoristas:new Set()};porPlaca.set(t.placa,pp);}
-    pp.qtd++;pp.total+=t.valor;pp.porTipo[t.tipo]=(pp.porTipo[t.tipo]||0)+t.valor;
+    const c=Math.round(t.valor*100);
+    totalC+=c;
+    let pt=porTipo.get(t.tipo);if(!pt){pt={tipo:t.tipo,qtd:0,c:0};porTipo.set(t.tipo,pt);}
+    pt.qtd++;pt.c+=c;
+    let pp=porPlaca.get(t.placa);if(!pp){pp={placa:t.placa,qtd:0,c:0,porTipoC:{},motoristas:new Set()};porPlaca.set(t.placa,pp);}
+    pp.qtd++;pp.c+=c;pp.porTipoC[t.tipo]=(pp.porTipoC[t.tipo]||0)+c;
     if(t.motorista)pp.motoristas.add(t.motorista);
   });
+  const total=totalC/100;
+  porTipo.forEach(pt=>{pt.valor=pt.c/100;});
+  porPlaca.forEach(pp=>{pp.total=pp.c/100;pp.porTipo={};Object.keys(pp.porTipoC).forEach(k=>{pp.porTipo[k]=pp.porTipoC[k]/100;});});
   const tipos=[...porTipo.values()].sort((a,b)=>b.valor-a.valor);
   const placas=[...porPlaca.values()].sort((a,b)=>b.total-a.total||a.placa.localeCompare(b.placa));
   return{total,tipos,placas};
 }
 function fapAudRenderResultados(){
   if(!FAP_AUDIT)return;
-  const{list,exclN,exclValor}=fapAudFiltrar();
+  const{list,exclN,exclValor,erro,de,ate,dupN,dupValor}=fapAudFiltrar();
   const{total,tipos,placas}=fapAudAgregar(list);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  /* Faixa do que está sendo aferido (período efetivo + tipos + placas) — período vazio
+     = cobertura da própria base, nunca fica implícito. */
+  const efDe=de||FAP_AUDIT.de||'',efAte=ate||FAP_AUDIT.ate||'';
+  const tiposTxt=fapAudSelTipos&&fapAudSelTipos.length?fapAudSelTipos.join(', '):'todos os tipos';
+  const placasTxt=fapAudSelPlacas.length?(fapAudSelPlacas.length<=3?fapAudSelPlacas.join(', '):fapAudSelPlacas.length+' placas'):'todas as placas';
+  const info=document.getElementById('fap-audPeriodoInfo');
+  if(info)info.innerHTML='<b>Aferição:</b> '+eh(efDe?fapFmtDate(efDe):'—')+' a '+eh(efAte?fapFmtDate(efAte):'—')+(de||ate?'':' (base inteira)')+' · <b>Tipo(s):</b> '+eh(tiposTxt)+' · <b>Placa(s):</b> '+eh(placasTxt);
+  const avisos=[];
+  if(!erro&&FAP_AUDIT.de&&FAP_AUDIT.ate&&((de&&de<FAP_AUDIT.de)||(ate&&ate>FAP_AUDIT.ate))){
+    const realDe=de&&de>FAP_AUDIT.de?de:FAP_AUDIT.de,realAte=ate&&ate<FAP_AUDIT.ate?ate:FAP_AUDIT.ate;
+    avisos.push('O período selecionado vai além da cobertura da base anexada ('+fapFmtDate(FAP_AUDIT.de)+' a '+fapFmtDate(FAP_AUDIT.ate)+') — dias fora dela não têm transações; o valor aferido reflete só '+fapFmtDate(realDe)+' a '+fapFmtDate(realAte)+'.');
+  }
+  if(!erro&&dupN)avisos.push(dupN+' possível(is) duplicidade(s) no recorte ('+fapFmtMoney(dupValor)+'): transações idênticas em placa, data/hora (até o segundo), valor, tipo, status e motorista — destacadas em laranja na lista abaixo. Continuam somadas no total; confira no Portal Alelo.');
+  if(!erro&&FAP_AUDIT.rows.length&&String(FAP_AUDIT.rows[0][3]||'').length<19)avisos.push('Esta base foi anexada antes da verificação de duplicidade (data/hora sem segundos) — anexe-a novamente para ativar a checagem.');
+  const av=document.getElementById('fap-audAviso');
+  if(av){
+    av.classList.toggle('fap-aud-erro',!!erro);
+    av.style.display=erro||avisos.length?'':'none';
+    av.innerHTML=erro?eh(erro):avisos.map(eh).join('<br>');
+  }
   set('fap-aud-cTotal',fapFmtMoney(total));
   set('fap-aud-cTotalFoot',exclN?`${fapFmtMoney(exclValor)} em ${exclN} negada(s)/cancelada(s) desconsiderada(s)`:'soma do recorte selecionado');
   set('fap-aud-cQtd',list.length.toLocaleString('pt-BR'));
@@ -26180,7 +26259,9 @@ function fapAudRenderResultados(){
   set('fap-aud-cMedia',fapFmtMoney(list.length?total/list.length:0));
   set('fap-aud-cMediaFoot',list.length?'valor total ÷ transações':'—');
   const vazio=!list.length;
-  document.getElementById('fap-audVazio').style.display=vazio?'':'none';
+  const vz=document.getElementById('fap-audVazio');
+  vz.textContent=erro?'Período inválido — nada calculado.':'Nenhuma transação encontrada para as placas/tipos/período selecionados.';
+  vz.style.display=vazio?'':'none';
   document.getElementById('fap-audResultados').style.display=vazio?'none':'';
   if(vazio)return;
   document.getElementById('fap-audTipoBody').innerHTML=tipos.map(t=>
@@ -26203,7 +26284,8 @@ function fapAudRenderResultados(){
   else note.style.display='none';
   document.getElementById('fap-audDetBody').innerHTML=det.slice(0,LIM).map(t=>{
     const inval=fapAudStatusInvalido(t.status);
-    return`<tr${inval?' style="color:var(--red)"':''}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td></tr>`;
+    const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(inval?' style="color:var(--red)"':'');
+    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td></tr>`;
   }).join('');
 }
 function fapRenderAuditoria(){
@@ -26232,7 +26314,8 @@ function fapRenderAuditoria(){
 }
 function fapAudExportar(){
   if(!FAP_AUDIT){alert('Nenhuma base de auditoria anexada.');return;}
-  const{list}=fapAudFiltrar();
+  const{list,erro,de,ate,exclN,exclValor,dupN}=fapAudFiltrar();
+  if(erro){alert(erro);return;}
   if(!list.length){alert('Nenhuma transação no recorte atual para exportar.');return;}
   const{total,tipos,placas}=fapAudAgregar(list);
   const r2=v=>Math.round(v*100)/100;
@@ -26244,13 +26327,26 @@ function fapAudExportar(){
   const totRow={'Placa':'TOTAL','Motorista(s)':'','Transações':list.length};
   tipos.forEach(t=>{totRow[t.tipo]=r2(t.valor);});totRow['Total (R$)']=r2(total);
   matriz.push(totRow);
-  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor}));
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':''}));
+  const chk=document.getElementById('fap-audIgnorarNegadas');
+  const params=[
+    {'Parâmetro':'Base','Valor':FAP_AUDIT.file||''},
+    {'Parâmetro':'Data inicial','Valor':fapFmtDate(de||FAP_AUDIT.de||'')},
+    {'Parâmetro':'Data final','Valor':fapFmtDate(ate||FAP_AUDIT.ate||'')},
+    {'Parâmetro':'Tipo(s) de transação','Valor':fapAudSelTipos&&fapAudSelTipos.length?fapAudSelTipos.join(', '):'Todos'},
+    {'Parâmetro':'Placa(s)','Valor':fapAudSelPlacas.length?fapAudSelPlacas.join(', '):'Todas'},
+    {'Parâmetro':'Negadas/canceladas','Valor':chk&&!chk.checked?'Incluídas':('Desconsideradas ('+exclN+' — '+fapFmtMoney(exclValor)+')')},
+    {'Parâmetro':'Valor total aferido','Valor':fapFmtMoney(total)},
+    {'Parâmetro':'Transações','Valor':list.length},
+    {'Parâmetro':'Possíveis duplicidades','Valor':dupN}
+  ];
   const resumo=tipos.map(t=>({'Tipo de transação':t.tipo,'Transações':t.qtd,'Valor (R$)':r2(t.valor)}));
   const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(params),'Parâmetros');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumo),'Por tipo');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(matriz),'Placa x Tipo');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(det),'Transações');
-  XLSX.writeFile(wb,'auditoria_combustivel_'+fapTodayIso()+'.xlsx');
+  XLSX.writeFile(wb,'auditoria_combustivel_'+(de||FAP_AUDIT.de||'')+'_a_'+(ate||FAP_AUDIT.ate||'')+'.xlsx');
 }
 /* "Veículos por tipo" (pedido do usuário): quantos veículos DISTINTOS realizaram
    transações na base anexada, classificados por categoria (Leve/Médio/Pesado) — vem
@@ -26971,7 +27067,7 @@ function fapPrefillForms(){
      card "Saldo do mês", que não usa filtro, continua mostrando o valor certo — foi
      assim que o usuário percebeu a divergência). Sempre força os filtros pro estado
      "Todas/vazio" no boot, nunca confia no valor que o navegador colocou no DOM. */
-  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte','fap-audPreset'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const audChk=document.getElementById('fap-audIgnorarNegadas');if(audChk)audChk.checked=true;
 }
 
