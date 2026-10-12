@@ -10589,7 +10589,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="fap-export-btn" onclick="fapAudTransLimpar()" title="Desmarca as opções de listagem deste subbloco, fecha o e-mail e apaga as cotas informadas nas placas/período selecionados (pede confirmação; justificativas são mantidas)"><i class="ti ti-filter-off" style="font-size:13px;vertical-align:-1px"></i> Limpar</button>
               <button class="fap-export-btn" onclick="fapAudExportarCotas()" title="Exporta só as transações com cota informada (placas e período selecionados)"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar cotas</button>
-              <button class="fap-export-btn" id="fap-audEmailBtn" onclick="fapAudToggleEmail()" title="Resumo das transações listadas, pronto para copiar num e-mail"><i class="ti ti-mail" style="font-size:13px;vertical-align:-1px"></i> E-mail</button>
+              <button class="fap-export-btn" id="fap-audEmailBtn" onclick="fapAudToggleEmail()" title="Resumo só das transações com cota informada (placas e período selecionados), por GO e placa, pronto para copiar num e-mail"><i class="ti ti-mail" style="font-size:13px;vertical-align:-1px"></i> E-mail</button>
             </div>
           </div>
           <div id="fap-audEmailWrap" style="display:none;margin:0 0 10px">
@@ -26413,17 +26413,19 @@ function fapAudGoDaPlaca(placa){
 }
 /* E-mail das Transações (pedido 12/10/2026): mesmo modelo/estrutura do bloco "E-mail"
    do painel (Assunto, saudação, Filtro aplicado, relação, totais, encerramento), com a
-   hierarquia GO → Placa → transações (GO/UF vêm do cadastro de placas; sem GO = "Sem GO
-   vinculado"). Resume EXATAMENTE o que está listado (placas, período e opções de listar). */
+   hierarquia GO → Placa → transações (GO/UF vêm do cadastro de placas).
+   Ajuste do mesmo dia: o e-mail leva SOMENTE as transações com cota informada (mesmo
+   recorte do resumo "Cotas de Combustível": placas + período, sem o filtro de tipo e
+   independente das opções de listar) — transação sem cota nunca sobe pro e-mail.
+   Placa com cota mas sem GO no cadastro vai em "Sem GO vinculado" (no fim), pra
+   nenhum valor de cota sumir do total. Fecha com o resumo por cota. */
 function fapAudEmailText(){
-  const list=fapAudDetAtual||[];
+  const list=FAP_AUDIT?fapAudCotaLista():[];
   const de=(document.getElementById('fap-audDe')||{}).value||(FAP_AUDIT&&FAP_AUDIT.de)||'';
   const ate=(document.getElementById('fap-audAte')||{}).value||(FAP_AUDIT&&FAP_AUDIT.ate)||'';
   const filtro=['Período: '+(de?fapFmtDate(de):'—')+' a '+(ate?fapFmtDate(ate):'—'),
     'Placa(s): '+(fapAudSelPlacas.length?fapAudSelPlacas.join(', '):'todas'),
-    fapAudSoCredAlto||fapAudSoCota?null:'Tipo(s): '+(fapAudSelTipos&&fapAudSelTipos.length?fapAudSelTipos.join(', '):'todos'),
-    fapAudSoCredAlto?'Somente Crédito Emergencial de Limite a partir de R$ 1.000':null,
-    fapAudSoCota?'Somente transações com cota informada':null].filter(Boolean).join(' · ');
+    'Somente transações com cota informada'].join(' · ');
   const porGo=new Map();let totC=0;
   list.slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(t=>{
     const{go,uf}=fapAudGoDaPlaca(t.placa);
@@ -26447,7 +26449,8 @@ function fapAudEmailText(){
     });
     blocos.push(`GO: ${gk} — ${goN} transação(ões) — ${fapFmtMoney(goC/100)}\n`+linhasPlaca.join('\n'));
   });
-  const corpo=blocos.length?blocos.join('\n\n'):'Nenhuma transação listada para o filtro selecionado.';
+  const corpo=blocos.length?blocos.join('\n\n'):'Nenhuma transação com cota informada nas placas/período selecionados.';
+  const resCota=fapAudCotaResumo(list).cotas.map(c=>`${fapAudCotaLabel(c.n)}: ${c.qtd} transação(ões) — ${fapFmtMoney(c.valor)}`).join('\n');
   return`Assunto: Relatório de Auditoria de Transações — Frota e Combustível
 
 Prezados(as),
@@ -26456,14 +26459,14 @@ Segue, para conhecimento e registro, o resumo das transações auditadas no Port
 
 Filtro aplicado: ${filtro}
 
-RELAÇÃO DE TRANSAÇÕES (por GO e placa)
+RELAÇÃO DE COTAS DE COMBUSTÍVEL (por GO e placa)
 
 ${corpo}
+${resCota?'\nRESUMO POR COTA\n\n'+resCota+'\n':''}
+Total geral das cotas no período: ${fapFmtMoney(totC/100)}
+Total de transações com cota: ${list.length}
 
-Total geral no período: ${fapFmtMoney(totC/100)}
-Total de transações: ${list.length}
-
-Os valores acima refletem as transações do relatório do Portal Alelo anexado ao Painel de Aportes de Combustível, agrupadas por Gestor Operacional (GO) e placa, com a cota e a justificativa registradas na auditoria.
+Os valores acima refletem somente as transações classificadas como cota de combustível na auditoria do relatório do Portal Alelo, agrupadas por Gestor Operacional (GO) e placa, com a justificativa registrada.
 
 Ficamos à disposição para esclarecimentos adicionais.
 
