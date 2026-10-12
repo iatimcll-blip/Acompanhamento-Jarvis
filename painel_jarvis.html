@@ -10584,7 +10584,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <tfoot id="fap-audMatrizFoot"></tfoot>
             </table>
           </div>
-          <h4 style="margin:0 0 6px;font-size:15px">Transações <span class="fap-aud-per" id="fap-audPerDet"></span></h4>
+          <div class="fap-hist-head" style="margin-bottom:6px">
+            <h4 style="margin:0;font-size:15px">Transações <span class="fap-aud-per" id="fap-audPerDet"></span></h4>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="fap-export-btn" onclick="fapAudTransLimpar()" title="Desmarca as opções de listagem deste subbloco (Créditos a partir de R$ 1.000 / só com cota) e fecha o e-mail"><i class="ti ti-filter-off" style="font-size:13px;vertical-align:-1px"></i> Limpar</button>
+              <button class="fap-export-btn" onclick="fapAudExportarCotas()" title="Exporta só as transações com cota informada (placas e período selecionados)"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar cotas</button>
+              <button class="fap-export-btn" id="fap-audEmailBtn" onclick="fapAudToggleEmail()" title="Resumo das transações listadas, pronto para copiar num e-mail"><i class="ti ti-mail" style="font-size:13px;vertical-align:-1px"></i> E-mail</button>
+            </div>
+          </div>
+          <div id="fap-audEmailWrap" style="display:none;margin:0 0 10px">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="fap-export-btn" onclick="fapAudCopiarEmail()"><i class="ti ti-copy" style="font-size:13px;vertical-align:-1px"></i> Copiar texto do e-mail</button></div>
+            <div class="fap-email-preview" id="fap-audEmailPreview"></div>
+          </div>
           <div class="fap-aud-credalto" id="fap-audCredAlto"></div>
           <div class="fap-aud-cotas" id="fap-audCotas"></div>
           <p class="fap-desc" id="fap-audDetNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
@@ -26307,15 +26318,16 @@ function fapAudFiltrar(opts){
   }
   return res;
 }
-/* ─── Crédito Emergencial de Limite acima de R$ 1.000 + Justificativas ───
+/* ─── Crédito Emergencial de Limite a partir de R$ 1.000 + Justificativas ───
    Pedido 2026-10-12: no subbloco Transações, contabilizar os Créditos Emergenciais de
-   Limite ACIMA de R$ 1.000 (estritamente > 1000 — R$ 1.000,00 exatos não entram) e
+   Limite a partir de R$ 1.000 (>= 1000 — R$ 1.000,00 exatos ENTRAM; ajustado a pedido em
+   12/10/2026, antes era estritamente > 1000) e
    justificar cada um. O contador respeita placas + período (+ negadas), mas IGNORA o
    filtro de Tipo de transação (que abre em "Compra" — senão o contador ficaria sempre
    zerado no padrão). */
 const FAP_AUD_CRED_TIPO='crédito emergencial de limite',FAP_AUD_CRED_LIMITE=1000;
 let fapAudSoCredAlto=false,fapAudDetShown=[];
-function fapAudEhCredAlto(t){return String(t.tipo||'').trim().toLowerCase()===FAP_AUD_CRED_TIPO&&t.valor>FAP_AUD_CRED_LIMITE;}
+function fapAudEhCredAlto(t){return String(t.tipo||'').trim().toLowerCase()===FAP_AUD_CRED_TIPO&&t.valor>=FAP_AUD_CRED_LIMITE;}
 /* Chave estável por transação (independe da ordem/recorte): placa|data/hora|centavos|tipo
    + nº da ocorrência entre linhas idênticas (possíveis duplicidades ganham chaves
    distintas, cada uma com sua justificativa). Cache por objeto de base. */
@@ -26360,6 +26372,7 @@ function fapAudSalvarCota(idx,el){
   saveState();
   el.classList.toggle('fap-aud-cota-set',!!n);
   fapAudRenderCotas();
+  fapAudRenderEmail();
 }
 function fapAudCotaOpcoes(sel){
   if(!sel||sel.dataset.full)return;
@@ -26367,6 +26380,120 @@ function fapAudCotaOpcoes(sel){
   let h='<option value="">—</option>';
   for(let n=1;n<=FAP_AUD_COTA_MAX;n++)h+='<option value="'+n+'"'+(n===atual?' selected':'')+'>'+fapAudCotaLabel(n)+'</option>';
   sel.innerHTML=h;sel.dataset.full='1';
+}
+/* Botão "Limpar" do subbloco Transações (pedido 12/10/2026): zera só as opções de
+   listagem DESTE subbloco e fecha o e-mail — não mexe em placas/tipos/período (isso é
+   o "Limpar filtros" do topo do bloco). */
+function fapAudTransLimpar(){
+  fapAudSoCredAlto=false;fapAudSoCota=false;
+  const w=document.getElementById('fap-audEmailWrap');if(w)w.style.display='none';
+  fapAudRenderResultados();
+}
+/* Mesma lista que está na tela (sem o corte de 500 linhas) — usada pelo E-mail. */
+let fapAudDetAtual=[];
+function fapAudGoDaPlaca(placa){
+  const p=FAP_PLACAS.find(x=>x.placa===placa);
+  return{go:p&&p.go&&p.go.trim()?p.go.trim():'',uf:p&&p.uf?p.uf:''};
+}
+/* E-mail das Transações (pedido 12/10/2026): mesmo modelo/estrutura do bloco "E-mail"
+   do painel (Assunto, saudação, Filtro aplicado, relação, totais, encerramento), com a
+   hierarquia GO → Placa → transações (GO/UF vêm do cadastro de placas; sem GO = "Sem GO
+   vinculado"). Resume EXATAMENTE o que está listado (placas, período e opções de listar). */
+function fapAudEmailText(){
+  const list=fapAudDetAtual||[];
+  const de=(document.getElementById('fap-audDe')||{}).value||(FAP_AUDIT&&FAP_AUDIT.de)||'';
+  const ate=(document.getElementById('fap-audAte')||{}).value||(FAP_AUDIT&&FAP_AUDIT.ate)||'';
+  const filtro=['Período: '+(de?fapFmtDate(de):'—')+' a '+(ate?fapFmtDate(ate):'—'),
+    'Placa(s): '+(fapAudSelPlacas.length?fapAudSelPlacas.join(', '):'todas'),
+    fapAudSoCredAlto||fapAudSoCota?null:'Tipo(s): '+(fapAudSelTipos&&fapAudSelTipos.length?fapAudSelTipos.join(', '):'todos'),
+    fapAudSoCredAlto?'Somente Crédito Emergencial de Limite a partir de R$ 1.000':null,
+    fapAudSoCota?'Somente transações com cota informada':null].filter(Boolean).join(' · ');
+  const porGo=new Map();let totC=0;
+  list.slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(t=>{
+    const{go,uf}=fapAudGoDaPlaca(t.placa);
+    const gk=go||'Sem GO vinculado';
+    if(!porGo.has(gk))porGo.set(gk,new Map());
+    const pm=porGo.get(gk);
+    if(!pm.has(t.placa))pm.set(t.placa,{uf,itens:[],c:0});
+    const g=pm.get(t.placa);g.itens.push(t);const c=Math.round(t.valor*100);g.c+=c;totC+=c;
+  });
+  const blocos=[];
+  [...porGo.keys()].sort((a,b)=>(a==='Sem GO vinculado')-(b==='Sem GO vinculado')||a.localeCompare(b,'pt')).forEach(gk=>{
+    const pm=porGo.get(gk);let goC=0,goN=0;
+    const linhasPlaca=[];
+    [...pm.keys()].sort().forEach(placa=>{
+      const g=pm.get(placa);goC+=g.c;goN+=g.itens.length;
+      linhasPlaca.push(`  Placa ${placa}${g.uf?' ('+g.uf+')':''} — ${g.itens.length} transação(ões) — ${fapFmtMoney(g.c/100)}`);
+      g.itens.forEach(t=>{
+        const cota=fapAudCotaDe(t),just=fapAudJustDe(t);
+        linhasPlaca.push(`    • ${fapAudFmtDataHora(t.data)} — ${t.tipo} — ${fapFmtMoney(t.valor)}${cota?' — '+fapAudCotaLabel(cota):''}${just?' — Justificativa: '+just:''}`);
+      });
+    });
+    blocos.push(`GO: ${gk} — ${goN} transação(ões) — ${fapFmtMoney(goC/100)}\n`+linhasPlaca.join('\n'));
+  });
+  const corpo=blocos.length?blocos.join('\n\n'):'Nenhuma transação listada para o filtro selecionado.';
+  return`Assunto: Relatório de Auditoria de Transações — Frota e Combustível
+
+Prezados(as),
+
+Segue, para conhecimento e registro, o resumo das transações auditadas no Portal Alelo no período de referência.
+
+Filtro aplicado: ${filtro}
+
+RELAÇÃO DE TRANSAÇÕES (por GO e placa)
+
+${corpo}
+
+Total geral no período: ${fapFmtMoney(totC/100)}
+Total de transações: ${list.length}
+
+Os valores acima refletem as transações do relatório do Portal Alelo anexado ao Painel de Aportes de Combustível, agrupadas por Gestor Operacional (GO) e placa, com a cota e a justificativa registradas na auditoria.
+
+Ficamos à disposição para esclarecimentos adicionais.
+
+Atenciosamente,`;
+}
+function fapAudRenderEmail(){
+  const w=document.getElementById('fap-audEmailWrap'),box=document.getElementById('fap-audEmailPreview');
+  if(!w||!box||w.style.display==='none')return;
+  box.textContent=fapAudEmailText();
+}
+function fapAudToggleEmail(){
+  const w=document.getElementById('fap-audEmailWrap');if(!w)return;
+  w.style.display=w.style.display==='none'?'':'none';
+  fapAudRenderEmail();
+}
+function fapAudCopiarEmail(){
+  const texto=fapAudEmailText();
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto)
+      .then(()=>_ghToast('Texto do e-mail copiado ✓','var(--green-dk)',3000))
+      .catch(()=>alert('Não foi possível copiar automaticamente. Selecione o texto no bloco e copie manualmente.'));
+  }else{
+    alert('Cópia automática não suportada neste navegador. Selecione o texto no bloco e copie manualmente.');
+  }
+}
+/* Exportar do subbloco Transações (pedido 12/10/2026): SÓ as transações com cota
+   informada, no recorte de placas/período (mesma lista do resumo "Cotas de Combustível"). */
+function fapAudExportarCotas(){
+  if(!FAP_AUDIT){alert('Nenhuma base de auditoria anexada.');return;}
+  const r=fapAudFiltrar({ignorarTipo:true});
+  if(r.erro){alert(r.erro);return;}
+  const lista=r.list.filter(t=>fapAudCotaDe(t));
+  if(!lista.length){alert('Nenhuma transação com cota informada nas placas/período selecionados.');return;}
+  const r2=v=>Math.round(v*100)/100;
+  const res=fapAudCotaResumo(lista);
+  const resumo=res.cotas.map(c=>({'Cota':fapAudCotaLabel(c.n),'Transações':c.qtd,'Valor (R$)':r2(c.valor)}));
+  resumo.push({'Cota':'TOTAL','Transações':res.qtd,'Valor (R$)':r2(res.total)});
+  const det=lista.slice().sort((a,b)=>fapAudCotaDe(a)-fapAudCotaDe(b)||a.data.localeCompare(b.data)).map(t=>{
+    const{go,uf}=fapAudGoDaPlaca(t.placa);
+    return{'Cota':fapAudCotaLabel(fapAudCotaDe(t)),'GO':go||'Sem GO vinculado','Placa':t.placa,'UF':uf,'Data/hora':fapAudFmtDataHora(t.data),'Motorista':t.motorista,'Tipo de transação':t.tipo,'Valor (R$)':t.valor,'Justificativa':fapAudJustDe(t)};
+  });
+  const de=r.de||FAP_AUDIT.de||'',ate=r.ate||FAP_AUDIT.ate||'';
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumo),'Resumo por cota');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(det),'Transações com cota');
+  XLSX.writeFile(wb,'cotas_combustivel_'+de+'_a_'+ate+'.xlsx');
 }
 function fapAudSetSoCota(v){fapAudSoCota=!!v;fapAudRenderResultados();}
 function fapAudCotaLista(){
@@ -26399,6 +26526,7 @@ function fapAudSalvarJust(idx,el){
   saveState();
   el.classList.toggle('fap-aud-just-pend',!txt&&fapAudEhCredAlto(t));
   fapAudRenderCredAlto();
+  fapAudRenderEmail();
 }
 function fapAudSetSoCredAlto(v){fapAudSoCredAlto=!!v;fapAudRenderResultados();}
 function fapAudCredAltoLista(){
@@ -26410,11 +26538,11 @@ function fapAudRenderCredAlto(){
   const lista=fapAudCredAltoLista();
   const totC=lista.reduce((a,t)=>a+Math.round(t.valor*100),0);
   const just=lista.filter(t=>fapAudJustDe(t)).length,pend=lista.length-just;
-  box.innerHTML='<span><b>Crédito Emergencial de Limite acima de R$ 1.000</b> (placas e período selecionados):</span>'+
+  box.innerHTML='<span><b>Crédito Emergencial de Limite a partir de R$ 1.000</b> (placas e período selecionados):</span>'+
     '<span><b>'+lista.length+'</b> transação(ões)</span><span><b>'+eh(fapFmtMoney(totC/100))+'</b></span>'+
     '<span style="color:var(--green-dk)"><b>'+just+'</b> justificada(s)</span>'+
     '<span style="color:'+(pend?'var(--red)':'var(--tx3)')+'"><b>'+pend+'</b> pendente(s)</span>'+
-    '<label><input type="checkbox" id="fap-audSoCredAlto"'+(fapAudSoCredAlto?' checked':'')+' onchange="fapAudSetSoCredAlto(this.checked)"> Listar só estes</label>';
+    '<label><input type="checkbox" id="fap-audSoCredAlto"'+(fapAudSoCredAlto?' checked':'')+' onchange="fapAudSetSoCredAlto(this.checked)"> Listar só estes (placas selecionadas)</label>';
 }
 /* Agregados compartilhados entre a tela e a exportação (nunca divergem). */
 function fapAudAgregar(list){
@@ -26482,6 +26610,8 @@ function fapAudRenderResultados(){
     if(fapAudSoCota)credLista=credLista.filter(t=>fapAudCotaDe(t));
   }
   const vazio=!list.length&&!(credLista&&credLista.length);
+  if(vazio)fapAudDetAtual=[];
+  setTimeout(fapAudRenderEmail,0);
   const vz=document.getElementById('fap-audVazio');
   vz.textContent=erro?'Período inválido — nada calculado.':'Nenhuma transação encontrada para as placas/tipos/período selecionados.';
   vz.style.display=vazio?'':'none';
@@ -26506,6 +26636,7 @@ function fapAudRenderResultados(){
   if(det.length>LIM){note.style.display='';note.textContent=`Mostrando as ${LIM} transações mais recentes de ${det.length.toLocaleString('pt-BR')} — use "Exportar" para a lista completa.`;}
   else note.style.display='none';
   fapAudDetShown=det.slice(0,LIM);
+  fapAudDetAtual=det;
   const podeEditar=canEdit();
   document.getElementById('fap-audDetBody').innerHTML=fapAudDetShown.map((t,i)=>{
     const inval=fapAudStatusInvalido(t.status),alto=fapAudEhCredAlto(t),just=fapAudJustDe(t),cota=fapAudCotaDe(t);
@@ -26516,7 +26647,7 @@ function fapAudRenderResultados(){
       const opts='<option value="">—</option>'+(cota?'<option value="'+cota+'" selected>'+fapAudCotaLabel(cota)+'</option>':'');
       cCell='<select class="fap-aud-cota'+(cota?' fap-aud-cota-set':'')+'" onmousedown="fapAudCotaOpcoes(this)" onfocus="fapAudCotaOpcoes(this)" onkeydown="fapAudCotaOpcoes(this)" onchange="fapAudSalvarCota('+i+',this)">'+opts+'</select>';
     }else cCell=cota?eh(fapAudCotaLabel(cota)):'—';
-    const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(alto?' class="fap-aud-alto" title="Crédito Emergencial de Limite acima de R$ 1.000"':(inval?' style="color:var(--red)"':''));
+    const st=t.dup?' style="background:var(--orange-bg)" title="Possível duplicidade"':(alto?' class="fap-aud-alto" title="Crédito Emergencial de Limite a partir de R$ 1.000"':(inval?' style="color:var(--red)"':''));
     const jCell=podeEditar
       ?`<input type="text" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
       :(just?eh(just):(alto?'<span style="color:var(--red)">Pendente</span>':'—'));
@@ -26562,7 +26693,7 @@ function fapAudExportar(){
   const totRow={'Placa':'TOTAL','Motorista(s)':'','Transações':list.length};
   tipos.forEach(t=>{totRow[t.tipo]=r2(t.valor);});totRow['Total (R$)']=r2(total);
   matriz.push(totRow);
-  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. > R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
   const cotaLista=fapAudCotaLista();
   const cotaRes=fapAudCotaResumo(cotaLista);
   const cotaSheet=cotaRes.cotas.map(c=>({'Cota':fapAudCotaLabel(c.n),'Transações':c.qtd,'Valor (R$)':r2(c.valor)}));
@@ -26587,7 +26718,7 @@ function fapAudExportar(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumo),'Por tipo');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(matriz),'Placa x Tipo');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(det),'Transações');
-  if(credAlto.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(credAlto),'Créd. Emerg. > 1000');
+  if(credAlto.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(credAlto),'Créd. Emerg. a partir 1000');
   if(cotaSheet.length){
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cotaSheet),'Cotas');
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cotaDet),'Cotas - transações');
