@@ -10587,7 +10587,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="fap-hist-head" style="margin-bottom:6px">
             <h4 style="margin:0;font-size:15px">Transações <span class="fap-aud-per" id="fap-audPerDet"></span></h4>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="fap-export-btn" onclick="fapAudTransLimpar()" title="Desmarca as opções de listagem deste subbloco (Créditos a partir de R$ 1.000 / só com cota) e fecha o e-mail"><i class="ti ti-filter-off" style="font-size:13px;vertical-align:-1px"></i> Limpar</button>
+              <button class="fap-export-btn" onclick="fapAudTransLimpar()" title="Desmarca as opções de listagem deste subbloco, fecha o e-mail e apaga as cotas informadas nas placas/período selecionados (pede confirmação; justificativas são mantidas)"><i class="ti ti-filter-off" style="font-size:13px;vertical-align:-1px"></i> Limpar</button>
               <button class="fap-export-btn" onclick="fapAudExportarCotas()" title="Exporta só as transações com cota informada (placas e período selecionados)"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar cotas</button>
               <button class="fap-export-btn" id="fap-audEmailBtn" onclick="fapAudToggleEmail()" title="Resumo das transações listadas, pronto para copiar num e-mail"><i class="ti ti-mail" style="font-size:13px;vertical-align:-1px"></i> E-mail</button>
             </div>
@@ -26381,10 +26381,26 @@ function fapAudCotaOpcoes(sel){
   for(let n=1;n<=FAP_AUD_COTA_MAX;n++)h+='<option value="'+n+'"'+(n===atual?' selected':'')+'>'+fapAudCotaLabel(n)+'</option>';
   sel.innerHTML=h;sel.dataset.full='1';
 }
-/* Botão "Limpar" do subbloco Transações (pedido 12/10/2026): zera só as opções de
-   listagem DESTE subbloco e fecha o e-mail — não mexe em placas/tipos/período (isso é
-   o "Limpar filtros" do topo do bloco). */
+/* Botão "Limpar" do subbloco Transações (pedido 12/10/2026): zera as opções de
+   listagem DESTE subbloco, fecha o e-mail e — pedido seguinte, mesmo dia — também
+   APAGA as cotas informadas, no mesmo recorte do resumo "Cotas de Combustível"
+   (placas + período selecionados, sem o filtro de tipo). Apagar é dado sincronizado,
+   então pede confirmação; cada cota apagada grava timestamp (exclusão propaga entre
+   dispositivos via _cfgMergePerKey). Justificativas NÃO são apagadas. Não mexe em
+   placas/tipos/período (isso é o "Limpar filtros" do topo do bloco). Sem permissão de
+   edição ou recusando a confirmação, só limpa as opções de listagem. */
 function fapAudTransLimpar(){
+  const lista=FAP_AUDIT&&canEdit()?fapAudCotaLista():[];
+  if(lista.length){
+    const tot=fapAudCotaResumo(lista).total;
+    if(confirm('Limpar também as cotas informadas de '+lista.length+' transação(ões) ('+fapFmtMoney(tot)+') das placas/período selecionados?\n\nIsso vale para todos os dispositivos sincronizados e não pode ser desfeito. As justificativas NÃO são apagadas.')){
+      const keys=fapAudChaves(),agora=new Date().toISOString();
+      if(!FAP_AUDIT_JUST.ts.cota)FAP_AUDIT_JUST.ts.cota={};
+      lista.forEach(t=>{const k=keys[t.ri];if(!k)return;delete FAP_AUDIT_JUST.cota[k];FAP_AUDIT_JUST.ts.cota[k]=agora;});
+      saveState();
+      _ghToast('Cotas limpas ✓ '+lista.length+' transação(ões)','var(--green-dk)',4000);
+    }
+  }
   fapAudSoCredAlto=false;fapAudSoCota=false;
   const w=document.getElementById('fap-audEmailWrap');if(w)w.style.display='none';
   fapAudRenderResultados();
