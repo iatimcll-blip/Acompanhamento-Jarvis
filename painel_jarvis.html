@@ -14279,9 +14279,11 @@ function applyPermissions(){
   document.getElementById('panel-abertos-ofs')?.classList.toggle('can-edit-here',canEdit('abertosOfs'));
   document.getElementById('panel-warmap')?.classList.toggle('can-edit-here',canEdit('warmap'));
   applyPanelVisibility();
-  if(dAb.length)renderTAb();
-  renderFuel();
-  renderExecutiveDashboard();
+  /* Só a aba aberta (applyPermissions roda junto de cada applyState com mudança) —
+     Combustível/Dashboard redesenham ao abrir (switchTab), Abertos via _markDirty. */
+  if(dAb.length){if(activeTab==='abertos')renderTAb();else _markDirty('abertos');}
+  if(activeTab==='combustivel')renderFuel();
+  if(activeTab==='dashboard')renderExecutiveDashboard();
   updateClearBtns();
 }
 function showLogin(msg){
@@ -14334,11 +14336,13 @@ async function _ghStateToB64(st){
     try{
       const blob=new Blob([json]);
       const cs=blob.stream().pipeThrough(new CompressionStream('gzip'));
-      const buf=await new Response(cs).arrayBuffer();
-      const bytes=new Uint8Array(buf);
-      let bin='';
-      for(let i=0;i<bytes.length;i+=4096)bin+=String.fromCharCode(...bytes.subarray(i,Math.min(i+4096,bytes.length)));
-      return btoa(unescape(encodeURIComponent(JSON.stringify({z:1,d:btoa(bin)}))));
+      const gz=await new Response(cs).blob();
+      /* base64 do gzip via FileReader (fora da thread principal) — antes era um laço
+         String.fromCharCode + btoa sobre ~2,5 MB na thread principal (~350 ms de tela
+         travada a cada sync). Mesmo resultado byte a byte. */
+      const d=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const u=String(fr.result);res(u.slice(u.indexOf(',')+1));};fr.onerror=()=>rej(fr.error);fr.readAsDataURL(gz);});
+      return btoa(JSON.stringify({z:1,d})); // envelope 100% ASCII (base64): btoa direto dá o mesmo que btoa(unescape(encodeURIComponent()))
+
     }catch(e){console.warn('Compressão indisponível, enviando sem compressão.');}
   }
   return btoa(unescape(encodeURIComponent(JSON.stringify({z:0,d:btoa(unescape(encodeURIComponent(json)))}))));
@@ -14594,7 +14598,10 @@ function _mergeGhRemoteIntoLocal(remoteSt){
           ofsRows=ofsSanitizeRows(remoteSt.ofsRows);
           ofsMeta={..._remoteOfsMeta};
         }else if(Array.isArray(remoteSt.ofsRows)){
-          ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsSanitizeRows(ofsRows),ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
+          /* ofsRows local já está sempre normalizado (toda atribuição passa por
+             ofsSanitizeRows) e a normalização externa abaixo cobre o resultado inteiro —
+             a normalização interna das linhas locais era trabalho repetido a cada sync. */
+          ofsRows=ofsSanitizeRows(_mergeArraysByKey(ofsRows,ofsSanitizeRows(remoteSt.ofsRows),ofsRowKey));
         }
       }
       /* Rede: BD/AD são arrays posicionais (não objetos com chave natural), então
@@ -14872,7 +14879,13 @@ async function saveGhState(manual=false){
          Preventivas só redesenham se forem a aba aberta — switchTab() já redesenha cada
          um ao ser aberto, então nada fica desatualizado na tela. Abertos/Encerrados/
          Repetidos continuam sempre (alimentam os contadores das abas). */
-      renderAllAb();renderAllEnc();renderPanelRepetidos();
+      /* Abertos/Encerrados (~2,5 s juntos com o estado real) só redesenham se forem a
+         aba aberta; senão ficam marcados (_markDirty) e redesenham ao abrir — os
+         contadores das abas são atualizados em outro ponto (applyState/procEnc),
+         não dependem destes renders. */
+      if(activeTab==='abertos')renderAllAb();else _markDirty('abertos');
+      if(activeTab==='encerrados')renderAllEnc();else _markDirty('encerrados');
+      renderPanelRepetidos();
       if(activeTab==='combustivel')renderFuel();
       if(activeTab==='rede')renderRede();
       if(activeTab==='ativacoes')renderPanelAtivacoes();
@@ -15215,7 +15228,16 @@ function ph(v){if(v===null||v===undefined||v==='')return 0;if(typeof v==='number
 function fh(h){const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h '+(mm<10?'0':'')+mm+'m'}
 function fd(h){const total=Math.max(0,Math.floor((Number(h)||0)*3600));const hh=Math.floor(total/3600),mm=Math.floor(total%3600/60),ss=total%60;return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0')}
 function cf(h){if(h>24)return SLA_ORDER[0];if(h>12)return SLA_ORDER[1];if(h>8)return SLA_ORDER[2];if(h>4)return SLA_ORDER[3];return SLA_ORDER[4]}
-function nk(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase()}
+/* Memo (performance, 2026-10-13): nk/repairPtBR/fmtCausaRaiz são funções puras de texto
+   chamadas por linha (~7 mil chamados) em todo render de Encerrados/S-Intervenção/
+   Prefeitura/Repetidos, e os textos se repetem muito. Só memoriza entrada string (mesmo
+   resultado; outros tipos seguem o caminho original). Mantidas como "function" (hoisting
+   intacto); a memória é criada sob demanda (var) pra funcionar mesmo se chamadas antes
+   desta linha no boot. */
+var _memoNk,_memoRepair,_memoCausa;
+function _memoGet(m,v,fn){let o=m.get(v);if(o===undefined){o=fn(v);if(m.size>80000)m.clear();m.set(v,o);}return o;}
+function nk(v){return typeof v==='string'?_memoGet(_memoNk||(_memoNk=new Map()),v,_nkRaw):_nkRaw(v);}
+function _nkRaw(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase()}
 function eh(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function fmtSubstatus(v){
   const s=String(v||'').trim().replace(/\s+/g,' ');
@@ -15249,7 +15271,8 @@ function resolveAbSubstatus(statusRaw,substatusRaw){
   if(st)return st;
   return'Fechado';
 }
-function fmtCausaRaiz(v){
+function fmtCausaRaiz(v){return typeof v==='string'?_memoGet(_memoCausa||(_memoCausa=new Map()),v,_fmtCausaRaizRaw):_fmtCausaRaizRaw(v);}
+function _fmtCausaRaizRaw(v){
   const s=String(v||'').trim().replace(/\s+/g,' ');
   if(!s)return'';
   const k=nk(s);
@@ -16264,7 +16287,8 @@ function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt
 const AB_CLIENTE_JUNK_RE=/^(coluna\s|inferido\s)/i;
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);const cliente=AB_CLIENTE_JUNK_RE.test(String(d.cliente||'').trim())?'':d.cliente;return{...d,rowKey:d.rowKey??i,mop,cliente,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
 function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semanaParsed=parseOpeningDate(d.dataFechamento);const semana=normSemana(d.semana,semanaParsed)||calcSemana(semanaParsed)||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
-function repairPtBR(s){
+function repairPtBR(s){return typeof s==='string'&&s?_memoGet(_memoRepair||(_memoRepair=new Map()),s,_repairPtBRRaw):_repairPtBRRaw(s);}
+function _repairPtBRRaw(s){
   if(!s)return s;
   s=String(s);
   const bad='\uFFFD';
@@ -16325,9 +16349,14 @@ function applyState(st,label){
       selEveFaixa=asArr(st.selEveFaixa).filter(f=>SLA_ORDER.includes(f));
       selEveSub=asArr(st.selEveSub).filter(s=>_abSubs.includes(s));
       selEveUf=asArr(st.selEveUf).filter(u=>_abUfs.includes(u));
-      fillFiltersAb();if(!abInteractionLock)renderAllAb();
-      fillFiltersSwap();if(!abInteractionLock){renderAllSwap();if(dAb.length)_lastApplyRenderedTabs.add('swap');}
-      fillFiltersEve();if(!abInteractionLock){renderAllEve();if(dAb.length)_lastApplyRenderedTabs.add('eve');}
+      /* Performance (2026-10-13): applyState roda a cada atualização recebida de outro
+         dispositivo e redesenhava TODOS os painéis, visíveis ou não (~24 s de tela
+         travada com o estado real). Agora só a aba aberta redesenha; as demais são
+         desenhadas ao abrir (switchTab já faz isso pra cada uma; Abertos/Encerrados via
+         _markDirty). Contadores das abas continuam atualizados aqui mesmo. */
+      fillFiltersAb();if(!abInteractionLock){if(activeTab==='abertos')renderAllAb();else _markDirty('abertos');}
+      fillFiltersSwap();if(!abInteractionLock&&activeTab==='swap'){renderAllSwap();if(dAb.length)_lastApplyRenderedTabs.add('swap');}
+      fillFiltersEve();if(!abInteractionLock&&activeTab==='eve'){renderAllEve();if(dAb.length)_lastApplyRenderedTabs.add('eve');}
       document.getElementById('empty-ab').style.display=dAb.length?'none':'block';
       document.getElementById('dash-ab').style.display=dAb.length?'block':'none';
       const emptySwap=document.getElementById('empty-swap'),dashSwap=document.getElementById('dash-swap');
@@ -16384,8 +16413,7 @@ function applyState(st,label){
       /* selAtivSrch (busca livre) não é mais restaurada do estado sincronizado — ver
          comentário grande em buildState() sobre o bug de busca livre vazando entre
          dispositivos. */
-      renderPanelAtivacoes();
-      _lastApplyRenderedTabs.add('ativacoes');
+      if(activeTab==='ativacoes'){renderPanelAtivacoes();_lastApplyRenderedTabs.add('ativacoes');}
       document.getElementById('empty-ativ').style.display=dAtiv.length?'none':'block';
       document.getElementById('dash-ativ').style.display=dAtiv.length?'block':'none';
       changed=true;
@@ -16397,8 +16425,7 @@ function applyState(st,label){
          antes dessa regra existir (ou digitados em CAIXA ALTA/minúsculo) */
       dPrevent=st.dPrevent.map(d=>d.cidade?{...d,cidade:titleCasePT(repairPtBR(d.cidade))}:d);
       if(Object.prototype.hasOwnProperty.call(st,'lastPreventAt'))lastPreventAt=st.lastPreventAt||'';
-      renderPreventAll();
-      _lastApplyRenderedTabs.add('preventivas');
+      if(activeTab==='preventivas'){renderPreventAll();_lastApplyRenderedTabs.add('preventivas');}else updatePreventReminder();
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Agendamento de Preventivas:',e);}
@@ -16410,8 +16437,7 @@ function applyState(st,label){
       if(Object.prototype.hasOwnProperty.call(st,'lastPopFile'))lastPopFile=st.lastPopFile||'';
       renderPreventCidadeDatalist();
       renderPreventPopDatalist();
-      fillFiltersPop();renderAllPop();
-      _lastApplyRenderedTabs.add('pop');
+      fillFiltersPop();if(activeTab==='pop'){renderAllPop();_lastApplyRenderedTabs.add('pop');}
       const emptyPop=document.getElementById('empty-pop'),dashPop=document.getElementById('dash-pop');
       if(emptyPop)emptyPop.style.display=dPop.length?'none':'block';
       if(dashPop)dashPop.style.display=dPop.length?'block':'none';
@@ -16596,7 +16622,7 @@ function applyState(st,label){
     if(st.b2cRaw&&typeof st.b2cRaw==='object'){
       Object.keys(B2C_RAW).forEach(k=>{if(Array.isArray(st.b2cRaw[k]))B2C_RAW[k]=st.b2cRaw[k];});
       if(st.b2cFiles&&typeof st.b2cFiles==='object')B2C_FILES=st.b2cFiles;
-      b2cRenderAll();
+      if(activeTab==='b2c')b2cRenderAll();
       changed=true;
     }
     if(Array.isArray(st.selB2cCluster))selB2cCluster=st.selB2cCluster;
@@ -16696,11 +16722,11 @@ function applyState(st,label){
       selPrefOut=asArr(st.selPrefOut).filter(o=>ENC_OUT_OPTIONS.includes(o));
       const nbPref=document.getElementById('nb-pref');if(nbPref)nbPref.textContent=_prefBase.length;
       fillFiltersPref();
-      renderAllEnc();
-      renderAllSi();
-      renderAllPref();
+      if(activeTab==='encerrados')renderAllEnc();else _markDirty('encerrados');
+      if(activeTab==='semIntervencao'){renderAllSi();_lastApplyRenderedTabs.add('semIntervencao');}
+      if(activeTab==='prefeitura'){renderAllPref();_lastApplyRenderedTabs.add('prefeitura');}
       renderPanelRepetidos();
-      _lastApplyRenderedTabs.add('semIntervencao').add('prefeitura').add('repetidos');
+      if(activeTab==='repetidos')_lastApplyRenderedTabs.add('repetidos');
       document.getElementById('empty-enc').style.display=dEnc.length?'none':'block';
       document.getElementById('dash-enc').style.display=dEnc.length?'block':'none';
       document.getElementById('empty-si').style.display=dEnc.length?'none':'block';
@@ -16754,8 +16780,7 @@ function applyState(st,label){
       const fvTsEl=document.getElementById('fv-base-ts');if(fvTsEl)fvTsEl.textContent=fuelVeiculosBaseFile?`Base: ${fuelVeiculosBaseFile} · ${fuelVeiculosBaseAt}`:'';
       if(st.fuelRFilter&&typeof st.fuelRFilter==='object')fuelRFilter={q:st.fuelRFilter.q||'',tipo:asArr(st.fuelRFilter.tipo),tipoCartao:asArr(st.fuelRFilter.tipoCartao),dataIni:st.fuelRFilter.dataIni||'',dataFim:st.fuelRFilter.dataFim||''};
       if(st.fuelVFilter&&typeof st.fuelVFilter==='object')fuelVFilter={placa:st.fuelVFilter.placa||'',condutor:st.fuelVFilter.condutor||'',setor:asArr(st.fuelVFilter.setor),superior:asArr(st.fuelVFilter.superior),tipoCartao:asArr(st.fuelVFilter.tipoCartao),status:asArr(st.fuelVFilter.status)};
-      renderFuel();
-      _lastApplyRenderedTabs.add('combustivel');
+      if(activeTab==='combustivel'){renderFuel();_lastApplyRenderedTabs.add('combustivel');}
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar Combustível:',e);}
@@ -16766,8 +16791,8 @@ function applyState(st,label){
       if(appliedRede){
         idbSet(REDE_STORAGE,st.rdeState).catch(e=>console.warn('rede IndexedDB save',e));
         try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st.rdeState));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
-        rdeRestoreUI();rdeSyncControls();renderRede();
-        _lastApplyRenderedTabs.add('rede');
+        rdeRestoreUI();rdeSyncControls();
+        if(activeTab==='rede'){renderRede();_lastApplyRenderedTabs.add('rede');}
         changed=true;
       }
     }
@@ -16779,8 +16804,8 @@ function applyState(st,label){
       saveOfsState();
       const nb=document.getElementById('nb-ofs');if(nb){nb.textContent=slnOfsRows().length;nb.style.display=ofsRows.length?'':'none';}
       const tsEl=document.getElementById('ts-ofs');if(tsEl&&ofsMeta.uploadedAt)tsEl.textContent='Anexado '+ofsMeta.uploadedAt;
-      renderOfs();updateCentralStatus();
-      _lastApplyRenderedTabs.add('ofs');
+      if(activeTab==='ofs'){renderOfs();_lastApplyRenderedTabs.add('ofs');}
+      updateCentralStatus();
       changed=true;
     }
   }catch(e){console.warn('applyState: falha ao restaurar OFS:',e);}
@@ -16789,7 +16814,11 @@ function applyState(st,label){
   try{if(changed)applyPermissions();}catch(e){console.warn('applyState: falha ao aplicar permissões:',e);}
   return changed;
 }
-let _lsQuotaExceeded=false;
+/* Lembrado entre sessões (chave pequena): o estado (~14 MB) não cabe na cota do
+   localStorage (~5 MB) — sem isso, a 1ª gravação de cada sessão ainda serializava
+   tudo só pra falhar. Se um dia couber de novo (base menor), o caminho do catch abaixo
+   não é atingido e nada muda pra quem usa IndexedDB. */
+let _lsQuotaExceeded=(()=>{try{return localStorage.getItem('jarvis:lsGrande')==='1';}catch(_){return false;}})();
 function saveLocalState(st){
   const state=st||buildState();
   /* B2C_RAW (as ~13 bases anexadas, até ~150 mil linhas cada no MAX.xlsx) nunca entra em
@@ -16816,6 +16845,7 @@ function saveLocalState(st){
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(localState))}
   catch(e){
     _lsQuotaExceeded=true;
+    try{localStorage.setItem('jarvis:lsGrande','1');}catch(_){}
     /* Causa raiz de "os dados voltam para o passado" mesmo anexando a base mais recente:
        quando a base cresce (ex.: Encerrados 7180 + Rede 5000+ linhas juntos passam da cota
        do localStorage, ~5-10MB), este setItem lança QuotaExceededError — mas o localStorage
@@ -16877,16 +16907,36 @@ async function restoreSharedState(){
   }catch(e){console.warn('Não foi possível carregar o estado compartilhado:',e)}
   return false;
 }
+/* Performance (bug "travamento em salvamentos", 2026-10-13): saveState() é chamado em
+   ~180 pontos (inclusive em toda troca de filtro) e gravava NA HORA o estado inteiro
+   (~14,5 MB: buildState + JSON + localStorage + clone pro IndexedDB) — medido ~3 s de
+   tela travada POR CLIQUE com o estado real. Agora a gravação local é agrupada: vários
+   saveState() seguidos viram UMA gravação ~0,35 s depois do último. Nada se perde:
+   o estado em memória já está atualizado, a sincronização remota lê da memória
+   (buildState), e a gravação pendente é forçada ao sair/ocultar a página
+   (pagehide/visibilitychange) — _flushLocalSave(). */
+let _localSaveTimer=null,_localSavePend=false;
+function _flushLocalSave(){
+  clearTimeout(_localSaveTimer);_localSaveTimer=null;
+  if(!_localSavePend)return;
+  _localSavePend=false;
+  try{saveLocalState(buildState());}catch(e){console.warn('Falha ao gravar o estado local:',e);}
+}
+window.addEventListener('pagehide',_flushLocalSave);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')_flushLocalSave();});
 function saveState(){
-  const st=buildState();
-  saveLocalState(st);
+  _localSavePend=true;
+  clearTimeout(_localSaveTimer);
+  _localSaveTimer=setTimeout(_flushLocalSave,350);
   if(canEdit()||_hasSrEditRights()){
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer=setTimeout(()=>{
       /* saveGhState() não precisa mais de token pessoal (via Worker) — passou a ser
-         sempre disponível, então não tem mais fallback condicional pro Sheets aqui. */
+         sempre disponível, então não tem mais fallback condicional pro Sheets aqui.
+         1,5 s (era 0,8 s): agrupa rajadas de edição (digitar justificativas, marcar
+         vários filtros) numa sincronização só. */
       saveGhState(false);
-    },800);
+    },1500);
   }
 }
 async function persistClearedBase(label){
@@ -22229,6 +22279,14 @@ function fillRepFilters(){
   const srch=document.getElementById('rep-srch');if(srch&&selRepSrch&&!srch.value)srch.value=selRepSrch;
 }
 function renderPanelRepetidos(){
+  /* Performance (2026-10-13): com a aba oculta, só atualiza o contador da aba (nb-rep,
+     mesmo cálculo de antes) — desenhar os gráficos num canvas invisível custava ~5 s
+     (Chart.js medindo elemento oculto) a cada sync/atualização recebida. Os gráficos
+     são desenhados quando a aba é aberta (switchTab chama esta função). */
+  if(typeof activeTab!=='undefined'&&activeTab!=='repetidos'){
+    if(dEnc.length){const nb=document.getElementById('nb-rep');if(nb)nb.textContent=buildRepMap(repScope()).length;}
+    return;
+  }
   if(!dEnc.length){
     const d=document.getElementById('dash-rep');if(d)d.style.display='none';
     const e=document.getElementById('empty-rep');if(e)e.style.display='flex';
@@ -23225,8 +23283,8 @@ const OFS_KEY='atrix:painel:ofs:v2';
 const OFS_TEC_KEY='atrix:ofs:tecs:v1';
 const OFS_MASTER_PATH='./Fonte/Relatorio_OFS_MOP-EPS.xlsx';
 let ofsTecCustom=[];
-function ofsTecLoad(){try{ofsTecCustom=JSON.parse(localStorage.getItem(OFS_TEC_KEY)||'[]');}catch(e){ofsTecCustom=[];}}
-function ofsTecSave(){try{localStorage.setItem(OFS_TEC_KEY,JSON.stringify(ofsTecCustom));}catch(e){}}
+function ofsTecLoad(){_ofsRegMemoClear();try{ofsTecCustom=JSON.parse(localStorage.getItem(OFS_TEC_KEY)||'[]');}catch(e){ofsTecCustom=[];}}
+function ofsTecSave(){_ofsRegMemoClear();try{localStorage.setItem(OFS_TEC_KEY,JSON.stringify(ofsTecCustom));}catch(e){}}
 let ofsRows=[],ofsMeta={fname:'',loaded:false};
 let ofsChRank=null,ofsChStatus=null,ofsChTaxa=null,ofsChTipo=null,ofsChDia=null;
 let ofsSortCol='total',ofsSortAsc=false;
@@ -23395,7 +23453,22 @@ function ofsCanonicalTecKey(tec){
   const resolved=_ofsResolveFuzzyKey(raw);
   return OFS_NAME_ALIASES[resolved]||resolved;
 }
+/* Performance (2026-10-13): isOfsRegisteredTec faz casamento aproximado (Levenshtein)
+   contra o cadastro inteiro e é chamado por LINHA em slnOfsRows()/ofsFilteredRows()
+   (~6 mil linhas) — ~8 s de tela travada a cada atualização recebida de outro
+   dispositivo. Resultado memorizado por nome; a memória é descartada sempre que o
+   cadastro muda (ofsTecSave/ofsTecLoad) e, por garantia, se a lista trocar de
+   referência ou de tamanho. Mesmo resultado de antes. */
+let _ofsRegMemo=new Map(),_ofsRegMemoRef=null,_ofsRegMemoLen=-1;
+function _ofsRegMemoClear(){_ofsRegMemo=new Map();_ofsRegMemoRef=null;_ofsRegMemoLen=-1;}
 function isOfsRegisteredTec(tec){
+  if(_ofsRegMemoRef!==ofsTecCustom||_ofsRegMemoLen!==ofsTecCustom.length){_ofsRegMemo=new Map();_ofsRegMemoRef=ofsTecCustom;_ofsRegMemoLen=ofsTecCustom.length;}
+  const k=String(tec==null?'':tec);
+  let v=_ofsRegMemo.get(k);
+  if(v===undefined){v=_isOfsRegisteredTecRaw(tec);_ofsRegMemo.set(k,v);}
+  return v;
+}
+function _isOfsRegisteredTecRaw(tec){
   const key=ofsCanonicalTecKey(tec);
   return !!key&&ofsRegisteredTecKeys().has(key);
 }
@@ -24425,6 +24498,10 @@ function scrollTabbar(dir){
 }
 window.addEventListener('resize',updateTabbarArrows);
 /* ─── NAV & THEME ─── */
+/* Abas com dado novo que NÃO foram redesenhadas por estarem ocultas (sync/applyState/
+   applyPermissions) — redesenham ao serem abertas (fim de switchTab). Guardado em
+   window pra poder ser usado por funções que rodam antes desta linha no boot. */
+function _markDirty(t){(window._fapDirtyTabs||(window._fapDirtyTabs=new Set())).add(t);}
 function switchTab(tab,persist=true,skipRenderTabs=null){
   if(!TAB_SWITCHABLE_KEYS.includes(tab))tab='dashboard';
   if(!canSeePanel(tab)){
@@ -24492,6 +24569,12 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(isEve&&dAb.length&&!_skip('eve'))renderAllEve();
   if(isDash)renderExecutiveDashboard();
   if(isExec)renderExecutivo();
+  const _dirty=window._fapDirtyTabs;
+  if(_dirty&&_dirty.has(tab)){
+    _dirty.delete(tab);
+    if(isAb&&dAb.length)renderAllAb();
+    if(isEnc&&dEnc.length)renderAllEnc();
+  }
   updateShellTitle(tab);
   closeMobileNav();
   updateClearBtns();
