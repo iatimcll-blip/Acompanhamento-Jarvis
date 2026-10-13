@@ -1682,6 +1682,12 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-grid-2>*,.fap-grid-2b>*{min-width:0}
 @media(max-width:600px){.fap-form-two{grid-template-columns:1fr}.fap-cards{grid-template-columns:1fr}.fap-novo-head{flex-wrap:wrap}.fap-filterbar select,.fap-filterbar input{min-width:0;width:100%}.fap-filterbar .fap-field{flex:1 1 140px}}
 .fap-dup-row td{background:var(--orange-bg)}
+.fap-hier-cell{font-size:12px;line-height:1.35;white-space:nowrap}
+.fap-hier-cell b{font-weight:600;color:var(--tx3)}
+.fap-hier-in{width:100%;min-width:160px;border:.5px solid var(--bd2);border-radius:6px;padding:4px 7px;font-size:12.5px;font-family:inherit;color:var(--tx);background:var(--surface)}
+.fap-hier-ok{color:var(--green-dk);background:var(--green-bg)}
+.fap-hier-man{color:var(--blue);background:var(--blue-bg)}
+.fap-hier-sem{color:var(--orange);background:var(--orange-bg)}
 .fap-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 16px;border-bottom:.5px solid var(--bd);padding-bottom:8px}
 .fap-subtab{border:.5px solid var(--bd2);background:var(--surface);color:var(--tx2);border-radius:999px;padding:7px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
 .fap-subtab.active{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -10513,7 +10519,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <div id="fap-condutorTableWrap" style="max-height:360px;overflow-y:auto;margin-top:14px">
           <table class="fap-table">
-            <thead><tr><th>Condutor</th><th>Placa(s)</th><th>Total consumido</th><th>Abastecimentos</th><th>Período</th><th>Limite do condutor</th></tr></thead>
+            <thead><tr><th>Condutor</th><th>GA / GO</th><th>Placa(s)</th><th>Total consumido</th><th>Abastecimentos</th><th>Período</th><th>Limite do condutor</th></tr></thead>
             <tbody id="fap-condutorTableBody"></tbody>
           </table>
         </div>
@@ -10530,6 +10536,32 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="fap-panel" id="fap-hierPanel">
+      <div class="fap-hist-head">
+        <div><h3 style="margin-bottom:2px">Hierarquia dos condutores (GA / GO)</h3><p class="fap-desc" style="margin:0">GA e GO de cada condutor a partir da planilha de hierarquia (colunas GO, GA e NOME). Nomes cortados pelo Alelo e condutores que são o próprio GA/GO são reconhecidos automaticamente; grafias parecidas aparecem como sugestão. Quem ficar sem hierarquia pode ser preenchido aqui — a edição vale para todo o painel e é sincronizada.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          <label class="fap-export-btn admin-only" style="cursor:pointer" title="Planilha .xlsx/.csv com as colunas GO, GA e NOME (ex.: HIERARQUIA.xlsx). Anexar uma nova SUBSTITUI a anterior; as edições manuais feitas aqui são mantidas."><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar hierarquia<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapHierImportar(event)"></label>
+          <button class="fap-export-btn" onclick="fapHierExportar()"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Exportar</button>
+        </div>
+      </div>
+      <p class="fap-desc" id="fap-hierInfo" style="margin:0 0 10px"></p>
+      <div class="fap-cards" id="fap-hierCards"></div>
+      <div class="fap-filterbar">
+        <div class="fap-field"><label for="fap-hierFiltro">Mostrar</label>
+          <select id="fap-hierFiltro" autocomplete="off" onchange="fapRenderHierarquia()"><option value="sem">Sem hierarquia</option><option value="sug">Com sugestão</option><option value="manual">Editados no painel</option><option value="todos">Todos</option></select>
+        </div>
+        <div class="fap-field"><label for="fap-hierBusca">Buscar condutor</label><input type="text" id="fap-hierBusca" autocomplete="off" placeholder="nome…" oninput="fapRenderHierarquia()"></div>
+      </div>
+      <datalist id="fap-hierGaList"></datalist><datalist id="fap-hierGoList"></datalist>
+      <div style="overflow:auto;max-height:460px">
+        <table class="fap-table">
+          <thead><tr><th>Condutor</th><th>Aparece em</th><th>Situação</th><th style="min-width:180px">GA</th><th style="min-width:180px">GO</th></tr></thead>
+          <tbody id="fap-hierBody"></tbody>
+        </table>
+      </div>
+      <p class="fap-desc" id="fap-hierNote" style="display:none;margin:6px 0 0;color:var(--orange)"></p>
     </div>
 
     <div class="fap-panel">
@@ -10631,7 +10663,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <p class="fap-desc" id="fap-audDetNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
           <div style="overflow:auto;max-height:420px">
             <table class="fap-table">
-              <thead><tr><th>Data/hora</th><th>Placa</th><th>Motorista</th><th>Tipo de transação</th><th>Status</th><th>Cidade</th><th>Valor</th><th style="min-width:190px">Cota</th><th style="min-width:240px">Justificativa</th></tr></thead>
+              <thead><tr><th>Data/hora</th><th>Placa</th><th>Motorista</th><th>GA / GO</th><th>Tipo de transação</th><th>Status</th><th>Cidade</th><th>Valor</th><th style="min-width:190px">Cota</th><th style="min-width:240px">Justificativa</th></tr></thead>
               <tbody id="fap-audDetBody"></tbody>
             </table>
           </div>
@@ -14792,6 +14824,14 @@ function _mergeGhRemoteIntoLocal(remoteSt){
         fapAuditAt=remoteSt.fapAuditAt;
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
+      if(Object.prototype.hasOwnProperty.call(remoteSt,'fapHierAt')&&remoteSt.fapHierAt&&remoteSt.fapHierAt>(fapHierAt||'')){
+        FAP_HIER=remoteSt.FAP_HIER&&Array.isArray(remoteSt.FAP_HIER.rows)?remoteSt.FAP_HIER:null;
+        fapHierAt=remoteSt.fapHierAt;_fapHierVer++;
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
+      }
+      if(remoteSt.FAP_HIER_EDIT&&typeof remoteSt.FAP_HIER_EDIT==='object'&&fapHierEditMerge(remoteSt.FAP_HIER_EDIT)){
+        if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
+      }
       if(remoteSt.FAP_SALDO_CICLOS&&typeof remoteSt.FAP_SALDO_CICLOS==='object'&&fapSaldoCiclosMerge(remoteSt.FAP_SALDO_CICLOS)){
         if(typeof activeTab!=='undefined'&&activeTab==='aportes'&&typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
       }
@@ -14970,7 +15010,7 @@ function _remoteNewerSectionsOnly(remoteSt){
   });
   /* Configuração por chave (obs/status manual/SLA do AOF; justificativa/status interno do
      Warmup) é sempre mesclada chave a chave — idempotente, então é seguro reenviar. */
-  ['AOF_SYNC_CFG','WM_SYNC_CFG','FAP_AUDIT_JUST','FAP_SALDO_CICLOS'].forEach(k=>{
+  ['AOF_SYNC_CFG','WM_SYNC_CFG','FAP_AUDIT_JUST','FAP_SALDO_CICLOS','FAP_HIER_EDIT'].forEach(k=>{
     if(remoteSt[k]&&typeof remoteSt[k]==='object'){part[k]=remoteSt[k];any=true;}
   });
   return any?part:null;
@@ -16243,6 +16283,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'fapConsumoAt',keys:['FAP_CONSUMO_CONDUTOR','fapConsumoAt','fapConsumoCleared','fapConsumoClearedAt']},
   {at:'fapConsumoMcAt',keys:['FAP_CONSUMO_MC','fapConsumoMcAt','fapConsumoMcCleared','fapConsumoMcClearedAt']},
   {at:'fapAuditAt',keys:['FAP_AUDIT','fapAuditAt']},
+  {at:'fapHierAt',keys:['FAP_HIER','fapHierAt']},
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT']},
   {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
   {at:'usersAt',keys:['users','usersAt']},
@@ -16278,7 +16319,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -16604,6 +16645,11 @@ function applyState(st,label){
     }
     if(st.FAP_AUDIT_JUST&&typeof st.FAP_AUDIT_JUST==='object'&&fapAudMergeJust(st.FAP_AUDIT_JUST))changed=true;
     if(st.FAP_SALDO_CICLOS&&typeof st.FAP_SALDO_CICLOS==='object'&&fapSaldoCiclosMerge(st.FAP_SALDO_CICLOS))changed=true;
+    if(Object.prototype.hasOwnProperty.call(st,'fapHierAt')&&st.fapHierAt){
+      FAP_HIER=st.FAP_HIER&&Array.isArray(st.FAP_HIER.rows)?st.FAP_HIER:null;
+      fapHierAt=st.fapHierAt;_fapHierVer++;changed=true;
+    }
+    if(st.FAP_HIER_EDIT&&typeof st.FAP_HIER_EDIT==='object'&&fapHierEditMerge(st.FAP_HIER_EDIT))changed=true;
   }catch(e){console.warn('applyState: falha ao restaurar Auditoria:',e);}
   try{
     /* B2C: só o resumo agregado por indicador sincroniza (poucas dezenas de
@@ -25519,6 +25565,13 @@ let FAP_AUDIT=null,fapAuditAt='';
    (chave = início do ciclo 'YYYY-MM-15'), gravado sempre que o saldo é definido/somado.
    Mesmo merge chave a chave das justificativas (_cfgMergePerKey). */
 let FAP_SALDO_CICLOS={saldo:{},ts:{saldo:{}}};
+/* Hierarquia dos condutores (pedido 2026-10-13): FAP_HIER = planilha importada
+   ({file,at,rows:[[nome,ga,go]]}), replace-by-latest por fapHierAt (como FAP_AUDIT);
+   FAP_HIER_EDIT = GA/GO editados no painel por condutor (chave = nome normalizado),
+   mesclados chave a chave entre dispositivos (_cfgMergePerKey) e mantidos ao
+   reimportar a planilha. Edição manual tem prioridade sobre a planilha. */
+let FAP_HIER=null,fapHierAt='';
+let FAP_HIER_EDIT={map:{},ts:{map:{}}};
 /* Justificativas por transação da Auditoria (pedido 2026-10-12, coluna "Justificativa" do
    subbloco Transações). Independentes da base: chave = placa|data/hora|centavos|tipo|#n
    (ver fapAudChaves), então reanexar o mesmo relatório (ou um export maior que contenha
@@ -26323,6 +26376,189 @@ function fapLimparBaseMesCorrente(){
   fapConsumoMcAt=new Date().toISOString();saveState();
   fapRenderConsumoVeiculoCiclo();
   _ghToast('Base do bloco Consumo Mês Corrente limpa ✓','var(--green-dk)',4000);
+}
+
+/* ─── Hierarquia dos condutores: GA / GO (pedido 2026-10-13) ───
+   Casamento nome do condutor (Alelo) × NOME da planilha, por nome normalizado (sem
+   acento/caixa/pontuação). Na base real: 96 de 125 condutores do Consumo batiam exato;
+   o resto é nome CORTADO pelo Alelo (~35 caracteres), grafia diferente ("Raffael" ×
+   "Rafael") ou o condutor é o próprio GA/GO. Automático só o que é seguro:
+     1) GA/GO editado no painel (sempre vence);
+     2) nome exato na planilha;
+     3) condutor que é um GA (GA = ele mesmo, GO = o do GA) ou um GO;
+     4) nome cortado: começa igual a UM único nome da planilha (mín. 25 caracteres).
+   Grafia parecida (similaridade ≥ 0,85 e mesmo 1º nome) é só SUGESTÃO, aceita com 1
+   clique — nunca aplicada sozinha (dois homônimos parecidos seriam atribuídos errado). */
+let _fapHierVer=0,_fapHierIdxCache=null,_fapHierMemo=new Map(),_fapHierMemoVer=-1;
+function fapHierNorm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').replace(/\s+/g,' ').trim();}
+function _fapHierIndex(){
+  if(!FAP_HIER||!Array.isArray(FAP_HIER.rows))return null;
+  if(_fapHierIdxCache&&_fapHierIdxCache.src===FAP_HIER)return _fapHierIdxCache;
+  const byNome=new Map(),byGa=new Map(),byGo=new Map(),list=[];
+  FAP_HIER.rows.forEach(([nome,ga,go])=>{
+    const n=fapHierNorm(nome);if(!n)return;
+    const it={n,nome,ga:fapGoNome(ga),go:fapGoNome(go)};
+    if(!byNome.has(n)){byNome.set(n,it);list.push(it);}
+    const g=fapHierNorm(ga);if(g&&!byGa.has(g))byGa.set(g,{ga:fapGoNome(ga),go:fapGoNome(go)});
+    const o=fapHierNorm(go);if(o&&!byGo.has(o))byGo.set(o,{go:fapGoNome(go)});
+  });
+  _fapHierIdxCache={src:FAP_HIER,byNome,byGa,byGo,list};
+  return _fapHierIdxCache;
+}
+function _fapHierCalc(k){
+  const ed=(FAP_HIER_EDIT.map||{})[k];
+  if(ed&&(ed.ga||ed.go))return{ga:ed.ga||'',go:ed.go||'',fonte:'manual'};
+  const ix=_fapHierIndex();if(!ix)return null;
+  const r=ix.byNome.get(k);if(r)return{ga:r.ga,go:r.go,fonte:'planilha'};
+  if(ix.byGa.has(k)){const g=ix.byGa.get(k);return{ga:g.ga,go:g.go,fonte:'é GA'};}
+  if(ix.byGo.has(k))return{ga:'',go:ix.byGo.get(k).go,fonte:'é GO'};
+  if(k.length>=25){const c=ix.list.filter(x=>x.n.startsWith(k));if(c.length===1)return{ga:c[0].ga,go:c[0].go,fonte:'nome abreviado',nomePlanilha:c[0].nome};}
+  return null;
+}
+function fapHierDe(nome){
+  const k=fapHierNorm(nome);if(!k)return null;
+  if(_fapHierMemoVer!==_fapHierVer){_fapHierMemo=new Map();_fapHierMemoVer=_fapHierVer;}
+  if(_fapHierMemo.has(k))return _fapHierMemo.get(k);
+  const v=_fapHierCalc(k);_fapHierMemo.set(k,v);return v;
+}
+function fapHierSugestao(nome){
+  const ix=_fapHierIndex();if(!ix)return null;
+  const k=fapHierNorm(nome);const p1=k.split(' ')[0];
+  let best=null,bs=0;
+  ix.list.forEach(x=>{if(x.n.split(' ')[0]!==p1)return;const sc=_ofsSimRatio(k,x.n);if(sc>bs){bs=sc;best=x;}});
+  return best&&bs>=0.85?{...best,score:bs}:null;
+}
+function fapHierCelula(nome){
+  const h=fapHierDe(nome);
+  if(!h||(!h.ga&&!h.go))return'<span class="fap-incompleto" title="Sem hierarquia — preencha em Consumo › Hierarquia dos condutores">sem hierarquia</span>';
+  return'<div class="fap-hier-cell" title="Fonte: '+eh(h.fonte)+'"><b>GA</b> '+eh(h.ga||'—')+'<br><b>GO</b> '+eh(h.go||'—')+'</div>';
+}
+function fapHierEditMerge(remote){
+  if(!FAP_HIER_EDIT||typeof FAP_HIER_EDIT!=='object')FAP_HIER_EDIT={map:{},ts:{map:{}}};
+  if(!FAP_HIER_EDIT.map)FAP_HIER_EDIT.map={};
+  if(!FAP_HIER_EDIT.ts)FAP_HIER_EDIT.ts={map:{}};
+  const ch=_cfgMergePerKey(['map'],FAP_HIER_EDIT,FAP_HIER_EDIT.ts,remote);
+  if(ch)_fapHierVer++;
+  return ch;
+}
+async function fapHierImportar(ev){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');ev.target.value='';return;}
+  const file=ev.target.files[0];if(!file)return;
+  try{
+    const buf=await file.arrayBuffer();let rows;
+    if(/\.(xlsx|xls)$/i.test(file.name)){const wb=XLSX.read(buf,{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});}
+    else{let t=new TextDecoder('utf-8').decode(buf);if((t.match(/\uFFFD/g)||[]).length>5)t=new TextDecoder('windows-1252').decode(buf);rows=fapAudParseCsv(t.replace(/^\uFEFF/,''));}
+    fapHierProcessar(rows,file.name);
+  }catch(e){alert('Erro ao ler o arquivo: '+e.message);}
+  finally{ev.target.value='';}
+}
+function fapHierProcessar(rows,nomeArq){
+  if(!rows||rows.length<2){alert('Planilha vazia.');return;}
+  const h=rows[0];
+  const ci={nome:fapFindColIdx(h,['nome','condutor','motorista','colaborador','nome do condutor']),ga:fapFindColIdx(h,['ga','gerente de area','gerente']),go:fapFindColIdx(h,['go','gestor operacional','gestor'])};
+  if(ci.nome<0||(ci.ga<0&&ci.go<0)){alert('Formato não reconhecido: a planilha precisa das colunas NOME e GA e/ou GO no cabeçalho (como a HIERARQUIA.xlsx).');return;}
+  const out=[];const vistos=new Set();let dup=0;
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r]||[];const nome=String(row[ci.nome]||'').trim();if(!nome)continue;
+    const n=fapHierNorm(nome);if(vistos.has(n)){dup++;continue;}vistos.add(n);
+    out.push([nome,ci.ga>=0?String(row[ci.ga]||'').trim():'',ci.go>=0?String(row[ci.go]||'').trim():'']);
+  }
+  if(!out.length){alert('Nenhum nome encontrado na planilha.');return;}
+  const now=new Date().toISOString();
+  FAP_HIER={file:String(nomeArq||''),at:now,rows:out};fapHierAt=now;_fapHierVer++;
+  saveState();
+  fapRenderAll();
+  const st=fapHierEstat();
+  _ghToast('Hierarquia importada ✓ '+out.length+' nome(s)'+(dup?', '+dup+' repetido(s) ignorado(s)':'')+' — '+st.com+' de '+st.total+' condutores com GA/GO','var(--green-dk)',6500);
+}
+/* Condutores conhecidos pelo painel: Consumo por Condutor, Consumo Mês Corrente e
+   motoristas da base da Auditoria (nome já em Primeira Maiúscula). */
+function fapHierCondutores(){
+  const m=new Map();
+  const add=(nome,orig)=>{const n=String(nome||'').trim();if(!n)return;const k=fapHierNorm(n);if(!k)return;let e=m.get(k);if(!e){e={k,nome:fapNomeProprio(n),origens:new Set()};m.set(k,e);}e.origens.add(orig);};
+  (FAP_CONSUMO_CONDUTOR||[]).forEach(r=>add(r.condutor,'Consumo'));
+  (FAP_CONSUMO_MC||[]).forEach(r=>add(r.condutor,'Mês corrente'));
+  if(FAP_AUDIT&&FAP_AUDIT.dic)FAP_AUDIT.dic.motorista.forEach(n=>add(n,'Auditoria'));
+  return[...m.values()].sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+}
+function fapHierEstat(){
+  const l=fapHierCondutores();let com=0,man=0;
+  l.forEach(c=>{const h=fapHierDe(c.nome);if(h&&(h.ga||h.go)){com++;if(h.fonte==='manual')man++;}});
+  return{total:l.length,com,man,sem:l.length-com};
+}
+let _fapHierShown=[],_fapHierPin=new Set(),_fapHierPinFiltro='';
+function fapRenderHierarquia(){
+  const body=document.getElementById('fap-hierBody');if(!body)return;
+  const info=document.getElementById('fap-hierInfo');
+  const ix=_fapHierIndex();
+  if(info)info.innerHTML=FAP_HIER?'Planilha: <b>'+eh(FAP_HIER.file||'—')+'</b> · '+FAP_HIER.rows.length+' nomes · '+(ix?ix.byGa.size:0)+' GAs · '+(ix?ix.byGo.size:0)+' GOs · importada em '+eh(new Date(FAP_HIER.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})):'<span style="color:var(--orange)">Nenhuma planilha de hierarquia importada ainda — use "Importar hierarquia" (ex.: HIERARQUIA.xlsx, colunas GO, GA e NOME). Até lá, só as edições feitas aqui valem.</span>';
+  const todos=fapHierCondutores();
+  const linhas=todos.map(c=>{const h=fapHierDe(c.nome);const tem=!!(h&&(h.ga||h.go));return{...c,h,tem,sug:tem?null:fapHierSugestao(c.nome)};});
+  const st={total:linhas.length,com:linhas.filter(l=>l.tem).length,man:linhas.filter(l=>l.tem&&l.h.fonte==='manual').length,sug:linhas.filter(l=>l.sug).length};
+  document.getElementById('fap-hierCards').innerHTML=
+    '<div class="fap-card"><div class="fap-label">Condutores no painel</div><div class="fap-value">'+st.total+'</div><div class="fap-foot">Consumo + Auditoria</div></div>'+
+    '<div class="fap-card fap-accent-green"><div class="fap-label">Com GA/GO</div><div class="fap-value">'+st.com+'</div><div class="fap-foot">'+st.man+' editado(s) no painel</div></div>'+
+    '<div class="fap-card"><div class="fap-label">Sem hierarquia</div><div class="fap-value" style="color:var(--orange)">'+(st.total-st.com)+'</div><div class="fap-foot">'+st.sug+' com sugestão</div></div>';
+  const ga=new Set(),go=new Set();
+  if(ix){ix.byGa.forEach(v=>ga.add(v.ga));ix.byGo.forEach(v=>go.add(v.go));}
+  Object.values(FAP_HIER_EDIT.map||{}).forEach(v=>{if(v.ga)ga.add(v.ga);if(v.go)go.add(v.go);});
+  document.getElementById('fap-hierGaList').innerHTML=[...ga].sort().map(v=>'<option value="'+eh(v)+'"></option>').join('');
+  document.getElementById('fap-hierGoList').innerHTML=[...go].sort().map(v=>'<option value="'+eh(v)+'"></option>').join('');
+  const f=(document.getElementById('fap-hierFiltro')||{}).value||'sem';
+  const q=fapHierNorm((document.getElementById('fap-hierBusca')||{}).value||'');
+  /* Quem acabou de ser editado continua na lista (mesmo que já não seja "sem
+     hierarquia") até trocar o filtro/busca — senão a linha sumia ao salvar o GA, antes
+     de dar tempo de preencher o GO. */
+  if(_fapHierPinFiltro!==f+'|'+q){_fapHierPin=new Set();_fapHierPinFiltro=f+'|'+q;}
+  let vis=linhas.filter(l=>_fapHierPin.has(l.k)||f==='todos'||(f==='sem'&&!l.tem)||(f==='sug'&&l.sug)||(f==='manual'&&l.tem&&l.h.fonte==='manual'));
+  if(q)vis=vis.filter(l=>l.k.includes(q));
+  const LIM=300;
+  _fapHierShown=vis.slice(0,LIM);
+  const pode=canEdit();
+  body.innerHTML=_fapHierShown.length?_fapHierShown.map((l,i)=>{
+    const sit=l.tem?(l.h.fonte==='manual'?'<span class="fap-conc-st fap-hier-man">Editado no painel</span>':'<span class="fap-conc-st fap-hier-ok">Planilha'+(l.h.fonte!=='planilha'?' ('+eh(l.h.fonte)+')':'')+'</span>'):'<span class="fap-conc-st fap-hier-sem">Sem hierarquia</span>';
+    const sug=l.sug?'<div style="margin-top:4px;font-size:12px">Sugestão: <b>'+eh(fapNomeProprio(l.sug.nome))+'</b> (GA '+eh(l.sug.ga||'—')+' · GO '+eh(l.sug.go||'—')+')'+(pode?' <button class="fap-reset-btn" style="padding:0 4px" data-k="'+eh(l.k)+'" onclick="fapHierAceitar(this.dataset.k)">Aceitar</button>':'')+'</div>':'';
+    const ed=pode?'':' disabled';
+    return'<tr><td><b>'+eh(l.nome)+'</b>'+sug+'</td><td>'+eh([...l.origens].join(', '))+'</td><td>'+sit+'</td>'+
+      '<td><input class="fap-hier-in" list="fap-hierGaList" data-k="'+eh(l.k)+'" aria-label="GA de '+eh(l.nome)+'" value="'+eh(l.tem?l.h.ga:'')+'" placeholder="GA"'+ed+' onchange="fapHierSalvar(this.dataset.k,\'ga\',this.value)"></td>'+
+      '<td><input class="fap-hier-in" list="fap-hierGoList" data-k="'+eh(l.k)+'" aria-label="GO de '+eh(l.nome)+'" value="'+eh(l.tem?l.h.go:'')+'" placeholder="GO"'+ed+' onchange="fapHierSalvar(this.dataset.k,\'go\',this.value)"></td></tr>';
+  }).join(''):'<tr><td colspan="5"><div class="fap-empty">'+(linhas.length?'Nenhum condutor nesta situação.':'Nenhum condutor ainda — anexe a base de consumo ou o relatório de transações.')+'</div></td></tr>';
+  const note=document.getElementById('fap-hierNote');
+  if(vis.length>LIM){note.style.display='';note.textContent='Mostrando '+LIM+' de '+vis.length+' — use a busca para achar um condutor.';}else note.style.display='none';
+}
+/* Salva GA/GO de um condutor (edição manual). GA conhecido com GO em branco: completa o
+   GO pelo GA da planilha. Os dois em branco: remove a edição (volta pra planilha). */
+function fapHierSalvar(k,campo,valor){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+  const l=_fapHierShown.find(x=>x.k===k);if(!l)return;
+  const atual=fapHierDe(l.nome)||{ga:'',go:''};
+  const novo={ga:atual.ga||'',go:atual.go||''};
+  novo[campo]=fapGoNome(valor);
+  if(campo==='ga'&&novo.ga){const ix=_fapHierIndex();const g=ix&&ix.byGa.get(fapHierNorm(novo.ga));if(g&&(!novo.go||atual.fonte!=='manual'))novo.go=g.go;}
+  fapHierGravar(l.k,novo);
+}
+function fapHierAceitar(k){
+  if(!canEdit())return;
+  const l=_fapHierShown.find(x=>x.k===k);if(!l||!l.sug)return;
+  fapHierGravar(l.k,{ga:l.sug.ga||'',go:l.sug.go||''});
+}
+function fapHierGravar(k,v){
+  if(!FAP_HIER_EDIT.ts.map)FAP_HIER_EDIT.ts.map={};
+  if(v.ga||v.go)FAP_HIER_EDIT.map[k]={ga:v.ga||'',go:v.go||''};else delete FAP_HIER_EDIT.map[k];
+  FAP_HIER_EDIT.ts.map[k]=new Date().toISOString();
+  _fapHierVer++;
+  _fapHierPin.add(k);
+  saveState();
+  fapRenderHierarquia();
+  if(typeof fapScheduleRenderAll==='function')fapScheduleRenderAll();
+}
+function fapHierExportar(){
+  const l=fapHierCondutores();
+  if(!l.length){alert('Nenhum condutor no painel ainda.');return;}
+  const rows=l.map(c=>{const h=fapHierDe(c.nome)||{};return{'Condutor':c.nome,'GA':h.ga||'','GO':h.go||'','Fonte':h.fonte?(h.fonte==='manual'?'Editado no painel':'Planilha'+(h.fonte!=='planilha'?' ('+h.fonte+')':'')):'Sem hierarquia','Aparece em':[...c.origens].join(', ')};});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Hierarquia');
+  XLSX.writeFile(wb,'hierarquia_condutores_'+fapTodayIso()+'.xlsx');
 }
 
 /* ─── Anexar base ÚNICO (análise 12/10/2026, item 10) ───
@@ -27204,7 +27440,7 @@ function fapAudRenderResultados(){
     const jCell=podeEditar
       ?`<input type="text" aria-label="Justificativa da transação ${eh(t.placa)} de ${eh(fapAudFmtDataHora(t.data))}" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
       :(just?eh(just):(alto?'<span style="color:var(--red)">Pendente</span>':'—'));
-    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
+    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${t.motorista?fapHierCelula(t.motorista):'—'}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
   }).join('');
 }
 function fapRenderAuditoria(){
@@ -27246,7 +27482,7 @@ function fapAudExportar(){
   const totRow={'Placa':'TOTAL','Motorista(s)':'','Transações':list.length};
   tipos.forEach(t=>{totRow[t.tipo]=r2(t.valor);});totRow['Total (R$)']=r2(total);
   matriz.push(totRow);
-  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Débito Emerg. < R$ 1.000':fapAudEhDebBaixo(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'GA':(fapHierDe(t.motorista)||{}).ga||'','GO':(fapHierDe(t.motorista)||{}).go||'','Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Débito Emerg. < R$ 1.000':fapAudEhDebBaixo(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
   const cotaLista=fapAudCotaLista();
   const cotaRes=fapAudCotaResumo(cotaLista);
   const cotaSheet=cotaRes.cotas.map(c=>({'Cota':fapAudCotaLabel(c.n),'Transações':c.qtd,'Valor (R$)':r2(c.valor)}));
@@ -27702,6 +27938,7 @@ function fapRenderConsumoCondutor(){
     const farolCell=farol.ratio===null?'':` <span title="${eh(farol.label)} (${Math.round(farol.ratio*100)}%)" style="display:inline-flex;align-items:center;gap:4px"><i class="ti ti-circle-filled" style="color:${farol.cor};font-size:11px"></i><span style="font-size:10.5px;color:var(--tx3)">${Math.round(farol.ratio*100)}%</span></span>`;
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm fap-nm-click" title="Ver consumo e datas de transação" onclick="fapAbrirModalCondutor('${c.condutor.replace(/'/g,"\\'")}')">${eh(c.condutor)}</div></td>
+      <td>${fapHierCelula(c.condutor)}</td>
       <td>${[...c.placas].map(p=>`<span class="fap-uf-chip">${eh(p)}</span>`).join(' ')}</td>
       <td class="fap-val">${eh(fapFmtMoney(c.total))}${farolCell}</td>
       <td>${c.transacoes}</td>
@@ -27997,7 +28234,7 @@ function fapPrefillForms(){
      card "Saldo do mês", que não usa filtro, continua mostrando o valor certo — foi
      assim que o usuário percebeu a divergência). Sempre força os filtros pro estado
      "Todas/vazio" no boot, nunca confia no valor que o navegador colocou no DOM. */
-  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte','fap-audPreset','fap-concDe','fap-concAte','fap-concPreset','fap-concStatus'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fap-fUf','fap-fPlaca','fap-fDe','fap-fAte','fap-audDe','fap-audAte','fap-audPreset','fap-concDe','fap-concAte','fap-concPreset','fap-concStatus','fap-hierBusca'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const audChk=document.getElementById('fap-audIgnorarNegadas');if(audChk)audChk.checked=true;
 }
 
@@ -28058,7 +28295,7 @@ function fapSetSub(k){
 function fapRenderAll(){
   fapRenderSubBar();
   fapPopulateSelects();
-  if(fapSubAtiva==='consumo'){fapRenderConsumoCondutor();return;}
+  if(fapSubAtiva==='consumo'){fapRenderConsumoCondutor();fapRenderHierarquia();return;}
   if(fapSubAtiva==='auditoria'){fapRenderAuditoria();fapRenderConciliacao();return;}
   fapRenderPlacaTable();
   fapRenderHist();
