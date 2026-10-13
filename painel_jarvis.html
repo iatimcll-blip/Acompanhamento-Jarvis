@@ -26416,17 +26416,20 @@ function fapFiltroPrep(sub){
   return{placa:sub==='auditoria'?[]:f.placa,ga:f.ga,go:f.go,cond:f.cond,_ga:N(f.ga),_go:N(f.go),_cond:N(f.cond),hier:!!(f.ga.length||f.go.length||f.cond.length)};
 }
 let _fapPlacaCondCache={k:'',map:null},_fapPlacaGoCache={ref:null,len:-1,at:'',map:null};
+/* placa → Map(condutor normalizado → nº de registros) e condutor → Set(placas), das
+   bases anexadas (consumo, mês corrente, transações). Cache pelo tamanho/data das bases. */
 function fapPlacaCondutores(){
   const k=[(FAP_CONSUMO_CONDUTOR||[]).length,(FAP_CONSUMO_MC||[]).length,fapConsumoAt,fapConsumoMcAt,fapAuditAt,FAP_AUDIT?FAP_AUDIT.rows.length:0].join('|');
   if(_fapPlacaCondCache.k===k&&_fapPlacaCondCache.map)return _fapPlacaCondCache.map;
-  const m=new Map();
-  const add=(placa,cond)=>{const c=fapHierNorm(cond);if(!placa||!c)return;let st=m.get(placa);if(!st){st=new Set();m.set(placa,st);}st.add(c);};
-  (FAP_CONSUMO_CONDUTOR||[]).forEach(r=>add(r.placa,r.condutor));
-  (FAP_CONSUMO_MC||[]).forEach(r=>add(r.placa,r.condutor));
-  if(FAP_AUDIT){const{dic,rows}=FAP_AUDIT;rows.forEach(r=>add(dic.placa[r[0]],dic.motorista[r[5]]));}
-  _fapPlacaCondCache={k,map:m};
+  const m=new Map(),porCond=new Map();
+  const add=(placa,cond,n)=>{const c=fapHierNorm(cond);if(!placa||!c)return;let mp=m.get(placa);if(!mp){mp=new Map();m.set(placa,mp);}mp.set(c,(mp.get(c)||0)+(n||1));let st=porCond.get(c);if(!st){st=new Set();porCond.set(c,st);}st.add(placa);};
+  (FAP_CONSUMO_CONDUTOR||[]).forEach(r=>add(r.placa,r.condutor,r.transacoes||1));
+  (FAP_CONSUMO_MC||[]).forEach(r=>add(r.placa,r.condutor,r.transacoes||1));
+  if(FAP_AUDIT){const{dic,rows}=FAP_AUDIT;rows.forEach(r=>add(dic.placa[r[0]],dic.motorista[r[5]],1));}
+  _fapPlacaCondCache={k,map:m,porCond};
   return m;
 }
+function fapCondutorPlacas(nome){fapPlacaCondutores();return _fapPlacaCondCache.porCond.get(fapHierNorm(nome))||new Set();}
 /* GO "canônico": o cadastro de placas tem GO abreviado ("Ivandro Pessoa") e a planilha
    de hierarquia o nome completo ("Ivandro Pessoa da Nobrega Alencar") — sem unificar,
    o filtro mostraria o mesmo GO duas vezes e não juntaria placas e condutores dele.
@@ -26444,29 +26447,69 @@ function fapGoCanon(g){
   }
   _fapGoCanonMemo.set(n,out);return out;
 }
+/* GO do CADASTRO da placa (canônico). */
 function fapPlacaGo(placa){
   if(_fapPlacaGoCache.ref!==FAP_PLACAS||_fapPlacaGoCache.len!==FAP_PLACAS.length||_fapPlacaGoCache.at!==fapAt)_fapPlacaGoCache={ref:FAP_PLACAS,len:FAP_PLACAS.length,at:fapAt,map:new Map(FAP_PLACAS.map(p=>[p.placa,p.go]))};
   return fapGoCanon(_fapPlacaGoCache.map.get(placa)||'');
 }
-/* Registro com condutor (sem período). */
+/* Hierarquia EFETIVA da placa (pedido 2026-10-13: filtrar um GO deixa a análise só
+   daquele GO) — cada placa pertence a UM GO e UM GA, sem "vazar" pra outro GO só
+   porque algum condutor dele a usou uma vez:
+   GO = do cadastro da placa; sem cadastro, o GO da maioria dos registros dos
+   condutores que a usaram (hierarquia). GA = o GA da maioria desses registros,
+   considerando só condutores daquele GO. */
+let _fapPlacaHierMemo={k:'',map:new Map()};
+function fapPlacaHier(placa){
+  const pc=fapPlacaCondutores();
+  const k=_fapPlacaCondCache.k+'|'+_fapHierVer+'|'+fapAt+'|'+FAP_PLACAS.length;
+  if(_fapPlacaHierMemo.k!==k)_fapPlacaHierMemo={k,map:new Map()};
+  const mm=_fapPlacaHierMemo.map;
+  if(mm.has(placa))return mm.get(placa);
+  const conds=pc.get(placa)||new Map();
+  const votar=(campo,soGo)=>{
+    const c=new Map();
+    conds.forEach((n,cn)=>{const h=fapHierDe(cn);if(!h)return;const hg=fapGoCanon(h.go);if(soGo&&fapHierNorm(hg)!==fapHierNorm(soGo))return;const v=campo==='go'?hg:h.ga;if(!v)return;c.set(v,(c.get(v)||0)+n);});
+    let best='',bn=0;c.forEach((n,v)=>{if(n>bn){bn=n;best=v;}});return best;
+  };
+  const go=fapPlacaGo(placa)||votar('go');
+  const out={go,ga:votar('ga',go)};
+  mm.set(placa,out);return out;
+}
+/* GA/GO de um registro com condutor: pela hierarquia do condutor; sem hierarquia,
+   os da placa (efetivos). */
+function _fapRegHier(condutor,placa){
+  const h=condutor?fapHierDe(condutor):null;
+  if(h&&(h.go||h.ga))return{go:fapGoCanon(h.go),ga:h.ga||''};
+  return placa?fapPlacaHier(placa):{go:'',ga:''};
+}
+function _fapHierPassa(f,hh){
+  if(f._go.size&&!f._go.has(fapHierNorm(hh.go)))return false;
+  if(f._ga.size&&!f._ga.has(fapHierNorm(hh.ga)))return false;
+  return true;
+}
+/* Registro com condutor (consumo, transação). */
 function fapRegOk(f,condutor,placa){
   if(f.placa.length&&!f.placa.includes(placa))return false;
   if(!f.hier)return true;
   if(f._cond.size&&!f._cond.has(fapHierNorm(condutor)))return false;
-  const h=condutor?fapHierDe(condutor):null;
-  if(f._ga.size&&!(h&&f._ga.has(fapHierNorm(h.ga))))return false;
-  if(f._go.size&&!f._go.has(fapHierNorm((h&&h.go?fapGoCanon(h.go):'')||fapPlacaGo(placa))))return false;
-  return true;
+  return _fapHierPassa(f,_fapRegHier(condutor,placa));
 }
-/* Registro sem condutor (aporte/crédito): pela placa. */
+/* Registro sem condutor (aporte, crédito): pela placa — GO/GA efetivos da placa;
+   condutor = placa usada por ele. */
 function fapPlacaOk(f,placa){
   if(f.placa.length&&!f.placa.includes(placa))return false;
   if(!f.hier)return true;
-  const conds=[...(fapPlacaCondutores().get(placa)||[])];
-  if(f._cond.size&&!conds.some(c=>f._cond.has(c)))return false;
-  if(f._ga.size&&!conds.some(c=>{const h=fapHierDe(c);return h&&f._ga.has(fapHierNorm(h.ga));}))return false;
-  if(f._go.size&&!f._go.has(fapHierNorm(fapPlacaGo(placa)))&&!conds.some(c=>{const h=fapHierDe(c);return h&&f._go.has(fapHierNorm(fapGoCanon(h.go)));}))return false;
-  return true;
+  if(f._cond.size){const conds=fapPlacaCondutores().get(placa);if(!conds||![...conds.keys()].some(c=>f._cond.has(c)))return false;}
+  return _fapHierPassa(f,fapPlacaHier(placa));
+}
+/* Condutor (listas de opções e bloco Hierarquia): pela hierarquia dele; sem
+   hierarquia, entra se alguma placa que ele usou for do GO/GA filtrado. */
+function fapCondOk(f,nome){
+  if(f._cond.size&&!f._cond.has(fapHierNorm(nome)))return false;
+  if(!f._go.size&&!f._ga.size)return true;
+  const h=fapHierDe(nome);
+  if(h&&(h.go||h.ga))return _fapHierPassa(f,{go:fapGoCanon(h.go),ga:h.ga||''});
+  return[...fapCondutorPlacas(nome)].some(p=>_fapHierPassa(f,fapPlacaHier(p)));
 }
 function fapFiltroResumoTxt(sub){
   const f=FAP_FILTRO[sub];const p=[];
@@ -26476,47 +26519,70 @@ function fapFiltroResumoTxt(sub){
   if(f.placa&&f.placa.length)p.push('Placa: '+(f.placa.length<=4?f.placa.join(', '):f.placa.length+' placas'));
   return p;
 }
+/* Opções em CASCATA (pedido 2026-10-13): GO → GA → Condutor → Placa. Escolhido um GO,
+   só aparecem os GAs dele, os condutores desses GO/GA e as placas deles; seleções que
+   deixam de existir são descartadas ao redesenhar a barra. */
 function fapFiltroOpcoes(sub){
-  const ga=new Set(),go=new Set();
+  const f=FAP_FILTRO[sub];
+  const S=a=>new Set((a||[]).map(fapHierNorm));
+  const goSel=S(f.go),gaSel=S(f.ga),condSel=S(f.cond);
+  const go=new Set(),gaGo=new Map(); // ga → Set(go)
+  const addGa=(ga,g)=>{ga=fapGoNome(ga);if(!ga)return;let st=gaGo.get(ga);if(!st){st=new Set();gaGo.set(ga,st);}if(g)st.add(fapHierNorm(fapGoCanon(g)));};
   const ix=_fapHierIndex();
-  if(ix){ix.byGa.forEach(v=>{if(v.ga)ga.add(v.ga);});ix.byGo.forEach(v=>{if(v.go)go.add(v.go);});}
-  Object.values(FAP_HIER_EDIT.map||{}).forEach(v=>{if(v.ga)ga.add(fapGoNome(v.ga));if(v.go)go.add(fapGoCanon(v.go));});
+  if(ix){ix.byGa.forEach(v=>addGa(v.ga,v.go));ix.byGo.forEach(v=>{if(v.go)go.add(v.go);});}
+  Object.values(FAP_HIER_EDIT.map||{}).forEach(v=>{if(v.ga)addGa(v.ga,v.go);if(v.go)go.add(fapGoCanon(v.go));});
   FAP_PLACAS.forEach(p=>{const g=fapGoCanon(p.go);if(g)go.add(g);});
+  const ga=[...gaGo.keys()].filter(g=>!goSel.size||[...gaGo.get(g)].some(x=>goSel.has(x)));
+  const nivel={_go:goSel,_ga:new Set([...gaSel].filter(x=>ga.some(g=>fapHierNorm(g)===x))),_cond:new Set(),placa:[],hier:true};
   const todos=fapHierCondutores();
-  let cond,placa;
+  let condBase,placaBase;
   if(sub==='consumo'){
-    cond=todos.filter(c=>c.origens.has('Consumo')||c.origens.has('Mês corrente')).map(c=>c.nome);
-    placa=[...new Set([...(FAP_CONSUMO_CONDUTOR||[]),...(FAP_CONSUMO_MC||[])].map(r=>r.placa).filter(Boolean))].sort();
+    condBase=todos.filter(c=>c.origens.has('Consumo')||c.origens.has('Mês corrente')).map(c=>c.nome);
+    placaBase=[...new Set([...(FAP_CONSUMO_CONDUTOR||[]),...(FAP_CONSUMO_MC||[])].map(r=>r.placa).filter(Boolean))].sort();
   }else if(sub==='auditoria'){
-    cond=todos.filter(c=>c.origens.has('Auditoria')).map(c=>c.nome);
+    condBase=todos.filter(c=>c.origens.has('Auditoria')).map(c=>c.nome);
+    placaBase=FAP_AUDIT?FAP_AUDIT.dic.placa.slice().sort():[];
   }else{
     const pc=fapPlacaCondutores(),cad=new Set();
-    FAP_PLACAS.forEach(p=>(pc.get(p.placa)||[]).forEach(c=>cad.add(c)));
-    cond=todos.filter(c=>cad.has(c.k)).map(c=>c.nome);
-    placa=FAP_PLACAS.map(p=>p.placa).sort();
+    FAP_PLACAS.forEach(p=>{const m=pc.get(p.placa);if(m)m.forEach((n,c)=>cad.add(c));});
+    condBase=todos.filter(c=>cad.has(c.k)).map(c=>c.nome);
+    placaBase=FAP_PLACAS.map(p=>p.placa).sort();
+  }
+  const cond=(goSel.size||nivel._ga.size)?condBase.filter(n=>fapCondOk(nivel,n)):condBase;
+  const condOk=new Set([...condSel].filter(x=>cond.some(c=>fapHierNorm(c)===x)));
+  let placa=placaBase;
+  if(goSel.size||nivel._ga.size||condOk.size){
+    const fp={...nivel,_cond:condOk};
+    if(sub==='aportes')placa=placaBase.filter(p=>fapPlacaOk(fp,p));
+    else{const pc=fapPlacaCondutores();placa=placaBase.filter(p=>{const m=pc.get(p);return m&&[...m.keys()].some(c=>fapRegOk(fp,c,p));});}
   }
   const ord=a=>[...a].sort((x,y)=>x.localeCompare(y,'pt'));
   return{ga:ord(ga),go:ord(go),cond,placa};
 }
-function fapRenderFiltroBar(sub){
+/* exceto = filtro que o usuário acabou de mexer: o popover dele fica intacto (não
+   perde a busca/rolagem); os demais são refeitos com as opções em cascata. */
+function fapRenderFiltroBar(sub,exceto){
   if(_fapFiltroSkipBar)return;
   const pre=FAP_FILTRO_PREF[sub];if(!pre)return;
   const o=fapFiltroOpcoes(sub),f=FAP_FILTRO[sub];
   const keep=(sel,opts)=>sel.filter(v=>opts.includes(v));
-  f.ga=keep(f.ga,o.ga);f.go=keep(f.go,o.go);f.cond=keep(f.cond,o.cond);
-  if(o.placa)f.placa=keep(f.placa,o.placa);
-  const on=k=>v=>{FAP_FILTRO[sub][k]=v;fapFiltroMudou(sub);};
-  mselRender('fap-'+pre+'-ga',o.ga,f.ga,{allLabel:'Todos os GAs',search:true,onChange:on('ga')});
-  mselRender('fap-'+pre+'-go',o.go,f.go,{allLabel:'Todos os GOs',onChange:on('go')});
-  mselRender('fap-'+pre+'-cond',o.cond,f.cond,{allLabel:'Todos os condutores',search:true,onChange:on('cond')});
-  if(o.placa)mselRender('fap-'+pre+'-placa',o.placa,f.placa,{allLabel:'Todas as placas',search:true,onChange:on('placa')});
+  f.go=keep(f.go,o.go);f.ga=keep(f.ga,o.ga);f.cond=keep(f.cond,o.cond);
+  if(sub!=='auditoria')f.placa=keep(f.placa,o.placa);
+  else fapAudSelPlacas=keep(fapAudSelPlacas,o.placa);
+  const on=k=>v=>{FAP_FILTRO[sub][k]=v;fapFiltroMudou(sub,k);};
+  if(exceto!=='ga')mselRender('fap-'+pre+'-ga',o.ga,f.ga,{allLabel:'Todos os GAs',search:true,onChange:on('ga')});
+  if(exceto!=='go')mselRender('fap-'+pre+'-go',o.go,f.go,{allLabel:'Todos os GOs',onChange:on('go')});
+  if(exceto!=='cond')mselRender('fap-'+pre+'-cond',o.cond,f.cond,{allLabel:'Todos os condutores',search:true,onChange:on('cond')});
+  if(sub!=='auditoria'){if(exceto!=='placa')mselRender('fap-'+pre+'-placa',o.placa,f.placa,{allLabel:'Todas as placas',search:true,onChange:on('placa')});}
+  else if(exceto!=='placa')mselRender('fap-aud-placa',o.placa,fapAudSelPlacas,{allLabel:'Todas as placas',search:true,onChange:v=>{fapAudSelPlacas=v;fapFiltroMudou('auditoria','placa');}});
 }
-/* Mudou um filtro: redesenha os blocos da sub-aba SEM refazer a barra (refazer o
-   popover aberto perderia o texto da busca e a rolagem). */
-function fapFiltroMudou(sub){
+/* Mudou um filtro: refaz os OUTROS filtros (cascata) e redesenha os blocos. */
+function fapFiltroMudou(sub,k){
+  fapRenderFiltroBar(sub,k);
   if(sub==='auditoria'){fapAudRenderResultados();fapRenderConciliacao();return;}
   _fapFiltroSkipBar=true;
   try{fapRenderAll();}finally{_fapFiltroSkipBar=false;}
+  if(sub==='consumo'&&typeof fapRenderHierarquia==='function')fapRenderHierarquia();
 }
 function fapFiltroLimpar(sub){
   const f=FAP_FILTRO[sub];f.ga=[];f.go=[];f.cond=[];if(f.placa)f.placa=[];
@@ -26670,6 +26736,10 @@ function fapRenderHierarquia(){
      de dar tempo de preencher o GO. */
   if(_fapHierPinFiltro!==f+'|'+q){_fapHierPin=new Set();_fapHierPinFiltro=f+'|'+q;}
   let vis=linhas.filter(l=>_fapHierPin.has(l.k)||f==='todos'||(f==='sem'&&!l.tem)||(f==='sug'&&l.sug)||(f==='manual'&&l.tem&&l.h.fonte==='manual'));
+  /* Filtro de GO/GA/Condutor da sub-aba Consumo também vale aqui (sem hierarquia: entra
+     se usou placa daquele GO/GA). */
+  const _fh=fapFiltroPrep('consumo');
+  if(_fh.hier)vis=vis.filter(l=>_fapHierPin.has(l.k)||fapCondOk(_fh,l.nome));
   if(q)vis=vis.filter(l=>l.k.includes(q));
   const LIM=300;
   _fapHierShown=vis.slice(0,LIM);
@@ -27628,9 +27698,9 @@ function fapRenderAuditoria(){
   const tiposOpt=dic.tipo.slice().sort((a,b)=>a.localeCompare(b,'pt'));
   /* Padrão do filtro de tipo: "Compra" (o gasto de fato) — o usuário pode trocar/limpar. */
   if(fapAudSelTipos===null)fapAudSelTipos=tiposOpt.includes('Compra')?['Compra']:[];
-  fapAudSelPlacas=fapAudSelPlacas.filter(p=>placasOpt.includes(p));
+  fapAudSelPlacas=fapAudSelPlacas.filter(p=>placasOpt.includes(p)); // a barra refina pela cascata
   fapAudSelTipos=fapAudSelTipos.filter(t=>tiposOpt.includes(t));
-  mselRender('fap-aud-placa',placasOpt,fapAudSelPlacas,{allLabel:'Todas as placas',search:true,onChange:v=>{fapAudSelPlacas=v;fapAudRenderResultados();fapRenderConciliacao();}});
+  fapRenderFiltroBar('auditoria'); // Placas (e GA/GO/Condutor) com opções em cascata
   mselRender('fap-aud-tipo',tiposOpt,fapAudSelTipos,{allLabel:'Todos os tipos',onChange:v=>{fapAudSelTipos=v;fapAudRenderResultados();}});
   fapAudRenderResultados();
 }
