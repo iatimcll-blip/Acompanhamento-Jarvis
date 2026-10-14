@@ -13052,6 +13052,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-max .mx-card h2{font-size:1.02rem;font-weight:700;margin:0}
   #panel-max .mx-note{margin:0;font-size:.8rem;color:var(--mx-muted)}
   #panel-max .mx-cv{position:relative;width:100%;height:240px}
+  #panel-max .mx-flash{animation:mxFlash 1.2s ease}
+  @keyframes mxFlash{0%{box-shadow:0 0 0 3px var(--mx-green)}100%{box-shadow:0 0 0 0 transparent}}
+  #panel-max .mx-semsel{display:inline-block;font-size:.8rem;font-weight:700;color:#fff;background:var(--mx-blue);border-radius:999px;padding:1px 10px;margin-left:6px;vertical-align:2px}
   #panel-max .mx-drv{display:grid;gap:12px}
   #panel-max .mx-drv-row{display:grid;gap:4px}
   #panel-max .mx-drv-top{display:flex;justify-content:space-between;gap:8px;font-size:.9rem}
@@ -13153,7 +13156,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
         <div class="mx-grid">
           <section class="mx-card">
-            <h2>Taxa MAX e volume por semana</h2>
+            <h2>Taxa MAX e volume por semana <span class="mx-semsel" id="mx-semsel" hidden></span></h2>
             <p class="mx-note">Linha azul: taxa MAX (MAX ÷ reparos, eixo da esquerda). Linha verde: quantidade de chamados MAX (eixo da direita). Pontos vazados são semanas incompletas. Clique numa semana para ver o volume por dia logo abaixo.</p>
             <div class="mx-cv" style="height:320px"><canvas id="mx-ch-sem"></canvas></div>
           </section>
@@ -13164,7 +13167,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </section>
         </div>
 
-        <section class="mx-card">
+        <section class="mx-card" id="mx-dia-card">
           <h2 id="mx-dia-title">Volume de MAX por dia</h2>
           <p class="mx-note" id="mx-dia-note">Clique numa semana no gráfico “Taxa MAX e volume por semana” para ver os dias dela.</p>
           <div class="mx-cv" style="height:280px" id="mx-cv-dia"><canvas id="mx-ch-dia"></canvas></div>
@@ -33886,6 +33889,7 @@ updateCentralStatus();
       .map(r=>({...r,semana:r.key,taxa:r.max/r.reparos,w:W8.get(r.key)||{inicio:'',fim:'',dias:7}})).sort((a,b)=>a.semana-b.semana);
     const hollow=c=>rows.map(r=>r.w.dias<7?P.card:c);
     if(!rows.some(r=>r.semana===mxSelSem))mxSelSem=rows.length?rows[rows.length-1].semana:null;
+    $('mx-semsel').hidden=mxSelSem==null;$('mx-semsel').textContent=mxSelSem==null?'':'S'+mxSelSem+' selecionada';
     const rad=rows.map(r=>r.semana===mxSelSem?7:4);
     /* Rótulos em todos os pontos: % acima da linha azul, quantidade abaixo da verde. As
        escalas são ajustadas pra separar as faixas (taxa em cima, volume embaixo) e os
@@ -33902,7 +33906,7 @@ updateCentralStatus();
           datalabels:lbl(P.green,'bottom',(v,c)=>int(rows[c.dataIndex].max))}]},
       options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:6,left:4,right:4}},
         onHover:(e,els)=>{e.native&&e.native.target&&(e.native.target.style.cursor=els.length?'pointer':'default');},
-        onClick:(e,els)=>{if(!els.length)return;mxSelSem=rows[els[0].index].semana;setTimeout(()=>{renderSemanal();renderDiario();},0);}, // fora do handler: o Chart.js ainda usa o gráfico depois do onClick
+        onClick:(e,els)=>{if(!els.length)return;mxSelSem=rows[els[0].index].semana;setTimeout(()=>{renderSemanal();renderDiario();const c=$('mx-dia-card');c.classList.remove('mx-flash');void c.offsetWidth;c.classList.add('mx-flash');c.scrollIntoView({behavior:'smooth',block:'nearest'});},0);}, // fora do handler: o Chart.js ainda usa o gráfico depois do onClick
         plugins:{legend:{display:true,position:'top',align:'end',labels:{color:P.muted,font,boxWidth:10,boxHeight:10,usePointStyle:true}},
           tooltip:{callbacks:{
             title:it=>{const r=rows[it[0].dataIndex];return `Semana ${r.semana}`+(r.w.inicio?` · ${dm(r.w.inicio)} a ${dm(r.w.fim)}`:'')+(r.w.dias<7?' (incompleta)':'');},
@@ -33929,8 +33933,13 @@ updateCentralStatus();
     const P=pal(),cv=$('mx-cv-dia'),note=$('mx-dia-note'),title=$('mx-dia-title');
     if(!MXD.diario||!MXD.diario.length){
       if(CH['mx-ch-dia']){CH['mx-ch-dia'].destroy();delete CH['mx-ch-dia'];}
-      cv.hidden=true;title.textContent='Volume de MAX por dia';
-      note.textContent='Esta base não tem o detalhe por dia (base agregada .json). Anexe o .xlsx ou o .csv para ver o volume de MAX dia a dia.';return;
+      cv.hidden=true;
+      const W=(MXD.semanas||[]).find(w=>w.semana===mxSelSem);
+      const t=sumBy(MXD.semanal.filter(r=>r.semana===mxSelSem&&inScope(scope(),r)),()=>'all',['reparos','max'])[0]||{reparos:0,max:0};
+      title.textContent='Volume de MAX por dia'+(mxSelSem!=null?` · Semana ${mxSelSem}`+(W&&W.inicio?` (${dm(W.inicio)} a ${dm(W.fim)})`:''):'');
+      note.textContent=(mxSelSem!=null?`Semana ${mxSelSem}: ${int(t.max)} chamados MAX de ${int(t.reparos)} reparos (${pctBR(t.reparos?t.max/t.reparos:null)}). `:'')+
+        `A base anexada${MXI&&MXI.arquivo?' ('+MXI.arquivo+')':''} não tem o detalhe por dia. Anexe o .xlsx ou o .csv (uma linha por reparo) para ver o volume de MAX dia a dia.`;
+      return;
     }
     cv.hidden=false;
     if(mxSelSem==null){note.textContent='Clique numa semana no gráfico acima para ver os dias dela.';return;}
