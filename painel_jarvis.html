@@ -7178,6 +7178,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab ntab-main" id="ntab-b2c" onclick="switchTab('b2c')">
         <i class="ti ti-users"></i><span class="ntab-label"> B2C</span>
       </button>
+      <button class="ntab ntab-main" id="ntab-max" onclick="switchTab('max')">
+        <i class="ti ti-arrow-back-up"></i><span class="ntab-label"> MAX</span>
+      </button>
       <button class="ntab ntab-main" id="ntab-aportes" onclick="switchTab('aportes')">
         <i class="ti ti-cash"></i><span class="ntab-label"> Aportes Combustível</span>
       </button>
@@ -10891,6 +10894,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-abertos-ofs" onclick="switchTab('abertosOfs')"><i class="ti ti-list-check"></i><strong>Abertos OFS</strong><span>Atividades do dia por cluster, técnico e tipo, com fila em aberto e SLA desde a abertura da OS (PI, MA, PA, AM e AP).</span></button>
       <button class="dash-module" id="dash-mod-warmap" onclick="switchTab('warmap')"><i class="ti ti-map-2"></i><strong>Warmup</strong><span>Incidentes de Backbone/Acesso extraídos do relatório Warmup, sempre filtrados em PI, MA, PA, AM e AP.</span></button>
       <button class="dash-module" id="dash-mod-b2c" onclick="switchTab('b2c')"><i class="ti ti-users"></i><strong>B2C</strong><span>Indicadores B2C (Reparos, IRT, IRR, IFI, IFME, Aging, Efetividade...) e desvios contra a meta.</span></button>
+      <button class="dash-module" id="dash-mod-max" onclick="switchTab('max')"><i class="ti ti-arrow-back-up"></i><strong>MAX</strong><span>Diagnóstico MAX — reabertura de reparo em até 30 dias: drivers, motivos, ranking e plano FCA.</span></button>
       <button class="dash-module" id="dash-mod-aportes" onclick="switchTab('aportes')"><i class="ti ti-cash"></i><strong>Aportes Combustível</strong><span>Aportes e retiradas de saldo por placa, com histórico e gráficos.</span></button>
       <button class="dash-module" id="dash-mod-pop" onclick="switchTab('pop')"><i class="ti ti-map-pin"></i><strong>POP</strong><span>Catálogo de POPs e endereços — cidade, regime, tier, bateria, AR e mapa.</span></button>
       <button class="dash-module" id="dash-mod-swap" onclick="switchTab('swap')"><i class="ti ti-arrows-exchange"></i><strong>SWAP</strong><span>Chamados do departamento SWAP — mesma base do B2B Abertos.</span></button>
@@ -12970,6 +12974,279 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
   </div>
 
+  <!-- ── PAINEL MAX (Diagnóstico MAX: reabertura de reparo em até 30 dias) ──
+       Portado do painel standalone max/Painel_Diagnostico_MAX.html (d3 → Chart.js).
+       A base fica só neste dispositivo (IndexedDB, chave mx_base_v1): ela é nacional
+       (25 clusters) e o sync do Jarvis grava num repositório público, então NÃO entra
+       no sync. Leitor .xlsx próprio em streaming (a base real tem ~100 MB). -->
+  <style>
+  #panel-max{
+    --mx-navy:#182238; --mx-green:#42C34B; --mx-blue:#1476C9;
+    --mx-bg:#F3F5F9; --mx-card:#FFFFFF; --mx-ink:#182238; --mx-muted:#5D6880; --mx-line:#DDE2EC;
+    --mx-grid:#E9EDF4; --mx-gray:#BCC5D6; --mx-bad:#C8372D; --mx-ok:#23943A; --mx-warn:#B7791F; --mx-crit:#D9473C;
+    --mx-pop:#FFFFFF; --mx-shadow:0 6px 20px rgba(24,34,56,.14);
+    --mx-font:Calibri,Carlito,'Segoe UI',system-ui,-apple-system,sans-serif;
+    padding:0;background:var(--mx-bg);color:var(--mx-ink);font-family:var(--mx-font);font-size:15px;line-height:1.4;
+  }
+  body[data-theme="dark"] #panel-max{
+    --mx-bg:#0F1626; --mx-card:#182238; --mx-ink:#E8ECF4; --mx-muted:#9AA5BD; --mx-line:#2A3652;
+    --mx-grid:#233050; --mx-gray:#3F4C6B; --mx-bad:#F06A5F; --mx-ok:#5BD36A; --mx-warn:#E3A948; --mx-crit:#F06A5F;
+    --mx-pop:#1F2B45; --mx-shadow:0 6px 20px rgba(0,0,0,.4);
+  }
+  #panel-max *,#panel-max *::before,#panel-max *::after{box-sizing:border-box}
+  #panel-max [hidden]{display:none!important}
+  #panel-max .mx-top{background:var(--mx-navy);color:#fff;padding:14px clamp(16px,3vw,36px);border-bottom:4px solid var(--mx-green);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  #panel-max .mx-brand{font-weight:700;letter-spacing:.02em}
+  #panel-max .mx-brand b{color:var(--mx-green)}
+  #panel-max .mx-sub{font-size:.8rem;opacity:.8}
+  #panel-max .mx-wrap{padding:22px clamp(16px,3vw,36px) 8px;max-width:1400px;margin-inline:auto;display:grid;gap:22px}
+  #panel-max .mx-foot{text-align:center;font-size:.78rem;color:var(--mx-muted);padding:14px 16px 26px}
+  #panel-max .mx-head{display:grid;gap:10px}
+  #panel-max .mx-title{font-size:1.9rem;font-weight:400;margin:0;line-height:1.1}
+  #panel-max .mx-take{margin:0;color:var(--mx-muted);max-width:80ch;font-size:.95rem}
+  #panel-max .mx-take b{color:var(--mx-ink);font-weight:700}
+  #panel-max .mx-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  #panel-max .mx-filters label.mx-lbl{font-size:.8rem;color:var(--mx-muted);display:flex;gap:6px;align-items:center}
+  #panel-max select,#panel-max .mx-pick>summary{font:inherit;font-size:.9rem;padding:5px 10px;border:1px solid var(--mx-line);border-radius:12px;background:var(--mx-card);color:var(--mx-ink);max-width:100%}
+  #panel-max .mx-seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--mx-line);border-radius:12px;overflow:hidden}
+  #panel-max .mx-seg button{font:inherit;font-size:.8rem;padding:5px 10px;background:var(--mx-card);color:var(--mx-muted);border:0;border-right:1px solid var(--mx-line);cursor:pointer}
+  #panel-max .mx-seg button:last-child{border-right:0}
+  #panel-max .mx-seg button[aria-pressed="true"]{background:var(--mx-navy);color:#fff}
+  body[data-theme="dark"] #panel-max .mx-seg button[aria-pressed="true"]{background:var(--mx-blue)}
+  #panel-max .mx-pick{position:relative}
+  #panel-max .mx-pick>summary{list-style:none;cursor:pointer;max-width:min(100%,22rem);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #panel-max .mx-pick>summary::-webkit-details-marker{display:none}
+  #panel-max .mx-pick>summary::after{content:" ▾";color:var(--mx-muted)}
+  #panel-max .mx-pick.off>summary{color:var(--mx-muted);cursor:not-allowed}
+  #panel-max .mx-pick-pop{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:min(22rem,86vw);background:var(--mx-pop);border:1px solid var(--mx-line);border-radius:12px;box-shadow:var(--mx-shadow);padding:8px;display:grid;gap:8px}
+  #panel-max .mx-pick-act{display:flex;gap:4px;flex-wrap:wrap}
+  #panel-max .mx-pick-act input{flex:1 1 8rem;min-width:0;font:inherit;font-size:.8rem;padding:4px 6px;border:1px solid var(--mx-line);border-radius:10px;background:var(--mx-card);color:var(--mx-ink)}
+  #panel-max .mx-pick-act button,#panel-max .mx-chips button,#panel-max .mx-btn2{font:inherit;font-size:.8rem;padding:4px 10px;border:1px solid var(--mx-line);border-radius:10px;background:var(--mx-card);color:var(--mx-ink);cursor:pointer}
+  #panel-max .mx-chips button{border-radius:999px;padding:2px 10px}
+  #panel-max .mx-pick-list{max-height:18rem;overflow:auto;display:grid}
+  #panel-max .mx-pick-list label{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:4px 2px;font-size:.9rem;cursor:pointer;border-radius:4px}
+  #panel-max .mx-pick-list label:hover{background:var(--mx-grid)}
+  #panel-max .mx-pick-list label span:last-child{font-size:.78rem;color:var(--mx-muted);font-variant-numeric:tabular-nums}
+  #panel-max .mx-chips{display:flex;flex-wrap:wrap;gap:4px}
+  #panel-max .mx-src{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.82rem}
+  #panel-max .mx-up-btn{font:inherit;font-size:.9rem;font-weight:700;padding:6px 14px;border-radius:12px;border:0;background:var(--mx-green);color:var(--mx-navy);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  #panel-max .mx-up-btn:hover{filter:brightness(1.05)}
+  #panel-max .mx-up-btn[disabled]{opacity:.55;cursor:default}
+  #panel-max .mx-src-msg{color:var(--mx-muted);min-width:0}
+  #panel-max .mx-src-msg.ok{color:var(--mx-ink)}
+  #panel-max .mx-src-msg.err{color:var(--mx-bad);font-weight:600}
+  #panel-max .mx-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:14px}
+  #panel-max .mx-kpi{background:var(--mx-card);border:1px solid var(--mx-line);border-top:3px solid var(--mx-blue);border-radius:12px;padding:16px 18px;display:grid;gap:4px;align-content:start}
+  #panel-max .mx-kpi:first-child{border-top-color:var(--mx-green)}
+  #panel-max .mx-kpi-l{font-size:.8rem;color:var(--mx-muted)}
+  #panel-max .mx-kpi-v{font-size:1.9rem;font-variant-numeric:tabular-nums;line-height:1.1}
+  #panel-max .mx-kpi-s{font-size:.78rem;color:var(--mx-muted);font-variant-numeric:tabular-nums}
+  #panel-max .mx-up{color:var(--mx-bad);font-weight:700} #panel-max .mx-down{color:var(--mx-ok);font-weight:700}
+  #panel-max .mx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr));gap:14px}
+  #panel-max .mx-card{background:var(--mx-card);border:1px solid var(--mx-line);border-radius:12px;padding:16px 18px;display:grid;gap:8px;align-content:start;min-width:0}
+  #panel-max .mx-card h2{font-size:1.02rem;font-weight:700;margin:0}
+  #panel-max .mx-note{margin:0;font-size:.8rem;color:var(--mx-muted)}
+  #panel-max .mx-cv{position:relative;width:100%;height:240px}
+  #panel-max .mx-drv{display:grid;gap:12px}
+  #panel-max .mx-drv-row{display:grid;gap:4px}
+  #panel-max .mx-drv-top{display:flex;justify-content:space-between;gap:8px;font-size:.9rem}
+  #panel-max .mx-drv-top span:last-child{font-variant-numeric:tabular-nums;color:var(--mx-muted);white-space:nowrap}
+  #panel-max .mx-bar{height:10px;background:var(--mx-grid);border-radius:5px;overflow:hidden}
+  #panel-max .mx-bar>i{display:block;height:100%;border-radius:5px}
+  #panel-max .mx-drv-def{font-size:.78rem;color:var(--mx-muted)}
+  #panel-max .mx-heat{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:4px;font-size:.8rem}
+  #panel-max .mx-heat .h{color:var(--mx-muted);padding:4px;display:flex;align-items:center}
+  #panel-max .mx-heat .h.c{justify-content:center;text-align:center}
+  #panel-max .mx-heat .cell{border-radius:12px;padding:8px;display:grid;gap:2px;min-height:4.4rem;align-content:center;text-align:center;font-variant-numeric:tabular-nums}
+  #panel-max .mx-heat .cell b{font-size:1.02rem}
+  #panel-max .mx-heat .cell small{opacity:.85}
+  #panel-max .mx-tablebox{max-height:26rem;overflow:auto}
+  #panel-max .mx-table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
+  #panel-max .mx-table th{position:sticky;top:0;background:var(--mx-card);text-align:left;font-weight:700;font-size:.78rem;color:var(--mx-muted);border-bottom:1px solid var(--mx-line);padding:4px 8px;white-space:nowrap}
+  #panel-max .mx-table th button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  #panel-max .mx-table th[aria-sort="descending"] button::after{content:" ▾"} #panel-max .mx-table th[aria-sort="ascending"] button::after{content:" ▴"}
+  #panel-max .mx-table td{padding:4px 8px;border-bottom:1px solid var(--mx-line);vertical-align:top}
+  #panel-max .mx-table td.n,#panel-max .mx-table th.n{text-align:right}
+  #panel-max .mx-table tbody tr[data-key]{cursor:pointer}
+  #panel-max .mx-table tbody tr[data-key]:hover{background:var(--mx-grid)}
+  #panel-max .mx-table tr.sel td{font-weight:700}
+  #panel-max .mx-inbar{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  #panel-max .mx-inbar i{display:block;height:8px;border-radius:4px}
+  #panel-max .mx-tag{display:inline-block;font-size:.8rem;color:var(--mx-muted)}
+  #panel-max .mx-sel{display:grid;gap:14px;padding-top:18px;border-top:1px solid var(--mx-line)}
+  #panel-max .mx-fca{display:grid;gap:14px}
+  #panel-max .mx-fca-item{display:grid;gap:8px;padding:12px;border:1px solid var(--mx-line);border-radius:12px}
+  #panel-max .mx-fca-top{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+  #panel-max .mx-fca-top h3{margin:0;font-size:1.02rem;font-weight:700}
+  #panel-max .mx-pri{font-size:.78rem;padding:2px 10px;border-radius:999px;border:1px solid currentColor;white-space:nowrap;font-weight:700}
+  #panel-max .mx-pri.alta{color:var(--mx-bad)} #panel-max .mx-pri.media{color:var(--mx-warn)} #panel-max .mx-pri.baixa{color:var(--mx-muted)}
+  #panel-max .mx-fca-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:14px}
+  #panel-max .mx-fca-cols>div{display:grid;gap:4px;align-content:start;min-width:0}
+  #panel-max .mx-fca-cols h4{margin:0;font-size:.78rem;color:var(--mx-muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  #panel-max .mx-fca-cols p{margin:0;font-size:.9rem}
+  #panel-max .mx-fca-cols ul{margin:0;padding-left:1.1em;display:grid;gap:4px;font-size:.9rem}
+  #panel-max .t-num{font-variant-numeric:tabular-nums;font-weight:700}
+  #panel-max .mx-plan td{white-space:pre-line}
+  #panel-max .mx-sum{cursor:pointer;list-style:none}
+  #panel-max .mx-sum::-webkit-details-marker{display:none}
+  #panel-max .mx-sum h2{display:inline}
+  #panel-max .mx-sum::after{content:" ▸";color:var(--mx-muted)}
+  #panel-max details[open]>.mx-sum::after{content:" ▾"}
+  #panel-max .mx-empty{background:var(--mx-card);border:1px dashed var(--mx-line);border-radius:12px;padding:36px 20px;text-align:center;display:grid;gap:10px;justify-items:center}
+  #panel-max .mx-empty h2{margin:0;font-size:1.2rem}
+  #panel-max .mx-empty p{margin:0;color:var(--mx-muted);max-width:60ch}
+  @media (max-width:640px){#panel-max .mx-hide-sm{display:none}}
+  </style>
+  <div class="panel" id="panel-max">
+    <header class="mx-top"><div><div class="mx-brand">Jarvis <b>MCLL</b> · alloha FIBRA</div><div class="mx-sub">Diagnóstico MAX · reabertura de reparos em até 30 dias</div></div></header>
+    <div class="mx-wrap">
+      <header class="mx-head">
+        <h1 class="mx-title">Diagnóstico MAX</h1>
+        <p class="mx-take" id="mx-take" hidden></p>
+        <div class="mx-filters" id="mx-filters" hidden>
+          <label class="mx-lbl" for="mx-f-cluster">Cluster <select id="mx-f-cluster"></select></label>
+          <details class="mx-pick" id="mx-f-unid">
+            <summary id="mx-f-unid-sum">Unidades</summary>
+            <div class="mx-pick-pop">
+              <div class="mx-pick-act">
+                <input id="mx-f-unid-q" type="search" placeholder="Buscar unidade" aria-label="Buscar unidade">
+                <button type="button" data-a="all">Todas</button>
+                <button type="button" data-a="none">Desmarcar</button>
+              </div>
+              <div class="mx-pick-list" id="mx-f-unid-list"></div>
+            </div>
+          </details>
+          <div class="mx-seg" id="mx-f-mes" role="group" aria-label="Mês"></div>
+        </div>
+        <div class="mx-chips" id="mx-f-chips" hidden></div>
+        <div class="mx-src">
+          <button type="button" class="mx-up-btn" id="mx-up-btn" onclick="document.getElementById('mx-file').click()"><i class="ti ti-paperclip"></i> Anexar base</button>
+          <input id="mx-file" type="file" accept=".xlsx,.csv,.txt,.json" hidden>
+          <span class="mx-src-msg" id="mx-src-msg">Nenhuma base anexada neste dispositivo.</span>
+          <button type="button" class="mx-btn2" id="mx-src-del" hidden>Remover base</button>
+        </div>
+      </header>
+
+      <div class="mx-empty" id="mx-empty">
+        <h2>Anexe a base do MAX</h2>
+        <p>Arquivo .xlsx (aba “base”), .csv ou o .json agregado. Uma linha por reparo, com as colunas unidade, max, frente_final e mes ou data_abertura_chamado. A base fica guardada só neste dispositivo e não entra na sincronização.</p>
+      </div>
+
+      <div id="mx-dash" hidden style="display:grid;gap:22px">
+        <section class="mx-kpis">
+          <div class="mx-kpi"><span class="mx-kpi-l">Taxa MAX</span><span class="mx-kpi-v" id="mx-k-taxa">—</span><span class="mx-kpi-s"><span id="mx-k-delta">—</span> <span id="mx-k-delta-l"></span></span></div>
+          <div class="mx-kpi"><span class="mx-kpi-l">Reparos abertos</span><span class="mx-kpi-v" id="mx-k-rep">—</span><span class="mx-kpi-s">chamados de reparo no período</span></div>
+          <div class="mx-kpi"><span class="mx-kpi-l">Chamados MAX</span><span class="mx-kpi-v" id="mx-k-max">—</span><span class="mx-kpi-s">reaberturas em até 30 dias</span></div>
+          <div class="mx-kpi"><span class="mx-kpi-l">MAX em até 1 dia</span><span class="mx-kpi-v" id="mx-k-1d">—</span><span class="mx-kpi-s"><span id="mx-k-1d-n">—</span> voltaram no mesmo dia ou no seguinte</span></div>
+          <div class="mx-kpi"><span class="mx-kpi-l">Reparos que geraram MAX</span><span class="mx-kpi-v" id="mx-k-gerou">—</span><span class="mx-kpi-s">o último mês ainda está na janela de 30 dias</span></div>
+        </section>
+
+        <div class="mx-grid">
+          <section class="mx-card">
+            <h2>Taxa MAX por semana</h2>
+            <p class="mx-note">MAX ÷ reparos, por semana de abertura. Pontos vazados são semanas incompletas.</p>
+            <div class="mx-cv"><canvas id="mx-ch-sem"></canvas></div>
+          </section>
+          <section class="mx-card">
+            <h2>Drivers do MAX</h2>
+            <p class="mx-note">Participação de cada driver nos chamados MAX, pela regra anterior × posterior.</p>
+            <div class="mx-drv" id="mx-drivers"></div>
+          </section>
+        </div>
+
+        <div class="mx-grid">
+          <section class="mx-card">
+            <h2>De onde vem a reabertura</h2>
+            <p class="mx-note">Desfecho do reparo anterior (linhas) × desfecho do reparo MAX (colunas). Percentual sobre o total de MAX.</p>
+            <div class="mx-heat" id="mx-trans"></div>
+          </section>
+          <section class="mx-card">
+            <h2>Tempo até reabrir</h2>
+            <p class="mx-note">Dias entre o fechamento do reparo anterior e a abertura do MAX.</p>
+            <div class="mx-cv"><canvas id="mx-ch-aging"></canvas></div>
+          </section>
+        </div>
+
+        <div class="mx-grid">
+          <section class="mx-card">
+            <h2>Motivo de baixa do reparo anterior</h2>
+            <p class="mx-note">Os 10 motivos mais comuns no reparo que antecedeu o MAX.</p>
+            <div class="mx-cv" id="mx-cv-mot"><canvas id="mx-ch-mot"></canvas></div>
+          </section>
+          <section class="mx-card">
+            <h2 id="mx-rk-title">Ranking de clusters</h2>
+            <p class="mx-note" id="mx-rk-note">Clique em uma linha para filtrar o painel por esse cluster.</p>
+            <div class="mx-tablebox">
+              <table class="mx-table" id="mx-tb-rank">
+                <thead><tr>
+                  <th aria-sort="none"><button type="button" data-k="nome" id="mx-rk-col">Cluster</button></th>
+                  <th class="n mx-hide-sm" aria-sort="none"><button type="button" data-k="reparos">Reparos</button></th>
+                  <th class="n" aria-sort="none"><button type="button" data-k="max">MAX</button></th>
+                  <th class="n" aria-sort="descending"><button type="button" data-k="taxa">Taxa MAX</button></th>
+                  <th class="n mx-hide-sm" aria-sort="none"><button type="button" data-k="p1d">Até 1 dia</button></th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <section class="mx-sel">
+          <div style="display:grid;gap:4px">
+            <h2 class="mx-title">Análise da seleção</h2>
+            <p class="mx-take" id="mx-an-scope">—</p>
+          </div>
+          <section class="mx-card">
+            <h2>Quadro por unidade</h2>
+            <p class="mx-note" id="mx-un-note">Quantidades, driver, motivo e causa que mais pesam em cada unidade da seleção.</p>
+            <div class="mx-tablebox">
+              <table class="mx-table" id="mx-tb-unid">
+                <thead><tr><th>Unidade</th><th class="n mx-hide-sm">Reparos</th><th class="n">MAX</th><th class="n">Taxa</th><th>Driver principal</th><th class="mx-hide-sm">Motivo anterior principal</th><th class="mx-hide-sm">Causa principal</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+          <div class="mx-grid">
+            <section class="mx-card">
+              <h2>Motivos e causas do reparo anterior</h2>
+              <p class="mx-note">Motivo de baixa e submotivo (causa) do reparo que antecedeu o MAX. As 12 combinações com mais casos.</p>
+              <div class="mx-tablebox">
+                <table class="mx-table" id="mx-tb-causas">
+                  <thead><tr><th>Motivo → causa</th><th class="n">MAX</th><th class="n">%</th><th class="mx-hide-sm">Unidades com mais casos</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="mx-card">
+              <h2>O que o técnico encontrou na volta</h2>
+              <p class="mx-note">Motivo de baixa do próprio chamado MAX. Os 8 mais comuns.</p>
+              <div class="mx-drv" id="mx-motmax"></div>
+            </section>
+          </div>
+          <section class="mx-card">
+            <h2>Plano de ação (Fato · Causa · Ação)</h2>
+            <p class="mx-note">Montado a partir dos drivers que somam a maior parte do MAX na seleção. As ações são sugestões; as marcadas com ◆ vêm do plano já registrado na planilha.</p>
+            <div class="mx-fca" id="mx-fca"></div>
+          </section>
+        </section>
+
+        <section class="mx-card">
+          <details>
+            <summary class="mx-sum"><h2>Plano registrado na planilha</h2></summary>
+            <p class="mx-note">Oportunidades, diagnóstico e ações da aba de análise da base, para toda a operação. Não muda com os filtros.</p>
+            <div class="mx-tablebox" style="max-height:none">
+              <table class="mx-table mx-plan" id="mx-tb-plano">
+                <thead><tr><th>Baixa</th><th class="n">%</th><th>Oportunidade</th><th>Diagnóstico</th><th>Ações</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </div>
+    <footer class="mx-foot">Jarvis MCLL · alloha FIBRA</footer>
+  </div>
+
   <!-- ── PAINEL POP (catálogo de sites — cidade, endereço, tier, bateria, AR, mapa) ── -->
   <div class="panel" id="panel-pop">
     <div id="empty-pop" class="empty">
@@ -14201,14 +14478,14 @@ function _hasSrEditRights(){
    de Horas, DSR Volante, Sobreaviso, Monitor e WhatsApp retirados do Jarvis (Preventivas POP
    também, mesmo dia) — fora das listas de painéis/abas e sem botão na navegação/Dashboard. Código e dados sincronizados
    desses painéis ficaram intactos (inacessíveis), pra permitir reativar sem perda. */
-const ALL_PANEL_KEYS=['abertosOfs','warmap','aportes','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','ativacoes','pop','ampli'];
+const ALL_PANEL_KEYS=['abertosOfs','warmap','aportes','executivo','abertos','b2c','max','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','ativacoes','pop','ampli'];
 const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs'];
 /* Tabs que switchTab() sabe renderizar (subconjunto de ALL_PANEL_KEYS + 'dashboard' —
    dsrVolante/sobreaviso/bancoHoras/investigacaoIp/ampli são páginas standalone, link
    direto, não trocam de aba aqui). Usado tanto pra normalizar um tab desconhecido
    quanto por defaultLandingTab() pra nunca devolver algo que switchTab() não sabe
    exibir. */
-const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
+const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','max','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -14287,6 +14564,7 @@ const PANEL_NAV_MAP={
   aportes:['ntab-aportes','dash-mod-aportes'],
   abertos:['ntab-ab','dash-mod-abertos'],
   b2c:['ntab-b2c','dash-mod-b2c'],
+  max:['ntab-max','dash-mod-max'],
   swap:['ntab-swap','dash-mod-swap'],
   eve:['ntab-eve','dash-mod-eve'],
   encerrados:['ntab-enc','dash-mod-encerrados'],
@@ -15194,7 +15472,7 @@ function deleteUser(username){
    já que `${PANEL_LABELS[k]}` não tinha entrada pra essas 3 chaves. Bug real, não só
    falta de nome bonito — o admin não conseguia nem saber qual painel aquele checkbox
    controlava. */
-const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmup',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
+const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmup',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',max:'MAX',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -24467,7 +24745,8 @@ const TAB_META={
   combustivel:['Combustíveis / Alelo','Frota, saldo, solicitações, aportes e retiradas'],
   monitor:['Monitor','Massiva, Infraestrutura, Gerencial e Wanderson'],
   whatsapp:['WhatsApp','Espelho interno do WhatsApp Web no Jarvis MCLL'],
-  pop:['POP','Catálogo de POPs e endereços — base oficial']
+  pop:['POP','Catálogo de POPs e endereços — base oficial'],
+  max:['MAX','Diagnóstico MAX — reabertura de reparo em até 30 dias']
 };
 function openMobileNav(){
   document.getElementById('atrix-sidebar')?.classList.add('open');
@@ -24582,9 +24861,9 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   }
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap';
+  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap',isMax=tab==='max';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isMax?'max':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-abertos-ofs').classList.toggle('active',isAof);
   document.getElementById('panel-warmap').classList.toggle('active',isWarmap);
@@ -24601,6 +24880,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   document.getElementById('panel-rede').classList.toggle('active',isRede);
   document.getElementById('panel-combustivel').classList.toggle('active',isFuel);
   document.getElementById('panel-pop').classList.toggle('active',isPop);
+  document.getElementById('panel-max').classList.toggle('active',isMax);
   document.getElementById('panel-repetidos').classList.toggle('active',isRep);
   document.getElementById('panel-monitor').classList.toggle('active',isMon);
   document.getElementById('panel-whatsapp').classList.toggle('active',isWpp);
@@ -24634,6 +24914,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(isAtiv&&!_skip('ativacoes'))renderPanelAtivacoes();
   if(isPrevent&&!_skip('preventivas'))renderPreventAll();
   if(isPop&&!_skip('pop'))renderAllPop();
+  if(isMax&&window.mxRenderAll)mxRenderAll();
   if(isAuditMaterial)amRenderTable();
   if(isSaldoSap)sbRenderTable();
   if(isB2c)b2cRenderAll();
@@ -24655,7 +24936,7 @@ function toggleTheme(){
   const dk=document.body.dataset.theme==='dark';
   document.body.dataset.theme=dk?'light':'dark';
   document.getElementById('ti-icon').className=dk?'ti ti-moon':'ti ti-sun';
-  setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();},60);
+  setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();if(activeTab==='max'&&window.mxRenderAll)mxRenderAll();},60);
 }
 /* Zoom da interface — ver comentário da CSS .nav-zoom. 70-130% em passos de
    10, guardado por dispositivo/navegador (não sincroniza entre aparelhos —
@@ -33354,6 +33635,719 @@ rdeMetaLoad();rdeMetaFill();rdeMetaUpdSub();
 encMetaLoad();encMetaFill();
 rdeRestoreBase();if(rdeBD.length||rdeAD.length){rdeRestoreUI();rdeSyncControls();renderRede();}
 updateCentralStatus();
+</script>
+<script>
+/* ═══ PAINEL MAX — Diagnóstico MAX (reabertura de reparo em até 30 dias) ═══
+   Portado de max/Painel_Diagnostico_MAX.html. A base anexada é agregada por
+   unidade×mês (mesmo modelo do standalone) e guardada só neste dispositivo
+   (IndexedDB, MX_IDB_KEY) — não entra no sync do GitHub (repo público, base nacional).
+   Conferência (base 01/08–07/10/2026): 126.574 reparos, 16,9%, Qualidade Técnica 42,2%;
+   Regional MA+PI 13,2%; SISA+ITZA 787 reparos, 15,8%. */
+(function(){
+  const MX_IDB_KEY='mx_base_v1';
+  const REG=['C.32|Maranhão','C.31|Piaui'];
+  const AG=['mesmo dia','1 dia','2 dias','3 a 5 dias','6 a 10 dias','> 10 dias'];
+  const NOMES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  const DRIVERS_DEF=[
+    {driver:'Triagem/Massiva',regra:'Chamado MAX com afetação. Tem prioridade sobre os demais.',leitura:'O retorno está ligado a um evento de rede, não ao reparo individual.'},
+    {driver:'Improdutiva Anterior',regra:'Anterior improdutivo, seja qual for o posterior.',leitura:'A visita anterior não foi concluída (cliente ausente, desistência, área de risco) e o cliente voltou.'},
+    {driver:'Qualidade Técnica',regra:'Anterior produtivo e posterior produtivo ou improdutivo.',leitura:'O reparo foi feito e o cliente voltou com demanda de visita. O reparo pode não ter resolvido a causa.'},
+    {driver:'Erro de Cancelamento',regra:'Anterior retido e posterior produtivo ou improdutivo, aberto em até 4 dias.',leitura:'O chamado foi cancelado sem visita e o cliente voltou logo em seguida. O cancelamento pode não ter sido correto.'},
+    {driver:'Erro de Abertura',regra:'Posterior retido e anterior produtivo ou retido.',leitura:'O cliente voltou, mas o novo chamado foi encerrado sem visita de campo. O retorno não precisou de técnico.'},
+    {driver:'Problema Técnico Operacional',regra:'Anterior retido e posterior produtivo ou improdutivo, aberto depois de 4 dias.',leitura:'O cliente só voltou depois de 4 dias. Sugere um problema operacional habitual, e não um erro do cancelamento.'}
+  ];
+  /* Plano registrado na aba de análise do MAX_Diagnostico.xlsx (estático, não muda com filtros). */
+  const PLANO=[
+    {baixa:'Intervenção real',pct:.86,oportunidade:'Reduzir a repetida',diagnostico:'Ferramental danificado\nTreinamento (reciclagem)',acoes:'Previsão de entrega e distribuição ferramental (16/06)\nDesenvolvimento do inventário de ferramental via app\nTreinamento IRR (Q3 e Q4)'},
+    {baixa:'Sem defeito',pct:.08,oportunidade:'Custo de visita sem necessidade técnica',diagnostico:'Implantação ACS para aumentar suporte remoto',acoes:'Cronograma de conclusão da implantação ACS\nReciclagem dos procedimentos junto aos atendentes'},
+    {baixa:'Reconfiguração',pct:null,oportunidade:null,diagnostico:null,acoes:null},
+    {baixa:'Orientação cliente',pct:null,oportunidade:null,diagnostico:null,acoes:null},
+    {baixa:'Evento Rede',pct:.06,oportunidade:'Triagem antes de envio',diagnostico:'Gap na abertura\nFalha de associação',acoes:'Revisão do processo NOC (janela de -2 a +2)\n(Associação automática por facilidade)'},
+    {baixa:'Triagem',pct:.45,oportunidade:'Triagem antes de envio',diagnostico:'Triagem e Roteirização OFS em paralelo',acoes:null},
+    {baixa:'Evento de rede',pct:.25,oportunidade:'Triagem antes de envio',diagnostico:null,acoes:null},
+    {baixa:'Cliente ausente',pct:.3,oportunidade:null,diagnostico:null,acoes:null},
+    {baixa:'Entrada não autorizada',pct:null,oportunidade:null,diagnostico:null,acoes:null}
+  ];
+  const PLAY={
+    'Qualidade Técnica':[
+      ['Auditar os reparos fechados nas unidades foco (fotos, checklist e potência registrada no fechamento).'],
+      ['Reciclagem técnica (treinamento IRR) focada no motivo principal.',true],
+      ['Conferir o ferramental das equipes e acompanhar o inventário de ferramental via app.',true],
+      ['Exigir medição de potência na ONU e na CTO antes de encerrar o reparo.']],
+    'Erro de Abertura':[
+      ['Fazer triagem antes do envio: confirmar se a demanda é técnica antes de abrir o reparo.',true],
+      ['Usar suporte remoto (ACS) para resolver sem visita quando possível.',true],
+      ['Reciclar os atendentes nos procedimentos de abertura.',true]],
+    'Improdutiva Anterior':[
+      ['Confirmar a presença do cliente antes do deslocamento (contato prévio e janela de atendimento).'],
+      ['Fazer contato ativo antes de encerrar por desistência ou cliente ausente.'],
+      ['Dar prioridade ao reagendamento quando o reparo anterior foi improdutivo.']],
+    'Erro de Cancelamento':[
+      ['Revisar os critérios de cancelamento sem visita (Triagem CST e autosserviço).'],
+      ['Ligar para o cliente 24 a 48 h depois do cancelamento para confirmar a normalização.'],
+      ['Auditar cancelamentos que voltaram em até 4 dias, por atendente.']],
+    'Problema Técnico Operacional':[
+      ['Acompanhar clientes cancelados que voltaram depois de 4 dias (instabilidade recorrente).'],
+      ['Analisar a rede (OLT/PON) dos clientes reincidentes.'],
+      ['Programar visita preventiva para os clientes com mais reincidência.']],
+    'Triagem/Massiva':[
+      ['Revisar o processo do NOC com associação automática por facilidade (janela de -2 a +2).',true],
+      ['Na triagem, checar se há evento de rede ativo antes de enviar técnico.',true],
+      ['Avisar os clientes afetados para evitar novas aberturas.']]
+  };
+  const MOT={
+    'Drop refeito':'Drop refeito: padronizar lançamento, ancoragem e fixação do drop; checar o lote de cabo.',
+    'Troca conector externo':'Conector externo: limpar e testar com power meter antes de fechar; checar o lote de conectores.',
+    'Troca conector interno':'Conector interno: limpar e testar com power meter antes de fechar; checar o lote de conectores.',
+    'Troca ONU':'Troca de ONU: testar a ONU nova e o provisionamento antes de fechar; checar modelo e lote.',
+    'Abertura indevida':'Abertura indevida: reforçar a triagem e o suporte remoto (ACS) antes de abrir reparo.',
+    'Triagem CST':'Triagem CST: revisar o roteiro de triagem e a confirmação do retorno do sinal.',
+    'Desistiu do serviço':'Desistência: contato ativo antes de encerrar o chamado.',
+    'Visita a campo evitada':'Visita evitada: confirmar com o cliente que o problema foi resolvido antes de evitar a visita.',
+    'Cancelamento por autosserviço':'Autosserviço: confirmar a normalização depois do cancelamento pelo app.',
+    'Normalizado sem intervenção técnica':'Normalizado sem intervenção: olhar o histórico de sinal antes de encerrar (falha intermitente).',
+    'Reconexão Externa - CTO':'Reconexão na CTO: verificar organização e identificação da CTO.'
+  };
+  const CAUSA={
+    'Desgaste natural':'Desgaste natural é a causa mais citada: levantar os clientes com drop ou conector antigos para troca preventiva.',
+    'Carga alta':'Carga alta é a causa mais citada: checar o nível de sinal da PON e a atenuação da rede.',
+    'Ações de terceiros':'Ações de terceiros é a causa mais citada: mapear trechos com obras e concessionárias.',
+    'Demanda não é técnica':'Demanda não técnica é a causa mais citada: reforçar a triagem no atendimento.',
+    'Sujeira no conector':'Sujeira no conector é a causa mais citada: kit de limpeza obrigatório e conferência em campo.',
+    'Equipamento com Defeito':'Equipamento com defeito é a causa mais citada: rastrear o lote e o fornecedor do equipamento.'
+  };
+  const TRANS_DRV={'Improdutivo':'Improdutiva anterior','Produtivo|Produtivo':'Qualidade técnica','Produtivo|Improdutivo':'Qualidade técnica','Produtivo|Retido':'Erro de abertura','Retido|Retido':'Erro de abertura','Retido|Produtivo':'Erro de cancelamento / Problema operacional','Retido|Improdutivo':'Erro de cancelamento / Problema operacional'};
+
+  /* ── estado ── */
+  let MXD=null;          // dados agregados {unidades,semanal,semanas,drivers,aging,transicao,motivos,causas,motivos_max}
+  let MXI=null;          // info da base {arquivo,linhas,inicio,fim,sheet,derivedDriver,at}
+  const MXS={cluster:'Todos',mes:'Todos',unidades:[]};
+  let rkSort='taxa',rkDir=-1,pickCleared=false;
+  const CH={};
+
+  /* ── formatação ── */
+  const $=id=>document.getElementById(id);
+  const int=v=>Number(v||0).toLocaleString('pt-BR');
+  const pctBR=v=>v==null||!isFinite(v)?'—':(v*100).toFixed(1).replace('.',',')+'%';
+  const dm=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'?';
+  const dmy=d=>d?d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):'?';
+  const label=c=>c&&c.includes('|')?c.split('|')[1]+' ('+c.split('|')[0]+')':c;
+  const el=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;};
+  const span=()=>{const w=(MXD&&MXD.semanas)||[];if(!w.length)return null;let ini=w[0].inicio,fim=w[0].fim;w.forEach(x=>{if(x.inicio<ini)ini=x.inicio;if(x.fim>fim)fim=x.fim;});return{ini,fim};};
+  const mesLongo=m=>NOMES[+m.slice(5,7)-1]+(m.slice(0,4)!==String(new Date().getFullYear())?' de '+m.slice(0,4):'');
+  const mesCurto=m=>{
+    if(m==='Todos')return 'Todo o período';
+    const n=NOMES[+m.slice(5,7)-1];let t=n.charAt(0).toUpperCase()+n.slice(1,3)+'/'+m.slice(2,4);
+    const sp=span();
+    if(sp){const last=new Date(Date.UTC(+m.slice(0,4),+m.slice(5,7),0)).toISOString().slice(0,10);
+      if(sp.fim.slice(0,7)===m&&sp.fim<last)t+=' (até '+dm(sp.fim)+')';
+      if(sp.ini.slice(0,7)===m&&sp.ini.slice(8)!=='01')t+=' (desde '+dm(sp.ini)+')';}
+    return t;
+  };
+  const periodo=()=>{const sp=span();return sp?'de '+dm(sp.ini)+' a '+dm(sp.fim):'no período';};
+  const sumBy=(rows,key,fields)=>{const m=new Map();rows.forEach(r=>{const k=typeof key==='function'?key(r):r[key];let a=m.get(k);if(!a){a={key:k};fields.forEach(f=>a[f]=0);m.set(k,a);}fields.forEach(f=>a[f]+=r[f]||0);});return[...m.values()];};
+  const top=(rows,k)=>sumBy(rows,k,['max']).sort((a,b)=>b.max-a.max);
+  const total=(rows,f)=>rows.reduce((s,r)=>s+(r[f]||0),0);
+
+  /* ── escopo dos filtros ── */
+  const clustersOf=c=>c==='Todos'?null:c==='Regional MA+PI'?REG:[c];
+  const unitMap=()=>{const m=new Map();(MXD?MXD.unidades:[]).forEach(r=>m.set(r.unidade,r.cluster));return m;};
+  const clusterUnits=()=>{const cl=clustersOf(MXS.cluster);const m=unitMap();return[...m.keys()].filter(u=>!cl||cl.includes(m.get(u)));};
+  const scope=()=>{
+    if(MXS.cluster==='Todos')return null;
+    const cu=new Set(clusterUnits());
+    const pick=MXS.unidades.filter(u=>cu.has(u));
+    return new Set(pick.length?pick:cu);
+  };
+  const inScope=(sc,r)=>!sc||sc.has(r.unidade);
+  const inMes=(mes,r)=>mes==='Todos'||r.mes===mes;
+  const scopeName=()=>{
+    if(MXS.cluster==='Todos')return 'Na base completa';
+    const cu=new Set(clusterUnits());
+    const pick=MXS.unidades.filter(u=>cu.has(u));
+    if(!pick.length)return 'Em '+label(MXS.cluster);
+    return(pick.length===1?'Na unidade ':'Nas unidades ')+pick.slice(0,4).join(', ')+(pick.length>4?` e mais ${pick.length-4}`:'')+' · '+label(MXS.cluster);
+  };
+  function setF(p){Object.assign(MXS,p);mxRenderAll();}
+
+  /* ── cores (tema do Jarvis: body[data-theme]) ── */
+  const pal=()=>{const dk=document.body.dataset.theme==='dark';return{blue:'#1476C9',green:'#42C34B',gray:dk?'#3F4C6B':'#BCC5D6',grid:dk?'#233050':'#E9EDF4',muted:dk?'#9AA5BD':'#5D6880',ink:dk?'#E8ECF4':'#182238',card:dk?'#182238':'#FFFFFF',crit:dk?'#F06A5F':'#D9473C'};};
+  const font={family:"Calibri, Carlito, 'Segoe UI', system-ui, sans-serif",size:12};
+  function mkChart(id,cfg){
+    if(CH[id]){CH[id].destroy();delete CH[id];}
+    if(typeof Chart==='undefined')return;
+    CH[id]=new Chart($(id),cfg);
+  }
+  const DL=()=>typeof ChartDataLabels!=='undefined'?[ChartDataLabels]:[];
+
+  /* ── filtros ── */
+  function renderFilters(){
+    const res=MXD.unidades;
+    const sel=$('mx-f-cluster');
+    const cl=[...new Set(res.map(r=>r.cluster))].sort((a,b)=>label(a).localeCompare(label(b),'pt'));
+    sel.replaceChildren(new Option('Todos os clusters','Todos'),new Option('Regional MA+PI','Regional MA+PI'),...cl.map(c=>new Option(label(c),c)));
+    sel.value=MXS.cluster;
+    const ms=[...new Set(res.map(r=>r.mes))].sort();
+    $('mx-f-mes').replaceChildren(...['Todos',...ms].map(m=>{const b=el('button',null,mesCurto(m));b.type='button';b.dataset.mes=m;b.setAttribute('aria-pressed',String(m===MXS.mes));return b;}));
+    const pick=$('mx-f-unid'),sum=$('mx-f-unid-sum'),list=$('mx-f-unid-list'),q=$('mx-f-unid-q');
+    const cu=clusterUnits();
+    const picked=MXS.unidades.filter(u=>cu.includes(u));
+    pick.classList.toggle('off',MXS.cluster==='Todos');
+    if(MXS.cluster==='Todos'){pick.open=false;sum.textContent='Unidades: escolha um cluster';list.replaceChildren();}
+    else{
+      sum.textContent=picked.length?`Unidades: ${picked.length} de ${cu.length}`:`Unidades: todas (${cu.length})`;
+      const agg=sumBy(res.filter(r=>cu.includes(r.unidade)&&inMes(MXS.mes,r)),'unidade',['reparos','max']);
+      const byU=new Map(agg.map(a=>[a.key,a]));
+      const t=q.value.trim().toLowerCase();
+      const rows=cu.map(u=>({u,a:byU.get(u)||{reparos:0,max:0}})).sort((x,y)=>y.a.reparos-x.a.reparos);
+      list.replaceChildren(...rows.map(({u,a})=>{
+        const l=el('label');l.dataset.u=u;l.hidden=!!t&&!u.toLowerCase().includes(t);
+        const i=el('input');i.type='checkbox';i.value=u;i.checked=picked.length?picked.includes(u):!pickCleared;
+        l.append(i,el('span',null,u),el('span',null,`${int(a.reparos)} rep · ${pctBR(a.reparos?a.max/a.reparos:null)}`));
+        return l;
+      }));
+    }
+    const chips=$('mx-f-chips');
+    chips.hidden=!picked.length;
+    chips.replaceChildren(...picked.map(u=>{const b=el('button',null,u+' ×');b.type='button';b.dataset.u=u;b.setAttribute('aria-label','Remover '+u);return b;}));
+    if(!MXS.unidades.length&&!pick.open)pickCleared=false;
+  }
+
+  /* ── KPIs + frase-resumo ── */
+  function renderKpis(){
+    const res=MXD.unidades,sc=scope(),mes=MXS.mes;
+    const tot=m=>sumBy(res.filter(r=>inScope(sc,r)&&inMes(m,r)),()=>'all',['reparos','max','gerou_max','max_ate_1d'])[0]||{reparos:0,max:0,gerou_max:0,max_ate_1d:0};
+    const t=tot(mes);
+    $('mx-k-taxa').textContent=pctBR(t.reparos?t.max/t.reparos:null);
+    $('mx-k-rep').textContent=int(t.reparos);
+    $('mx-k-max').textContent=int(t.max);
+    $('mx-k-1d').textContent=pctBR(t.max?t.max_ate_1d/t.max:null);
+    $('mx-k-1d-n').textContent=int(t.max_ate_1d);
+    $('mx-k-gerou').textContent=int(t.gerou_max);
+    const ms=[...new Set(res.map(r=>r.mes))].sort();
+    const prev=mes==='Todos'?null:ms[ms.indexOf(mes)-1];
+    const de=$('mx-k-delta'),dl=$('mx-k-delta-l');de.className='';
+    if(prev){
+      const p=tot(prev);
+      const d=p.reparos&&t.reparos?Math.round((t.max/t.reparos-p.max/p.reparos)*1000)/10:null;
+      if(d==null){de.textContent='—';dl.textContent='';}
+      else{de.textContent=(d>0?'+':d<0?'−':'±')+Math.abs(d).toFixed(1).replace('.',',')+' p.p.';de.className=d>0?'mx-up':d<0?'mx-down':'';dl.textContent='vs. '+mesLongo(prev);}
+    }else{de.textContent='—';dl.textContent=mes==='Todos'?'escolha um mês para comparar':'sem mês anterior na base';}
+    const ds=top(MXD.drivers.filter(r=>inScope(sc,r)&&inMes(mes,r)),'driver');
+    const dt=total(ds,'max'),tp=ds[0];
+    const tk=$('mx-take');
+    const per=mes==='Todos'?', '+periodo():', em '+mesLongo(mes);
+    const b=txt=>el('b',null,txt);
+    if(!t.reparos)tk.textContent=scopeName()+per+', não há reparos na base.';
+    else tk.replaceChildren(scopeName()+per+', ',b(pctBR(t.max/t.reparos)),` dos ${int(t.reparos)} reparos foram reaberturas (MAX).`+(tp?' O principal driver é ':''),...(tp?[b(tp.key),', com ',b(pctBR(tp.max/dt)),' dos casos.']:[]));
+  }
+
+  /* ── gráficos ── */
+  function renderSemanal(){
+    const P=pal(),sc=scope();
+    const W8=new Map((MXD.semanas||[]).map(w=>[w.semana,w]));
+    const rows=sumBy(MXD.semanal.filter(r=>inScope(sc,r)),'semana',['reparos','max']).filter(r=>r.reparos>0)
+      .map(r=>({...r,semana:r.key,taxa:r.max/r.reparos,w:W8.get(r.key)||{inicio:'',fim:'',dias:7}})).sort((a,b)=>a.semana-b.semana);
+    mkChart('mx-ch-sem',{type:'line',
+      data:{labels:rows.map(r=>'S'+r.semana),datasets:[{data:rows.map(r=>+(r.taxa*100).toFixed(2)),borderColor:P.blue,borderWidth:2,tension:.25,
+        pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:rows.map(r=>r.w.dias<7?P.card:P.blue)}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,
+        plugins:{legend:{display:false},datalabels:{display:false},
+          tooltip:{callbacks:{
+            title:it=>{const r=rows[it[0].dataIndex];return `Semana ${r.semana}`+(r.w.inicio?` · ${dm(r.w.inicio)} a ${dm(r.w.fim)}`:'')+(r.w.dias<7?' (incompleta)':'');},
+            label:it=>{const r=rows[it.dataIndex];return `${pctBR(r.taxa)} · ${int(r.max)} MAX de ${int(r.reparos)} reparos`;}}}},
+        scales:{y:{beginAtZero:true,grid:{color:P.grid},border:{display:false},ticks:{color:P.muted,font,callback:v=>v+'%'}},
+          x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
+  }
+  function renderDrivers(){
+    const P=pal(),sc=scope(),box=$('mx-drivers');
+    const rows=top(MXD.drivers.filter(r=>inScope(sc,r)&&inMes(MXS.mes,r)),'driver');
+    const tot=total(rows,'max');
+    if(!tot){box.replaceChildren(el('p','mx-note','Sem chamados MAX para a seleção.'));return;}
+    const mx=rows[0].max;
+    box.replaceChildren(...rows.map((r,i)=>{
+      const row=el('div','mx-drv-row'),tp=el('div','mx-drv-top');
+      tp.append(el('span',null,r.key),el('span',null,`${pctBR(r.max/tot)} · ${int(r.max)}`));
+      const bar=el('div','mx-bar'),fill=el('i');fill.style.width=(r.max/mx*100)+'%';fill.style.background=i===0?P.blue:P.gray;
+      bar.append(fill);row.append(tp,bar);
+      const d=DRIVERS_DEF.find(x=>x.driver===r.key);
+      if(d)row.append(el('div','mx-drv-def',d.regra+' '+d.leitura));
+      return row;
+    }));
+  }
+  function renderTrans(){
+    const sc=scope(),box=$('mx-trans');
+    const rows=sumBy(MXD.transicao.filter(r=>inScope(sc,r)&&inMes(MXS.mes,r)),r=>r.anterior+'|'+r.posterior,['max']);
+    const tot=total(rows,'max');
+    const get=(a,p)=>(rows.find(r=>r.key===a+'|'+p)||{max:0}).max;
+    const K=['Produtivo','Improdutivo','Retido'];
+    const mx=Math.max(1,...rows.map(r=>r.max));
+    const hd=(t,c)=>el('div','h'+(c?' c':''),t);
+    const els=[hd('Anterior ↓ / MAX →'),...K.map(k=>hd(k,true))];
+    K.forEach(a=>{
+      els.push(hd(a));
+      K.forEach(p=>{
+        const v=get(a,p),s=v/mx;
+        const c=el('div','cell');
+        c.style.background=`rgba(20,118,201,${(0.08+0.72*s).toFixed(3)})`;
+        c.style.color=s>0.55?'#fff':'var(--mx-ink)';
+        c.append(el('b',null,pctBR(tot?v/tot:null)),el('small',null,int(v)+' MAX'),el('small',null,TRANS_DRV[a]||TRANS_DRV[a+'|'+p]||''));
+        els.push(c);
+      });
+    });
+    box.replaceChildren(...els);
+  }
+  function renderAging(){
+    const P=pal(),sc=scope();
+    const agg=sumBy(MXD.aging.filter(r=>inScope(sc,r)&&inMes(MXS.mes,r)),'faixa',['max']);
+    const tot=total(agg,'max');
+    const rows=AG.map(f=>{const m=(agg.find(a=>a.key===f)||{max:0}).max;return{faixa:f,max:m,share:tot?m/tot:0};});
+    mkChart('mx-ch-aging',{type:'bar',plugins:DL(),
+      data:{labels:AG,datasets:[{data:rows.map(r=>+(r.share*100).toFixed(2)),backgroundColor:rows.map((_,i)=>i<2?P.blue:P.gray),borderRadius:4,maxBarThickness:40}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{top:22}},
+        plugins:{legend:{display:false},
+          datalabels:{anchor:'end',align:'top',color:P.ink,font:{...font,weight:'bold'},formatter:(v,c)=>pctBR(rows[c.dataIndex].share)},
+          tooltip:{callbacks:{label:it=>{const r=rows[it.dataIndex];return `${pctBR(r.share)} · ${int(r.max)} MAX`;}}}},
+        scales:{y:{display:false,beginAtZero:true},x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
+  }
+  function renderMotivos(){
+    const P=pal(),sc=scope();
+    const agg=top(MXD.motivos.filter(r=>inScope(sc,r)&&inMes(MXS.mes,r)),'motivo_anterior');
+    const tot=total(agg,'max');
+    const rows=agg.slice(0,10).map(r=>({...r,share:tot?r.max/tot:0}));
+    $('mx-cv-mot').style.height=Math.max(120,rows.length*30+20)+'px';
+    const narrow=($('mx-cv-mot').clientWidth||600)<460;
+    mkChart('mx-ch-mot',{type:'bar',plugins:DL(),
+      data:{labels:rows.map(r=>narrow&&r.key.length>24?r.key.slice(0,23)+'…':r.key),datasets:[{data:rows.map(r=>+(r.share*100).toFixed(2)),backgroundColor:rows.map((_,i)=>i<3?P.blue:P.gray),borderRadius:4,barThickness:14}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{right:90}},
+        plugins:{legend:{display:false},
+          datalabels:{anchor:'end',align:'right',clamp:true,color:P.muted,font,formatter:(v,c)=>`${pctBR(rows[c.dataIndex].share)} · ${int(rows[c.dataIndex].max)}`},
+          tooltip:{callbacks:{title:it=>rows[it[0].dataIndex].key,label:it=>{const r=rows[it.dataIndex];return `${pctBR(r.share)} · ${int(r.max)} MAX`;}}}},
+        scales:{x:{display:false,beginAtZero:true},y:{grid:{display:false},ticks:{color:P.ink,font}}}}});
+  }
+
+  /* ── ranking ── */
+  function renderRanking(){
+    const P=pal(),tb=$('mx-tb-rank'),body=tb.querySelector('tbody');
+    const byUnit=MXS.cluster!=='Todos';
+    $('mx-rk-title').textContent=byUnit?'Ranking de unidades · '+label(MXS.cluster):'Ranking de clusters';
+    $('mx-rk-note').textContent=byUnit?'Clique em uma unidade para incluí-la ou removê-la da seleção. Barra vermelha = acima da média.':'Clique em uma linha para filtrar o painel por esse cluster. Barra vermelha = acima da média.';
+    $('mx-rk-col').textContent=byUnit?'Unidade':'Cluster';
+    const cu=byUnit?new Set(clusterUnits()):null;
+    const rows=sumBy(MXD.unidades.filter(r=>inMes(MXS.mes,r)&&(!cu||cu.has(r.unidade))),byUnit?'unidade':'cluster',['reparos','max','max_ate_1d'])
+      .filter(r=>r.reparos>0)
+      .map(r=>({id:r.key,nome:byUnit?r.key:label(r.key),reparos:r.reparos,max:r.max,taxa:r.max/r.reparos,p1d:r.max?r.max_ate_1d/r.max:null}));
+    const tr=total(rows,'reparos'),tm=total(rows,'max'),ref=tr?tm/tr:0;
+    rows.sort((a,b)=>rkSort==='nome'?rkDir*a.nome.localeCompare(b.nome,'pt'):rkDir*((a[rkSort]??-1)-(b[rkSort]??-1)));
+    tb.querySelectorAll('th').forEach(th=>{const k=th.querySelector('button').dataset.k;th.setAttribute('aria-sort',k===rkSort?(rkDir>0?'ascending':'descending'):'none');});
+    const mx=Math.max(0.0001,...rows.map(r=>r.taxa));
+    const sel=byUnit?MXS.unidades:[MXS.cluster];
+    body.replaceChildren(...rows.map(r=>{
+      const t=el('tr');t.dataset.key=r.id;if(sel.includes(r.id))t.className='sel';
+      const taxa=el('td','n'),wrap=el('div','mx-inbar'),bar=el('i');
+      bar.style.width=(r.taxa/mx*56)+'px';bar.style.background=r.taxa>ref?P.crit:P.gray;
+      wrap.append(bar,el('span',null,pctBR(r.taxa)));taxa.append(wrap);
+      t.append(el('td',null,r.nome),el('td','n mx-hide-sm',int(r.reparos)),el('td','n',int(r.max)),taxa,el('td','n mx-hide-sm',pctBR(r.p1d)));
+      return t;
+    }));
+  }
+
+  /* ── análise da seleção + FCA ── */
+  function renderAnalise(){
+    const P=pal(),mes=MXS.mes,sc=scope();
+    const per=mes==='Todos'?periodo():'em '+mesLongo(mes);
+    $('mx-an-scope').textContent=scopeName()+', '+per+'.'+(sc?'':' Escolha um cluster e unidades no topo para focar a análise.');
+    // Quadro por unidade
+    const base=sumBy(MXD.unidades.filter(r=>inScope(sc,r)&&inMes(mes,r)),'unidade',['reparos','max']).filter(r=>r.max>0).sort((a,b)=>b.max-a.max);
+    const cs=MXD.causas.filter(r=>inScope(sc,r)&&inMes(mes,r));
+    const byU=new Map();cs.forEach(r=>{let a=byU.get(r.unidade);if(!a)byU.set(r.unidade,a=[]);a.push(r);});
+    const lim=30;
+    $('mx-un-note').textContent='Quantidades, driver, motivo e causa que mais pesam em cada unidade da seleção'+(base.length>lim?`. Mostrando as ${lim} unidades com mais MAX de ${base.length}.`:'.');
+    $('mx-tb-unid').querySelector('tbody').replaceChildren(...base.slice(0,lim).map(u=>{
+      const rs=byU.get(u.key)||[];
+      const tD=top(rs,'driver')[0],tM=top(rs,'motivo_anterior')[0],tC=top(rs.filter(r=>!String(r.causa).startsWith('Sem ')),'causa')[0];
+      const f=t=>t?`${t.key} (${pctBR(t.max/u.max)})`:'—';
+      const tr=el('tr');
+      tr.append(el('td',null,u.key),el('td','n mx-hide-sm',int(u.reparos)),el('td','n',int(u.max)),el('td','n',pctBR(u.max/u.reparos)),el('td',null,f(tD)),el('td','mx-hide-sm',f(tM)),el('td','mx-hide-sm',f(tC)));
+      return tr;
+    }));
+    // Motivo → causa
+    const tot=total(cs,'max');
+    const combos=top(cs,r=>r.motivo_anterior+'→'+r.causa).slice(0,12);
+    $('mx-tb-causas').querySelector('tbody').replaceChildren(...combos.map(c=>{
+      const [m,ca]=c.key.split('→');
+      const us=top(cs.filter(r=>r.motivo_anterior===m&&r.causa===ca),'unidade').slice(0,3).map(u=>`${u.key} (${int(u.max)})`).join(', ');
+      const tr=el('tr'),td=el('td');
+      td.append(el('div',null,m),el('span','mx-tag','→ '+ca));
+      tr.append(td,el('td','n',int(c.max)),el('td','n',pctBR(tot?c.max/tot:null)),el('td','mx-hide-sm',us));
+      return tr;
+    }));
+    // Motivo do próprio MAX
+    const bm=$('mx-motmax');
+    const rs=top(MXD.motivos_max.filter(r=>inScope(sc,r)&&inMes(mes,r)),'motivo');
+    const tm=total(rs,'max'),mxm=rs.length?rs[0].max:1;
+    if(!rs.length)bm.replaceChildren(el('p','mx-note','Sem chamados MAX para a seleção.'));
+    else bm.replaceChildren(...rs.slice(0,8).map((r,i)=>{
+      const row=el('div','mx-drv-row'),tp=el('div','mx-drv-top');
+      tp.append(el('span',null,r.key),el('span',null,`${pctBR(r.max/tm)} · ${int(r.max)}`));
+      const bar=el('div','mx-bar'),fl=el('i');fl.style.width=(r.max/mxm*100)+'%';fl.style.background=i<3?P.green:P.gray;
+      bar.append(fl);row.append(tp,bar);return row;
+    }));
+    // FCA: drivers até somar ≥80% do MAX (mín. 2, máx. 4)
+    const fca=$('mx-fca');
+    if(!tot){fca.replaceChildren(el('p','mx-note','Sem chamados MAX para a seleção.'));return;}
+    const drs=top(cs,'driver');
+    let acc=0;const pick=[];
+    for(const d of drs){if(pick.length>=4||(acc>=0.8&&pick.length>=2))break;pick.push(d);acc+=d.max/tot;}
+    fca.replaceChildren(...pick.map(d=>{
+      const share=d.max/tot;
+      const pri=share>=0.3?['alta','Prioridade alta']:share>=0.15?['media','Prioridade média']:['baixa','Prioridade baixa'];
+      const rd=cs.filter(r=>r.driver===d.key);
+      const us=top(rd,'unidade'),ms=top(rd,'motivo_anterior'),cz=top(rd.filter(r=>!String(r.causa).startsWith('Sem ')),'causa');
+      const item=el('article','mx-fca-item');
+      const hd=el('div','mx-fca-top');hd.append(el('h3',null,d.key),el('span','mx-pri '+pri[0],pri[1]));item.append(hd);
+      const cols=el('div','mx-fca-cols');
+      const f=el('div');f.append(el('h4',null,'Fato'));
+      const fp=el('p');fp.append(el('span','t-num',int(d.max)),` chamados MAX ${per}, `,el('span','t-num',pctBR(share)),' do MAX da seleção.');
+      if(us.length)fp.append(' Concentrado em '+us.slice(0,3).map(u=>`${u.key} (${int(u.max)})`).join(', ')+'.');
+      f.append(fp);
+      const c=el('div');c.append(el('h4',null,'Causa'));
+      const def=DRIVERS_DEF.find(x=>x.driver===d.key);
+      if(def)c.append(el('p',null,def.leitura));
+      const cl=el('ul');
+      ms.slice(0,2).forEach(m=>cl.append(el('li',null,`Motivo anterior: ${m.key} (${int(m.max)}; ${pctBR(m.max/d.max)})`)));
+      if(cz[0])cl.append(el('li',null,`Causa mais citada: ${cz[0].key} (${int(cz[0].max)})`));
+      c.append(cl);
+      const a=el('div');a.append(el('h4',null,'Ação'));
+      const al=el('ul');
+      const foco=us.slice(0,3).map(u=>u.key).join(', ');
+      if(foco)al.append(el('li',null,`Unidades foco: ${foco}.`));
+      ms.slice(0,2).forEach(m=>{if(MOT[m.key])al.append(el('li',null,MOT[m.key]));});
+      if(cz[0]&&CAUSA[cz[0].key])al.append(el('li',null,CAUSA[cz[0].key]));
+      (PLAY[d.key]||[]).forEach(([t,fromSheet])=>al.append(el('li',null,(fromSheet?'◆ ':'')+t)));
+      a.append(al);
+      cols.append(f,c,a);item.append(cols);
+      return item;
+    }));
+  }
+  function renderPlano(){
+    $('mx-tb-plano').querySelector('tbody').replaceChildren(...PLANO.map(r=>{
+      const t=el('tr');const td=(v,cls)=>el('td',cls,v==null?'':v);
+      t.append(td(r.baixa),td(r.pct==null?null:Math.round(r.pct*100)+'%','n'),td(r.oportunidade),td(r.diagnostico),td(r.acoes));
+      return t;
+    }));
+  }
+
+  function renderSrc(){
+    const msg=$('mx-src-msg');msg.className='mx-src-msg';
+    if(!MXI){msg.textContent='Nenhuma base anexada neste dispositivo.';$('mx-src-del').hidden=true;return;}
+    msg.classList.add('ok');
+    msg.textContent=`Base: ${MXI.arquivo}`+(MXI.sheet&&MXI.sheet!=='JSON'&&MXI.sheet!=='CSV'?` (aba ${MXI.sheet})`:'')+` · ${int(MXI.linhas)} reparos de ${dmy(MXI.inicio)} a ${dmy(MXI.fim)}`+
+      (MXI.derivedDriver?` · driver calculado pela regra em ${int(MXI.derivedDriver)} MAX`:'')+(MXI.at?` · anexada em ${new Date(MXI.at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}`:'')+'. Só neste dispositivo.';
+    $('mx-src-del').hidden=false;
+  }
+
+  function mxRenderAll(){
+    const has=!!(MXD&&MXD.unidades&&MXD.unidades.length);
+    $('mx-empty').hidden=has;$('mx-dash').hidden=!has;$('mx-filters').hidden=!has;$('mx-take').hidden=!has;
+    if(!has){$('mx-f-chips').hidden=true;renderSrc();return;}
+    if(!$('panel-max').classList.contains('active'))return; // só desenha com a aba aberta
+    renderSrc();renderFilters();renderKpis();renderSemanal();renderDrivers();renderTrans();renderAging();renderMotivos();renderRanking();renderAnalise();renderPlano();
+  }
+  window.mxRenderAll=mxRenderAll;
+
+  /* ── leitor de base (xlsx em streaming / csv / json agregado) ── */
+  const NEED=['unidade','max','frente_final'];
+  const WANT=['unidade','cluster','cluster_ope','mes','semana_abertura','data_abertura_chamado','max','gerou_max','afetado','aging_max','aging 2','frente_final','frente_final_anterior','driver','motivo_anterior','submotivo_anterior','motivo'];
+  const norm=h=>String(h||'').trim().toLowerCase();
+  function zipEntries(buf){
+    const dv=new DataView(buf),u8=new Uint8Array(buf);
+    let eocd=-1;
+    for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-70000);i--)if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}
+    if(eocd<0)throw new Error('O arquivo não parece ser um .xlsx válido.');
+    const n=dv.getUint16(eocd+10,true);let p=dv.getUint32(eocd+16,true);
+    const dec=new TextDecoder(),out=new Map();
+    for(let k=0;k<n;k++){
+      if(dv.getUint32(p,true)!==0x02014b50)break;
+      const method=dv.getUint16(p+10,true),csize=dv.getUint32(p+20,true);
+      const nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true);
+      const off=dv.getUint32(p+42,true);
+      out.set(dec.decode(u8.subarray(p+46,p+46+nl)),{method,csize,off});
+      p+=46+nl+xl+cl;
+    }
+    return out;
+  }
+  function entryStream(buf,e){
+    const dv=new DataView(buf);
+    const start=e.off+30+dv.getUint16(e.off+26,true)+dv.getUint16(e.off+28,true);
+    let s=new Blob([new Uint8Array(buf,start,e.csize)]).stream();
+    if(e.method===8)s=s.pipeThrough(new DecompressionStream('deflate-raw'));
+    return s.pipeThrough(new TextDecoderStream());
+  }
+  async function entryText(buf,entries,name){
+    const e=entries.get(name);if(!e)return null;
+    const r=entryStream(buf,e).getReader();let t='';
+    for(;;){const{done,value}=await r.read();if(done)break;t+=value;}
+    return t;
+  }
+  const unesc=s=>s.indexOf('&')<0?s:s.replace(/&(lt|gt|amp|quot|apos|#x?[0-9a-fA-F]+);/g,(m,c)=>
+    c==='lt'?'<':c==='gt'?'>':c==='amp'?'&':c==='quot'?'"':c==='apos'?"'":String.fromCodePoint(c[1]==='x'?parseInt(c.slice(2),16):parseInt(c.slice(1),10)));
+  const siText=si=>{let t='';const re=/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;let m;while((m=re.exec(si)))t+=m[1];return unesc(t);};
+  async function readXlsx(file,onProgress){
+    if(typeof DecompressionStream==='undefined')throw new Error('Este navegador não descompacta .xlsx (DecompressionStream). Use Chrome/Edge atualizados ou exporte em .csv.');
+    const buf=await file.arrayBuffer();
+    const entries=zipEntries(buf);
+    const wb=await entryText(buf,entries,'xl/workbook.xml');
+    const rels=await entryText(buf,entries,'xl/_rels/workbook.xml.rels')||'';
+    if(!wb)throw new Error('Não encontrei a lista de abas do .xlsx.');
+    const sheets=[...wb.matchAll(/<sheet\b[^>]*?name="([^"]*)"[^>]*?r:id="([^"]*)"/g)].map(m=>{
+      const rel=new RegExp('<Relationship\\b[^>]*Id="'+m[2]+'"[^>]*Target="([^"]*)"').exec(rels)||new RegExp('<Relationship\\b[^>]*Target="([^"]*)"[^>]*Id="'+m[2]+'"').exec(rels);
+      let target=rel?rel[1]:'';target=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');
+      return{name:unesc(m[1]),path:target};
+    });
+    onProgress&&onProgress('Lendo textos da planilha…');
+    const sstXml=await entryText(buf,entries,'xl/sharedStrings.xml');
+    const sst=[];
+    if(sstXml){const re=/<si>([\s\S]*?)<\/si>/g;let m;while((m=re.exec(sstXml)))sst.push(siText(m[1]));}
+    const ordered=[...sheets.filter(s=>norm(s.name)==='base'),...sheets.filter(s=>norm(s.name)!=='base')];
+    for(const sh of ordered){
+      const e=entries.get(sh.path);if(!e)continue;
+      const res=await streamSheet(buf,e,sst,sh.name,onProgress);
+      if(res)return res;
+    }
+    throw new Error('Nenhuma aba tem as colunas unidade, max e frente_final.');
+  }
+  /* Aba lida em streaming: o XML descompactado da base real passa de 500 MB e não cabe
+     numa string — corta em cada </row> e descarta o que já foi lido. */
+  async function streamSheet(buf,entry,sst,sheetName,onProgress){
+    const reader=entryStream(buf,entry).getReader();
+    let carry='',colMap=null,n=0;const rows=[];
+    const cellRe=/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+    const parseRow=xml=>{
+      const out={};let m;cellRe.lastIndex=0;
+      while((m=cellRe.exec(xml))){
+        const attrs=m[1];const ref=/\br="([A-Z]+)/.exec(attrs);if(!ref)continue;
+        const col=ref[1];
+        if(colMap&&!colMap[col])continue;
+        const body=m[2]||'';const t=/\bt="([^"]*)"/.exec(attrs);const type=t?t[1]:'n';
+        let v=null;
+        if(type==='inlineStr')v=siText(body);
+        else{const vm=/<v>([\s\S]*?)<\/v>/.exec(body);if(vm)v=type==='s'?sst[+vm[1]]:type==='n'?+vm[1]:unesc(vm[1]);}
+        out[col]=v;
+      }
+      return out;
+    };
+    for(;;){
+      const{done,value}=await reader.read();
+      if(value)carry+=value;
+      let end,pos=0;
+      while((end=carry.indexOf('</row>',pos))>=0){
+        const st=carry.lastIndexOf('<row',end);
+        const xml=carry.slice(st,end);pos=end+6;
+        const cells=parseRow(xml);
+        if(!colMap){
+          const map={};for(const[c,h]of Object.entries(cells)){const k=norm(h);if(WANT.includes(k))map[c]=k;}
+          const have=new Set(Object.values(map));
+          if(!NEED.every(k=>have.has(k))){reader.cancel();return null;}
+          colMap=map;continue;
+        }
+        const r={};for(const[c,k]of Object.entries(colMap))r[k]=cells[c]??null;
+        rows.push(r);n++;
+        if(n%10000===0&&onProgress){onProgress(`Lendo aba "${sheetName}": ${n.toLocaleString('pt-BR')} linhas…`);await new Promise(res=>setTimeout(res,0));}
+      }
+      carry=carry.slice(pos);
+      if(done)break;
+    }
+    if(!colMap)return null;
+    return{rows,sheet:sheetName,cols:Object.values(colMap)};
+  }
+  async function readCsv(file,onProgress){
+    const text=await file.text();
+    const first=text.slice(0,text.indexOf('\n')>0?text.indexOf('\n'):text.length);
+    const cnt=ch=>first.split(ch).length-1;
+    const d=[';',',','\t'].sort((a,b)=>cnt(b)-cnt(a))[0];
+    let i=0,field='',row=[],q=false;const L=text.length;let header=null,idx=null;const rows=[];
+    const endRow=()=>{
+      row.push(field);field='';
+      if(!header){
+        header=row.map(norm);
+        idx=WANT.map(k=>[k,header.indexOf(k)]).filter(([,j])=>j>=0);
+        const have=new Set(idx.map(([k])=>k));
+        if(!NEED.every(k=>have.has(k)))throw new Error('O CSV não tem as colunas unidade, max e frente_final.');
+      }else if(row.length>1){
+        const r={};idx.forEach(([k,j])=>{const v=row[j];r[k]=v===''||v==null?null:v;});rows.push(r);
+        if(rows.length%20000===0&&onProgress)onProgress(`Lendo CSV: ${rows.length.toLocaleString('pt-BR')} linhas…`);
+      }
+      row=[];
+    };
+    if(text.charCodeAt(0)===0xfeff)i=1;
+    for(;i<L;i++){
+      const c=text[i];
+      if(q){if(c==='"'){if(text[i+1]==='"'){field+='"';i++;}else q=false;}else field+=c;}
+      else if(c==='"')q=true;
+      else if(c===d){row.push(field);field='';}
+      else if(c==='\n')endRow();
+      else if(c!=='\r')field+=c;
+    }
+    if(field!==''||row.length)endRow();
+    if(!header)throw new Error('O CSV está vazio.');
+    return{rows,sheet:'CSV',cols:idx.map(([k])=>k)};
+  }
+  const num=v=>{if(v==null||v==='')return null;if(typeof v==='number')return v;const n=Number(String(v).trim().replace(',','.'));return isNaN(n)?null:n;};
+  const str=v=>v==null?null:(String(v).trim()||null);
+  function toDate(v){
+    if(v==null||v==='')return null;
+    if(typeof v==='number'||/^\d+(\.\d+)?$/.test(String(v).trim())){const s=Number(v);return new Date(Math.round((s-25569)*86400000));}
+    const t=String(v).trim();
+    let m=/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(t);
+    if(m)return new Date(Date.UTC(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)));
+    m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(t);
+    if(m)return new Date(Date.UTC(+m[3],m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0)));
+    return null;
+  }
+  const ymd=d=>d.toISOString().slice(0,10);
+  const isoWeek=d=>{const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-y)/86400000+1)/7);};
+  const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():s;
+  const AGE={'mesmo dia':'mesmo dia','até 1 dia':'1 dia','até 2 dias':'2 dias','3 a 5 dias':'3 a 5 dias','6 a 10 dias':'6 a 10 dias','> 10 dias':'> 10 dias'};
+  const faixa=(days,txt)=>{
+    if(days!=null){const d=Math.abs(days);return d<1?'mesmo dia':d<2?'1 dia':d<3?'2 dias':d<=5?'3 a 5 dias':d<=10?'6 a 10 dias':'> 10 dias';}
+    if(txt)return AGE[txt.trim().toLowerCase()]||null;
+    return null;
+  };
+  /* Regra dos drivers (nesta ordem) — usada só quando a coluna driver não vem na base. */
+  function driverOf(r){
+    if(r.afetado===1)return 'Triagem/Massiva';
+    const a=r.ant,p=r.post;
+    if(!a)return null;
+    if(a==='IMPRODUTIVO')return 'Improdutiva Anterior';
+    if(p==='RETIDO')return 'Erro de Abertura';
+    if(a==='PRODUTIVO')return 'Qualidade Técnica';
+    return r.aging!=null&&r.aging<=4?'Erro de Cancelamento':'Problema Técnico Operacional';
+  }
+  function aggregate(raw){
+    const counters={};const add=(ds,key,obj,f)=>{const m=counters[ds]||(counters[ds]=new Map());let a=m.get(key);if(!a){a={...obj};m.set(key,a);}for(const k in f)a[k]=(a[k]||0)+f[k];};
+    const weeks=new Map();let dmin=null,dmax=null,used=0,derived=0;
+    for(const x of raw.rows){
+      const unidade=str(x.unidade);if(!unidade)continue;
+      const dt=toDate(x.data_abertura_chamado);
+      const mesD=x.mes!=null?toDate(x.mes):dt;
+      if(!mesD)continue;
+      const mes=ymd(mesD).slice(0,7);
+      const cluster=str(x.cluster_ope)||str(x.cluster)||'Sem cluster';
+      const semana=num(x.semana_abertura)??(dt?isoWeek(dt):null);
+      const max=num(x.max)===1?1:0;
+      const ant=str(x.frente_final_anterior),post=str(x.frente_final);
+      const r={ant:ant&&ant.toUpperCase(),post:post&&post.toUpperCase(),afetado:num(x.afetado),aging:num(x.aging_max)};
+      let driver=str(x.driver);
+      if(!driver&&max){driver=driverOf(r);if(driver)derived++;}
+      const fx=faixa(r.aging,str(x['aging 2']));
+      used++;
+      if(dt){if(!dmin||dt<dmin)dmin=dt;if(!dmax||dt>dmax)dmax=dt;}
+      if(semana!=null&&dt){let w=weeks.get(semana);if(!w)weeks.set(semana,w={semana,ini:dt,fim:dt,dias:new Set()});if(dt<w.ini)w.ini=dt;if(dt>w.fim)w.fim=dt;w.dias.add(ymd(dt));}
+      add('unidades',unidade+'|'+mes,{unidade,cluster,mes},{reparos:1,max,gerou_max:num(x.gerou_max)===1?1:0,max_ate_1d:max&&(fx==='mesmo dia'||fx==='1 dia')?1:0,retidos:r.post==='RETIDO'?1:0});
+      if(semana!=null)add('semanal',unidade+'|'+semana,{unidade,semana},{reparos:1,max});
+      if(!max)continue;
+      const mot=str(x.motivo_anterior)||'Sem motivo registrado',causa=str(x.submotivo_anterior)||'Sem submotivo registrado',motivo=str(x.motivo)||'Sem motivo registrado';
+      if(driver){
+        add('drivers',[unidade,mes,driver].join('|'),{unidade,mes,driver},{max:1});
+        add('causas',[unidade,mes,driver,mot,causa].join('|'),{unidade,mes,driver,motivo_anterior:mot,causa},{max:1});
+      }
+      if(fx)add('aging',[unidade,mes,fx].join('|'),{unidade,mes,faixa:fx,ordem:AG.indexOf(fx)+1},{max:1});
+      if(r.ant)add('transicao',[unidade,mes,r.ant,r.post].join('|'),{unidade,mes,anterior:cap(r.ant),posterior:cap(r.post)},{max:1});
+      add('motivos',[unidade,mes,mot].join('|'),{unidade,mes,motivo_anterior:mot},{max:1});
+      add('motivos_max',[unidade,mes,motivo].join('|'),{unidade,mes,motivo},{max:1});
+    }
+    const out={};
+    for(const k of['unidades','semanal','drivers','aging','transicao','motivos','causas','motivos_max'])out[k]=[...(counters[k]||new Map()).values()];
+    out.semanas=[...weeks.values()].sort((a,b)=>a.semana-b.semana).map(w=>({semana:w.semana,inicio:ymd(w.ini),fim:ymd(w.fim),dias:w.dias.size}));
+    return{data:out,info:{linhas:used,inicio:dmin&&ymd(dmin),fim:dmax&&ymd(dmax),sheet:raw.sheet,derivedDriver:derived}};
+  }
+  /* .json = base já agregada (ex.: max/base/max-base.json do painel standalone). */
+  function fromJson(obj){
+    const d=obj&&obj.unidades?obj:obj&&obj.data&&obj.data.unidades?obj.data:null;
+    if(!d)throw new Error('O .json não está no formato agregado do Diagnóstico MAX (falta "unidades").');
+    const out={};
+    for(const k of['unidades','semanal','drivers','aging','transicao','motivos','causas','motivos_max','semanas'])out[k]=Array.isArray(d[k])?d[k]:[];
+    const sem=out.semanas;
+    return{data:out,info:{linhas:total(out.unidades,'reparos'),inicio:sem.length?sem.reduce((m,w)=>w.inicio<m?w.inicio:m,sem[0].inicio):null,fim:sem.length?sem.reduce((m,w)=>w.fim>m?w.fim:m,sem[0].fim):null,sheet:'JSON',derivedDriver:0}};
+  }
+  async function loadFile(file,onProgress){
+    const name=(file.name||'').toLowerCase();
+    if(name.endsWith('.json'))return fromJson(JSON.parse(await file.text()));
+    const raw=name.endsWith('.csv')||name.endsWith('.txt')?await readCsv(file,onProgress):await readXlsx(file,onProgress);
+    onProgress&&onProgress('Calculando indicadores…');
+    await new Promise(r=>setTimeout(r,0));
+    return aggregate(raw);
+  }
+  window.mxLoader={loadFile,aggregate};
+
+  /* ── eventos ── */
+  function say(t,cls){const m=$('mx-src-msg');m.textContent=t;m.className='mx-src-msg'+(cls?' '+cls:'');}
+  let busy=false;
+  $('mx-file').addEventListener('change',async()=>{
+    const inp=$('mx-file');const f=inp.files&&inp.files[0];inp.value='';
+    if(!f||busy)return;
+    busy=true;$('mx-up-btn').disabled=true;
+    say(`Abrindo ${f.name}…`);
+    try{
+      const res=await loadFile(f,t=>say(t));
+      if(!res.info.linhas)throw new Error('Nenhuma linha com unidade e data foi encontrada.');
+      MXD=res.data;MXI=Object.assign({arquivo:f.name,at:Date.now()},res.info);
+      Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});pickCleared=false;
+      try{await idbSet(MX_IDB_KEY,{data:MXD,info:MXI});}catch(e){console.warn('[MAX] não salvou no IndexedDB',e);}
+      mxRenderAll();
+    }catch(e){
+      say('Não foi possível ler a base: '+(e&&e.message?e.message:e),'err');
+    }finally{busy=false;$('mx-up-btn').disabled=false;}
+  });
+  $('mx-src-del').addEventListener('click',async()=>{
+    if(!confirm('Remover a base do MAX deste dispositivo?'))return;
+    MXD=null;MXI=null;Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});
+    Object.keys(CH).forEach(k=>{CH[k].destroy();delete CH[k];});
+    try{await idbSet(MX_IDB_KEY,null);}catch(e){}
+    mxRenderAll();
+  });
+  $('mx-f-cluster').addEventListener('change',e=>{pickCleared=false;setF({cluster:e.target.value,unidades:[]});});
+  $('mx-f-mes').addEventListener('click',e=>{const b=e.target.closest('button[data-mes]');if(b)setF({mes:b.dataset.mes});});
+  const pick=$('mx-f-unid'),pSum=$('mx-f-unid-sum'),pList=$('mx-f-unid-list'),pQ=$('mx-f-unid-q');
+  pick.addEventListener('toggle',()=>{if(pick.open&&MXS.cluster==='Todos')pick.open=false;});
+  pSum.addEventListener('click',e=>{if(MXS.cluster==='Todos')e.preventDefault();});
+  document.addEventListener('click',e=>{if(pick.open&&!pick.contains(e.target))pick.open=false;});
+  pick.addEventListener('keydown',e=>{if(e.key==='Escape'){pick.open=false;pSum.focus();}});
+  pQ.addEventListener('input',()=>{const t=pQ.value.trim().toLowerCase();pList.querySelectorAll('label').forEach(l=>l.hidden=!!t&&!l.dataset.u.toLowerCase().includes(t));});
+  pick.querySelector('.mx-pick-act').addEventListener('click',e=>{
+    const b=e.target.closest('button[data-a]');if(!b)return;
+    if(b.dataset.a==='all'){pickCleared=false;setF({unidades:[]});}
+    else{pickCleared=true;pList.querySelectorAll('input').forEach(i=>i.checked=false);}
+  });
+  pList.addEventListener('change',()=>{
+    const all=[...pList.querySelectorAll('input')];
+    const on=all.filter(i=>i.checked).map(i=>i.value);
+    pickCleared=on.length===0;
+    setF({unidades:on.length===0||on.length===all.length?[]:on});
+  });
+  $('mx-f-chips').addEventListener('click',e=>{const b=e.target.closest('button[data-u]');if(!b)return;setF({unidades:MXS.unidades.filter(u=>u!==b.dataset.u)});});
+  const rk=$('mx-tb-rank');
+  rk.querySelector('thead').addEventListener('click',e=>{
+    const b=e.target.closest('button[data-k]');if(!b)return;
+    const k=b.dataset.k;
+    if(k===rkSort)rkDir=-rkDir;else{rkSort=k;rkDir=k==='nome'?1:-1;}
+    renderRanking();
+  });
+  rk.querySelector('tbody').addEventListener('click',e=>{
+    const tr=e.target.closest('tr[data-key]');if(!tr)return;
+    const k=tr.dataset.key;
+    if(MXS.cluster==='Todos'){pickCleared=false;setF({cluster:k,unidades:[]});}
+    else{const cur=MXS.unidades.filter(u=>clusterUnits().includes(u));setF({unidades:cur.includes(k)?cur.filter(u=>u!==k):[...cur,k]});}
+  });
+
+  /* ── restaura a base deste dispositivo ── */
+  (async()=>{
+    try{const st=await idbGet(MX_IDB_KEY);if(st&&st.data&&st.data.unidades){MXD=st.data;MXI=st.info||null;}}
+    catch(e){console.warn('[MAX] IndexedDB indisponível',e);}
+    mxRenderAll();
+  })();
+})();
 </script>
 </body>
 </html>
