@@ -33851,19 +33851,26 @@ updateCentralStatus();
     const rows=sumBy(MXD.semanal.filter(r=>inScope(sc,r)),'semana',['reparos','max']).filter(r=>r.reparos>0)
       .map(r=>({...r,semana:r.key,taxa:r.max/r.reparos,w:W8.get(r.key)||{inicio:'',fim:'',dias:7}})).sort((a,b)=>a.semana-b.semana);
     const hollow=c=>rows.map(r=>r.w.dias<7?P.card:c);
-    mkChart('mx-ch-sem',{type:'line',
+    /* Rótulos em todos os pontos: % acima da linha azul, quantidade abaixo da verde. As
+       escalas são ajustadas pra separar as faixas (taxa em cima, volume embaixo) e os
+       rótulos não se sobreporem quando as linhas se cruzam. */
+    const maxT=Math.max(0.01,...rows.map(r=>r.taxa))*100,maxV=Math.max(1,...rows.map(r=>r.max));
+    const lbl=(c,align,fmt)=>({display:true,align,anchor:align==='top'?'end':'start',offset:4,clamp:true,color:c,backgroundColor:P.card+'CC',borderRadius:3,padding:{top:1,bottom:1,left:3,right:3},font:{...font,size:11,weight:'bold'},formatter:fmt});
+    mkChart('mx-ch-sem',{type:'line',plugins:DL(),
       data:{labels:rows.map(r=>'S'+r.semana),datasets:[
         {label:'Taxa MAX (%)',yAxisID:'y',data:rows.map(r=>+(r.taxa*100).toFixed(2)),borderColor:P.blue,backgroundColor:P.blue,borderWidth:2,tension:.25,
-          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:hollow(P.blue)},
+          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:hollow(P.blue),
+          datalabels:lbl(P.blue,'top',(v,c)=>pctBR(rows[c.dataIndex].taxa))},
         {label:'Chamados MAX',yAxisID:'y1',data:rows.map(r=>r.max),borderColor:P.green,backgroundColor:P.green,borderWidth:2,tension:.25,
-          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.green,pointBackgroundColor:hollow(P.green)}]},
-      options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
-        plugins:{legend:{display:true,position:'top',align:'end',labels:{color:P.muted,font,boxWidth:10,boxHeight:10,usePointStyle:true}},datalabels:{display:false},
+          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.green,pointBackgroundColor:hollow(P.green),
+          datalabels:lbl(P.green,'bottom',(v,c)=>int(rows[c.dataIndex].max))}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:6,left:4,right:4}},
+        plugins:{legend:{display:true,position:'top',align:'end',labels:{color:P.muted,font,boxWidth:10,boxHeight:10,usePointStyle:true}},
           tooltip:{callbacks:{
             title:it=>{const r=rows[it[0].dataIndex];return `Semana ${r.semana}`+(r.w.inicio?` · ${dm(r.w.inicio)} a ${dm(r.w.fim)}`:'')+(r.w.dias<7?' (incompleta)':'');},
             label:it=>{const r=rows[it.dataIndex];return it.datasetIndex===0?`Taxa MAX: ${pctBR(r.taxa)} (${int(r.max)} MAX de ${int(r.reparos)} reparos)`:`Chamados MAX: ${int(r.max)}`;}}}},
-        scales:{y:{position:'left',beginAtZero:true,grid:{color:P.grid},border:{display:false},ticks:{color:P.blue,font,callback:v=>v+'%'}},
-          y1:{position:'right',beginAtZero:true,grid:{display:false},border:{display:false},ticks:{color:P.green,font,precision:0,callback:v=>int(v)}},
+        scales:{y:{position:'left',min:-maxT*0.9,suggestedMax:maxT*1.12,grid:{color:c=>c.tick&&c.tick.value<0?'transparent':P.grid},border:{display:false},ticks:{color:P.blue,font,callback:v=>v<0?'':v+'%'}},
+          y1:{position:'right',beginAtZero:true,suggestedMax:maxV*2.1,grid:{display:false},border:{display:false},ticks:{color:P.green,font,precision:0,callback:v=>v>maxV*1.15?'':int(v)}},
           x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
   }
   function renderDrivers(){
@@ -33911,9 +33918,9 @@ updateCentralStatus();
     const rows=AG.map(f=>{const m=(agg.find(a=>a.key===f)||{max:0}).max;return{faixa:f,max:m,share:tot?m/tot:0};});
     mkChart('mx-ch-aging',{type:'bar',plugins:DL(),
       data:{labels:AG,datasets:[{data:rows.map(r=>+(r.share*100).toFixed(2)),backgroundColor:rows.map((_,i)=>i<2?P.blue:P.gray),borderRadius:4,maxBarThickness:40}]},
-      options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{top:22}},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{top:38}},
         plugins:{legend:{display:false},
-          datalabels:{anchor:'end',align:'top',color:P.ink,font:{...font,weight:'bold'},formatter:(v,c)=>pctBR(rows[c.dataIndex].share)},
+          datalabels:{anchor:'end',align:'top',color:P.ink,textAlign:'center',font:{...font,weight:'bold'},formatter:(v,c)=>[pctBR(rows[c.dataIndex].share),int(rows[c.dataIndex].max)]},
           tooltip:{callbacks:{label:it=>{const r=rows[it.dataIndex];return `${pctBR(r.share)} · ${int(r.max)} MAX`;}}}},
         scales:{y:{display:false,beginAtZero:true},x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
   }
@@ -34386,9 +34393,9 @@ updateCentralStatus();
     const s3=slide(fonte,'Drivers do MAX e tempo até reabrir');
     if(drvTot){
       s3.addText('Drivers do MAX (% dos chamados MAX)',{x:0.4,y:1.9,w:6.3,h:0.35,fontSize:13,bold:true,color:NAVY});
-      s3.addChart(pptx.ChartType.bar,[{name:'%',labels:drv.map(d=>d.key),values:drv.map(d=>+(d.max/drvTot*100).toFixed(1))}],{x:0.4,y:2.3,w:6.3,h:3.2,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:drv.map((_,i)=>i?'BCC5D6':BLUE),showLegend:false,catAxisLabelFontSize:10,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:9,catAxisOrientation:'maxMin'});
+      s3.addChart(pptx.ChartType.bar,[{name:'%',labels:drv.map(d=>`${d.key} (${int(d.max)})`),values:drv.map(d=>+(d.max/drvTot*100).toFixed(1))}],{x:0.4,y:2.3,w:6.3,h:3.2,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:drv.map((_,i)=>i?'BCC5D6':BLUE),showLegend:false,catAxisLabelFontSize:10,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:9,catAxisOrientation:'maxMin'});
       s3.addText('Tempo até reabrir (% dos MAX)',{x:7.0,y:1.9,w:5.9,h:0.35,fontSize:13,bold:true,color:NAVY});
-      s3.addChart(pptx.ChartType.bar,[{name:'%',labels:AG,values:ag.map(a=>+(a.share*100).toFixed(1))}],{x:7.0,y:2.3,w:5.9,h:3.2,barDir:'col',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:ag.map((_,i)=>i<2?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:9,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:9});
+      s3.addChart(pptx.ChartType.bar,[{name:'%',labels:ag.map(a=>`${a.faixa} (${int(a.max)})`),values:ag.map(a=>+(a.share*100).toFixed(1))}],{x:7.0,y:2.3,w:5.9,h:3.2,barDir:'col',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:ag.map((_,i)=>i<2?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:9,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:9});
       const d0=DRIVERS_DEF.find(x=>x.driver===drv[0].key);
       card(s3,0.4,5.7,12.5,1.15,'LEITURA',`${drv[0].key} (${pctBR(drv[0].max/drvTot)}): ${d0?d0.regra+' '+d0.leitura:''} MAX em até 1 dia: ${pctBR(t.max?t.max_ate_1d/t.max:null)}.`);
     }else none(s3,'Sem chamados MAX para a seleção.');
@@ -34406,7 +34413,7 @@ updateCentralStatus();
     if(motTot){
       const m10=mot.slice(0,10);
       s4.addText('Motivo de baixa do reparo anterior (top 10)',{x:7.0,y:1.9,w:5.9,h:0.35,fontSize:11,bold:true,color:NAVY});
-      s4.addChart(pptx.ChartType.bar,[{name:'%',labels:m10.map(m=>m.key),values:m10.map(m=>+(m.max/motTot*100).toFixed(1))}],{x:7.0,y:2.3,w:5.9,h:4.6,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:m10.map((_,i)=>i<3?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:9,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:9,catAxisOrientation:'maxMin'});
+      s4.addChart(pptx.ChartType.bar,[{name:'%',labels:m10.map(m=>`${m.key} (${int(m.max)})`),values:m10.map(m=>+(m.max/motTot*100).toFixed(1))}],{x:7.0,y:2.3,w:5.9,h:4.6,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:m10.map((_,i)=>i<3?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:9,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:9,catAxisOrientation:'maxMin'});
     }
 
     // 5 · Ranking
@@ -34447,7 +34454,7 @@ updateCentralStatus();
     if(mmTot){
       const m8=mm.slice(0,8);
       s7.addText('O que o técnico encontrou na volta (top 8)',{x:8.7,y:1.9,w:4.2,h:0.35,fontSize:11,bold:true,color:NAVY});
-      s7.addChart(pptx.ChartType.bar,[{name:'%',labels:m8.map(m=>m.key),values:m8.map(m=>+(m.max/mmTot*100).toFixed(1))}],{x:8.7,y:2.3,w:4.2,h:4.5,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:m8.map((_,i)=>i<3?'42C34B':'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:8,catAxisOrientation:'maxMin'});
+      s7.addChart(pptx.ChartType.bar,[{name:'%',labels:m8.map(m=>`${m.key} (${int(m.max)})`),values:m8.map(m=>+(m.max/mmTot*100).toFixed(1))}],{x:8.7,y:2.3,w:4.2,h:4.5,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:m8.map((_,i)=>i<3?'42C34B':'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:8,catAxisOrientation:'maxMin'});
     }
 
     // 8+ · Plano FCA (um slide por driver)
