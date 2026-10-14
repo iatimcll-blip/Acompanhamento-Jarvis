@@ -13144,9 +13144,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
         <div class="mx-grid">
           <section class="mx-card">
-            <h2>Taxa MAX por semana</h2>
-            <p class="mx-note">MAX ÷ reparos, por semana de abertura. Pontos vazados são semanas incompletas.</p>
-            <div class="mx-cv"><canvas id="mx-ch-sem"></canvas></div>
+            <h2>Taxa MAX e volume por semana</h2>
+            <p class="mx-note">Linha azul: taxa MAX (MAX ÷ reparos, eixo da esquerda). Linha verde: quantidade de chamados MAX (eixo da direita). Pontos vazados são semanas incompletas.</p>
+            <div class="mx-cv" style="height:320px"><canvas id="mx-ch-sem"></canvas></div>
           </section>
           <section class="mx-card">
             <h2>Drivers do MAX</h2>
@@ -33850,15 +33850,20 @@ updateCentralStatus();
     const W8=new Map((MXD.semanas||[]).map(w=>[w.semana,w]));
     const rows=sumBy(MXD.semanal.filter(r=>inScope(sc,r)),'semana',['reparos','max']).filter(r=>r.reparos>0)
       .map(r=>({...r,semana:r.key,taxa:r.max/r.reparos,w:W8.get(r.key)||{inicio:'',fim:'',dias:7}})).sort((a,b)=>a.semana-b.semana);
+    const hollow=c=>rows.map(r=>r.w.dias<7?P.card:c);
     mkChart('mx-ch-sem',{type:'line',
-      data:{labels:rows.map(r=>'S'+r.semana),datasets:[{data:rows.map(r=>+(r.taxa*100).toFixed(2)),borderColor:P.blue,borderWidth:2,tension:.25,
-        pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:rows.map(r=>r.w.dias<7?P.card:P.blue)}]},
-      options:{responsive:true,maintainAspectRatio:false,animation:false,
-        plugins:{legend:{display:false},datalabels:{display:false},
+      data:{labels:rows.map(r=>'S'+r.semana),datasets:[
+        {label:'Taxa MAX (%)',yAxisID:'y',data:rows.map(r=>+(r.taxa*100).toFixed(2)),borderColor:P.blue,backgroundColor:P.blue,borderWidth:2,tension:.25,
+          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:hollow(P.blue)},
+        {label:'Chamados MAX',yAxisID:'y1',data:rows.map(r=>r.max),borderColor:P.green,backgroundColor:P.green,borderWidth:2,tension:.25,
+          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.green,pointBackgroundColor:hollow(P.green)}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{display:true,position:'top',align:'end',labels:{color:P.muted,font,boxWidth:10,boxHeight:10,usePointStyle:true}},datalabels:{display:false},
           tooltip:{callbacks:{
             title:it=>{const r=rows[it[0].dataIndex];return `Semana ${r.semana}`+(r.w.inicio?` · ${dm(r.w.inicio)} a ${dm(r.w.fim)}`:'')+(r.w.dias<7?' (incompleta)':'');},
-            label:it=>{const r=rows[it.dataIndex];return `${pctBR(r.taxa)} · ${int(r.max)} MAX de ${int(r.reparos)} reparos`;}}}},
-        scales:{y:{beginAtZero:true,grid:{color:P.grid},border:{display:false},ticks:{color:P.muted,font,callback:v=>v+'%'}},
+            label:it=>{const r=rows[it.dataIndex];return it.datasetIndex===0?`Taxa MAX: ${pctBR(r.taxa)} (${int(r.max)} MAX de ${int(r.reparos)} reparos)`:`Chamados MAX: ${int(r.max)}`;}}}},
+        scales:{y:{position:'left',beginAtZero:true,grid:{color:P.grid},border:{display:false},ticks:{color:P.blue,font,callback:v=>v+'%'}},
+          y1:{position:'right',beginAtZero:true,grid:{display:false},border:{display:false},ticks:{color:P.green,font,precision:0,callback:v=>int(v)}},
           x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
   }
   function renderDrivers(){
@@ -34358,15 +34363,22 @@ updateCentralStatus();
     s1.addText(`Gerado em ${new Date().toLocaleString('pt-BR',{dateStyle:'long',timeStyle:'short'})} · Jarvis MCLL · alloha FIBRA`,{x:0.4,y:7.0,w:12.5,h:0.3,fontSize:9,color:GREY});
 
     // 2 · Evolução semanal
-    const s2=slide(fonte+' (a série semanal ignora o filtro de mês)','Taxa MAX por semana');
+    const s2=slide(fonte+' (a série semanal ignora o filtro de mês)','Taxa MAX e volume por semana');
     if(sem.length){
-      s2.addChart(pptx.ChartType.line,[{name:'Taxa MAX (%)',labels:sem.map(r=>'S'+r.semana+(r.w.dias<7?'*':'')),values:sem.map(r=>+(r.taxa*100).toFixed(1))}],
-        {x:0.4,y:1.95,w:12.5,h:3.3,chartColors:[BLUE],lineSize:2,lineDataSymbol:'circle',lineDataSymbolSize:7,showValue:true,dataLabelFontSize:9,dataLabelPosition:'t',dataLabelFormatCode:'0.0',showLegend:false,catAxisLabelFontSize:9,valAxisLabelFontSize:9,valAxisLabelFormatCode:'0"%"',valAxisMinVal:0});
+      const semLbl=sem.map(r=>'S'+r.semana+(r.w.dias<7?'*':''));
+      const lineOpt={lineSize:2,lineDataSymbol:'circle',lineDataSymbolSize:7,showValue:true,dataLabelFontSize:8.5};
+      s2.addChart([
+        {type:pptx.ChartType.line,data:[{name:'Taxa MAX (%)',labels:semLbl,values:sem.map(r=>+(r.taxa*100).toFixed(1))}],options:{...lineOpt,chartColors:[BLUE],dataLabelPosition:'t',dataLabelFormatCode:'0.0',dataLabelColor:BLUE}},
+        {type:pptx.ChartType.line,data:[{name:'Chamados MAX',labels:semLbl,values:sem.map(r=>r.max)}],options:{...lineOpt,chartColors:['42C34B'],dataLabelPosition:'b',dataLabelFormatCode:'#,##0',dataLabelColor:GREEN,secondaryValAxis:true,secondaryCatAxis:true}}
+      ],{x:0.4,y:1.95,w:12.5,h:3.3,showLegend:true,legendPos:'t',legendFontSize:9,catAxisLabelFontSize:9,
+        valAxes:[{showValAxisTitle:true,valAxisTitle:'Taxa MAX (%)',valAxisTitleFontSize:9,valAxisLabelFontSize:9,valAxisLabelFormatCode:'0"%"',valAxisMinVal:0,valAxisTitleColor:BLUE},
+                 {showValAxisTitle:true,valAxisTitle:'Chamados MAX',valAxisTitleFontSize:9,valAxisLabelFontSize:9,valAxisLabelFormatCode:'#,##0',valAxisMinVal:0,valGridLine:{style:'none'},valAxisTitleColor:GREEN}],
+        catAxes:[{catAxisTitle:''},{catAxisHidden:true}]});
       const last=sem[sem.length-1],lc=[...sem].reverse().find(r=>r.w.dias>=7),pc=lc?sem[sem.indexOf(lc)-1]:null;
       const hi=sem.reduce((a,b)=>b.taxa>a.taxa?b:a),lo=sem.reduce((a,b)=>b.taxa<a.taxa?b:a);
       const dw=lc&&pc?Math.round((lc.taxa-pc.taxa)*1000)/10:null;
       card(s2,0.4,5.4,12.5,1.45,'SEMANA CONTRA SEMANA',
-        (lc?`Última semana completa (S${lc.semana}${lc.w.inicio?', '+dm(lc.w.inicio)+' a '+dm(lc.w.fim):''}): ${pctBR(lc.taxa)} · ${int(lc.max)} MAX de ${int(lc.reparos)} reparos`+(dw!=null?` (${dw>0?'+':dw<0?'−':'±'}${Math.abs(dw).toFixed(1).replace('.',',')} p.p. vs. S${pc.semana}).`:'.'):'')+
+        (lc?`Última semana completa (S${lc.semana}${lc.w.inicio?', '+dm(lc.w.inicio)+' a '+dm(lc.w.fim):''}): ${pctBR(lc.taxa)} · ${int(lc.max)} MAX de ${int(lc.reparos)} reparos`+(dw!=null?` (${dw>0?'+':dw<0?'−':'±'}${Math.abs(dw).toFixed(1).replace('.',',')} p.p. e ${lc.max-pc.max>0?'+':lc.max-pc.max<0?'−':'±'}${int(Math.abs(lc.max-pc.max))} MAX vs. S${pc.semana}).`:'.'):'')+
         ` Maior taxa: S${hi.semana} (${pctBR(hi.taxa)}); menor: S${lo.semana} (${pctBR(lo.taxa)}).`+(last.w.dias<7?` * semana incompleta (S${last.semana}).`:''));
     }else none(s2,'Sem dados de semana para a seleção.');
 
