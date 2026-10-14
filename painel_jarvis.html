@@ -13035,6 +13035,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-max .mx-src-msg{color:var(--mx-muted);min-width:0}
   #panel-max .mx-src-msg.ok{color:var(--mx-ink)}
   #panel-max .mx-src-msg.err{color:var(--mx-bad);font-weight:600}
+  #panel-max .mx-prog{flex-basis:100%;display:flex;align-items:center;gap:10px;font-size:.85rem}
+  #panel-max .mx-prog-bar{flex:1 1 auto;max-width:560px;height:12px;background:var(--mx-grid);border-radius:6px;overflow:hidden;border:1px solid var(--mx-line)}
+  #panel-max .mx-prog-bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--mx-blue),var(--mx-green));border-radius:6px;transition:width .25s ease}
+  #panel-max .mx-prog-pct{font-weight:700;font-variant-numeric:tabular-nums;min-width:3.2em;color:var(--mx-ink)}
+  #panel-max .mx-prog-txt{color:var(--mx-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #panel-max .mx-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:14px}
   #panel-max .mx-kpi{background:var(--mx-card);border:1px solid var(--mx-line);border-top:3px solid var(--mx-blue);border-radius:12px;padding:16px 18px;display:grid;gap:4px;align-content:start}
   #panel-max .mx-kpi:first-child{border-top-color:var(--mx-green)}
@@ -13123,6 +13128,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button type="button" class="mx-up-btn" id="mx-up-btn" onclick="document.getElementById('mx-file').click()"><i class="ti ti-paperclip"></i> Anexar base</button>
           <input id="mx-file" type="file" accept=".xlsx,.csv,.txt,.json" hidden>
           <span class="mx-src-msg" id="mx-src-msg">Nenhuma base anexada neste dispositivo.</span>
+          <div class="mx-prog" id="mx-prog" hidden>
+            <div class="mx-prog-bar" role="progressbar" aria-label="Progresso da leitura da base" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="mx-prog-bar"><i id="mx-prog-fill"></i></div>
+            <span class="mx-prog-pct" id="mx-prog-pct">0%</span><span class="mx-prog-txt" id="mx-prog-txt"></span>
+          </div>
           <button type="button" class="mx-btn2" id="mx-src-del" hidden>Remover base</button>
           <button type="button" class="mx-up-btn" id="mx-rep-btn" hidden title="Baixa o relatório em PowerPoint (.pptx) e Excel (.xlsx) do cluster, das unidades e do período selecionados" style="background:var(--mx-blue);color:#fff;margin-left:auto"><i class="ti ti-presentation"></i> Gerar relatório (PPT + Excel)</button>
         </div>
@@ -34139,16 +34148,17 @@ updateCentralStatus();
     }
     return out;
   }
-  function entryStream(buf,e){
+  function entryStream(buf,e,onBytes){
     const dv=new DataView(buf);
     const start=e.off+30+dv.getUint16(e.off+26,true)+dv.getUint16(e.off+28,true);
     let s=new Blob([new Uint8Array(buf,start,e.csize)]).stream();
+    if(onBytes){let n=0;s=s.pipeThrough(new TransformStream({transform(ch,c){n+=ch.byteLength;onBytes(n/(e.csize||1));c.enqueue(ch);}}));}
     if(e.method===8)s=s.pipeThrough(new DecompressionStream('deflate-raw'));
     return s.pipeThrough(new TextDecoderStream());
   }
-  async function entryText(buf,entries,name){
+  async function entryText(buf,entries,name,onBytes){
     const e=entries.get(name);if(!e)return null;
-    const r=entryStream(buf,e).getReader();let t='';
+    const r=entryStream(buf,e,onBytes).getReader();let t='';
     for(;;){const{done,value}=await r.read();if(done)break;t+=value;}
     return t;
   }
@@ -34157,8 +34167,10 @@ updateCentralStatus();
   const siText=si=>{let t='';const re=/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;let m;while((m=re.exec(si)))t+=m[1];return unesc(t);};
   async function readXlsx(file,onProgress){
     if(typeof DecompressionStream==='undefined')throw new Error('Este navegador não descompacta .xlsx (DecompressionStream). Use Chrome/Edge atualizados ou exporte em .csv.');
+    onProgress&&onProgress('Abrindo o arquivo…',1);
     const buf=await file.arrayBuffer();
     const entries=zipEntries(buf);
+    onProgress&&onProgress('Lendo a estrutura da planilha…',3);
     const wb=await entryText(buf,entries,'xl/workbook.xml');
     const rels=await entryText(buf,entries,'xl/_rels/workbook.xml.rels')||'';
     if(!wb)throw new Error('Não encontrei a lista de abas do .xlsx.');
@@ -34167,8 +34179,9 @@ updateCentralStatus();
       let target=rel?rel[1]:'';target=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');
       return{name:unesc(m[1]),path:target};
     });
-    onProgress&&onProgress('Lendo textos da planilha…');
-    const sstXml=await entryText(buf,entries,'xl/sharedStrings.xml');
+    onProgress&&onProgress('Lendo textos da planilha…',3);
+    const sstXml=await entryText(buf,entries,'xl/sharedStrings.xml',f=>onProgress&&onProgress(null,3+12*f));
+    onProgress&&onProgress('Lendo textos da planilha…',15);
     const sst=[];
     if(sstXml){const re=/<si>([\s\S]*?)<\/si>/g;let m;while((m=re.exec(sstXml)))sst.push(siText(m[1]));}
     const ordered=[...sheets.filter(s=>norm(s.name)==='base'),...sheets.filter(s=>norm(s.name)!=='base')];
@@ -34182,7 +34195,8 @@ updateCentralStatus();
   /* Aba lida em streaming: o XML descompactado da base real passa de 500 MB e não cabe
      numa string — corta em cada </row> e descarta o que já foi lido. */
   async function streamSheet(buf,entry,sst,sheetName,onProgress){
-    const reader=entryStream(buf,entry).getReader();
+    let frac=0;
+    const reader=entryStream(buf,entry,f=>{frac=f;}).getReader();
     let carry='',colMap=null,n=0;const rows=[];
     const cellRe=/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
     const parseRow=xml=>{
@@ -34215,7 +34229,7 @@ updateCentralStatus();
         }
         const r={};for(const[c,k]of Object.entries(colMap))r[k]=cells[c]??null;
         rows.push(r);n++;
-        if(n%10000===0&&onProgress){onProgress(`Lendo aba "${sheetName}": ${n.toLocaleString('pt-BR')} linhas…`);await new Promise(res=>setTimeout(res,0));}
+        if(n%10000===0&&onProgress){onProgress(`Lendo aba "${sheetName}": ${n.toLocaleString('pt-BR')} linhas…`,15+75*frac);await new Promise(res=>setTimeout(res,0));}
       }
       carry=carry.slice(pos);
       if(done)break;
@@ -34224,7 +34238,9 @@ updateCentralStatus();
     return{rows,sheet:sheetName,cols:Object.values(colMap)};
   }
   async function readCsv(file,onProgress){
+    onProgress&&onProgress('Abrindo o arquivo…',2);
     const text=await file.text();
+    onProgress&&onProgress('Lendo CSV…',10);
     const first=text.slice(0,text.indexOf('\n')>0?text.indexOf('\n'):text.length);
     const cnt=ch=>first.split(ch).length-1;
     const d=[';',',','\t'].sort((a,b)=>cnt(b)-cnt(a))[0];
@@ -34238,12 +34254,13 @@ updateCentralStatus();
         if(!NEED.every(k=>have.has(k)))throw new Error('O CSV não tem as colunas unidade, max e frente_final.');
       }else if(row.length>1){
         const r={};idx.forEach(([k,j])=>{const v=row[j];r[k]=v===''||v==null?null:v;});rows.push(r);
-        if(rows.length%20000===0&&onProgress)onProgress(`Lendo CSV: ${rows.length.toLocaleString('pt-BR')} linhas…`);
+        if(rows.length%20000===0&&onProgress)onProgress(`Lendo CSV: ${rows.length.toLocaleString('pt-BR')} linhas…`,10+80*i/L);
       }
       row=[];
     };
     if(text.charCodeAt(0)===0xfeff)i=1;
-    for(;i<L;i++){
+    for(let nextYield=i+1e6;i<L;i++){
+      if(i>=nextYield){nextYield=i+1e6;onProgress&&onProgress(null,10+80*i/L);await new Promise(res=>setTimeout(res,0));}
       const c=text[i];
       if(q){if(c==='"'){if(text[i+1]==='"'){field+='"';i++;}else q=false;}else field+=c;}
       else if(c==='"')q=true;
@@ -34340,9 +34357,16 @@ updateCentralStatus();
   }
   async function loadFile(file,onProgress){
     const name=(file.name||'').toLowerCase();
-    if(name.endsWith('.json'))return fromJson(JSON.parse(await file.text()));
+    if(name.endsWith('.json')){
+      onProgress&&onProgress('Abrindo o arquivo…',5);
+      const txt=await file.text();
+      onProgress&&onProgress('Lendo a base agregada…',60);await new Promise(r=>setTimeout(r,0));
+      const res=fromJson(JSON.parse(txt));
+      onProgress&&onProgress('Calculando indicadores…',92);
+      return res;
+    }
     const raw=name.endsWith('.csv')||name.endsWith('.txt')?await readCsv(file,onProgress):await readXlsx(file,onProgress);
-    onProgress&&onProgress('Calculando indicadores…');
+    onProgress&&onProgress('Calculando indicadores…',92);
     await new Promise(r=>setTimeout(r,0));
     return aggregate(raw);
   }
@@ -34610,14 +34634,29 @@ updateCentralStatus();
 
   /* ── eventos ── */
   function say(t,cls){const m=$('mx-src-msg');m.textContent=t;m.className='mx-src-msg'+(cls?' '+cls:'');}
+  /* Barra de progresso do anexo: prog(texto|null, % |undefined). Só avança (nunca volta),
+     mesmo quando o leitor testa uma aba sem as colunas e passa pra próxima. */
+  let progPct=0,progHide=null;
+  function prog(t,p){
+    const box=$('mx-prog');clearTimeout(progHide);box.hidden=false;
+    if(p!=null&&isFinite(p)){progPct=Math.max(progPct,Math.min(100,p));
+      $('mx-prog-fill').style.width=progPct.toFixed(1)+'%';$('mx-prog-pct').textContent=Math.floor(progPct)+'%';$('mx-prog-bar').setAttribute('aria-valuenow',String(Math.floor(progPct)));}
+    if(t)$('mx-prog-txt').textContent=t;
+  }
+  function progEnd(ok){
+    if(ok){prog('Pronto',100);progHide=setTimeout(()=>{$('mx-prog').hidden=true;},1200);}
+    else $('mx-prog').hidden=true;
+  }
   let busy=false;
   $('mx-file').addEventListener('change',async()=>{
     const inp=$('mx-file');const f=inp.files&&inp.files[0];inp.value='';
     if(!f||busy)return;
     busy=true;$('mx-up-btn').disabled=true;
-    say(`Abrindo ${f.name}…`);
+    say(`Anexando ${f.name}…`);
+    progPct=0;prog('Abrindo o arquivo…',0);
+    let ok=false;
     try{
-      const res=await loadFile(f,t=>say(t));
+      const res=await loadFile(f,(t,p)=>prog(t,p));
       if(!res.info.linhas)throw new Error('Nenhuma linha com unidade e data foi encontrada.');
       MXD=res.data;MXI=Object.assign({arquivo:f.name,at:Date.now()},res.info);
       MXT_CACHE=MXD.tecnicos?{at:MXI.at,rows:MXD.tecnicos}:null;
@@ -34625,9 +34664,10 @@ updateCentralStatus();
       Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});pickCleared=false;
       try{await idbSet(MX_IDB_KEY,{data:MXD,info:MXI});}catch(e){console.warn('[MAX] não salvou no IndexedDB',e);}
       mxRenderAll();
+      ok=true;
     }catch(e){
       say('Não foi possível ler a base: '+(e&&e.message?e.message:e),'err');
-    }finally{busy=false;$('mx-up-btn').disabled=false;}
+    }finally{busy=false;$('mx-up-btn').disabled=false;progEnd(ok);}
   });
   $('mx-src-del').addEventListener('click',async()=>{
     if(!confirm('Remover a base do MAX deste dispositivo?'))return;
