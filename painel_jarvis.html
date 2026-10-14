@@ -13154,7 +13154,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="mx-grid">
           <section class="mx-card">
             <h2>Taxa MAX e volume por semana</h2>
-            <p class="mx-note">Linha azul: taxa MAX (MAX ÷ reparos, eixo da esquerda). Linha verde: quantidade de chamados MAX (eixo da direita). Pontos vazados são semanas incompletas.</p>
+            <p class="mx-note">Linha azul: taxa MAX (MAX ÷ reparos, eixo da esquerda). Linha verde: quantidade de chamados MAX (eixo da direita). Pontos vazados são semanas incompletas. Clique numa semana para ver o volume por dia logo abaixo.</p>
             <div class="mx-cv" style="height:320px"><canvas id="mx-ch-sem"></canvas></div>
           </section>
           <section class="mx-card">
@@ -13163,6 +13163,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <div class="mx-drv" id="mx-drivers"></div>
           </section>
         </div>
+
+        <section class="mx-card">
+          <h2 id="mx-dia-title">Volume de MAX por dia</h2>
+          <p class="mx-note" id="mx-dia-note">Clique numa semana no gráfico “Taxa MAX e volume por semana” para ver os dias dela.</p>
+          <div class="mx-cv" style="height:280px" id="mx-cv-dia"><canvas id="mx-ch-dia"></canvas></div>
+        </section>
 
         <div class="mx-grid">
           <section class="mx-card">
@@ -33751,6 +33757,7 @@ updateCentralStatus();
   let MXI=null;          // info da base {arquivo,linhas,inicio,fim,sheet,derivedDriver,at}
   const MXS={cluster:'Todos',mes:'Todos',unidades:[]};
   let rkSort='taxa',rkDir=-1,pickCleared=false;
+  let mxSelSem=null; // semana escolhida no gráfico semanal (detalhe por dia)
   const CH={};
 
   /* ── formatação ── */
@@ -33878,6 +33885,8 @@ updateCentralStatus();
     const rows=sumBy(MXD.semanal.filter(r=>inScope(sc,r)),'semana',['reparos','max']).filter(r=>r.reparos>0)
       .map(r=>({...r,semana:r.key,taxa:r.max/r.reparos,w:W8.get(r.key)||{inicio:'',fim:'',dias:7}})).sort((a,b)=>a.semana-b.semana);
     const hollow=c=>rows.map(r=>r.w.dias<7?P.card:c);
+    if(!rows.some(r=>r.semana===mxSelSem))mxSelSem=rows.length?rows[rows.length-1].semana:null;
+    const rad=rows.map(r=>r.semana===mxSelSem?7:4);
     /* Rótulos em todos os pontos: % acima da linha azul, quantidade abaixo da verde. As
        escalas são ajustadas pra separar as faixas (taxa em cima, volume embaixo) e os
        rótulos não se sobreporem quando as linhas se cruzam. */
@@ -33886,18 +33895,59 @@ updateCentralStatus();
     mkChart('mx-ch-sem',{type:'line',plugins:DL(),
       data:{labels:rows.map(r=>'S'+r.semana),datasets:[
         {label:'Taxa MAX (%)',yAxisID:'y',data:rows.map(r=>+(r.taxa*100).toFixed(2)),borderColor:P.blue,backgroundColor:P.blue,borderWidth:2,tension:.25,
-          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:hollow(P.blue),
+          pointRadius:rad,pointHoverRadius:7,pointBorderWidth:2,pointBorderColor:P.blue,pointBackgroundColor:hollow(P.blue),
           datalabels:lbl(P.blue,'top',(v,c)=>pctBR(rows[c.dataIndex].taxa))},
         {label:'Chamados MAX',yAxisID:'y1',data:rows.map(r=>r.max),borderColor:P.green,backgroundColor:P.green,borderWidth:2,tension:.25,
-          pointRadius:4,pointHoverRadius:6,pointBorderWidth:2,pointBorderColor:P.green,pointBackgroundColor:hollow(P.green),
+          pointRadius:rad,pointHoverRadius:7,pointBorderWidth:2,pointBorderColor:P.green,pointBackgroundColor:hollow(P.green),
           datalabels:lbl(P.green,'bottom',(v,c)=>int(rows[c.dataIndex].max))}]},
       options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:6,left:4,right:4}},
+        onHover:(e,els)=>{e.native&&e.native.target&&(e.native.target.style.cursor=els.length?'pointer':'default');},
+        onClick:(e,els)=>{if(!els.length)return;mxSelSem=rows[els[0].index].semana;setTimeout(()=>{renderSemanal();renderDiario();},0);}, // fora do handler: o Chart.js ainda usa o gráfico depois do onClick
         plugins:{legend:{display:true,position:'top',align:'end',labels:{color:P.muted,font,boxWidth:10,boxHeight:10,usePointStyle:true}},
           tooltip:{callbacks:{
             title:it=>{const r=rows[it[0].dataIndex];return `Semana ${r.semana}`+(r.w.inicio?` · ${dm(r.w.inicio)} a ${dm(r.w.fim)}`:'')+(r.w.dias<7?' (incompleta)':'');},
-            label:it=>{const r=rows[it.dataIndex];return it.datasetIndex===0?`Taxa MAX: ${pctBR(r.taxa)} (${int(r.max)} MAX de ${int(r.reparos)} reparos)`:`Chamados MAX: ${int(r.max)}`;}}}},
+            label:it=>{const r=rows[it.dataIndex];return it.datasetIndex===0?`Taxa MAX: ${pctBR(r.taxa)} (${int(r.max)} MAX de ${int(r.reparos)} reparos)`:`Chamados MAX: ${int(r.max)}`;},
+            footer:()=>'Clique para ver os dias da semana'}}},
         scales:{y:{position:'left',min:-maxT*0.9,suggestedMax:maxT*1.12,grid:{color:c=>c.tick&&c.tick.value<0?'transparent':P.grid},border:{display:false},ticks:{color:P.blue,font,callback:v=>v<0?'':v+'%'}},
           y1:{position:'right',beginAtZero:true,suggestedMax:maxV*2.1,grid:{display:false},border:{display:false},ticks:{color:P.green,font,precision:0,callback:v=>v>maxV*1.15?'':int(v)}},
+          x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
+  }
+  /* Volume de MAX por dia da semana escolhida (mxSelSem). Respeita cluster/unidades, como o
+     gráfico semanal (o filtro de mês não se aplica à série semanal nem a este detalhe). */
+  const DOW=['dom','seg','ter','qua','qui','sex','sáb'];
+  function diaData(sc,sem){
+    const W=(MXD.semanas||[]).find(w=>w.semana===sem);
+    const agg=sumBy((MXD.diario||[]).filter(r=>r.semana===sem&&inScope(sc,r)),'dia',['reparos','max']);
+    const by=new Map(agg.map(a=>[a.key,a]));
+    const days=[];
+    if(W&&W.inicio&&W.fim){for(let d=new Date(W.inicio+'T00:00:00Z');d<=new Date(W.fim+'T00:00:00Z');d=new Date(d.getTime()+864e5))days.push(d.toISOString().slice(0,10));}
+    agg.forEach(a=>{if(!days.includes(a.key))days.push(a.key);});
+    days.sort();
+    return{W,rows:days.map(d=>{const a=by.get(d)||{reparos:0,max:0};return{dia:d,dow:DOW[new Date(d+'T00:00:00Z').getUTCDay()],reparos:a.reparos,max:a.max,taxa:a.reparos?a.max/a.reparos:null};})};
+  }
+  function renderDiario(){
+    const P=pal(),cv=$('mx-cv-dia'),note=$('mx-dia-note'),title=$('mx-dia-title');
+    if(!MXD.diario||!MXD.diario.length){
+      if(CH['mx-ch-dia']){CH['mx-ch-dia'].destroy();delete CH['mx-ch-dia'];}
+      cv.hidden=true;title.textContent='Volume de MAX por dia';
+      note.textContent='Esta base não tem o detalhe por dia (base agregada .json). Anexe o .xlsx ou o .csv para ver o volume de MAX dia a dia.';return;
+    }
+    cv.hidden=false;
+    if(mxSelSem==null){note.textContent='Clique numa semana no gráfico acima para ver os dias dela.';return;}
+    const{W,rows}=diaData(scope(),mxSelSem);
+    const tr=total(rows,'reparos'),tm=total(rows,'max');
+    title.textContent=`Volume de MAX por dia · Semana ${mxSelSem}`+(W&&W.inicio?` (${dm(W.inicio)} a ${dm(W.fim)})`:'');
+    note.textContent=`${int(tm)} chamados MAX de ${int(tr)} reparos na semana (${pctBR(tr?tm/tr:null)}). Em cada ponto: quantidade de MAX e taxa do dia. Clique em outra semana no gráfico acima para trocar.`;
+    const maxV=Math.max(1,...rows.map(r=>r.max));
+    mkChart('mx-ch-dia',{type:'line',plugins:DL(),
+      data:{labels:rows.map(r=>`${r.dow} ${dm(r.dia)}`),datasets:[{label:'Chamados MAX',data:rows.map(r=>r.max),borderColor:P.green,backgroundColor:P.green,borderWidth:2,tension:.25,
+        pointRadius:5,pointHoverRadius:7,pointBorderWidth:2,pointBorderColor:P.green,pointBackgroundColor:P.green,
+        datalabels:{display:true,align:'top',anchor:'end',offset:4,clamp:true,textAlign:'center',color:P.ink,backgroundColor:P.card+'CC',borderRadius:3,padding:{top:1,bottom:1,left:3,right:3},
+          font:c=>[{...font,size:12,weight:'bold'}][0],formatter:(v,c)=>{const r=rows[c.dataIndex];return[int(r.max),r.reparos?pctBR(r.taxa):'—'];}}}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{top:34,left:6,right:6}},
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{title:it=>{const r=rows[it[0].dataIndex];return `${r.dow} ${dmy(r.dia)}`;},label:it=>{const r=rows[it.dataIndex];return `${int(r.max)} MAX de ${int(r.reparos)} reparos (${pctBR(r.taxa)})`;}}}},
+        scales:{y:{beginAtZero:true,suggestedMax:maxV*1.15,grid:{color:P.grid},border:{display:false},ticks:{color:P.green,font,precision:0,callback:v=>int(v)}},
           x:{grid:{display:false},ticks:{color:P.muted,font}}}}});
   }
   function renderDrivers(){
@@ -34123,7 +34173,7 @@ updateCentralStatus();
     $('mx-empty').hidden=has;$('mx-dash').hidden=!has;$('mx-filters').hidden=!has;$('mx-take').hidden=!has;$('mx-rep-btn').hidden=!has;
     if(!has){$('mx-f-chips').hidden=true;renderSrc();return;}
     if(!$('panel-max').classList.contains('active'))return; // só desenha com a aba aberta
-    renderSrc();renderFilters();renderKpis();renderSemanal();renderDrivers();renderTrans();renderAging();renderMotivos();renderRanking();renderAnalise();renderPlano();
+    renderSrc();renderFilters();renderKpis();renderSemanal();renderDiario();renderDrivers();renderTrans();renderAging();renderMotivos();renderRanking();renderAnalise();renderPlano();
   }
   window.mxRenderAll=mxRenderAll;
 
@@ -34328,6 +34378,7 @@ updateCentralStatus();
       if(semana!=null&&dt){let w=weeks.get(semana);if(!w)weeks.set(semana,w={semana,ini:dt,fim:dt,dias:new Set()});if(dt<w.ini)w.ini=dt;if(dt>w.fim)w.fim=dt;w.dias.add(ymd(dt));}
       add('unidades',unidade+'|'+mes,{unidade,cluster,mes},{reparos:1,max,gerou_max:num(x.gerou_max)===1?1:0,max_ate_1d:max&&(fx==='mesmo dia'||fx==='1 dia')?1:0,retidos:r.post==='RETIDO'?1:0});
       if(semana!=null)add('semanal',unidade+'|'+semana,{unidade,semana},{reparos:1,max});
+      if(semana!=null&&dt)add('diario',unidade+'|'+ymd(dt),{unidade,semana,dia:ymd(dt)},{reparos:1,max});
       if(!max)continue;
       const mot=str(x.motivo_anterior)||'Sem motivo registrado',causa=str(x.submotivo_anterior)||'Sem submotivo registrado',motivo=str(x.motivo)||'Sem motivo registrado';
       if(driver){
@@ -34342,6 +34393,7 @@ updateCentralStatus();
     const out={};
     for(const k of['unidades','semanal','drivers','aging','transicao','motivos','causas','motivos_max'])out[k]=[...(counters[k]||new Map()).values()];
     out.tecnicos=hasTec?[...(counters.tecnicos||new Map()).values()]:null;
+    out.diario=[...(counters.diario||new Map()).values()];
     out.semanas=[...weeks.values()].sort((a,b)=>a.semana-b.semana).map(w=>({semana:w.semana,inicio:ymd(w.ini),fim:ymd(w.fim),dias:w.dias.size}));
     return{data:out,info:{linhas:used,inicio:dmin&&ymd(dmin),fim:dmax&&ymd(dmax),sheet:raw.sheet,derivedDriver:derived}};
   }
@@ -34352,6 +34404,7 @@ updateCentralStatus();
     const out={};
     for(const k of['unidades','semanal','drivers','aging','transicao','motivos','causas','motivos_max','semanas'])out[k]=Array.isArray(d[k])?d[k]:[];
     out.tecnicos=Array.isArray(d.tecnicos)?d.tecnicos:null;
+    out.diario=Array.isArray(d.diario)?d.diario:[];
     const sem=out.semanas;
     return{data:out,info:{linhas:total(out.unidades,'reparos'),inicio:sem.length?sem.reduce((m,w)=>w.inicio<m?w.inicio:m,sem[0].inicio):null,fim:sem.length?sem.reduce((m,w)=>w.fim>m?w.fim:m,sem[0].fim):null,sheet:'JSON',derivedDriver:0}};
   }
@@ -34596,6 +34649,11 @@ updateCentralStatus();
     // Detalhes
     sheet('Semanal',[['Semana',10],['Início',12],['Fim',12],['Dias com dado',14],['Reparos',12,INT],['MAX',10,INT],['Taxa MAX',12,PCT],['Incompleta',12]],
       sem.map(r=>['S'+r.semana,r.w.inicio?dmy(r.w.inicio):'',r.w.fim?dmy(r.w.fim):'',r.w.dias,r.reparos,r.max,r.taxa,r.w.dias<7?'Sim':'']));
+    if(MXD.diario&&MXD.diario.length){
+      const dd=sumBy(MXD.diario.filter(r=>inScope(sc,r)),'dia',['reparos','max']).map(a=>{const x=(MXD.diario.find(r=>r.dia===a.key)||{});return{...a,semana:x.semana};}).sort((a,b)=>a.key<b.key?-1:1);
+      sheet('Diário',[['Dia',12],['Dia da semana',14],['Semana',10],['Reparos',12,INT],['MAX',10,INT],['Taxa MAX',12,PCT]],
+        dd.map(a=>[dmy(a.key),DOW[new Date(a.key+'T00:00:00Z').getUTCDay()],'S'+a.semana,a.reparos,a.max,a.reparos?a.max/a.reparos:null]));
+    }
     sheet('Drivers',[['Driver',30],['MAX',10,INT],['% do MAX',12,PCT],['Regra',50],['Leitura',60]],
       drv.map(d=>{const df=DRIVERS_DEF.find(x=>x.driver===d.key)||{};return[d.key,d.max,drvTot?d.max/drvTot:0,df.regra||'',df.leitura||''];}),{wrap:true});
     sheet('Tempo até reabrir',[['Faixa',16],['MAX',10,INT],['% do MAX',12,PCT]],ag.map(a=>[a.faixa,a.max,a.share]));
