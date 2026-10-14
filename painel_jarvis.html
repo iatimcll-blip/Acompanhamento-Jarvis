@@ -13207,6 +13207,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               </table>
             </div>
           </section>
+          <section class="mx-card">
+            <h2>Atividades concluídas por técnico</h2>
+            <p class="mx-note" id="mx-tec-note">Reparos concluídos (desfecho PRODUTIVO) por técnico, na seleção. Fica só neste dispositivo, não sincroniza.</p>
+            <div class="mx-pick-act" id="mx-tec-bar" style="max-width:24rem"><input id="mx-tec-q" type="search" placeholder="Buscar técnico" aria-label="Buscar técnico"></div>
+            <div class="mx-tablebox">
+              <table class="mx-table" id="mx-tb-tec">
+                <thead><tr><th class="n">#</th><th>Técnico</th><th>Unidade principal</th><th class="n">Concluídas</th><th class="n mx-hide-sm">% do total</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
           <div class="mx-grid">
             <section class="mx-card">
               <h2>Motivos e causas do reparo anterior</h2>
@@ -33646,6 +33657,13 @@ updateCentralStatus();
    Regional MA+PI 13,2%; SISA+ITZA 787 reparos, 15,8%. */
 (function(){
   const MX_IDB_KEY='mx_base_v1';
+  /* Técnico (dado pessoal — LGPD): colunas aceitas na base e cache só deste dispositivo.
+     MXD.tecnicos NUNCA entra no sync (mxPack só leva MX_KEYS); fica também em
+     MX_TEC_IDB_KEY, amarrado ao "at" da base, pra sobreviver quando a base vier do sync. */
+  const MX_TEC_COLS=['tecnico','técnico','usuario_conclusao','usuário conclusão','usuario conclusao','usuário_conclusão'];
+  const MX_TEC_IDB_KEY='mx_tecnicos_v1';
+  let MXT_CACHE=null;
+  const tecRows=()=>MXD&&Array.isArray(MXD.tecnicos)?MXD.tecnicos:(MXT_CACHE&&MXI&&MXT_CACHE.at===MXI.at?MXT_CACHE.rows:null);
   const REG=['C.32|Maranhão','C.31|Piaui'];
   const AG=['mesmo dia','1 dia','2 dias','3 a 5 dias','6 a 10 dias','> 10 dias'];
   const NOMES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -33967,6 +33985,29 @@ updateCentralStatus();
   }
 
   /* ── análise da seleção + FCA ── */
+  /* Atividades concluídas por técnico na seleção (escopo + mês). */
+  function tecData(sc,mes){
+    const rows=tecRows();if(!rows)return null;
+    const sel=rows.filter(r=>inScope(sc,r)&&inMes(mes,r));
+    const by=new Map();
+    sel.forEach(r=>{let a=by.get(r.tecnico);if(!a)by.set(r.tecnico,a={tecnico:r.tecnico,concluidas:0,uni:new Map()});a.concluidas+=r.concluidas;a.uni.set(r.unidade,(a.uni.get(r.unidade)||0)+r.concluidas);});
+    const list=[...by.values()].map(a=>{const u=[...a.uni.entries()].sort((x,y)=>y[1]-x[1]);return{tecnico:a.tecnico,concluidas:a.concluidas,unidade:u[0]?u[0][0]:'',outras:u.length-1};}).sort((a,b)=>b.concluidas-a.concluidas||a.tecnico.localeCompare(b.tecnico,'pt'));
+    return{list,total:total(list,'concluidas')};
+  }
+  function renderTecnicos(){
+    const body=$('mx-tb-tec').querySelector('tbody'),note=$('mx-tec-note'),bar=$('mx-tec-bar');
+    const d=tecData(scope(),MXS.mes);
+    if(!d){body.replaceChildren();bar.hidden=true;$('mx-tb-tec').hidden=true;
+      note.textContent='A base anexada não tem coluna de técnico. Inclua uma coluna "tecnico" (ou "técnico" / "usuario_conclusao") na aba base e anexe de novo.';return;}
+    bar.hidden=false;$('mx-tb-tec').hidden=false;
+    note.textContent=`${int(d.total)} reparos concluídos (desfecho PRODUTIVO) por ${int(d.list.length)} técnicos na seleção. Fica só neste dispositivo, não sincroniza.`;
+    const q=$('mx-tec-q').value.trim().toLowerCase();
+    body.replaceChildren(...d.list.map((t,i)=>{
+      const tr=el('tr');tr.hidden=!!q&&!t.tecnico.toLowerCase().includes(q);
+      tr.append(el('td','n',String(i+1)),el('td',null,t.tecnico),el('td',null,t.unidade+(t.outras?` (+${t.outras})`:'')),el('td','n',int(t.concluidas)),el('td','n mx-hide-sm',pctBR(d.total?t.concluidas/d.total:null)));
+      return tr;
+    }));
+  }
   function renderAnalise(){
     const P=pal(),mes=MXS.mes,sc=scope();
     const per=mes==='Todos'?periodo():'em '+mesLongo(mes);
@@ -33985,6 +34026,7 @@ updateCentralStatus();
       tr.append(el('td',null,u.key),el('td','n mx-hide-sm',int(u.reparos)),el('td','n',int(u.max)),el('td','n',pctBR(u.max/u.reparos)),el('td',null,f(tD)),el('td','mx-hide-sm',f(tM)),el('td','mx-hide-sm',f(tC)));
       return tr;
     }));
+    renderTecnicos();
     // Motivo → causa
     const tot=total(cs,'max');
     const combos=top(cs,r=>r.motivo_anterior+'→'+r.causa).slice(0,12);
@@ -34078,7 +34120,7 @@ updateCentralStatus();
 
   /* ── leitor de base (xlsx em streaming / csv / json agregado) ── */
   const NEED=['unidade','max','frente_final'];
-  const WANT=['unidade','cluster','cluster_ope','mes','semana_abertura','data_abertura_chamado','max','gerou_max','afetado','aging_max','aging 2','frente_final','frente_final_anterior','driver','motivo_anterior','submotivo_anterior','motivo'];
+  const WANT=['unidade','cluster','cluster_ope','mes','semana_abertura','data_abertura_chamado','max','gerou_max','afetado','aging_max','aging 2','frente_final','frente_final_anterior','driver','motivo_anterior','submotivo_anterior','motivo',...MX_TEC_COLS];
   const norm=h=>String(h||'').trim().toLowerCase();
   function zipEntries(buf){
     const dv=new DataView(buf),u8=new Uint8Array(buf);
@@ -34246,7 +34288,7 @@ updateCentralStatus();
   }
   function aggregate(raw){
     const counters={};const add=(ds,key,obj,f)=>{const m=counters[ds]||(counters[ds]=new Map());let a=m.get(key);if(!a){a={...obj};m.set(key,a);}for(const k in f)a[k]=(a[k]||0)+f[k];};
-    const weeks=new Map();let dmin=null,dmax=null,used=0,derived=0;
+    const weeks=new Map();let dmin=null,dmax=null,used=0,derived=0,hasTec=false;
     for(const x of raw.rows){
       const unidade=str(x.unidade);if(!unidade)continue;
       const dt=toDate(x.data_abertura_chamado);
@@ -34258,6 +34300,9 @@ updateCentralStatus();
       const max=num(x.max)===1?1:0;
       const ant=str(x.frente_final_anterior),post=str(x.frente_final);
       const r={ant:ant&&ant.toUpperCase(),post:post&&post.toUpperCase(),afetado:num(x.afetado),aging:num(x.aging_max)};
+      const tecnico=MX_TEC_COLS.reduce((v,k)=>v||str(x[k]),null);
+      if(tecnico)hasTec=true;
+      if(tecnico&&r.post==='PRODUTIVO')add('tecnicos',[unidade,mes,tecnico].join('|'),{unidade,mes,tecnico},{concluidas:1});
       let driver=str(x.driver);
       if(!driver&&max){driver=driverOf(r);if(driver)derived++;}
       const fx=faixa(r.aging,str(x['aging 2']));
@@ -34279,6 +34324,7 @@ updateCentralStatus();
     }
     const out={};
     for(const k of['unidades','semanal','drivers','aging','transicao','motivos','causas','motivos_max'])out[k]=[...(counters[k]||new Map()).values()];
+    out.tecnicos=hasTec?[...(counters.tecnicos||new Map()).values()]:null;
     out.semanas=[...weeks.values()].sort((a,b)=>a.semana-b.semana).map(w=>({semana:w.semana,inicio:ymd(w.ini),fim:ymd(w.fim),dias:w.dias.size}));
     return{data:out,info:{linhas:used,inicio:dmin&&ymd(dmin),fim:dmax&&ymd(dmax),sheet:raw.sheet,derivedDriver:derived}};
   }
@@ -34288,6 +34334,7 @@ updateCentralStatus();
     if(!d)throw new Error('O .json não está no formato agregado do Diagnóstico MAX (falta "unidades").');
     const out={};
     for(const k of['unidades','semanal','drivers','aging','transicao','motivos','causas','motivos_max','semanas'])out[k]=Array.isArray(d[k])?d[k]:[];
+    out.tecnicos=Array.isArray(d.tecnicos)?d.tecnicos:null;
     const sem=out.semanas;
     return{data:out,info:{linhas:total(out.unidades,'reparos'),inicio:sem.length?sem.reduce((m,w)=>w.inicio<m?w.inicio:m,sem[0].inicio):null,fim:sem.length?sem.reduce((m,w)=>w.fim>m?w.fim:m,sem[0].fim):null,sheet:'JSON',derivedDriver:0}};
   }
@@ -34341,7 +34388,8 @@ updateCentralStatus();
     const rkRef=total(rk,'reparos')?total(rk,'max')/total(rk,'reparos'):0;
     const un=sumBy(MXD.unidades.filter(inSel),'unidade',['reparos','max']).filter(r=>r.max>0).sort((a,b)=>b.max-a.max);
     const fca=fcaItems(cs,csTot);
-    const N=7+Math.max(1,fca.length);let pg=0;
+    const tec=tecData(sc,mes);
+    const N=7+(tec?1:0)+Math.max(1,fca.length);let pg=0;
     const pptx=pptxNewDeck();
     const slide=(k,title)=>{const s=pptx.addSlide();pptxHeader(s,k,title,`${++pg} / ${N}`);return s;};
     const card=(s,x,y,w,h,lab,txt)=>{s.addShape('rect',{x,y,w,h,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});s.addText([{text:lab+'\n',options:{bold:true,fontSize:10,color:GREY,breakLine:true}},{text:txt,options:{fontSize:12.5,color:NAVY}}],{x:x+0.2,y:y+0.1,w:w-0.4,h:h-0.2,valign:'top'});};
@@ -34457,6 +34505,16 @@ updateCentralStatus();
       s7.addChart(pptx.ChartType.bar,[{name:'%',labels:m8.map(m=>`${m.key} (${int(m.max)})`),values:m8.map(m=>+(m.max/mmTot*100).toFixed(1))}],{x:8.7,y:2.3,w:4.2,h:4.5,barDir:'bar',showValue:true,dataLabelFormatCode:'0.0"%"',chartColors:m8.map((_,i)=>i<3?'42C34B':'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},dataLabelFontSize:8,catAxisOrientation:'maxMin'});
     }
 
+    // Técnicos (só se a base tiver a coluna)
+    if(tec){
+      const st=slide(fonte,'Atividades concluídas por técnico');
+      const lim=20,half=10,rows=tec.list.slice(0,lim);
+      const tbl=part=>[[th('#'),th('Técnico'),th('Unidade'),th('Concluídas')],...part.map(t=>[td(tec.list.indexOf(t)+1,{align:'right'}),td(t.tecnico),td(t.unidade+(t.outras?` (+${t.outras})`:'')),td(int(t.concluidas),{align:'right',bold:true})])];
+      if(rows.length)st.addTable(tbl(rows.slice(0,half)),{x:0.4,y:1.95,w:6.1,colW:[0.5,3.3,1.2,1.1],rowH:0.36,border:{type:'solid',color:GREYL,pt:0.5},valign:'middle',autoPage:false});
+      if(rows.length>half)st.addTable(tbl(rows.slice(half)),{x:6.8,y:1.95,w:6.1,colW:[0.5,3.3,1.2,1.1],rowH:0.36,border:{type:'solid',color:GREYL,pt:0.5},valign:'middle',autoPage:false});
+      card(st,0.4,6.05,12.5,0.85,'TOTAL',`${int(tec.total)} reparos concluídos (desfecho PRODUTIVO) por ${int(tec.list.length)} técnicos ${per}.`+(tec.list.length>lim?` Mostrando os ${lim} com mais atividades; a lista completa está no Excel.`:''));
+      if(!rows.length)none(st,'Sem atividades concluídas na seleção.');
+    }
     // 8+ · Plano FCA (um slide por driver)
     if(!fca.length){const s=slide(fonte,'Plano de ação (Fato · Causa · Ação)');none(s,'Sem chamados MAX para a seleção.');}
     fca.forEach(it=>{
@@ -34531,6 +34589,8 @@ updateCentralStatus();
     sheet('Motivo x Causa',[['Motivo anterior',36],['Causa (submotivo)',40],['MAX',10,INT],['% do MAX',12,PCT],['Unidades com mais casos',40]],
       top(cs,r=>r.motivo_anterior+'→'+r.causa).map(c=>{const[m,ca]=c.key.split('→');return[m,ca,c.max,csTot?c.max/csTot:0,top(cs.filter(r=>r.motivo_anterior===m&&r.causa===ca),'unidade').slice(0,3).map(u=>`${u.key} (${int(u.max)})`).join(', ')];}));
     sheet('Motivos do MAX',[['O que o técnico encontrou na volta',44],['MAX',10,INT],['% do MAX',12,PCT]],mm.map(m=>[m.key,m.max,mmTot?m.max/mmTot:0]));
+    if(tec)sheet('Técnicos',[['#',6],['Técnico',36],['Unidade principal',18],['Outras unidades',16],['Concluídas',12,INT],['% do total',12,PCT]],
+      tec.list.map((t,i)=>[i+1,t.tecnico,t.unidade,t.outras||'',t.concluidas,tec.total?t.concluidas/tec.total:0]));
     sheet('Plano FCA',[['Driver',26],['Prioridade',16],['% do MAX',11,PCT],['Fato',45],['Causa',55],['Ação',80],['Prazo',14],['Responsável',22],['Status',14]],
       fca.map(it=>[it.driver,it.pri[1],it.share,`${int(it.max)} chamados MAX ${per}, ${pctBR(it.share)} do MAX da seleção.`+(it.foco.length?` Concentrado em ${it.foco.map(u=>`${u.key} (${int(u.max)})`).join(', ')}.`:''),
         [it.leitura,...it.causas].filter(Boolean).join('\n'),it.acoes.map(a=>'• '+a).join('\n'),'','','']),
@@ -34560,6 +34620,8 @@ updateCentralStatus();
       const res=await loadFile(f,t=>say(t));
       if(!res.info.linhas)throw new Error('Nenhuma linha com unidade e data foi encontrada.');
       MXD=res.data;MXI=Object.assign({arquivo:f.name,at:Date.now()},res.info);
+      MXT_CACHE=MXD.tecnicos?{at:MXI.at,rows:MXD.tecnicos}:null;
+      idbSet(MX_TEC_IDB_KEY,MXT_CACHE).catch(e=>console.warn('[MAX] não salvou técnicos no IndexedDB',e));
       Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});pickCleared=false;
       try{await idbSet(MX_IDB_KEY,{data:MXD,info:MXI});}catch(e){console.warn('[MAX] não salvou no IndexedDB',e);}
       mxRenderAll();
@@ -34574,6 +34636,7 @@ updateCentralStatus();
     try{await idbSet(MX_IDB_KEY,null);}catch(e){}
     mxRenderAll();
   });
+  $('mx-tec-q').addEventListener('input',()=>{const q=$('mx-tec-q').value.trim().toLowerCase();$('mx-tb-tec').querySelectorAll('tbody tr').forEach(tr=>{tr.hidden=!!q&&!tr.children[1].textContent.toLowerCase().includes(q);});});
   $('mx-f-cluster').addEventListener('change',e=>{pickCleared=false;setF({cluster:e.target.value,unidades:[]});});
   $('mx-f-mes').addEventListener('click',e=>{const b=e.target.closest('button[data-mes]');if(b)setF({mes:b.dataset.mes});});
   const pick=$('mx-f-unid'),pSum=$('mx-f-unid-sum'),pList=$('mx-f-unid-list'),pQ=$('mx-f-unid-q');
@@ -34608,6 +34671,8 @@ updateCentralStatus();
     else{const cur=MXS.unidades.filter(u=>clusterUnits().includes(u));setF({unidades:cur.includes(k)?cur.filter(u=>u!==k):[...cur,k]});}
   });
 
+  /* técnicos: cache só local (ver MX_TEC_IDB_KEY) */
+  (async()=>{try{MXT_CACHE=await idbGet(MX_TEC_IDB_KEY)||null;if(MXT_CACHE&&MXD)mxRenderAll();}catch(e){}})();
   /* ── restaura a base deste dispositivo ── */
   (async()=>{
     try{const st=await idbGet(MX_IDB_KEY);if(st&&st.data&&st.data.unidades){MXD=st.data;MXI=st.info||null;}}
