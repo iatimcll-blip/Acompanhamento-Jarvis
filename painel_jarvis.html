@@ -13124,7 +13124,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <input id="mx-file" type="file" accept=".xlsx,.csv,.txt,.json" hidden>
           <span class="mx-src-msg" id="mx-src-msg">Nenhuma base anexada neste dispositivo.</span>
           <button type="button" class="mx-btn2" id="mx-src-del" hidden>Remover base</button>
-          <button type="button" class="mx-up-btn" id="mx-rep-btn" hidden title="Relatório .pptx do cluster, das unidades e do período selecionados" style="background:var(--mx-blue);color:#fff;margin-left:auto"><i class="ti ti-presentation"></i> Gerar relatório</button>
+          <button type="button" class="mx-up-btn" id="mx-rep-btn" hidden title="Baixa o relatório em PowerPoint (.pptx) e Excel (.xlsx) do cluster, das unidades e do período selecionados" style="background:var(--mx-blue);color:#fff;margin-left:auto"><i class="ti ti-presentation"></i> Gerar relatório (PPT + Excel)</button>
         </div>
       </header>
 
@@ -34289,10 +34289,10 @@ updateCentralStatus();
   }
   window.mxLoader={loadFile,aggregate};
 
-  /* ── Relatório .pptx da seleção (cluster + unidades + mês ativos na tela) ──
+  /* ── Relatório .pptx + .xlsx da seleção (cluster + unidades + mês ativos na tela) ──
      Mesmo padrão visual dos outros relatórios do Jarvis (pptxNewDeck/pptxHeader/PPTX_*).
      Todos os números saem das mesmas funções da tela (totOf, top, fcaItems). */
-  function mxReport(){
+  async function mxReport(){
     if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
     if(!MXD||!MXD.unidades.length){alert('Anexe a base do MAX antes de gerar o relatório.');return;}
     const NAVY=PPTX_NAVY,BLUE=PPTX_BLUE,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE,BGCARD=PPTX_BGCARD;
@@ -34455,8 +34455,71 @@ updateCentralStatus();
     });
 
     const slug=x=>x.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
-    const fn=`Relatorio_MAX_${slug(MXS.cluster==='Todos'?'Todos':cluTxt)}${picked.length?'_'+slug(picked.length>3?picked.length+'_unidades':picked.join('_')):''}_${mes==='Todos'?'Todo_periodo':mes}_${new Date().toISOString().slice(0,10)}.pptx`;
-    return pptx.writeFile({fileName:fn});
+    const fn=`Relatorio_MAX_${slug(MXS.cluster==='Todos'?'Todos':cluTxt)}${picked.length?'_'+slug(picked.length>3?picked.length+'_unidades':picked.join('_')):''}_${mes==='Todos'?'Todo_periodo':mes}_${new Date().toISOString().slice(0,10)}`;
+    await pptx.writeFile({fileName:fn+'.pptx'});
+
+    /* ── Excel: os mesmos dados do PPT, com as listas completas (sem corte de top N) ── */
+    await new Promise((ok,ko)=>abCarregarExcelJS(ok,()=>ko(new Error('Falha ao carregar ExcelJS.'))));
+    const wb=new ExcelJS.Workbook();wb.creator='Jarvis MCLL';wb.created=new Date();
+    const PCT='0.0%',INT='#,##0';
+    const sheet=(name,cols,rows,opt)=>{
+      const ws=wb.addWorksheet(name);
+      const head=ws.addRow(cols.map(c=>c[0]));
+      head.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF182238'}};c.font={color:{argb:'FFFFFFFF'},bold:true};c.alignment={vertical:'middle',wrapText:true};});
+      ws.columns.forEach((c,i)=>{c.width=cols[i][1];if(cols[i][2])c.numFmt=cols[i][2];});
+      rows.forEach(r=>{const row=ws.addRow(r);if(opt&&opt.wrap)row.alignment={vertical:'top',wrapText:true};if(opt&&opt.style)opt.style(row,r);});
+      ws.views=[{state:'frozen',ySplit:1}];
+      if(rows.length)ws.autoFilter={from:{row:1,column:1},to:{row:1,column:cols.length}};
+      return ws;
+    };
+    // Resumo
+    const wr=wb.addWorksheet('Resumo');
+    wr.columns=[{width:26},{width:22},{width:60}];
+    wr.addRow(['Diagnóstico MAX · Jarvis MCLL · alloha FIBRA']).font={bold:true,size:14,color:{argb:'FF182238'}};
+    [['Cluster',cluTxt],['Unidades',uniTxt],['Período',perTxt],['Base',MXI&&MXI.arquivo?MXI.arquivo:'—'],['Gerado em',new Date().toLocaleString('pt-BR')]]
+      .forEach(([k,v])=>{const r=wr.addRow([k,v]);r.getCell(1).font={bold:true};});
+    wr.addRow([]);
+    const kh=wr.addRow(['Indicador','Valor','Observação']);
+    kh.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF182238'}};c.font={color:{argb:'FFFFFFFF'},bold:true};});
+    const kv=[
+      ['Taxa MAX',t.reparos?t.max/t.reparos:null,PCT,dpp==null?(mes==='Todos'?'período completo':'sem mês anterior'):`${dpp>0?'+':dpp<0?'−':'±'}${Math.abs(dpp).toFixed(1).replace('.',',')} p.p. vs. ${mesLongo(prev)}`],
+      ['Reparos abertos',t.reparos,INT,'chamados de reparo'],
+      ['Chamados MAX',t.max,INT,'reaberturas em até 30 dias'],
+      ['MAX em até 1 dia',t.max?t.max_ate_1d/t.max:null,PCT,int(t.max_ate_1d)+' no mesmo dia ou no seguinte'],
+      ['Reparos que geraram MAX',t.gerou_max,INT,'o último mês ainda está na janela de 30 dias']];
+    kv.forEach(([k,v,fmt,obs])=>{const r=wr.addRow([k,v,obs]);r.getCell(2).numFmt=fmt;r.getCell(2).font={bold:true};
+      if(k==='Taxa MAX'&&dpp!=null)r.getCell(3).font={bold:true,color:{argb:dpp>0?'FFC8372D':'FF23943A'}};});
+    wr.addRow([]);
+    const lr=wr.addRow(['Leitura',t.reparos?`${f1(t.max/t.reparos)}% dos ${int(t.reparos)} reparos ${per} foram reaberturas em até 30 dias (MAX).`+(top1?` O principal driver é ${top1.key}, com ${pctBR(top1.max/drvTot)} dos casos.`:''):'Não há reparos na seleção.']);
+    lr.getCell(1).font={bold:true};wr.mergeCells(lr.number,2,lr.number,3);lr.getCell(2).alignment={wrapText:true,vertical:'top'};lr.height=34;
+    // Detalhes
+    sheet('Semanal',[['Semana',10],['Início',12],['Fim',12],['Dias com dado',14],['Reparos',12,INT],['MAX',10,INT],['Taxa MAX',12,PCT],['Incompleta',12]],
+      sem.map(r=>['S'+r.semana,r.w.inicio?dmy(r.w.inicio):'',r.w.fim?dmy(r.w.fim):'',r.w.dias,r.reparos,r.max,r.taxa,r.w.dias<7?'Sim':'']));
+    sheet('Drivers',[['Driver',30],['MAX',10,INT],['% do MAX',12,PCT],['Regra',50],['Leitura',60]],
+      drv.map(d=>{const df=DRIVERS_DEF.find(x=>x.driver===d.key)||{};return[d.key,d.max,drvTot?d.max/drvTot:0,df.regra||'',df.leitura||''];}),{wrap:true});
+    sheet('Tempo até reabrir',[['Faixa',16],['MAX',10,INT],['% do MAX',12,PCT]],ag.map(a=>[a.faixa,a.max,a.share]));
+    const K3=['Produtivo','Improdutivo','Retido'];
+    sheet('Anterior x Posterior',[['Anterior',14],['Posterior (MAX)',16],['MAX',10,INT],['% do MAX',12,PCT],['Driver correspondente',40]],
+      K3.flatMap(a=>K3.map(pp=>{const v=(tr.find(r=>r.key===a+'|'+pp)||{max:0}).max;return[a,pp,v,trTot?v/trTot:0,TRANS_DRV[a]||TRANS_DRV[a+'|'+pp]||''];})));
+    sheet('Motivos anterior',[['Motivo de baixa do reparo anterior',44],['MAX',10,INT],['% do MAX',12,PCT]],mot.map(m=>[m.key,m.max,motTot?m.max/motTot:0]));
+    sheet('Ranking',[[byUnit?'Unidade':'Cluster',30],['Reparos',12,INT],['MAX',10,INT],['Taxa MAX',12,PCT],['MAX em até 1 dia',16,PCT],['Acima da média',16]],
+      rk.map(r=>[r.nome,r.reparos,r.max,r.taxa,r.p1d,r.taxa>rkRef?'Sim':'']),
+      {style:(row,r)=>{if(r[5])row.getCell(4).font={bold:true,color:{argb:'FFC8372D'}};}});
+    const byU2=new Map();cs.forEach(r=>{let a=byU2.get(r.unidade);if(!a)byU2.set(r.unidade,a=[]);a.push(r);});
+    sheet('Por unidade',[['Unidade',12],['Reparos',12,INT],['MAX',10,INT],['Taxa',10,PCT],['Driver principal',28],['% driver',10,PCT],['Motivo anterior principal',32],['% motivo',10,PCT],['Causa principal',36],['% causa',10,PCT]],
+      un.map(u=>{const rs=byU2.get(u.key)||[];const tD=top(rs,'driver')[0],tM=top(rs,'motivo_anterior')[0],tC=top(rs.filter(r=>!String(r.causa).startsWith('Sem ')),'causa')[0];
+        return[u.key,u.reparos,u.max,u.max/u.reparos,tD?tD.key:'',tD?tD.max/u.max:null,tM?tM.key:'',tM?tM.max/u.max:null,tC?tC.key:'',tC?tC.max/u.max:null];}));
+    sheet('Motivo x Causa',[['Motivo anterior',36],['Causa (submotivo)',40],['MAX',10,INT],['% do MAX',12,PCT],['Unidades com mais casos',40]],
+      top(cs,r=>r.motivo_anterior+'→'+r.causa).map(c=>{const[m,ca]=c.key.split('→');return[m,ca,c.max,csTot?c.max/csTot:0,top(cs.filter(r=>r.motivo_anterior===m&&r.causa===ca),'unidade').slice(0,3).map(u=>`${u.key} (${int(u.max)})`).join(', ')];}));
+    sheet('Motivos do MAX',[['O que o técnico encontrou na volta',44],['MAX',10,INT],['% do MAX',12,PCT]],mm.map(m=>[m.key,m.max,mmTot?m.max/mmTot:0]));
+    sheet('Plano FCA',[['Driver',26],['Prioridade',16],['% do MAX',11,PCT],['Fato',45],['Causa',55],['Ação',80],['Prazo',14],['Responsável',22],['Status',14]],
+      fca.map(it=>[it.driver,it.pri[1],it.share,`${int(it.max)} chamados MAX ${per}, ${pctBR(it.share)} do MAX da seleção.`+(it.foco.length?` Concentrado em ${it.foco.map(u=>`${u.key} (${int(u.max)})`).join(', ')}.`:''),
+        [it.leitura,...it.causas].filter(Boolean).join('\n'),it.acoes.map(a=>'• '+a).join('\n'),'','','']),
+      {wrap:true,style:(row,r)=>{row.getCell(2).font={bold:true,color:{argb:r[1]==='Prioridade alta'?'FFC8372D':r[1]==='Prioridade média'?'FFB7791F':'FF5D6880'}};}});
+    const buf=await wb.xlsx.writeBuffer();
+    const url=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    const a=document.createElement('a');a.href=url;a.download=fn+'.xlsx';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
   }
   window.mxReport=mxReport;
   $('mx-rep-btn').addEventListener('click',async()=>{
