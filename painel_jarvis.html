@@ -10370,6 +10370,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button type="button" role="tab" class="fap-subtab" data-sub="consumo" onclick="fapSetSub('consumo')"><i class="ti ti-chart-bar"></i> Consumo</button>
       <button type="button" role="tab" class="fap-subtab" data-sub="auditoria" onclick="fapSetSub('auditoria')"><i class="ti ti-zoom-check"></i> Auditoria e Conciliação</button>
     </div>
+    <div class="fap-ciclo-bar fap-ciclo-topo">
+      <label for="fap-cicloTopo"><i class="ti ti-calendar-time" style="font-size:12px;vertical-align:-1px"></i> Ciclo (dia 15 ao dia 14)</label>
+      <select id="fap-cicloTopo" onchange="fapSetCicloTopo(this.value)"></select>
+      <span class="fap-desc" id="fap-cicloTopoInfo" style="margin:0"></span>
+    </div>
     <div class="fap-sub" id="fap-sub-aportes" role="tabpanel">
     <div class="fap-filterbar">
       <div class="fap-field"><label>UF</label>
@@ -10388,7 +10393,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="fap-cards">
       <div class="fap-card fap-accent-green"><div class="fap-label">Total aportado</div><div class="fap-value" id="fap-cTotal">R$ 0,00</div><div class="fap-foot" id="fap-cTotalFoot">—</div></div>
       <div class="fap-card fap-accent-blue"><div class="fap-label">Aportado hoje</div><div class="fap-value" id="fap-cHoje">R$ 0,00</div><div class="fap-foot" id="fap-cHojeFoot">—</div></div>
-      <div class="fap-card"><div class="fap-label">Aportado no mês</div><div class="fap-value" id="fap-cMes">R$ 0,00</div><div class="fap-foot" id="fap-cMesFoot">—</div></div>
+      <div class="fap-card"><div class="fap-label">Aportado no ciclo</div><div class="fap-value" id="fap-cMes">R$ 0,00</div><div class="fap-foot" id="fap-cMesFoot">—</div></div>
       <div class="fap-card"><div class="fap-label">Placas ativas</div><div class="fap-value" id="fap-cPlacas">0</div><div class="fap-foot">com ao menos 1 aporte</div></div>
     </div>
 
@@ -10602,7 +10607,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div id="fap-mesCorrenteWrap">
         <div class="fap-cards" style="margin-bottom:16px">
-          <div class="fap-card fap-accent-blue"><div class="fap-label">Aportado no ciclo atual</div><div class="fap-value" id="fap-mc-total">R$ 0,00</div><div class="fap-foot" id="fap-mc-totalFoot">—</div></div>
+          <div class="fap-card fap-accent-blue"><div class="fap-label">Aportado no ciclo</div><div class="fap-value" id="fap-mc-total">R$ 0,00</div><div class="fap-foot" id="fap-mc-totalFoot">—</div></div>
           <div class="fap-card"><div class="fap-label">Projeção de fechamento</div><div class="fap-value" id="fap-mc-projecao">R$ 0,00</div><div class="fap-foot" id="fap-mc-projecaoFoot">—</div></div>
           <div class="fap-card"><div class="fap-label">Placas com aporte</div><div class="fap-value" id="fap-mc-placas">0</div><div class="fap-foot">no ciclo atual</div></div>
           <div class="fap-card"><div class="fap-label">Valor médio por aporte</div><div class="fap-value" id="fap-mc-media">R$ 0,00</div><div class="fap-foot" id="fap-mc-mediaFoot">—</div></div>
@@ -26187,6 +26192,18 @@ function fapPopulateSelects(){
 function fapRenderSaldoMesCard(){
   const box=document.getElementById('fap-saldoMesContent');
   if(!box)return;
+  const _cv=fapCicloVis();
+  if(!_cv.todos&&!_cv.atual){
+    const def=(FAP_SALDO_CICLOS.saldo||{})[_cv.start];
+    const apt=FAP_APORTES.filter(a=>a.data>=_cv.start&&a.data<=_cv.end).reduce((x,a)=>x+a.valor,0);
+    const temDef=typeof def==='number';
+    box.innerHTML=`<div class="fap-saldo-display">
+      <div class="fap-saldo-big">${temDef?eh(fapFmtMoney(def-apt)):'—'}</div>
+      <div class="fap-saldo-label">saldo final do ciclo ${eh(fapFmtDate(_cv.start)+' a '+fapFmtDate(_cv.end))} (encerrado)</div>
+      <div class="fap-saldo-sub">Definido: ${temDef?eh(fapFmtMoney(def)):'não registrado'} · Aportado no ciclo: ${eh(fapFmtMoney(apt))} · somente consulta — para definir o saldo, volte ao ciclo atual.</div>
+    </div>`;
+    return;
+  }
   const aportado=fapAportadoMesAtual();
   const restante=fapSaldoMes-aportado;
   const pct=fapSaldoMes>0?Math.max(0,Math.min(100,(restante/fapSaldoMes)*100)):0;
@@ -26251,8 +26268,8 @@ function fapGetFiltros(){
   return{
     uf:document.getElementById('fap-fUf').value,
     placas:FAP_FILTRO.aportes.placa.slice(),
-    de:document.getElementById('fap-fDe').value,
-    ate:document.getElementById('fap-fAte').value,
+    de:fapPeriodoEf('fap-fDe','fap-fAte').de,
+    ate:fapPeriodoEf('fap-fDe','fap-fAte').ate,
     hier:fapFiltroPrep('aportes')
   };
 }
@@ -26284,9 +26301,12 @@ function fapRenderPlacaTable(){
   const body=document.getElementById('fap-placaTableBody');
   const list=fapPlacasFiltradas();
   if(!list.length){body.innerHTML=`<tr><td colspan="6"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;return;}
+  const _per=fapGetFiltros();
+  const _apsPer=FAP_APORTES.filter(a=>(!_per.de||a.data>=_per.de)&&(!_per.ate||a.data<=_per.ate));
   body.innerHTML=list.map(p=>{
-    const total=fapTotalPlaca(p.id);
-    const ult=fapUltimoAporte(p.id);
+    const _ap=_apsPer.filter(a=>a.placaId===p.id);
+    const total=_ap.reduce((x,a)=>x+a.valor,0);
+    const ult=_ap.sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora))[0]||null;
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm">${eh(p.placa)}</div><div class="fap-sub">${eh(p.tecnico||'sem técnico vinculado')}</div></td>
       <td>${p.uf?`<span class="fap-uf-chip">${eh(p.uf)}</span>`:'<span class="fap-incompleto" title="Cadastro incompleto: sem UF">sem UF</span>'}</td>
@@ -26330,7 +26350,7 @@ function fapRenderCards(){
   const doDia=list.filter(a=>a.data===hoje);
   document.getElementById('fap-cHoje').textContent=fapFmtMoney(doDia.reduce((s,a)=>s+a.valor,0));
   document.getElementById('fap-cHojeFoot').textContent=`${doDia.length} lançamento(s) hoje`;
-  const{start:cicloStart,end:cicloEnd}=fapCicloAtualIso();
+  const{start:cicloStart,end:cicloEnd}=fapCicloVis();
   const doMes=list.filter(a=>a.data>=cicloStart&&a.data<=cicloEnd);
   document.getElementById('fap-cMes').textContent=fapFmtMoney(doMes.reduce((s,a)=>s+a.valor,0));
   document.getElementById('fap-cMesFoot').textContent=`${doMes.length} lançamento(s) neste ciclo`;
@@ -26338,8 +26358,10 @@ function fapRenderCards(){
 }
 
 function fapRenderCharts(){
-  const days=[];const now=new Date();
-  for(let i=13;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);days.push(fapIsoLocal(d));}
+  /* Dias do ciclo visível até "hoje" (ciclo encerrado = ciclo inteiro); em "todos", últimos 14 dias. */
+  const days=[];const cv0=fapCicloVis();
+  if(cv0.todos){const now=new Date();for(let i=13;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);days.push(fapIsoLocal(d));}}
+  else{const fim=fapHojeVis();for(let d=cv0.start;d<=fim;d=fapIsoAddDays(d,1))days.push(d);}
   const list=fapAportesFiltrados();
   const porDia=days.map(d=>list.filter(a=>a.data===d).reduce((s,a)=>s+a.valor,0));
   const labels=days.map(d=>{const[,m,dd]=d.split('-');return dd+'/'+m;});
@@ -26405,6 +26427,58 @@ function fapCicloParaData(iso){
   return{start,end};
 }
 function fapCicloAtualIso(){return fapCicloParaData(fapTodayIso());}
+/* Regra do painel (pedido do usuário, 2026-10-15): todos os blocos e listas mostram só o
+   ciclo ATUAL; ciclos anteriores só aparecem quando alguém escolhe outro ciclo no seletor
+   do topo (#fap-cicloTopo) ou um período De/Até na sub-aba. FAP_CICLO_SEL: '' = ciclo
+   atual (padrão a cada abertura, não fica salvo), 'AAAA-MM' (= fapCicloKey) ou 'todos'.
+   Período manual (De/Até) prevalece sobre o ciclo na sub-aba em que foi preenchido.
+   Regras de LANÇAMENTO (saldo do mês, aviso de saldo negativo, histórico "em andamento")
+   continuam usando fapCicloAtualIso() — o seletor só muda o que se VÊ. */
+let FAP_CICLO_SEL='';
+function fapCicloVis(){
+  const at=fapCicloAtualIso();
+  if(FAP_CICLO_SEL==='todos')return{start:'0000-01-01',end:'9999-12-31',todos:true,atual:false};
+  const c=FAP_CICLO_SEL?fapCicloParaData(FAP_CICLO_SEL+'-15'):at;
+  return{start:c.start,end:c.end,todos:false,atual:c.start===at.start};
+}
+/* Ciclo "de calendário" pra blocos que precisam de semanas/projeção: em "todos" usa o atual. */
+function fapCicloVisOuAtual(){const c=fapCicloVis();return c.todos?fapCicloAtualIso():c;}
+/* "Hoje" de referência dentro do ciclo visível (ciclo encerrado = último dia dele). */
+function fapHojeVis(){const c=fapCicloVisOuAtual(),h=fapTodayIso();return h>c.end?c.end:h<c.start?c.start:h;}
+/* Período efetivo de uma sub-aba: De/Até preenchidos prevalecem; senão, o ciclo do topo. */
+function fapPeriodoEf(deId,ateId){
+  const de=(document.getElementById(deId)||{}).value||'',ate=(document.getElementById(ateId)||{}).value||'';
+  if(de||ate)return{de,ate,manual:true};
+  const c=fapCicloVis();
+  return c.todos?{de:'',ate:'',manual:false}:{de:c.start,ate:c.end,manual:false};
+}
+function fapSetCicloTopo(v){FAP_CICLO_SEL=v||'';fapRenderAll();}
+function fapRenderCicloTopo(){
+  const sel=document.getElementById('fap-cicloTopo');if(!sel)return;
+  const at=fapCicloAtualIso(),kAt=fapCicloKey(at.start);
+  const ks=new Set([kAt]);
+  FAP_APORTES.forEach(a=>ks.add(fapCicloKey(a.data)));
+  (FAP_CONSUMO_CONDUTOR||[]).forEach(x=>ks.add(fapCicloKey(String(x.primeiraData||x.semanaStart||'').slice(0,10))));
+  (FAP_CONSUMO_MC||[]).forEach(x=>ks.add(fapCicloKey(String(x.semanaStart||x.primeiraData||'').slice(0,10))));
+  Object.keys((FAP_SALDO_CICLOS&&FAP_SALDO_CICLOS.saldo)||{}).forEach(k=>ks.add(fapCicloKey(k)));
+  if(FAP_AUDIT&&FAP_AUDIT.de)ks.add(fapCicloKey(FAP_AUDIT.de));
+  if(FAP_AUDIT&&FAP_AUDIT.ate)ks.add(fapCicloKey(FAP_AUDIT.ate));
+  ks.delete('');
+  const lista=[...ks].filter(k=>k<=kAt).sort().reverse();
+  if(FAP_CICLO_SEL&&FAP_CICLO_SEL!=='todos'&&!lista.includes(FAP_CICLO_SEL))FAP_CICLO_SEL='';
+  const v=FAP_CICLO_SEL||'';
+  sel.innerHTML=lista.map(k=>{const c=fapCicloParaData(k+'-15');const val=k===kAt?'':k;
+    return`<option value="${val}"${val===v?' selected':''}>${k===kAt?'Ciclo atual · ':''}${eh(fapFmtDate(c.start)+' a '+fapFmtDate(c.end))}</option>`;}).join('')+
+    `<option value="todos"${v==='todos'?' selected':''}>Todos os ciclos</option>`;
+  const info=document.getElementById('fap-cicloTopoInfo');
+  if(info){
+    const ids={aportes:['fap-fDe','fap-fAte'],consumo:['fap-coDe','fap-coAte'],auditoria:['fap-audDe','fap-audAte']}[fapSubAtiva];
+    const p=ids?fapPeriodoEf(ids[0],ids[1]):null;
+    const c=fapCicloVis();
+    info.textContent=p&&p.manual?`Período De/Até preenchido nesta aba (${p.de?fapFmtDate(p.de):'…'} a ${p.ate?fapFmtDate(p.ate):'…'}) — ele prevalece sobre o ciclo.`
+      :c.todos?'Mostrando todos os ciclos.':c.atual?'Ciclos anteriores ficam ocultos — escolha outro ciclo aqui ou um período De/Até para vê-los.':'Ciclo encerrado — somente consulta.';
+  }
+}
 function fapSemanasDoCiclo(start,end){
   const semanas=[];
   let cursor=start;
@@ -26420,7 +26494,8 @@ function fapSemanasDoCicloIso(){const{start,end}=fapCicloAtualIso();return fapSe
 function fapRenderGoWeekTable(){
   const head=document.getElementById('fap-goWeekHead'),body=document.getElementById('fap-goWeekBody');
   if(!head||!body)return;
-  const semanas=fapSemanasDoCicloIso();
+  const _cgo=fapCicloVisOuAtual();
+  const semanas=fapSemanasDoCiclo(_cgo.start,_cgo.end);
   const hoje=fapTodayIso();
   head.innerHTML='<th>GO</th>'+semanas.map((s,i)=>`<th>Semana ${i+1}<br><span style="font-weight:400;color:var(--tx3);font-size:12px">${eh(fapFmtDiaMesIso(s.start))}–${eh(fapFmtDiaMesIso(s.end))}</span></th>`).join('');
   /* Placas sem GO preenchido (pedido do usuário, 2026-10-09: "retirar dos resumos e
@@ -26933,7 +27008,7 @@ function fapFiltroLimpar(sub){
 /* Bases do Consumo já filtradas (GA/GO/Condutor/Placa + período por sobreposição
    com a 1ª–última data de cada linha consolidada). */
 function _fapConsumoPeriodoOk(r){
-  const de=(document.getElementById('fap-coDe')||{}).value||'',ate=(document.getElementById('fap-coAte')||{}).value||'';
+  const{de,ate}=fapPeriodoEf('fap-coDe','fap-coAte');
   if(!de&&!ate)return true;
   const ini=String(r.primeiraData||r.semanaStart||'').slice(0,10),fim=String(r.ultimaData||r.primeiraData||r.semanaStart||'').slice(0,10);
   if(de&&fim&&fim<de)return false;
@@ -27314,7 +27389,7 @@ function fapConcAplicarPreset(v){
 function fapConcDataManual(){const p=document.getElementById('fap-concPreset');if(p)p.value='';fapRenderConciliacao();}
 function fapConciliar(){
   /* Período/placas/GA/GO/Condutor = barra da sub-aba Auditoria e Conciliação. */
-  const de=(document.getElementById('fap-audDe')||{}).value||'',ate=(document.getElementById('fap-audAte')||{}).value||'';
+  const{de,ate}=fapPeriodoEf('fap-audDe','fap-audAte');
   const fc=fapFiltroPrep('auditoria');const pSel=fapAudSelPlacas.length?new Set(fapAudSelPlacas):null;
   const placaPassa=pl=>(!pSel||pSel.has(pl))&&fapPlacaOk(fc,pl);
   const res={erro:'',de,ate,linhas:[]};
@@ -27564,8 +27639,7 @@ function fapAudFiltrar(opts){
   const{dic,rows}=FAP_AUDIT;
   const pSet=fapAudSelPlacas.length?new Set(fapAudSelPlacas):null;
   const tSet=!ignorarTipo&&fapAudSelTipos&&fapAudSelTipos.length?new Set(fapAudSelTipos):null;
-  const de=(document.getElementById('fap-audDe')||{}).value||'';
-  const ate=(document.getElementById('fap-audAte')||{}).value||'';
+  const{de,ate}=fapPeriodoEf('fap-audDe','fap-audAte');
   res.de=de;res.ate=ate;
   if(de&&ate&&de>ate){res.erro='A Data inicial ('+fapFmtDate(de)+') é posterior à Data final ('+fapFmtDate(ate)+') — corrija o período para calcular.';return res;}
   const chk=document.getElementById('fap-audIgnorarNegadas');
@@ -27680,8 +27754,7 @@ function fapAudCotasUsadas(placa,exceptKey){
   if(!FAP_AUDIT)return usadas;
   const{dic,rows}=FAP_AUDIT,keys=fapAudChaves(),cotas=FAP_AUDIT_JUST.cota||{};
   const pi=dic.placa.indexOf(placa);if(pi<0)return usadas;
-  const de=(document.getElementById('fap-audDe')||{}).value||'';
-  const ate=(document.getElementById('fap-audAte')||{}).value||'';
+  const{de,ate}=fapPeriodoEf('fap-audDe','fap-audAte');
   for(let i=0;i<rows.length;i++){
     const r=rows[i];if(r[0]!==pi)continue;
     const k=keys[i];if(k===exceptKey)continue;
@@ -27759,8 +27832,9 @@ function fapAudEmailHtml(){
 }
 function fapAudEmailRaw(){
   const list=FAP_AUDIT?fapAudCotaLista():[];
-  const de=(document.getElementById('fap-audDe')||{}).value||(FAP_AUDIT&&FAP_AUDIT.de)||'';
-  const ate=(document.getElementById('fap-audAte')||{}).value||(FAP_AUDIT&&FAP_AUDIT.ate)||'';
+  const _pe=fapPeriodoEf('fap-audDe','fap-audAte');
+  const de=_pe.de||(FAP_AUDIT&&FAP_AUDIT.de)||'';
+  const ate=_pe.ate||(FAP_AUDIT&&FAP_AUDIT.ate)||'';
   const filtro=['Período: '+(de?fapFmtDate(de):'—')+' a '+(ate?fapFmtDate(ate):'—'),
     'Placa(s): '+(fapAudSelPlacas.length?fapAudSelPlacas.join(', '):'todas'),
     'Somente transações com cota informada'].join(' · ');
@@ -28196,7 +28270,7 @@ function fapFarolCota(total,cota){
 function fapRenderTipoVeiculo(){
   const body=document.getElementById('fap-tipoTableBody');
   if(!body)return;
-  const ciclo=fapCicloAtualIso();
+  const ciclo=fapCicloVisOuAtual();
   /* Map placa→placa construído UMA VEZ (pedido do usuário, 2026-09-16: "verificar
      os travamentos ao anexar base") — antes, fapPlacaByPlaca() rodava um
      FAP_PLACAS.find() por LINHA de FAP_CONSUMO_CONDUTOR (que só cresce a cada
@@ -28450,7 +28524,7 @@ function fapFillCondutorCicloSelect(){
   if(!sel)return;
   const ciclos=[...new Set(FAP_CONSUMO_CONDUTOR.map(r=>fapCicloKey(r.primeiraData)).filter(Boolean))].sort().reverse();
   if(fapCondutorCicloSel&&!ciclos.includes(fapCondutorCicloSel))fapCondutorCicloSel='';
-  sel.innerHTML='<option value="">Todos os ciclos</option>'+ciclos.map(k=>`<option value="${k}"${k===fapCondutorCicloSel?' selected':''}>${eh(fapCicloLabel(k))}</option>`).join('');
+  sel.innerHTML='<option value="">Conforme o ciclo do topo</option>'+ciclos.map(k=>`<option value="${k}"${k===fapCondutorCicloSel?' selected':''}>${eh(fapCicloLabel(k))}</option>`).join('');
 }
 function fapSetCondutorCiclo(v){
   fapCondutorCicloSel=v||'';
@@ -28611,9 +28685,9 @@ function fapRenderMesCorrente(){
   const wrap=document.getElementById('fap-mesCorrenteWrap');
   if(!wrap)return;
 
-  const ciclo=fapCicloAtualIso();
+  const ciclo=fapCicloVisOuAtual();
   const cicloAnterior=fapCicloParaData(fapIsoAddDays(ciclo.start,-1));
-  const hoje=fapTodayIso();
+  const hoje=fapHojeVis();
 
   /* Filtros da sub-aba Consumo (GA/GO/Condutor/Placa, pela placa — aporte não tem
      condutor). Sem filtro = mesmo valor do card "Aportado no mês" de sempre. */
@@ -28622,7 +28696,7 @@ function fapRenderMesCorrente(){
   const aportesCiclo=_apsMc.filter(a=>a.data>=ciclo.start&&a.data<=ciclo.end);
   const aportesAnterior=_apsMc.filter(a=>a.data>=cicloAnterior.start&&a.data<=cicloAnterior.end);
 
-  const totalAtual=_apsMc===FAP_APORTES?fapAportadoMesAtual():aportesCiclo.reduce((x,a)=>x+a.valor,0);
+  const totalAtual=aportesCiclo.reduce((x,a)=>x+a.valor,0); // = fapAportadoMesAtual() no ciclo atual sem filtro
   const totalAnterior=aportesAnterior.reduce((s,a)=>s+a.valor,0);
   const variacaoPct=totalAnterior>0?((totalAtual-totalAnterior)/totalAnterior*100):null;
 
@@ -28697,9 +28771,9 @@ function fapRenderConsumoVeiculoCiclo(){
   if(!body)return;
   fapChVeicList.forEach(ch=>{try{ch.destroy();}catch(e){}});
   fapChVeicList=[];
-  const ciclo=fapCicloAtualIso();
+  const ciclo=fapCicloVisOuAtual();
   const semanas=fapSemanasDoCiclo(ciclo.start,ciclo.end);
-  const hoje=fapTodayIso();
+  const hoje=fapHojeVis();
   const diasTotaisCiclo=fapIsoDiffDays(ciclo.start,ciclo.end)+1;
   const diasDecorridos=Math.min(diasTotaisCiclo,Math.max(1,fapIsoDiffDays(ciclo.start,hoje)+1));
   const semanaEmAndamentoIdx=semanas.findIndex(s=>hoje>=s.start&&hoje<=s.end);
@@ -28917,6 +28991,7 @@ function fapSetSub(k){
 }
 function fapRenderAll(){
   fapRenderSubBar();
+  fapRenderCicloTopo();
   fapPopulateSelects();
   fapRenderFiltroBar(fapSubAtiva);
   if(fapSubAtiva==='consumo'){fapRenderConsumoCondutor();fapRenderHierarquia();return;}
