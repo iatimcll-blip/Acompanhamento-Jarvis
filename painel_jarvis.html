@@ -13036,7 +13036,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-max .mx-src-msg.ok{color:var(--mx-ink)}
   #panel-max .mx-src-msg.err{color:var(--mx-bad);font-weight:600}
   #panel-max .mx-prog{flex-basis:100%;display:flex;align-items:center;gap:10px;font-size:.85rem}
-  #panel-max .mx-prog-bar{flex:1 1 auto;max-width:560px;height:12px;background:var(--mx-grid);border-radius:6px;overflow:hidden;border:1px solid var(--mx-line)}
+  #panel-max .mx-prog-track{position:relative;flex:1 1 auto;max-width:560px;padding-top:24px;margin-right:30px}
+  #panel-max .mx-runner{position:absolute;top:0;left:0;transform:translateX(-50%);font-size:22px;line-height:1;color:var(--mx-blue);transition:left .25s ease,color .3s}
+  #panel-max .mx-runner i{display:inline-block;animation:mxRun .38s ease-in-out infinite alternate}
+  #panel-max .mx-runner.done{color:var(--mx-green)}
+  #panel-max .mx-runner.done i{animation:mxJump .5s ease 2}
+  #panel-max .mx-flag{position:absolute;bottom:-3px;right:-28px;font-size:20px;line-height:1;color:var(--mx-green)}
+  @keyframes mxRun{from{transform:translateY(0) rotate(-4deg)}to{transform:translateY(-3px) rotate(4deg)}}
+  @keyframes mxJump{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  @media (prefers-reduced-motion:reduce){#panel-max .mx-runner i{animation:none}#panel-max .mx-runner{transition:none}}
+  #panel-max .mx-prog-bar{width:100%;height:12px;background:var(--mx-grid);border-radius:6px;overflow:hidden;border:1px solid var(--mx-line)}
   #panel-max .mx-prog-bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--mx-blue),var(--mx-green));border-radius:6px;transition:width .25s ease}
   #panel-max .mx-prog-pct{font-weight:700;font-variant-numeric:tabular-nums;min-width:3.2em;color:var(--mx-ink)}
   #panel-max .mx-prog-txt{color:var(--mx-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -13132,7 +13141,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <input id="mx-file" type="file" accept=".xlsx,.csv,.txt,.json" hidden>
           <span class="mx-src-msg" id="mx-src-msg">Nenhuma base anexada neste dispositivo.</span>
           <div class="mx-prog" id="mx-prog" hidden>
-            <div class="mx-prog-bar" role="progressbar" aria-label="Progresso da leitura da base" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="mx-prog-bar"><i id="mx-prog-fill"></i></div>
+            <div class="mx-prog-track">
+              <span class="mx-runner" id="mx-runner" aria-hidden="true"><i class="ti ti-run"></i></span>
+              <span class="mx-flag" aria-hidden="true"><i class="ti ti-flag-filled"></i></span>
+              <div class="mx-prog-bar" role="progressbar" aria-label="Progresso da leitura da base" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="mx-prog-bar"><i id="mx-prog-fill"></i></div>
+            </div>
             <span class="mx-prog-pct" id="mx-prog-pct">0%</span><span class="mx-prog-txt" id="mx-prog-txt"></span>
           </div>
           <button type="button" class="mx-btn2" id="mx-src-del" hidden>Remover base</button>
@@ -34707,11 +34720,11 @@ updateCentralStatus();
   function prog(t,p){
     const box=$('mx-prog');clearTimeout(progHide);box.hidden=false;
     if(p!=null&&isFinite(p)){progPct=Math.max(progPct,Math.min(100,p));
-      $('mx-prog-fill').style.width=progPct.toFixed(1)+'%';$('mx-prog-pct').textContent=Math.floor(progPct)+'%';$('mx-prog-bar').setAttribute('aria-valuenow',String(Math.floor(progPct)));}
+      $('mx-prog-fill').style.width=progPct.toFixed(1)+'%';$('mx-runner').style.left=progPct.toFixed(1)+'%';$('mx-prog-pct').textContent=Math.floor(progPct)+'%';$('mx-prog-bar').setAttribute('aria-valuenow',String(Math.floor(progPct)));}
     if(t)$('mx-prog-txt').textContent=t;
   }
   function progEnd(ok){
-    if(ok){prog('Pronto',100);progHide=setTimeout(()=>{$('mx-prog').hidden=true;},1200);}
+    if(ok){prog('Pronto',100);$('mx-runner').classList.add('done');progHide=setTimeout(()=>{$('mx-prog').hidden=true;},1600);}
     else $('mx-prog').hidden=true;
   }
   let busy=false;
@@ -34720,7 +34733,7 @@ updateCentralStatus();
     if(!f||busy)return;
     busy=true;$('mx-up-btn').disabled=true;
     say(`Anexando ${f.name}…`);
-    progPct=0;prog('Abrindo o arquivo…',0);
+    progPct=0;$('mx-runner').classList.remove('done');$('mx-runner').style.left='0%';$('mx-prog-fill').style.width='0%';prog('Abrindo o arquivo…',0);
     let ok=false;
     try{
       const res=await loadFile(f,(t,p)=>prog(t,p));
