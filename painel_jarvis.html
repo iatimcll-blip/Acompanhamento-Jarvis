@@ -10414,7 +10414,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button type="button" class="fap-submit-btn fap-secondary" style="width:auto;white-space:nowrap;margin-top:0" onclick="fapToggleNovaPlaca()"><i class="ti ti-plus" style="font-size:13px;vertical-align:-1px"></i> Cadastrar placa</button>
         </div>
         <form id="fap-formLanc" onsubmit="return fapAddLancamento(event)">
-          <div class="fap-form-row"><label>Placa</label><select id="fap-lPlaca" required></select></div>
+          <div class="fap-form-two">
+            <div class="fap-form-row"><label>Placa</label><select id="fap-lPlaca" required onchange="fapRenderLancCondutor()"></select></div>
+            <div class="fap-form-row"><label for="fap-lCondutor">Condutor</label><input type="text" id="fap-lCondutor" readonly tabindex="-1" placeholder="—" title="Condutor cadastrado na placa (campo Condutor / técnico responsável do cadastro)" style="background:var(--surface2);cursor:default"></div>
+          </div>
+          <div class="fap-desc" id="fap-lCondutorNota" style="margin:-6px 0 8px;font-size:12px;display:none"></div>
           <div id="fap-aporte-saldo-mini" class="fap-aporte-saldo-mini"></div>
           <div class="fap-form-two">
             <div class="fap-form-row"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="fap-lValor" placeholder="0,00" required></div>
@@ -10432,9 +10436,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             </div>
           </div>
           <div class="fap-form-two">
-            <div class="fap-form-row"><label>Técnico responsável (opcional)</label><input type="text" id="fap-pTec" placeholder="nome do técnico"></div>
-            <div class="fap-form-row"><label>Nome do GO (opcional)</label><input type="text" id="fap-pGo" placeholder="nome do Gestor Operacional"></div>
+            <div class="fap-form-row"><label>Condutor / técnico responsável (opcional)</label><input type="text" id="fap-pTec" placeholder="nome do condutor"></div>
+            <div class="fap-form-row"><label>Nome do GO (opcional)</label><input type="text" id="fap-pGo" placeholder="nome do Gestor Operacional" list="fap-dlGo" oninput="fapSugerirGa()"></div>
           </div>
+          <div class="fap-form-row"><label for="fap-pGa">Nome do GA (opcional)</label><input type="text" id="fap-pGa" placeholder="nome do Gerente de Área" list="fap-dlGa"></div>
+          <datalist id="fap-dlGo"></datalist><datalist id="fap-dlGa"></datalist>
           <div class="fap-form-row"><label>Categoria do veículo (opcional)</label>
             <select id="fap-pTipo" title="Normalmente vem sozinho da base anexada (coluna &quot;Categoria do veículo&quot; do Portal Alelo) — escolha aqui só se a placa ainda não tiver transação importada."><option value="">Não informado</option><option value="Leve">Leve</option><option value="Médio">Médio</option><option value="Pesado">Pesado</option><option value="Gerador">Gerador</option></select>
           </div>
@@ -10450,13 +10456,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <h3 style="margin:0">Total por placa</h3>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="fap-export-btn" onclick="fapBaixarPlanilhaPlacas()" title="Baixa o cadastro atual + as placas da base Alelo ainda não cadastradas, para completar GO/UF e importar de volta"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Planilha de placas</button>
-            <label class="fap-export-btn admin-only" style="cursor:pointer" title="Cadastra/atualiza placas em lote a partir de uma planilha com as colunas Placa, UF, GO, Técnico e Categoria"><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar placas<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarPlacas(event)"></label>
+            <label class="fap-export-btn admin-only" style="cursor:pointer" title="Cadastra/atualiza placas em lote a partir de uma planilha com as colunas Placa, UF, GO, GA, Técnico e Categoria"><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar placas<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarPlacas(event)"></label>
           </div>
         </div>
         <p class="fap-desc">Soma dos aportes registrados para cada placa.</p>
         <div style="max-height:400px;overflow-y:auto">
           <table class="fap-table" id="fap-placaTable">
-            <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>Aportado</th><th>Último aporte</th><th></th></tr></thead>
+            <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>GA</th><th>Aportado</th><th>Último aporte</th><th></th></tr></thead>
             <tbody id="fap-placaTableBody"></tbody>
           </table>
         </div>
@@ -26038,6 +26044,7 @@ function fapEditPlaca(id){
   document.getElementById('fap-pUf').value=p.uf;
   document.getElementById('fap-pTec').value=p.tecnico||'';
   document.getElementById('fap-pGo').value=p.go||'';
+  document.getElementById('fap-pGa').value=p.ga||'';
   document.getElementById('fap-pTipo').value=p.tipo||'';
   document.getElementById('fap-pSubmitBtn').textContent='Salvar alterações';
   document.getElementById('fap-pCancelBtn').style.display='inline-flex';
@@ -26060,6 +26067,7 @@ function fapAddPlaca(ev){
   const uf=document.getElementById('fap-pUf').value;
   const tecnico=document.getElementById('fap-pTec').value.trim();
   const go=fapGoNome(document.getElementById('fap-pGo').value);
+  const ga=fapGoNome(document.getElementById('fap-pGa').value);
   const tipo=document.getElementById('fap-pTipo').value;
   if(!placa)return false;
   /* Placa já cadastrada (item 4) — no modo edição, ignora o próprio registro. */
@@ -26067,10 +26075,10 @@ function fapAddPlaca(ev){
   if(jaExiste){alert('A placa '+placa+' já está cadastrada'+(jaExiste.go?' (GO: '+fapGoNome(jaExiste.go)+')':'')+'. Use o lápis em "Total por placa" para editar o cadastro existente.');return false;}
   if(fapEditingPlacaId){
     const idx=FAP_PLACAS.findIndex(x=>x.id===fapEditingPlacaId);
-    if(idx>=0)FAP_PLACAS[idx]={...FAP_PLACAS[idx],placa,uf,tecnico,go,tipo};
+    if(idx>=0)FAP_PLACAS[idx]={...FAP_PLACAS[idx],placa,uf,tecnico,go,ga,tipo};
     fapEditingPlacaId=null;
   }else{
-    FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico,go,tipo});
+    FAP_PLACAS.push({id:fapUid(),placa,uf,tecnico,go,ga,tipo});
   }
   fapCleared=false;fapClearedAt=''; // volta a cadastrar depois de um "zerar tudo": a limpeza anterior fica obsoleta
   fapAt=new Date().toISOString();saveState();
@@ -26155,11 +26163,44 @@ function fapResetTudo(){
   _ghToast('Dados de Aportes Combustível zerados ✓','var(--green-dk)',5000);
 }
 
+/* Condutor ao lado da placa no "Lançar aporte" (pedido do usuário, 2026-10-16): o do
+   cadastro da placa; sem cadastro, o condutor que mais usa a placa nas bases Alelo
+   anexadas (sinalizado como tal — não é o cadastro). */
+function fapRenderLancCondutor(){
+  const inp=document.getElementById('fap-lCondutor'),nota=document.getElementById('fap-lCondutorNota');if(!inp)return;
+  const p=fapPlacaById((document.getElementById('fap-lPlaca')||{}).value);
+  let nome='',obs='';
+  if(p&&p.tecnico)nome=p.tecnico;
+  else if(p){
+    const m=fapPlacaCondutores().get(p.placa);
+    if(m&&m.size){const[cn]=[...m.entries()].sort((a,b)=>b[1]-a[1])[0];const ix=_fapHierIndex(),hit=ix&&ix.byNome.get(cn);nome=hit?hit.nome:cn.toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase());obs='Placa sem condutor no cadastro — mostrando quem mais usa a placa na base Alelo anexada. Cadastre o condutor no lápis de "Total por placa".';}
+    else obs=p?'Placa sem condutor cadastrado. Edite a placa (lápis em "Total por placa") para informar.':'';
+  }
+  inp.value=nome;inp.placeholder=p?'sem condutor cadastrado':'—';
+  if(nota){nota.textContent=obs;nota.style.display=obs?'block':'none';}
+}
+/* GA sugerido ao digitar o GO no cadastro (pela planilha de hierarquia): só preenche
+   se o campo GA estiver vazio — nunca sobrescreve o que a pessoa digitou. */
+function fapSugerirGa(){
+  const gaEl=document.getElementById('fap-pGa');if(!gaEl||gaEl.value.trim())return;
+  const g=fapHierNorm(fapGoCanon(document.getElementById('fap-pGo').value));if(!g)return;
+  const ix=_fapHierIndex();
+  const c=new Map();
+  if(ix)ix.list.forEach(x=>{if(x.ga&&fapHierNorm(fapGoCanon(x.go))===g)c.set(x.ga,(c.get(x.ga)||0)+1);});
+  FAP_PLACAS.forEach(p=>{if(p.ga&&fapHierNorm(fapGoCanon(p.go))===g)c.set(fapGoNome(p.ga),(c.get(fapGoNome(p.ga))||0)+1);});
+  const best=[...c.entries()].sort((a,b)=>b[1]-a[1])[0];
+  gaEl.placeholder=best?'sugestão: '+best[0]:'nome do Gerente de Área';
+  if(best&&c.size===1)gaEl.value=best[0];
+}
 function fapPopulateSelects(){
   const lP=document.getElementById('fap-lPlaca');const curL=lP.value;
   const opts=FAP_PLACAS.map(p=>`<option value="${eh(p.id)}">${eh(p.placa)} (${eh(p.uf)})</option>`).join('');
   lP.innerHTML=opts||'<option value="">Cadastre uma placa primeiro</option>';
   lP.value=curL;
+  if(!lP.value&&lP.options.length)lP.selectedIndex=0;
+  fapRenderLancCondutor();
+  const dGo=document.getElementById('fap-dlGo'),dGa=document.getElementById('fap-dlGa');
+  if(dGo&&dGa){const o=fapFiltroOpcoes('aportes');dGo.innerHTML=o.go.map(g=>`<option value="${eh(g)}">`).join('');dGa.innerHTML=o.ga.map(g=>`<option value="${eh(g)}">`).join('');}
   /* Placa do filtro virou seleção múltipla (barra da sub-aba, fapRenderFiltroBar). */
   /* Filtro de GO no bloco E-mail (pedido do usuário): GO é texto livre digitado no
      cadastro da placa (fap-pGo), não um enum fixo como UF — por isso a lista de opções
@@ -26300,7 +26341,7 @@ function fapAportesFiltrados(){
 function fapRenderPlacaTable(){
   const body=document.getElementById('fap-placaTableBody');
   const list=fapPlacasFiltradas();
-  if(!list.length){body.innerHTML=`<tr><td colspan="6"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;return;}
+  if(!list.length){body.innerHTML=`<tr><td colspan="7"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;return;}
   const _per=fapGetFiltros();
   const _apsPer=FAP_APORTES.filter(a=>(!_per.de||a.data>=_per.de)&&(!_per.ate||a.data<=_per.ate));
   body.innerHTML=list.map(p=>{
@@ -26308,9 +26349,10 @@ function fapRenderPlacaTable(){
     const total=_ap.reduce((x,a)=>x+a.valor,0);
     const ult=_ap.sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora))[0]||null;
     return`<tr>
-      <td class="fap-name-cell"><div class="fap-nm">${eh(p.placa)}</div><div class="fap-sub">${eh(p.tecnico||'sem técnico vinculado')}</div></td>
+      <td class="fap-name-cell"><div class="fap-nm">${eh(p.placa)}</div><div class="fap-sub">${eh(p.tecnico||'sem condutor cadastrado')}</div></td>
       <td>${p.uf?`<span class="fap-uf-chip">${eh(p.uf)}</span>`:'<span class="fap-incompleto" title="Cadastro incompleto: sem UF">sem UF</span>'}</td>
       <td>${fapGoNome(p.go)?eh(fapGoNome(p.go)):'<span class="fap-incompleto" title="Cadastro incompleto: sem GO — fica fora do Consumo do GO e cai em &quot;Sem GO vinculado&quot; nos e-mails">sem GO</span>'}</td>
+      <td>${(()=>{const ga=p.ga?fapGoNome(p.ga):fapPlacaHier(p.placa).ga;return ga?eh(ga)+(p.ga?'':' <span class="fap-sub" title="Sem GA no cadastro — vem da hierarquia dos condutores que usam a placa">(hierarquia)</span>'):'<span style="color:var(--tx3)">—</span>';})()}</td>
       <td class="fap-saldo-val">${eh(fapFmtMoney(total))}</td>
       <td>${ult?eh(fapFmtDate(ult.data)+' às '+ult.hora):'—'}</td>
       <td style="white-space:nowrap"><button class="fap-del-icon" onclick="fapEditPlaca('${eh(p.id)}')" title="Editar" aria-label="Editar placa ${eh(p.placa)}"><i class="ti ti-pencil"></i></button><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover" aria-label="Remover placa ${eh(p.placa)}">✕</button></td>
@@ -26887,7 +26929,8 @@ function fapPlacaHier(placa){
     let best='',bn=0;c.forEach((n,v)=>{if(n>bn){bn=n;best=v;}});return best;
   };
   const go=fapPlacaGo(placa)||votar('go');
-  const out={go,ga:votar('ga',go)};
+  const cad=FAP_PLACAS.find(p=>p.placa===placa);
+  const out={go,ga:(cad&&cad.ga?fapGoNome(cad.ga):'')||votar('ga',go)};
   mm.set(placa,out);return out;
 }
 /* GA/GO de um registro com condutor: pela hierarquia do condutor; sem hierarquia,
@@ -26946,7 +26989,7 @@ function fapFiltroOpcoes(sub){
   const ix=_fapHierIndex();
   if(ix){ix.byGa.forEach(v=>addGa(v.ga,v.go));ix.byGo.forEach(v=>{if(v.go)go.add(v.go);});}
   Object.values(FAP_HIER_EDIT.map||{}).forEach(v=>{if(v.ga)addGa(v.ga,v.go);if(v.go)go.add(fapGoCanon(v.go));});
-  FAP_PLACAS.forEach(p=>{const g=fapGoCanon(p.go);if(g)go.add(g);});
+  FAP_PLACAS.forEach(p=>{const g=fapGoCanon(p.go);if(g)go.add(g);if(p.ga)addGa(p.ga,p.go);});
   const ga=[...gaGo.keys()].filter(g=>!goSel.size||[...gaGo.get(g)].some(x=>goSel.has(x)));
   const nivel={_go:goSel,_ga:new Set([...gaSel].filter(x=>ga.some(g=>fapHierNorm(g)===x))),_cond:new Set(),placa:[],hier:true};
   const todos=fapHierCondutores();
@@ -27282,9 +27325,9 @@ function fapAnexoDestino(dest){
    placas" lê a planilha de volta: atualiza as existentes (só campos preenchidos) e
    cadastra as novas que tenham ao menos UF ou GO. Colunas achadas pelo NOME. */
 function fapBaixarPlanilhaPlacas(){
-  const linhas=FAP_PLACAS.slice().sort((a,b)=>a.placa.localeCompare(b.placa)).map(p=>({'Placa':p.placa,'UF':p.uf||'','GO':fapGoNome(p.go),'Técnico':p.tecnico||'','Categoria':p.tipo||''}));
+  const linhas=FAP_PLACAS.slice().sort((a,b)=>a.placa.localeCompare(b.placa)).map(p=>({'Placa':p.placa,'UF':p.uf||'','GO':fapGoNome(p.go),'GA':fapGoNome(p.ga),'Técnico':p.tecnico||'','Categoria':p.tipo||''}));
   const cad=new Set(FAP_PLACAS.map(p=>p.placa));
-  if(FAP_AUDIT)FAP_AUDIT.dic.placa.filter(pl=>!cad.has(pl)).sort().forEach(pl=>linhas.push({'Placa':pl,'UF':'','GO':'','Técnico':'','Categoria':''}));
+  if(FAP_AUDIT)FAP_AUDIT.dic.placa.filter(pl=>!cad.has(pl)).sort().forEach(pl=>linhas.push({'Placa':pl,'UF':'','GO':'','GA':'','Técnico':'','Categoria':''}));
   if(!linhas.length){alert('Nenhuma placa cadastrada nem base da Auditoria anexada.');return;}
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(linhas),'Placas');
@@ -27307,6 +27350,7 @@ function fapProcessarPlanilhaPlacas(rows){
   const h=rows[0];
   const ci={placa:fapFindColIdx(h,['placa','placa do veiculo']),uf:fapFindColIdx(h,['uf','estado']),go:fapFindColIdx(h,['go','nome do go','gestor','gestor operacional']),tec:fapFindColIdx(h,['tecnico','técnico','tecnico responsavel']),cat:fapFindColIdx(h,['categoria','tipo','categoria do veiculo'])};
   if(ci.placa<0){alert('Coluna "Placa" não encontrada no cabeçalho da planilha.');return;}
+  ci.ga=fapFindColIdx(h,['ga','nome do ga','gerente de area','gerente de área']);
   const UFS=['PI','MA','PA','AM','AP'],CATS=['Leve','Médio','Pesado','Gerador'];
   const porPlaca=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   let novas=0,atual=0,ignor=0;
@@ -27318,6 +27362,7 @@ function fapProcessarPlanilhaPlacas(rows){
     const uf=UFS.includes(ufRaw)?ufRaw:'';
     const go=ci.go>=0?fapGoNome(row[ci.go]):'';
     const tec=ci.tec>=0?String(row[ci.tec]||'').trim():'';
+    const ga=ci.ga>=0?fapGoNome(row[ci.ga]):'';
     const catN=ci.cat>=0?fapNormCategoria(row[ci.cat]):'';
     const cat=CATS.includes(catN)?catN:'';
     const p=porPlaca.get(placa);
@@ -27326,10 +27371,11 @@ function fapProcessarPlanilhaPlacas(rows){
       if(uf&&uf!==p.uf){novo.uf=uf;mudou=true;}
       if(go&&go!==fapGoNome(p.go)){novo.go=go;mudou=true;}
       if(tec&&tec!==p.tecnico){novo.tecnico=tec;mudou=true;}
+      if(ga&&ga!==fapGoNome(p.ga)){novo.ga=ga;mudou=true;}
       if(cat&&cat!==p.tipo){novo.tipo=cat;novo.tipoManual=true;mudou=true;}
       if(mudou){FAP_PLACAS[FAP_PLACAS.indexOf(p)]=novo;porPlaca.set(placa,novo);atual++;}
     }else if(uf||go){
-      const n={id:fapUid(),placa,uf,tecnico:tec,go,tipo:cat};if(cat)n.tipoManual=true;
+      const n={id:fapUid(),placa,uf,tecnico:tec,go,ga,tipo:cat};if(cat)n.tipoManual=true;
       FAP_PLACAS.push(n);porPlaca.set(placa,n);novas++;
     }else ignor++;
   }
