@@ -11062,7 +11062,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-b2c-cluster-selector" onclick="mselToggleOpen('exec-b2c-cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
         <span class="card-action" style="margin-left:6px" onclick="clearExecFilters()">Limpar filtros</span>
       </div>
-      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Apresentação executiva (.pptx) com todos os painéis do Executivo, no recorte dos filtros acima"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
+      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Apresentação (.pptx) com os quadros Redir Rede (Prazo e Outlier) e Redir B2B (Prazo e Outlier), no ano escolhido em cada quadro"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
     </div>
 
     <div class="exec-summary-grid">
@@ -33955,124 +33955,79 @@ function execOpsReportLines(o,w){
     if(w.top[0])L.push('  Maior tempo em aberto: '+(w.top[0].req||'—')+' ('+(w.top[0].cat||'')+', '+(w.top[0].cidade||'')+') com '+execH1(w.top[0].h)+'.');}
   return L.join('\n');
 }
-/* ─── Apresentação executiva padrão (.pptx) ───
-   Capa → Resumo (farol de todos os painéis) → Leitura executiva → por painel com dado:
-   Baremo + Semana contra Semana e FCA (Rede, B2B Encerrados, B2C), e um slide para
-   Abertos OFS e outro para Warmup. Mesmo visual dos outros relatórios do Jarvis
-   (pptxNewDeck/pptxHeader/PPTX_*). Números = os mesmos snapshots da tela do Executivo,
-   que por sua vez reaproveitam as contas de cada painel. FCA: Fato/Causa/Ação vêm do
-   snapshot; Prazo/Responsável/Status ficam em branco (convenção dos relatórios). */
+/* ─── Apresentação do Executivo (.pptx) — pedido do usuário (2026-10-17): APENAS os
+   quadros Redir Rede (Prazo e Outlier) e Redir B2B (Prazo <8h e Outlier >12h), mais a capa.
+   As tabelas são copiadas do que já está desenhado no Executivo (mesmos valores, cabeçalhos,
+   cores e grupos expandidos), no ano escolhido em cada seletor de Redir — nada é recalculado
+   aqui, então a apresentação nunca diverge da tela. Cores lidas sempre no tema claro. */
+function execRgbHex(c){const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c||'');if(!m||(m[4]!==undefined&&+m[4]<0.05))return null;return[m[1],m[2],m[3]].map(x=>(+x).toString(16).padStart(2,'0')).join('').toUpperCase();}
+function execTabelaParaPptx(table){
+  const NAVY=PPTX_NAVY,WHITE=PPTX_WHITE;
+  return[...table.rows].map(tr=>[...tr.cells].map(cell=>{
+    const txt=(cell.innerText||cell.textContent||'').replace(/\s*\n\s*/g,'\n').trim()||'—';
+    if(cell.tagName==='TH')return{text:txt,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:7.5,align:'center',valign:'middle'}};
+    const alvo=cell.querySelector('span,b')||cell;
+    const cor=execRgbHex(getComputedStyle(alvo).color)||'1C1C1E';
+    const bgCell=execRgbHex(getComputedStyle(cell).backgroundColor),bgAlvo=alvo!==cell?execRgbHex(getComputedStyle(alvo).backgroundColor):null;
+    const fundo=bgAlvo||bgCell;
+    const grupo=tr.classList.contains('redir-group-row');
+    const o={fontSize:8,color:cor,align:cell.cellIndex===0?'left':'center',valign:'middle',bold:grupo||!!bgAlvo};
+    if(fundo&&fundo!=='FFFFFF')o.fill={color:fundo};
+    return{text:txt,options:o};
+  }));
+}
 async function execGerarApresentacao(){
   if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
   const btn=document.getElementById('exec-pptx-btn');const h=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';}
+  const temaAntes=document.body.dataset.theme;
   try{
-    const rede=execRedeSnapshot(),enc=execEncSnapshot(),b2c=execB2cSnapshot(),ofs=execOfsSnapshot(),wm=execWarmupSnapshot();
-    if(!rede.total&&!enc.total&&!b2c.total&&!ofs&&!wm){alert('Nenhum painel tem dados no recorte atual. Carregue as bases ou ajuste os filtros.');return;}
-    const NAVY=PPTX_NAVY,BLUE=PPTX_BLUE,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE,BGCARD=PPTX_BGCARD;
-    const ST={ok:GREEN,wn:ORANGE,bd:RED,na:GREY};
-    const recorte=[selExecAno.length?'Ano '+selExecAno.join('+'):'',selExecMes.length?'Mês '+selExecMes.join('+'):'',selExecSemana.length?'Semana '+selExecSemana.join('+'):''].filter(Boolean).join(' · ')||'Todo o período';
-    const clusters=[selExecRedeCluster.length?'Rede: '+selExecRedeCluster.join(', '):'',selExecEncCluster.length?'Encerrados: '+selExecEncCluster.join(', '):'',selExecB2cCluster.length?'B2C: '+selExecB2cCluster.join(', '):''].filter(Boolean).join(' · ');
-    const blocos=[{k:'rede',t:'Rede',snap:rede},{k:'encerrados',t:'B2B Encerrados',snap:enc},{k:'b2c',t:'B2C',snap:b2c}].filter(b=>b.snap.total>0);
-    const N=3+blocos.length*2+(ofs?1:0)+(wm?1:0);let pg=0;
+    redirRenderAll();rdeRedirRenderAll(); // garante os quadros atualizados na tela do Executivo
+    const quadros=[
+      {id:'exec-rde-redir-body-table-prazo',grupo:'REDIR REDE',titulo:'Redir Rede — Prazo',anoSel:'exec-rde-redir-ano-sel',
+        nota:'Prazo por cluster (Backbone + Acesso) · meta '+pp(RDE_M89)+'% · ΔMoM = mês atual − meta · mesma tabela do Painel Rede/Executivo'},
+      {id:'exec-rde-redir-body-table-outlier',grupo:'REDIR REDE',titulo:'Redir Rede — Outlier',anoSel:'exec-rde-redir-ano-sel',
+        nota:'Outlier por cluster (Backbone + Acesso) · máx. '+pp(RDE_MOUT)+'% · ΔMoM = mês atual − meta · mesma tabela do Painel Rede/Executivo'},
+      {id:'exec-redir-table-prazo',grupo:'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)',titulo:'Redir B2B — Prazo < 8h',anoSel:'exec-redir-ano-sel',
+        nota:'Prazo de reparos B2B ≤ 8h · meta '+pp(ENC_META_PRAZO)+'% · ΔMoM = mês atual − meta · mesma tabela do B2B Encerrados/Executivo'},
+      {id:'exec-redir-table-outlier',grupo:'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)',titulo:'Redir B2B — Outlier > 12h',anoSel:'exec-redir-ano-sel',
+        nota:'Outlier de reparos B2B > 12h · máx. '+pp(ENC_META_OUTLIER)+'% · ΔMoM = mês atual − meta · mesma tabela do B2B Encerrados/Executivo'}
+    ];
+    document.body.dataset.theme='light'; // cores do PPT sempre as do tema claro
+    const lidos=quadros.map(q=>{const el=document.getElementById(q.id);const t=el&&el.querySelector('table');
+      const sel=document.getElementById(q.anoSel);const ano=sel&&sel.value?sel.options[sel.selectedIndex].textContent:'';
+      return{...q,ano,linhas:t&&t.rows.length>1?execTabelaParaPptx(t):null};});
+    document.body.dataset.theme=temaAntes;
+    const comDado=lidos.filter(q=>q.linhas);
+    if(!comDado.length){alert('Os quadros Redir estão vazios. Carregue as bases de Rede e/ou B2B Encerrados.');return;}
+    const NAVY=PPTX_NAVY,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE;
+    const N=1+comDado.length;let pg=1;
     const pptx=pptxNewDeck();
-    const slide=(k,t)=>{const sl=pptx.addSlide();pptxHeader(sl,k,t,`${++pg} / ${N}`);return sl;};
-    const th=t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:10,valign:'middle'}});
-    const td=(t,o)=>({text:String(t==null?'':t),options:{fontSize:10,valign:'middle',...(o||{})}});
-    const card=(sl,x,y,w,hh,lab,txt,cor)=>{sl.addShape('rect',{x,y,w,h:hh,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
-      sl.addText([{text:lab+'\n',options:{bold:true,fontSize:10,color:cor||GREY,breakLine:true}},{text:txt,options:{fontSize:11.5,color:NAVY}}],{x:x+0.18,y:y+0.08,w:w-0.36,h:hh-0.16,valign:'top'});};
-    const kpi=(sl,x,y,w,lab,val,sub,cor)=>{sl.addShape('rect',{x,y,w,h:1.15,fill:{color:WHITE},line:{color:GREYL,width:0.75}});
-      sl.addShape('rect',{x,y,w,h:0.06,fill:{color:cor||BLUE},line:{type:'none'}});
-      sl.addText(lab,{x:x+0.12,y:y+0.12,w:w-0.24,h:0.28,fontSize:9,bold:true,color:GREY});
-      sl.addText(String(val),{x:x+0.12,y:y+0.38,w:w-0.24,h:0.45,fontSize:20,bold:true,color:NAVY});
-      if(sub)sl.addText(sub,{x:x+0.12,y:y+0.8,w:w-0.24,h:0.3,fontSize:8.5,color:GREY});};
-    const fmtR=i=>execFmtIndicadorResultado(i).replace('.',',');
-    const fmtM=i=>i.meta==null?'—':(String(i.meta).replace('.',',')+(i.unidade||''));
-    const fmtS=(v,u)=>v==null||isNaN(v)?'—':(v.toFixed(u==='h'?2:1).replace('.',',')+(u||''));
     const dataTxt=new Date().toLocaleString('pt-BR',{dateStyle:'long',timeStyle:'short'});
-
-    // 1 · Capa
-    const c=pptx.addSlide();pg++;
+    // capa
+    const c=pptx.addSlide();
     c.background={color:NAVY};
     c.addShape('rect',{x:0,y:6.9,w:13.333,h:0.12,fill:{color:'42C34B'},line:{type:'none'}});
     c.addText([{text:'Jarvis ',options:{color:WHITE}},{text:'MCLL',options:{color:'42C34B'}},{text:' · alloha FIBRA',options:{color:WHITE}}],{x:0.7,y:0.6,w:12,h:0.5,fontSize:16,bold:true});
     c.addText('Apresentação Executiva',{x:0.7,y:2.3,w:12,h:1,fontSize:40,bold:true,color:WHITE});
-    c.addText('Rede · B2B Encerrados · B2C · Abertos OFS · Warmup',{x:0.7,y:3.35,w:12,h:0.5,fontSize:18,color:'9FC9EE'});
-    c.addText('Recorte: '+recorte+(clusters?'\nClusters: '+clusters:''),{x:0.7,y:4.3,w:12,h:0.9,fontSize:13,color:WHITE,valign:'top'});
+    c.addText('Redir Rede (Prazo e Outlier) · Redir B2B (Prazo e Outlier)',{x:0.7,y:3.35,w:12,h:0.5,fontSize:18,color:'9FC9EE'});
+    const anos=[...new Set(comDado.map(q=>q.ano).filter(Boolean))];
+    c.addText(anos.length?'Ano: '+anos.join(' / '):'',{x:0.7,y:4.3,w:12,h:0.5,fontSize:13,color:WHITE});
     c.addText('Gerado em '+dataTxt,{x:0.7,y:6.25,w:12,h:0.4,fontSize:11,color:'9FC9EE'});
-
-    // 2 · Resumo (farol)
-    const s2=slide('PAINEL EXECUTIVO · '+recorte.toUpperCase(),'Resumo — farol dos painéis');
-    const rows=[[th('Painel'),th('Indicador'),th('Resultado'),th('Meta'),th('Sem. anterior → atual'),th('Status')]];
-    blocos.forEach(b=>b.snap.indicadores.forEach((i,ix)=>rows.push([td(ix?'':b.t,{bold:true}),td(i.label),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),
-      td(i.semAnterior==null&&i.semAtual==null?'—':fmtS(i.semAnterior,i.unidade)+' → '+fmtS(i.semAtual,i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})])));
-    if(ofs)[['Taxa de conclusão',ofs.taxa+'%'],['Em aberto (sem técnico)',execN(ofs.cnt['Em aberto'])+' ('+ofs.unass+')'],['SLA da fila ≥ 24 h',ofs.sla.o24+' de '+ofs.sla.abertas]].forEach((x,ix)=>
-      rows.push([td(ix?'':'Abertos OFS',{bold:true}),td(x[0]),td(x[1],{bold:true}),td('—'),td('base de '+(ofs.baseDate||'—')),td(ix===2&&ofs.sla.o48?'Atenção':'—',{color:ix===2&&ofs.sla.o48?WHITE:GREY,fill:ix===2&&ofs.sla.o48?{color:ORANGE}:undefined,bold:true})]));
-    if(wm)[['Chamados (PI/MA/PA/AM/AP)',execN(wm.total)],['Backbone · Acesso · Massivas',wm.backbone+' · '+wm.acesso+' · '+wm.massiva],['Abertos há ≥ 24 h',execN(wm.o24)]].forEach((x,ix)=>
-      rows.push([td(ix?'':'Warmup',{bold:true}),td(x[0]),td(x[1],{bold:true}),td('—'),td('relatório do dia'),td('—',{color:GREY})]));
-    const rh=rows.length>18?0.22:0.27;
-    s2.addTable(rows,{x:0.4,y:1.9,w:12.5,colW:[1.9,3.6,1.6,1.1,2.6,1.7],rowH:rh,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:rows.length>18?8.5:10});
-
-    // 3 · Leitura executiva
-    const s3=slide('Fonte: Painel Executivo — mesmos números de cada painel de origem','Leitura executiva');
-    const ler=[];
-    blocos.forEach(b=>{const cr=b.snap.indicadores.filter(i=>i.status==='bd'),at=b.snap.indicadores.filter(i=>i.status==='wn'),ok=b.snap.indicadores.filter(i=>i.status==='ok');
-      ler.push({t:b.t,cor:cr.length?RED:at.length?ORANGE:GREEN,txt:`${execN(b.snap.total)} registros · ${ok.length} na meta, ${at.length} em atenção, ${cr.length} crítico(s)`+(cr.length?' ('+cr.map(i=>i.label).join(', ')+')':'')+'. '+(b.snap.fca&&b.snap.fca.fato?b.snap.fca.fato:'')});});
-    if(ofs)ler.push({t:'Abertos OFS',cor:ofs.sla.o48?ORANGE:BLUE,txt:`${execN(ofs.tot)} atividades, ${ofs.taxa}% concluídas, ${execN(ofs.cnt['Em aberto'])} em aberto (${ofs.unass} sem técnico); ${ofs.sla.o24} na fila há 24 h ou mais.`+((ofs.alertas.find(a=>a.nivel==='bd')||{}).txt?' '+ofs.alertas.find(a=>a.nivel==='bd').txt:'')});
-    if(wm)ler.push({t:'Warmup',cor:wm.o24?ORANGE:BLUE,txt:`${execN(wm.total)} chamados (${wm.backbone} backbone, ${wm.acesso} acesso, ${wm.massiva} massivas); ${wm.o24} abertos há 24 h ou mais`+(wm.backlog.total?`; backlog de ${wm.backlog.total}.`:'.')});
-    const hh=Math.min(1.05,4.9/Math.max(1,ler.length)-0.1);
-    ler.forEach((l,ix)=>card(s3,0.4,1.95+ix*(hh+0.1),12.5,hh,l.t.toUpperCase(),l.txt,l.cor));
-
-    // por painel: Baremo + WoW, depois FCA
-    blocos.forEach(b=>{
-      const sn=b.snap;
-      const sa=slide(b.t.toUpperCase()+' · '+recorte.toUpperCase()+' · '+execN(sn.total)+' registros','Baremo e semana contra semana — '+b.t);
-      const tr=[[th('Indicador'),th('Resultado'),th('Meta'),th(sn.semAnteriorLabel||'Sem. ant.'),th(sn.semAtualLabel||'Sem. atual'),th('Δ'),th('Status')]];
-      sn.indicadores.forEach(i=>tr.push([td(i.label),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),td(fmtS(i.semAnterior,i.unidade)),td(fmtS(i.semAtual,i.unidade)),
-        td(i.diffSem==null?'—':(i.diffSem>0?'+':'')+fmtS(i.diffSem,i.unidade==='%'?' p.p.':i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})]));
-      sa.addTable(tr,{x:0.4,y:1.9,w:8.1,colW:[2.4,1.0,0.8,1.0,1.0,0.9,1.0],rowH:tr.length>9?0.3:0.36,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:tr.length>9?8.5:10});
-      const ri=sn.wowRefIdx!=null&&sn.wowRefIdx>=0?sn.wowRefIdx:(sn.wow||[]).length-1;
-      const ws=(sn.wow||[]).slice(Math.max(0,ri-7),ri+1);
-      sa.addText('Volume por semana',{x:8.8,y:1.85,w:4.1,h:0.3,fontSize:11,bold:true,color:NAVY});
-      if(ws.length)sa.addChart(pptx.ChartType.bar,[{name:'Registros',labels:ws.map(w=>String(w.label||w.semana)),values:ws.map(w=>w.total||0)}],
-        {x:8.8,y:2.15,w:4.1,h:3.0,barDir:'col',showValue:true,dataLabelFontSize:8,chartColors:ws.map((w,ix)=>ix===ws.length-1?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'}});
-      card(sa,8.8,5.3,4.1,1.55,'SEMANA CONTRA SEMANA',execWoWInsightTxt(sn.wow,sn.wowRefIdx));
-      const sf=slide(b.t.toUpperCase()+' · PLANO DE AÇÃO','FCA — '+b.t);
-      const f=sn.fca||{fato:'Sem dado suficiente no recorte.',causa:'—',acao:'—'};
-      [['FATO',f.fato,0.4],['CAUSA',f.causa,4.6],['AÇÃO',f.acao,8.8]].forEach(([l,t,x])=>card(sf,x,1.95,4.1,3.9,l,t||'—',BLUE));
-      sf.addTable([[th('Prazo'),th('Responsável'),th('Status')],[td(''),td(''),td('')]],{x:0.4,y:6.0,w:12.5,colW:[3,6.5,3],rowH:[0.3,0.4],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
-      sf.addText('Preencher Prazo, Responsável e Status com o plano definido.',{x:0.4,y:6.85,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+    // um slide por quadro
+    comDado.forEach(q=>{
+      const sl=pptx.addSlide();
+      pptxHeader(sl,q.grupo+(q.ano?' · ANO '+q.ano:''),q.titulo,`${++pg} / ${N}`);
+      const nCol=q.linhas[0].length;
+      const w0=1.9,wR=(12.5-w0)/Math.max(1,nCol-1);
+      const nRows=q.linhas.length;
+      const rowH=nRows>16?0.24:nRows>10?0.3:0.38;
+      sl.addTable(q.linhas,{x:0.4,y:1.95,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
+      sl.addText(q.nota,{x:0.4,y:7.0,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
     });
-
-    // Abertos OFS
-    if(ofs){
-      const so=slide('ABERTOS OFS · BASE DE '+(ofs.baseDate||'—')+' · FILTROS DO PAINEL: '+execFiltrosTxt(ofs.filtros).toUpperCase(),'Abertos OFS — execução do dia');
-      [['TAXA DE CONCLUSÃO',ofs.taxa+'%',ofs.cnt['Concluída']+' de '+ofs.valid,GREEN],['EM ABERTO',execN(ofs.cnt['Em aberto']),ofs.unass+' sem técnico',BLUE],['SUSP./NÃO CONCL.',execN(ofs.cnt['Suspensa']+ofs.cnt['Não concluída']),'',ORANGE],
-        ['TÉCNICOS',execN(ofs.tecnicos),'em campo',BLUE],['SLA ≥ 24 H',ofs.sla.o24+' / '+ofs.sla.abertas,ofs.sla.o48+' acima de 48 h',ofs.sla.o48?RED:BLUE]].forEach(([l,v,sb,cor],ix)=>kpi(so,0.4+ix*2.52,1.9,2.38,l,v,sb,cor));
-      const cr=[[th('Cluster'),th('Ativ.'),th('Concl.'),th('Taxa'),th('Aberto'),th('Sem téc.'),th('≥24h')]];
-      ofs.porCluster.slice(0,12).forEach(x=>cr.push([td(x.cluster,{bold:true}),td(x.tot),td(x.concl),td(x.taxa+'%'),td(x.aberto),td(x.semTec),td(x.o24,{bold:!!x.o24,color:x.o24?RED:NAVY})]));
-      so.addTable(cr,{x:0.4,y:3.25,w:6.4,colW:[1.3,0.85,0.85,0.85,0.85,0.85,0.85],rowH:0.27,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9});
-      so.addText('Pontos de atenção',{x:7.1,y:3.2,w:5.8,h:0.3,fontSize:11,bold:true,color:NAVY});
-      so.addText(ofs.alertas.slice(0,6).map(a=>({text:a.txt,options:{bullet:true,breakLine:true,color:a.nivel==='bd'?RED:a.nivel==='wn'?'B7791F':a.nivel==='ok'?GREEN:NAVY}})),{x:7.1,y:3.55,w:5.8,h:3.3,fontSize:10,valign:'top',paraSpaceAfter:4});
-    }
-    // Warmup
-    if(wm){
-      const sw=slide('WARMUP · '+(wm.arquivo||'RELATÓRIO DO DIA').toUpperCase()+' · FILTROS DO PAINEL: '+execFiltrosTxt(wm.filtros).toUpperCase(),'Warmup — incidentes de Backbone e Acesso');
-      [['CHAMADOS',execN(wm.total),'PI · MA · PA · AM · AP',BLUE],['BACKBONE (TX/IP)',execN(wm.backbone),'',BLUE],['ACESSO',execN(wm.acesso),'',BLUE],['MASSIVAS',execN(wm.massiva),'',ORANGE],['ABERTOS ≥ 24 H',execN(wm.o24),'média '+execH1(wm.mediaH),wm.o24?RED:GREEN]]
-        .forEach(([l,v,sb,cor],ix)=>kpi(sw,0.4+ix*2.52,1.9,2.38,l,v,sb,cor));
-      const ur=[[th('UF'),th('Total'),th('Backbone'),th('Acesso'),th('Massivas'),th('≥24h')]];
-      wm.porUf.forEach(x=>ur.push([td(x.uf,{bold:true}),td(x.total),td(x.backbone),td(x.acesso),td(x.massiva),td(x.o24,{bold:!!x.o24,color:x.o24?RED:NAVY})]));
-      sw.addTable(ur,{x:0.4,y:3.25,w:5.2,colW:[0.8,0.88,0.88,0.88,0.88,0.88],rowH:0.28,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9.5});
-      if(wm.backlog.total){const bk=[[th('Tratativa do backlog'),th('Qtd'),th('%')],...wm.backlog.buckets.map(([k,v])=>[td(k),td(v),td(execPct1(v/wm.backlog.total*100))])];
-        sw.addTable(bk,{x:0.4,y:3.35+0.28*ur.length,w:5.2,colW:[3.0,1.1,1.1],rowH:0.27,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9.5});}
-      const tp=[[th('Maior tempo em aberto'),th('Categoria'),th('Cidade/UF'),th('Horas')],...wm.top.slice(0,8).map(x=>[td(x.req||'—'),td(x.cat||'—'),td((x.cidade||'—')+(x.uf?'/'+x.uf:'')),td(execH1(x.h),{bold:true,color:x.h>=24?RED:NAVY})])];
-      sw.addTable(tp,{x:5.9,y:3.25,w:7.0,colW:[2.0,1.4,2.5,1.1],rowH:0.28,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9.5});
-    }
-
-    const slug=x=>x.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
-    await pptx.writeFile({fileName:'Apresentacao_Executiva_'+slug(recorte)+'_'+new Date().toISOString().slice(0,10)+'.pptx'});
+    await pptx.writeFile({fileName:'Apresentacao_Executiva_Redir_'+(anos.join('_')||'atual')+'_'+new Date().toISOString().slice(0,10)+'.pptx'});
   }catch(e){console.error('Apresentação executiva',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}
-  finally{if(btn){btn.disabled=false;btn.innerHTML=h;}}
+  finally{document.body.dataset.theme=temaAntes;if(btn){btn.disabled=false;btn.innerHTML=h;}}
 }
 function execAppendOpsReport(rede,enc,b2c,o,w){
   const el=document.getElementById('exec-global-report');if(!el||(!o&&!w))return;
