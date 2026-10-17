@@ -16160,13 +16160,18 @@ function encStatsClusterAvg(d){
    (ids "exec-…") é calculado/desenhado: aí Ano/Mês/Semana/Cluster do Executivo recortam
    ano, colunas e linhas. Os mesmos quadros nos painéis Rede e B2B Encerrados não mudam. */
 var EXEC_REDIR_CTX=false;
+/* Só durante a geração do PPT (pedido do usuário, 2026-10-17: "as projetadas deverão conter
+   os resultados de todos os meses no PPT"): os quadros Redir saem com TODOS os meses do ano
+   (Jan até o mês atual) e a Projetada — Mês/Semana do Executivo não cortam colunas nem a
+   data de referência. Ano e Cluster continuam valendo. A tela do Executivo não muda. */
+var EXEC_REDIR_TODOS_MESES=false;
 function execRedirComCtx(id,fn){const prev=EXEC_REDIR_CTX;EXEC_REDIR_CTX=String(id||'').startsWith('exec-');try{return fn();}finally{EXEC_REDIR_CTX=prev;}}
 function execFiltro(k){try{return({ano:selExecAno,mes:selExecMes,sem:selExecSemana,rede:selExecRedeCluster,enc:selExecEncCluster})[k]||[];}catch(e){return[];}}
 function execIsoMonday(key){const m=/^(\d{4})-[WS](\d{1,2})$/.exec(key||'');return m?redirIsoWeekMonday(+m[1],+m[2]):null;}
 function execRedirAnoSel(){const a=execFiltro('ano');return EXEC_REDIR_CTX&&a.length?+[...a].sort().pop():null;}
 /* Último dia do período filtrado (Semana manda sobre Mês); null = sem corte. */
 function execRedirRefCorte(){
-  if(!EXEC_REDIR_CTX)return null;
+  if(!EXEC_REDIR_CTX||EXEC_REDIR_TODOS_MESES)return null;
   const sem=execFiltro('sem'),mes=execFiltro('mes');
   if(sem.length){const d=execIsoMonday([...sem].sort().pop());if(d)return new Date(d.getFullYear(),d.getMonth(),d.getDate()+6);}
   if(mes.length){const k=[...mes].sort().pop();return new Date(+k.slice(0,4),+k.slice(5,7),0);}
@@ -16174,7 +16179,7 @@ function execRedirRefCorte(){
 }
 /* Meses (AAAA-MM) permitidos pelo filtro dentro do ano; null = sem filtro. */
 function execRedirMesesFiltro(ano){
-  if(!EXEC_REDIR_CTX)return null;
+  if(!EXEC_REDIR_CTX||EXEC_REDIR_TODOS_MESES)return null;
   const mes=execFiltro('mes'),sem=execFiltro('sem');
   if(mes.length)return mes.filter(m=>m.startsWith(ano+'-'));
   if(sem.length){const st=new Set();sem.forEach(k=>{const d=execIsoMonday(k);if(!d)return;for(let i=0;i<7;i++){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()+i);if(x.getFullYear()===ano)st.add(x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0'));}});return[...st].sort();}
@@ -16183,7 +16188,7 @@ function execRedirMesesFiltro(ano){
 /* Semanas do filtro no formato do quadro ('W' Rede, 'S' B2B); null = sem filtro de semana. */
 function execRedirSemanasFiltro(fmt){
   const sem=execFiltro('sem');
-  if(!EXEC_REDIR_CTX||!sem.length)return null;
+  if(!EXEC_REDIR_CTX||EXEC_REDIR_TODOS_MESES||!sem.length)return null;
   return[...new Set(sem.map(k=>k.replace(/-[WS](\d+)$/,(m,n)=>'-'+fmt+String(n).padStart(2,'0'))))].sort();
 }
 function execSemanaToca(k,meses){const d=execIsoMonday(k);if(!d)return false;for(let i=0;i<7;i++){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()+i);if(meses.includes(x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')))return true;}return false;}
@@ -34164,17 +34169,19 @@ function execPtNum(t){return String(t==null?'':t).replace(/(\d)\.(\d)/g,'$1,$2')
 function execRgbHex(c){const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c||'');if(!m||(m[4]!==undefined&&+m[4]<0.05))return null;return[m[1],m[2],m[3]].map(x=>(+x).toString(16).padStart(2,'0')).join('').toUpperCase();}
 function execTabelaParaPptx(table){
   const NAVY=EXEC_TPL.navy,WHITE=PPTX_WHITE;
+  const nCol=table.rows[0]?table.rows[0].cells.length:0,largo=nCol>16;
+  const fsH=largo?6:7.5,fsD=largo?7:8,mg=largo?[1,1,1,1]:undefined;
   return[...table.rows].map(tr=>[...tr.cells].map(cell=>{
     /* Texto com as quebras do <br>: innerText perde as quebras quando a aba do quadro não está visível. */
     const cl=cell.cloneNode(true);cl.querySelectorAll('br').forEach(b=>b.replaceWith('\n'));cl.querySelectorAll('i.ti').forEach(i=>i.remove());
     const txt=cl.textContent.split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n')||'—';
-    if(cell.tagName==='TH')return{text:txt,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:7.5,align:'center',valign:'middle'}};
+    if(cell.tagName==='TH')return{text:txt,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:fsH,align:'center',valign:'middle',margin:mg}};
     const alvo=cell.querySelector('span,b')||cell;
     const cor=execRgbHex(getComputedStyle(alvo).color)||'1C1C1E';
     const bgCell=execRgbHex(getComputedStyle(cell).backgroundColor),bgAlvo=alvo!==cell?execRgbHex(getComputedStyle(alvo).backgroundColor):null;
     const fundo=bgAlvo||bgCell;
     const grupo=tr.classList.contains('redir-group-row');
-    const o={fontSize:8,color:cor,align:cell.cellIndex===0?'left':'center',valign:'middle',bold:grupo||!!bgAlvo};
+    const o={fontSize:fsD,color:cor,align:cell.cellIndex===0?'left':'center',valign:'middle',bold:grupo||!!bgAlvo,margin:mg};
     if(fundo&&fundo!=='FFFFFF')o.fill={color:fundo};
     return{text:txt,options:o};
   }));
@@ -34291,7 +34298,17 @@ async function execGerarApresentacao(){
     const redirLido={};// cache das tabelas Redir lidas da tela (tema claro)
     document.body.dataset.theme='light';
     const lerRedir=(fam,m)=>{const k=fam+'_'+m;if(k in redirLido)return redirLido[k];const id=fam==='rede'?'exec-rde-redir-body-table-'+m:'exec-redir-table-'+m;const t=document.querySelector('#'+id+' table');return(redirLido[k]=t&&t.rows.length>1?execTabelaParaPptx(t):null);};
-    const fcaRedir=(fam,m)=>{const el=document.getElementById(fam==='rede'?'exec-rde-redir-body-fca-'+m:'exec-redir-fca-'+m);return el?(el.innerText||el.textContent||'').trim():'';};
+    const fcaLido={};
+    const fcaRedirDom=(fam,m)=>{const el=document.getElementById(fam==='rede'?'exec-rde-redir-body-fca-'+m:'exec-redir-fca-'+m);return el?(el.innerText||el.textContent||'').trim():'';};
+    const fcaRedir=(fam,m)=>fam+'_'+m in fcaLido?fcaLido[fam+'_'+m]:fcaRedirDom(fam,m);
+    if(itens.some(it=>it.redir)){
+      EXEC_REDIR_TODOS_MESES=true;
+      try{
+        redirRenderAll();rdeRedirRenderAll();
+        RDE_REDIR_METRICS_ORDER.forEach(m=>{lerRedir('rede',m);fcaLido['rede_'+m]=fcaRedirDom('rede',m);});
+        ['prazo','outlier'].forEach(m=>{lerRedir('b2b',m);fcaLido['b2b_'+m]=fcaRedirDom('b2b',m);});
+      }finally{EXEC_REDIR_TODOS_MESES=false;redirRenderAll();rdeRedirRenderAll();}
+    }
     const anoRedir=fam=>{const s2=document.getElementById(fam==='rede'?'exec-rde-redir-ano-sel':'exec-redir-ano-sel');return s2&&s2.value?s2.value:'';};
     const REDIR_NOTA={rede:{mttr:'MTTR médio por cluster (h) · meta '+String(RDE_MTME).replace('.',',')+' h',prazo:'Prazo por cluster (Backbone + Acesso) · meta '+pp(RDE_M89)+'%',outlier:'Outlier por cluster (Backbone + Acesso) · máx. '+pp(RDE_MOUT)+'%',volEventos:'Volume de eventos por cluster',volOutlier:'Volume de outlier por cluster'},
       b2b:{prazo:'Prazo de reparos B2B ≤ 8h · meta '+pp(ENC_META_PRAZO)+'%',outlier:'Outlier de reparos B2B > 12h · máx. '+pp(ENC_META_OUTLIER)+'%'}};
@@ -34299,9 +34316,9 @@ async function execGerarApresentacao(){
       const lin=lerRedir(it.redir,it.m);if(!lin)return;
       const ano=anoRedir(it.redir);
       const sl=slide((it.redir==='rede'?'REDIR REDE':'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)')+(ano&&!selExecAno.length?' · ANO '+ano:'')+' · '+kickRec,it.l);
-      const nCol=lin[0].length,w0=1.9,wR=(12.5-w0)/Math.max(1,nCol-1),nRows=lin.length,rowH=nRows>16?0.24:nRows>10?0.3:0.38;
+      const nCol=lin[0].length,w0=nCol>16?1.15:1.9,wR=(12.5-w0)/Math.max(1,nCol-1),nRows=lin.length,rowH=nRows>16?0.24:nRows>10?0.3:0.38;
       sl.addTable(lin,{x:0.4,y:1.95,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
-      sl.addText((REDIR_NOTA[it.redir][it.m]||'')+' · ΔMoM = mês − meta'+(ano&&!selExecAno.length?' · ano '+ano:''),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+      sl.addText((REDIR_NOTA[it.redir][it.m]||'')+' · todos os meses do ano'+(ano?' '+ano:'')+' com Projetada · ΔMoM = mês − meta'+(selExecMes.length||selExecSemana.length?' · os filtros de mês/semana não cortam os quadros Redir':''),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
     };
     const slideRedirFca=fam=>{
       const ms=itens.filter(i=>i.redir===fam&&i.m).map(i=>i.m);
