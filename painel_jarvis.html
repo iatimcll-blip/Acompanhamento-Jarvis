@@ -8963,10 +8963,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     /* Retrato do Abertos OFS para o Painel Executivo: MESMO recorte que está na tela do
        Abertos OFS (filtered() lê os filtros do próprio painel) e MESMAS contas
        (aofKpiCalc/aofAlertList/slaH) — o Executivo espelha o painel, não recalcula. */
-    window.aofExecSnapshot=function(){
+    window.aofExecSnapshot=function(opts){
       if(pendingRestore){const s=pendingRestore;pendingRestore=null;load(s.table,s.name,false);}
       if(!ROWS.length)return null;
-      const D=filtered(),K=aofKpiCalc(D),W=D.filter(r=>r.cat!=='Pausa');
+      const cls=opts&&opts.clusters&&opts.clusters.length?opts.clusters:null;
+      const D=filtered().filter(r=>!cls||cls.includes(r.cluster)),K=aofKpiCalc(D),W=D.filter(r=>r.cat!=='Pausa');
       const S=W.map(slaH).filter(h=>h!=null);
       const cl={};
       W.forEach(r=>{const o=cl[r.cluster]||={cluster:r.cluster,tot:0,concl:0,cancel:0,aberto:0,susp:0,nc:0,semTec:0,o24:0};
@@ -10378,10 +10379,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(s&&Array.isArray(s.records))pendingRestore=s;}catch(e){}
     /* Retrato do Warmup para o Painel Executivo: mesmo recorte da tela (filtered() lê os
        filtros do próprio Warmup) e mesmas contas dos KPIs/Tratativa do Backlog. */
-    window.warmapExecSnapshot=function(){
+    window.warmapExecSnapshot=function(opts){
       if(pendingRestore){const s=pendingRestore;pendingRestore=null;loadRecords(s.records,s.name,false);}
       if(!ROWS.length)return null;
-      const D=filtered();
+      const ufs=opts&&opts.ufs&&opts.ufs.length?opts.ufs:null;
+      const D=filtered().filter(r=>!ufs||ufs.includes(r.uf));
       const cnt={};D.forEach(r=>cnt[r.categoria]=(cnt[r.categoria]||0)+1);
       const hs=D.map(r=>({r,h:wmDuracaoHoras(r.tempoDecorrido)})).filter(x=>x.h!=null);
       const uf={};D.forEach(r=>{const o=uf[r.uf]||={uf:r.uf,total:0,backbone:0,acesso:0,massiva:0,o24:0};o.total++;
@@ -10393,7 +10395,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const st={};D.forEach(r=>{const k=n(r.status)||'(sem status)';st[k]=(st[k]||0)+1;});
       const sel=id=>{const el=document.getElementById(id);if(!el||!el.value)return'';const o=el.options[el.selectedIndex];return o?o.textContent:el.value;};
       const filtros=[['Categoria',sel('wm-fCat')],['UF',sel('wm-fUf')],['Cidade',sel('wm-fCid')],['Status',sel('wm-fStatus')],['Parceira',sel('wm-fParceira')]].filter(x=>x[1]);
-      return{total:D.length,totalRel:ROWS.length,arquivo:FILE_NAME,filtros,
+      const mDt=/(\d{2})[_.\-\/ ](\d{2})[_.\-\/ ](\d{4})/.exec(FILE_NAME||'');
+      const dataRelIso=mDt?mDt[3]+'-'+mDt[2]+'-'+mDt[1]:(typeof WM_SYNC_AT==='string'&&WM_SYNC_AT?WM_SYNC_AT.slice(0,10):'');
+      return{total:D.length,totalRel:ROWS.length,arquivo:FILE_NAME,filtros,dataRelIso,
         backbone:(cnt.TX||0)+(cnt.IP||0),acesso:cnt.Acesso||0,massiva:cnt.Massiva||0,
         o24:hs.filter(x=>x.h>=24).length,mediaH:hs.length?hs.reduce((a,x)=>a+x.h,0)/hs.length:null,
         porUf:Object.values(uf).sort((a,b)=>b.total-a.total),
@@ -10992,6 +10996,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-ops-table td{padding:6px 8px;border-bottom:.5px solid var(--bd)}
   #panel-executivo .exec-ops-table td.n,#panel-executivo .exec-ops-table th.n{text-align:right;font-variant-numeric:tabular-nums}
   #panel-executivo .exec-alerts{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px}
+  #panel-executivo .exec-toolbar{position:relative;z-index:60}
+  #panel-executivo .exec-ppt-pick{position:relative}
+  #panel-executivo .exec-ppt-pick>summary{list-style:none;cursor:pointer}
+  #panel-executivo .exec-ppt-pick>summary::-webkit-details-marker{display:none}
+  #panel-executivo .exec-ppt-count{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--blue);color:#fff;font-size:11px;text-align:center;margin-left:4px}
+  #panel-executivo .exec-ppt-pop{position:absolute;left:0;top:calc(100% + 6px);z-index:1000;width:min(420px,92vw);max-height:70vh;overflow:auto;background:#ffffff;border:.5px solid var(--bd2);border-radius:var(--rl);box-shadow:var(--shadow-lg);padding:12px 14px}
+  body[data-theme="dark"] #panel-executivo .exec-ppt-pop{background:#1c1c1e}
+  #panel-executivo .exec-ppt-pop-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+  #panel-executivo .exec-ppt-acts button{font:inherit;font-size:11.5px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx);border-radius:8px;padding:2px 8px;margin-left:4px;cursor:pointer}
+  #panel-executivo .exec-ppt-hint{margin:0 0 8px;font-size:11.5px;color:var(--tx3)}
+  #panel-executivo .exec-ppt-grp{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px}
+  #panel-executivo .exec-ppt-item{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:3px 0;cursor:pointer}
+  #panel-executivo .exec-ppt-item.off{color:var(--tx3)}
+  #panel-executivo .exec-ppt-item small{color:var(--tx3);font-size:11px}
   #panel-executivo .exec-alerts li.bd{color:var(--red-dk)} #panel-executivo .exec-alerts li.wn{color:#b7791f} #panel-executivo .exec-alerts li.ok{color:var(--green-dk)}
   #panel-executivo .exec-summary-card{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:14px 16px;cursor:pointer;text-align:left;font-family:inherit;transition:box-shadow .15s,transform .15s;}
   #panel-executivo .exec-summary-card:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
@@ -11062,7 +11080,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="msel"><button type="button" class="msel-btn" id="msel-btn-exec-b2c-cluster-selector" onclick="mselToggleOpen('exec-b2c-cluster-selector')"><span class="msel-btn-lbl">Todos os clusters</span></button></div>
         <span class="card-action" style="margin-left:6px" onclick="clearExecFilters()">Limpar filtros</span>
       </div>
-      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Apresentação (.pptx) com os quadros Redir Rede (Prazo e Outlier) e Redir B2B (Prazo e Outlier), no ano escolhido em cada quadro"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+      <details class="exec-ppt-pick" id="exec-ppt-pick">
+        <summary class="dash-action" title="Escolha o que vai para a apresentação"><i class="ti ti-checklist"></i> Conteúdo do PPT <b id="exec-ppt-count" class="exec-ppt-count">0</b></summary>
+        <div class="exec-ppt-pop">
+          <div class="exec-ppt-pop-hd"><b>O que levar para a apresentação</b><span class="exec-ppt-acts"><button type="button" onclick="execPptPreset('padrao')">Padrão</button><button type="button" onclick="execPptPreset('todos')">Todos</button><button type="button" onclick="execPptPreset('nenhum')">Nenhum</button></span></div>
+          <p class="exec-ppt-hint">A apresentação sai sempre com os filtros aplicados agora no Executivo.</p>
+          <div id="exec-ppt-list"></div>
+        </div>
+      </details>
+      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Gera a apresentação (.pptx) com o conteúdo escolhido em &quot;Conteúdo do PPT&quot;, obedecendo aos filtros aplicados agora no Executivo"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
+      </div>
     </div>
 
     <div class="exec-summary-grid">
@@ -16126,6 +16154,40 @@ function encStatsClusterAvg(d){
    recalculado de 24h pra 12h, pedido do usuário, 2026-10-04). Como não lê
    nenhum estado de filtro, só muda quando dEnc muda (nova base anexada) — chamado sempre
    que renderAllEnc() roda é suficiente, sem wiring extra. */
+/* ─── Contexto "Executivo" dos quadros Redir (pedido do usuário, 2026-10-17: "quando
+   realizar qualquer filtro no Painel as informações serão apresentadas apenas dos filtros
+   selecionados"). EXEC_REDIR_CTX fica true SÓ enquanto um quadro Redir do Painel Executivo
+   (ids "exec-…") é calculado/desenhado: aí Ano/Mês/Semana/Cluster do Executivo recortam
+   ano, colunas e linhas. Os mesmos quadros nos painéis Rede e B2B Encerrados não mudam. */
+var EXEC_REDIR_CTX=false;
+function execRedirComCtx(id,fn){const prev=EXEC_REDIR_CTX;EXEC_REDIR_CTX=String(id||'').startsWith('exec-');try{return fn();}finally{EXEC_REDIR_CTX=prev;}}
+function execFiltro(k){try{return({ano:selExecAno,mes:selExecMes,sem:selExecSemana,rede:selExecRedeCluster,enc:selExecEncCluster})[k]||[];}catch(e){return[];}}
+function execIsoMonday(key){const m=/^(\d{4})-[WS](\d{1,2})$/.exec(key||'');return m?redirIsoWeekMonday(+m[1],+m[2]):null;}
+function execRedirAnoSel(){const a=execFiltro('ano');return EXEC_REDIR_CTX&&a.length?+[...a].sort().pop():null;}
+/* Último dia do período filtrado (Semana manda sobre Mês); null = sem corte. */
+function execRedirRefCorte(){
+  if(!EXEC_REDIR_CTX)return null;
+  const sem=execFiltro('sem'),mes=execFiltro('mes');
+  if(sem.length){const d=execIsoMonday([...sem].sort().pop());if(d)return new Date(d.getFullYear(),d.getMonth(),d.getDate()+6);}
+  if(mes.length){const k=[...mes].sort().pop();return new Date(+k.slice(0,4),+k.slice(5,7),0);}
+  return null;
+}
+/* Meses (AAAA-MM) permitidos pelo filtro dentro do ano; null = sem filtro. */
+function execRedirMesesFiltro(ano){
+  if(!EXEC_REDIR_CTX)return null;
+  const mes=execFiltro('mes'),sem=execFiltro('sem');
+  if(mes.length)return mes.filter(m=>m.startsWith(ano+'-'));
+  if(sem.length){const st=new Set();sem.forEach(k=>{const d=execIsoMonday(k);if(!d)return;for(let i=0;i<7;i++){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()+i);if(x.getFullYear()===ano)st.add(x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0'));}});return[...st].sort();}
+  return null;
+}
+/* Semanas do filtro no formato do quadro ('W' Rede, 'S' B2B); null = sem filtro de semana. */
+function execRedirSemanasFiltro(fmt){
+  const sem=execFiltro('sem');
+  if(!EXEC_REDIR_CTX||!sem.length)return null;
+  return[...new Set(sem.map(k=>k.replace(/-[WS](\d+)$/,(m,n)=>'-'+fmt+String(n).padStart(2,'0'))))].sort();
+}
+function execSemanaToca(k,meses){const d=execIsoMonday(k);if(!d)return false;for(let i=0;i<7;i++){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()+i);if(meses.includes(x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')))return true;}return false;}
+function execRedirCorteAntesDeHoje(){const c=execRedirRefCorte();if(!c)return false;const h=new Date();return c<new Date(h.getFullYear(),h.getMonth(),h.getDate());}
 const REDIR_GROUPS=[
   {key:'Norte',code:'C.28',clusters:CLUSTER_NORTE_MEMBERS},
   {key:'Piauí',code:'C.31',clusters:['PI CAP','PI INT']},
@@ -16139,7 +16201,11 @@ function redirMesAbrev(mesKey){const m=+String(mesKey||'').slice(5,7);return RED
    = ano corrente (comportamento padrão, igual a antes). */
 let redirSelAno='';
 function redirAnoAtualNum(){return new Date().getFullYear();}
-function redirAnoEfetivo(){return redirSelAno?+redirSelAno:redirAnoAtualNum();}
+function redirAnoEfetivo(){const a=execRedirAnoSel();if(a)return a;return redirSelAno?+redirSelAno:redirAnoAtualNum();}
+function redirPeriodoCorrente(){return redirAnoEfetivo()===redirAnoAtualNum()&&!execRedirCorteAntesDeHoje();}
+/* Base e grupos do Redir B2B: no Executivo, só os clusters do filtro "Cluster Encerrados". */
+function redirBaseVis(){const b=slnEnc(),f=EXEC_REDIR_CTX?execFiltro('enc'):[];return f.length?b.filter(x=>clusterRowMatches(f,x.cluster)):b;}
+function redirGroupsVis(){const f=EXEC_REDIR_CTX?execFiltro('enc'):[];return f.length?REDIR_GROUPS.filter(g=>g.clusters.some(c=>clusterRowMatches(f,c))):REDIR_GROUPS;}
 function redirAnosDisponiveis(){
   const anos=new Set([String(redirAnoAtualNum())]);
   slnEnc().forEach(x=>{if(x.mes)anos.add(x.mes.slice(0,4));});
@@ -16151,7 +16217,9 @@ function redirAnosDisponiveis(){
    final é a última semana ISO que toca aquele ano, também sem WTD. */
 function redirRefDateFim(){
   const ano=redirAnoEfetivo();
-  return ano===redirAnoAtualNum()?new Date():new Date(ano,11,31);
+  const base=ano===redirAnoAtualNum()?new Date():new Date(ano,11,31);
+  const c=execRedirRefCorte();
+  return c&&c<base?c:base;
 }
 function redirSetAno(v){
   redirSelAno=v||'';
@@ -16190,12 +16258,19 @@ function redirYearMonths(){
   const mesFinal=ano===redirAnoAtualNum()?new Date().getMonth():11;
   const out=[];
   for(let m=0;m<=mesFinal;m++)out.push(ano+'-'+String(m+1).padStart(2,'0'));
-  return out;
+  const f=execRedirMesesFiltro(ano);
+  return f?out.filter(m=>f.includes(m)):out;
 }
 /* Retorna nReal+1 chaves 'AAAA-Snn' terminando na semana de referência (o último item) —
    deriva por data real (não w-i ingênuo) pra não quebrar em virada de ano. Usa
    redirRefDateFim() (hoje, ou 31/dez do ano selecionado se for um ano passado). */
 function redirLastWeeks(nReal){
+  const sf=execRedirSemanasFiltro('S');if(sf)return sf;
+  const mf=execRedirMesesFiltro(redirAnoEfetivo());
+  const out0=_redirLastWeeksBase(nReal);
+  return mf?out0.filter(k=>execSemanaToca(k.replace('-S','-W'),mf)):out0;
+}
+function _redirLastWeeksBase(nReal){
   const today=redirRefDateFim();
   const curKey=calcSemana(today);
   const m=/^(\d{4})-S(\d{2})$/.exec(curKey);
@@ -16217,8 +16292,8 @@ function redirStatsFor(rows,metric){
    monta a série de um único cluster bruto (ex.: só "PA CAP") quando chamada com um
    "grupo" de 1 membro só, ver redirChildGroups()/redirRenderTable(). */
 function redirSeries(periods,periodKeyFn,metric,groups){
-  groups=groups||REDIR_GROUPS;
-  const base=slnEnc();
+  groups=groups||redirGroupsVis();
+  const base=redirBaseVis();
   const byGroupPeriod={};
   groups.forEach(g=>byGroupPeriod[g.key]={});
   base.forEach(x=>{
@@ -16294,7 +16369,8 @@ function redirToggleGroup(elId,metric,groupKey){
   if(s.has(groupKey))s.delete(groupKey);else s.add(groupKey);
   redirRenderTable(elId,metric);
 }
-function redirRenderTable(elId,metric){
+function redirRenderTable(elId,metric){return execRedirComCtx(elId,()=>_redirRenderTable(elId,metric));}
+function _redirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
   const monthPeriods=redirYearMonths();
   const weekPeriods=redirLastWeeks(5);
@@ -16302,7 +16378,7 @@ function redirRenderTable(elId,metric){
   const weekSeries=redirSeries(weekPeriods,x=>x.semana,metric);
   const diaMes=redirRefDateFim().getDate(),diasMes=redirDiasNoMesAtual();
   const diaSemana=redirDiaSemanaDecorrido();
-  const anoAtual=redirAnoEfetivo()===redirAnoAtualNum();
+  const anoAtual=redirPeriodoCorrente();
   const expandedSet=redirExpandedGroups[elId]||new Set();
   const monthHead=monthPeriods.map((k,i)=>{
     return`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
@@ -16332,7 +16408,8 @@ function redirRenderTable(elId,metric){
       const parentLabel=`${chevron}${eh(row.group.code)} | ${eh(row.group.key)}`;
       const parentHtml=buildRowHtml(row,wrow,parentLabel,'redir-group-row',` onclick="redirToggleGroup('${elId}','${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} as UFs de ${eh(row.group.key)}" style="cursor:pointer"`);
       if(!isExpanded)return parentHtml;
-      const childGroups=row.group.clusters.map(c=>({key:c,code:'',clusters:[c]}));
+      const _fEnc=EXEC_REDIR_CTX?execFiltro('enc'):[];
+      const childGroups=row.group.clusters.filter(c=>!_fEnc.length||clusterRowMatches(_fEnc,c)).map(c=>({key:c,code:'',clusters:[c]}));
       const childMonthSeries=redirSeries(monthPeriods,x=>x.mes,metric,childGroups);
       const childWeekSeries=redirSeries(weekPeriods,x=>x.semana,metric,childGroups);
       const childHtml=childGroups.map((cg,ci)=>buildRowHtml(childMonthSeries[ci],childWeekSeries[ci],`<span style="padding-left:18px">${eh(cg.key)}</span>`,'redir-child-row','')).join('');
@@ -16362,8 +16439,8 @@ function redirAcaoParaCausa(causa){return REDIR_CAUSA_ACOES[causa]||'investigar 
    predominante (pedido do usuário), não só "priorizar a cidade X". Não usa filtro nenhum —
    mesma base fixa das tabelas acima. */
 function redirFcaCidades(metric){
-  const base=slnEnc();
-  const anoAtual=redirAnoEfetivo()===redirAnoAtualNum();
+  const base=redirBaseVis();
+  const anoAtual=redirPeriodoCorrente();
   const meses=redirYearMonths();
   const curMonth=meses[meses.length-1];
   const curWeek=redirLastWeeks(0)[0];
@@ -16429,16 +16506,24 @@ function redirFillAnoSelect(){
     const sel=document.getElementById(t.ano);
     if(!sel)return;
     sel.innerHTML=anos.map(a=>`<option value="${a}"${(redirSelAno||String(redirAnoAtualNum()))===a?' selected':''}>${a}</option>`).join('');
+    execRedirTravarAno(sel,t.ano);
   });
+}
+/* No Executivo, com filtro de Ano ativo, o seletor de ano do quadro mostra o ano do filtro e trava. */
+function execRedirTravarAno(sel,id){
+  if(!String(id).startsWith('exec-'))return;
+  const a=execFiltro('ano');
+  if(a.length){const v=[...a].sort().pop();if(![...sel.options].some(o=>o.value===v))sel.insertAdjacentHTML('beforeend','<option value="'+v+'">'+v+'</option>');sel.value=v;sel.disabled=true;sel.title='Ano definido pelo filtro Ano do Painel Executivo';}
+  else{sel.disabled=false;sel.title='';}
 }
 function redirRenderAll(){
   if(!REDIR_RENDER_TARGETS.some(t=>document.getElementById(t.prazo)))return;
   redirFillAnoSelect();
   const descEl=document.getElementById('redir-desc-meta');
   if(descEl)descEl.innerHTML=`Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta ${pp(ENC_META_PRAZO)}% · Outlier &gt;12h: máx. ${pp(ENC_META_OUTLIER)}%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base, trocar o ano ou editar a meta.`;
-  const fcaPrazoTxt=redirFcaCidades('prazo'),fcaOutlierTxt=redirFcaCidades('outlier');
   REDIR_RENDER_TARGETS.forEach(t=>{
     if(!document.getElementById(t.prazo))return;
+    const fcaPrazoTxt=execRedirComCtx(t.prazo,()=>redirFcaCidades('prazo')),fcaOutlierTxt=execRedirComCtx(t.prazo,()=>redirFcaCidades('outlier'));
     redirRenderTable(t.prazo,'prazo');
     redirRenderTable(t.outlier,'outlier');
     const fcaPrazoEl=document.getElementById(t.fcaPrazo);
@@ -29685,13 +29770,18 @@ function rdeRedirBase(){
   let out=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
   const cl=userAllowedClusters();
   if(cl)out=out.filter(r=>cl.includes(r.cl));
+  const f=EXEC_REDIR_CTX?execFiltro('rede'):[];
+  if(f.length)out=out.filter(r=>f.includes(r.cl));
   return out;
 }
 /* Filtro de Ano PRÓPRIO do Redir Rede — independente do redirSelAno do Encerrados
    (bases/datas diferentes). Mesmo comportamento: '' = ano corrente real. */
 let rdeRedirSelAno='';
 function rdeRedirAnoAtualNum(){return new Date().getFullYear();}
-function rdeRedirAnoEfetivo(){return rdeRedirSelAno?+rdeRedirSelAno:rdeRedirAnoAtualNum();}
+function rdeRedirAnoEfetivo(){const a=execRedirAnoSel();if(a)return a;return rdeRedirSelAno?+rdeRedirSelAno:rdeRedirAnoAtualNum();}
+function rdeRedirPeriodoCorrente(){return rdeRedirAnoEfetivo()===rdeRedirAnoAtualNum()&&!execRedirCorteAntesDeHoje();}
+const RDE_REDIR_GRUPO_CL={'Norte':['N'],'Piauí':['P'],'Maranhão':['C','I']};
+function rdeRedirGroupsVis(){const f=EXEC_REDIR_CTX?execFiltro('rede'):[];return f.length?RDE_REDIR_GROUPS.filter(g=>(RDE_REDIR_GRUPO_CL[g.key]||[]).some(c=>f.includes(c))):RDE_REDIR_GROUPS;}
 function rdeRedirAnosDisponiveis(){
   const anos=new Set([String(rdeRedirAnoAtualNum())]);
   rdeRedirBase().forEach(r=>{if(r.m)anos.add(r.m.slice(0,4));});
@@ -29699,7 +29789,9 @@ function rdeRedirAnosDisponiveis(){
 }
 function rdeRedirRefDateFim(){
   const ano=rdeRedirAnoEfetivo();
-  return ano===rdeRedirAnoAtualNum()?new Date():new Date(ano,11,31);
+  const base=ano===rdeRedirAnoAtualNum()?new Date():new Date(ano,11,31);
+  const c=execRedirRefCorte();
+  return c&&c<base?c:base;
 }
 function rdeRedirSetAno(v){rdeRedirSelAno=v||'';saveState();rdeRedirRenderAll();}
 function rdeRedirYearMonths(){
@@ -29707,7 +29799,8 @@ function rdeRedirYearMonths(){
   const mesFinal=ano===rdeRedirAnoAtualNum()?new Date().getMonth():11;
   const out=[];
   for(let m=0;m<=mesFinal;m++)out.push(ano+'-'+String(m+1).padStart(2,'0'));
-  return out;
+  const f=execRedirMesesFiltro(ano);
+  return f?out.filter(m=>f.includes(m)):out;
 }
 function rdeRedirCalcSemana(d){return calcSemana(d).replace('-S','-W');}
 function rdeRedirWeekRangeLabel(semanaKey){
@@ -29719,6 +29812,12 @@ function rdeRedirWeekRangeLabel(semanaKey){
   return`${f(mon)}–${f(sun)}`;
 }
 function rdeRedirLastWeeks(nReal){
+  const sf=execRedirSemanasFiltro('W');if(sf)return sf;
+  const mf=execRedirMesesFiltro(rdeRedirAnoEfetivo());
+  const out0=_rdeRedirLastWeeksBase(nReal);
+  return mf?out0.filter(k=>execSemanaToca(k,mf)):out0;
+}
+function _rdeRedirLastWeeksBase(nReal){
   const today=rdeRedirRefDateFim();
   const curKey=rdeRedirCalcSemana(today);
   const m=/^(\d{4})-W(\d{2})$/.exec(curKey);
@@ -29755,7 +29854,7 @@ function rdeRedirStatsFor(rows,metric){
    regionais), mas a mesma função monta a série de um cluster bruto isolado quando
    chamada com um "grupo" de 1 membro só (ver rdeRedirRenderTable). */
 function rdeRedirSeries(periods,periodKeyFn,metric,groups){
-  groups=groups||RDE_REDIR_GROUPS;
+  groups=groups||rdeRedirGroupsVis();
   const base=rdeRedirBase();
   const byGroupPeriod={};
   groups.forEach(g=>byGroupPeriod[g.key]={});
@@ -29827,7 +29926,8 @@ function rdeRedirToggleGroup(elId,metric,groupKey){
   if(s.has(groupKey))s.delete(groupKey);else s.add(groupKey);
   rdeRedirRenderTable(elId,metric);
 }
-function rdeRedirRenderTable(elId,metric){
+function rdeRedirRenderTable(elId,metric){return execRedirComCtx(elId,()=>_rdeRedirRenderTable(elId,metric));}
+function _rdeRedirRenderTable(elId,metric){
   const el=document.getElementById(elId);if(!el)return;
   const monthPeriods=rdeRedirYearMonths();
   const weekPeriods=rdeRedirLastWeeks(5);
@@ -29835,7 +29935,7 @@ function rdeRedirRenderTable(elId,metric){
   const weekSeries=rdeRedirSeries(weekPeriods,r=>r.w,metric);
   const diaMes=rdeRedirRefDateFim().getDate(),diasMes=rdeRedirDiasNoMesAtual();
   const diaSemana=rdeRedirDiaSemanaDecorrido();
-  const anoAtual=rdeRedirAnoEfetivo()===rdeRedirAnoAtualNum();
+  const anoAtual=rdeRedirPeriodoCorrente();
   const expandedSet=rdeRedirExpandedGroups[elId]||new Set();
   const unitSuf=RDE_REDIR_METRICS[metric].unit==='qtd'?'(un.)':RDE_REDIR_METRICS[metric].unit==='h'?'(h)':'(p.p.)';
   const monthHead=monthPeriods.map((k,i)=>`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`).join('');
@@ -29864,7 +29964,9 @@ function rdeRedirRenderTable(elId,metric){
     const parentHtml=buildRow(row,wrow,chevron+eh(row.group.key),'redir-group-row',` onclick="rdeRedirToggleGroup('${elId}','${metric}','${eh(row.group.key)}')" title="Clique para ${isExpanded?'ocultar':'ver'} os sub-clusters de ${eh(row.group.key)}" style="cursor:pointer"`);
     if(!isExpanded)return parentHtml;
     const parentGroup=row.group;
-    const childGroups=parentGroup.childKeys.map(ck=>({key:ck,match:r=>parentGroup.match(r)&&parentGroup.childKeyFn(r)===ck}));
+    const _fRede=EXEC_REDIR_CTX?execFiltro('rede'):[];
+    const _ckVis=parentGroup.key==='Maranhão'&&_fRede.length?parentGroup.childKeys.filter(ck=>_fRede.includes(ck==='MA CAP'?'C':'I')):parentGroup.childKeys;
+    const childGroups=_ckVis.map(ck=>({key:ck,match:r=>parentGroup.match(r)&&parentGroup.childKeyFn(r)===ck}));
     const childMonthSeries=rdeRedirSeries(monthPeriods,r=>r.m,metric,childGroups);
     const childWeekSeries=rdeRedirSeries(weekPeriods,r=>r.w,metric,childGroups);
     const childHtml=childGroups.map((cg,ci)=>buildRow(childMonthSeries[ci],childWeekSeries[ci],`<span style="padding-left:18px">${eh(cg.key)}</span>`,'redir-child-row','')).join('');
@@ -29882,7 +29984,7 @@ function rdeRedirFca(metric){
   const meses=rdeRedirYearMonths();
   const curMonth=meses[meses.length-1];
   const curWeek=rdeRedirLastWeeks(0)[0];
-  const anoAtual=rdeRedirAnoEfetivo()===rdeRedirAnoAtualNum();
+  const anoAtual=rdeRedirPeriodoCorrente();
   const mtdTag=anoAtual?' (MTD)':'',wtdTag=anoAtual?' (WTD)':'';
   const meta=RDE_REDIR_METRICS[metric].metaGetter?RDE_REDIR_METRICS[metric].metaGetter():null;
   function isBad(r){
@@ -29944,16 +30046,17 @@ function rdeRedirFillAnoSelect(){
     const sel=document.getElementById(id);
     if(!sel)return;
     sel.innerHTML=anos.map(a=>`<option value="${a}"${(rdeRedirSelAno||String(rdeRedirAnoAtualNum()))===a?' selected':''}>${a}</option>`).join('');
+    execRedirTravarAno(sel,id);
   });
 }
 function rdeRedirRenderAll(){
   if(!RDE_REDIR_TARGETS.some(id=>document.getElementById(id)))return;
   rdeRedirFillAnoSelect();
-  const fcaTexts={};
-  RDE_REDIR_METRICS_ORDER.forEach(m=>fcaTexts[m]=rdeRedirFca(m));
   RDE_REDIR_TARGETS.forEach(wrapId=>{
     const wrap=document.getElementById(wrapId);
     if(!wrap)return;
+    const fcaTexts={};
+    RDE_REDIR_METRICS_ORDER.forEach(m=>fcaTexts[m]=execRedirComCtx(wrapId,()=>rdeRedirFca(m)));
     wrap.innerHTML=RDE_REDIR_METRICS_ORDER.map(metric=>{
       const def=RDE_REDIR_METRICS[metric];
       return`<div class="redir-sub-title" style="margin-top:18px">${eh(def.label)}</div>
@@ -33877,11 +33980,46 @@ function renderExecutivo(){
   execAppendOpsReport(redeSnap,encSnap,b2cSnap,ofsSnap,wmSnap);
   redirRenderAll();
   rdeRedirRenderAll();
+  execRenderPptPick({rede:redeSnap,enc:encSnap,b2c:b2cSnap,ofs:ofsSnap,wm:wmSnap});
 }
 /* ─── Abertos OFS e Warmup no Executivo (pedido do usuário, 2026-10-17: "os dados devem
    refletir as informações dos demais painéis para todas as análises") ─── */
-function execOfsSnapshot(){try{return window.aofExecSnapshot?window.aofExecSnapshot():null;}catch(e){console.warn('Executivo: Abertos OFS',e);return null;}}
-function execWarmupSnapshot(){try{return window.warmapExecSnapshot?window.warmapExecSnapshot():null;}catch(e){console.warn('Executivo: Warmup',e);return null;}}
+/* Abertos OFS e Warmup são bases do DIA: obedecem aos filtros do Executivo assim —
+   Ano/Mês/Semana: a data da base precisa estar dentro do período filtrado (senão o bloco
+   fica vazio, com aviso); Cluster Rede: vira cluster do OFS (N→C28, P→C31, C/I→C32) e UF
+   do Warmup (N→PA/AP/AM, P→PI, C/I→MA). Os filtros da tela de cada painel continuam valendo. */
+const EXEC_REDE_CL_OFS={N:['C28'],P:['C31'],C:['C32'],I:['C32']},EXEC_REDE_CL_UF={N:['PA','AP','AM'],P:['PI'],C:['MA'],I:['MA']};
+function execDataNoPeriodo(iso){
+  if(!iso)return true;
+  const d=new Date(iso+'T12:00:00');if(isNaN(d))return true;
+  if(selExecAno.length&&!selExecAno.includes(iso.slice(0,4)))return false;
+  if(selExecMes.length&&!selExecMes.includes(iso.slice(0,7)))return false;
+  if(selExecSemana.length){const w=rdeIsoWeek(d);const k=w.y+'-W'+String(w.w).padStart(2,'0');if(!selExecSemana.some(x=>x.replace(/-[WS](\d+)$/,(m,n)=>'-W'+String(n).padStart(2,'0'))===k))return false;}
+  return true;
+}
+function execFiltrosExecTxt(){return[selExecAno.length?'Ano '+selExecAno.join('+'):'',selExecMes.length?'Mês '+selExecMes.join('+'):'',selExecSemana.length?'Semana '+selExecSemana.join('+'):''].filter(Boolean).join(' · ');}
+function execOfsSnapshot(){
+  try{
+    if(!window.aofExecSnapshot)return null;
+    const cls=[...new Set(selExecRedeCluster.flatMap(c=>EXEC_REDE_CL_OFS[c]||[]))];
+    const o=window.aofExecSnapshot({clusters:cls});if(!o)return null;
+    const iso=o.baseDate?o.baseDate.split('/').reverse().join('-'):'';
+    o.clustersExec=cls;
+    if(!execDataNoPeriodo(iso))return{foraDoPeriodo:true,baseDate:o.baseDate,arquivo:o.arquivo};
+    return o;
+  }catch(e){console.warn('Executivo: Abertos OFS',e);return null;}
+}
+function execWarmupSnapshot(){
+  try{
+    if(!window.warmapExecSnapshot)return null;
+    const ufs=[...new Set(selExecRedeCluster.flatMap(c=>EXEC_REDE_CL_UF[c]||[]))];
+    const w=window.warmapExecSnapshot({ufs});if(!w)return null;
+    w.ufsExec=ufs;
+    if(!execDataNoPeriodo(w.dataRelIso))return{foraDoPeriodo:true,dataRelIso:w.dataRelIso,arquivo:w.arquivo};
+    return w;
+  }catch(e){console.warn('Executivo: Warmup',e);return null;}
+}
+function execForaTxt(nome,data){return'A base do '+nome+(data?' é de '+data:'')+', fora do período filtrado no Executivo ('+(execFiltrosExecTxt()||'—')+'). Ajuste os filtros para ver esta análise.';}
 const execN=v=>Number(v||0).toLocaleString('pt-BR');
 const execPct1=v=>v==null||isNaN(v)?'—':(Math.round(v*10)/10).toFixed(1).replace('.',',')+'%';
 const execH1=v=>v==null||isNaN(v)?'—':(Math.round(v*10)/10).toFixed(1).replace('.',',')+' h';
@@ -33897,6 +34035,11 @@ function execOpsCard(id,titulo,icon,principalLbl,principal,cor,sub,chips,rodape)
 }
 function execRenderOfs(o){
   const note=document.getElementById('exec-ofs-note'),kpi=document.getElementById('exec-kpi-ofs');
+  if(o&&o.foraDoPeriodo){
+    execOpsCard('exec-summary-ofs','Abertos OFS','ti-list-check','','—','var(--tx3)','Base de '+(o.baseDate||'—')+' fora do período filtrado',[],'');
+    const t=execForaTxt('Abertos OFS',o.baseDate);if(note)note.textContent=t;if(kpi)kpi.innerHTML='<div class="exec-empty">'+eh(t)+'</div>';
+    ['exec-ofs-cluster','exec-ofs-alerts'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='';});return;
+  }
   if(!o){
     execOpsCard('exec-summary-ofs','Abertos OFS','ti-list-check','','—','var(--tx3)','Sem base carregada no Abertos OFS',[],'');
     if(note)note.textContent='Carregue a base no painel Abertos OFS para ver esta análise.';
@@ -33907,7 +34050,7 @@ function execRenderOfs(o){
   execOpsCard('exec-summary-ofs','Abertos OFS','ti-list-check','Taxa de conclusão',o.taxa+'%','var(--blue)',
     execN(o.tot)+' atividades · base de '+(o.baseDate||'—'),
     [['Em aberto: '+execN(o.cnt['Em aberto'])],['Sem técnico: '+execN(o.unass),o.unass?'#b7791f':''],['SLA ≥24h: '+execN(o.sla.o24),corSla]],'Espelha o recorte da tela do Abertos OFS');
-  if(note)note.innerHTML='<i class="ti ti-link"></i> Mesmos números do painel <b>Abertos OFS</b> (base de '+eh(o.baseDate||'—')+(o.arquivo?' · '+eh(o.arquivo):'')+'). Filtros do painel: '+eh(execFiltrosTxt(o.filtros))+'. Os filtros de Ano/Mês/Semana não se aplicam (base do dia). <span class="card-action" onclick="switchTab(\'abertosOfs\')">Abrir painel</span>';
+  if(note)note.innerHTML='<i class="ti ti-link"></i> Mesmos números do painel <b>Abertos OFS</b> (base de '+eh(o.baseDate||'—')+(o.arquivo?' · '+eh(o.arquivo):'')+'). Filtros do painel: '+eh(execFiltrosTxt(o.filtros))+'.'+(o.clustersExec&&o.clustersExec.length?' Filtro Cluster Rede do Executivo: '+eh(o.clustersExec.join(', '))+'.':'')+' Ano/Mês/Semana: a base do dia aparece só se estiver no período filtrado. <span class="card-action" onclick="switchTab(\'abertosOfs\')">Abrir painel</span>';
   const K=[['Taxa de conclusão',o.taxa+'%',o.cnt['Concluída']+' de '+o.valid+' (sem canceladas)'],['Em aberto',execN(o.cnt['Em aberto']),o.unass+' na fila sem técnico'],
     ['Suspensas e não concluídas',execN(o.cnt['Suspensa']+o.cnt['Não concluída']),o.cnt['Suspensa']+' suspensas · '+o.cnt['Não concluída']+' não concluídas'],['Técnicos em campo',execN(o.tecnicos),'com ao menos uma atividade'],
     ['Concluídas por técnico',o.conclPorTec!=null?o.conclPorTec.toFixed(1).replace('.',','):'—','média do recorte'],['Tempo médio de execução',o.fmtDur,'deslocamento médio '+o.fmtDesl],
@@ -33921,6 +34064,12 @@ function execRenderOfs(o){
 }
 function execRenderWarmup(w){
   const note=document.getElementById('exec-wm-note'),kpi=document.getElementById('exec-kpi-warmup');
+  if(w&&w.foraDoPeriodo){
+    const dt=w.dataRelIso?w.dataRelIso.split('-').reverse().join('/'):'';
+    execOpsCard('exec-summary-warmup','Warmup','ti-map-2','','—','var(--tx3)','Relatório'+(dt?' de '+dt:'')+' fora do período filtrado',[],'');
+    const t=execForaTxt('Warmup',dt);if(note)note.textContent=t;if(kpi)kpi.innerHTML='<div class="exec-empty">'+eh(t)+'</div>';
+    ['exec-wm-uf','exec-wm-top','exec-wm-backlog'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='';});return;
+  }
   if(!w){
     execOpsCard('exec-summary-warmup','Warmup','ti-map-2','','—','var(--tx3)','Sem base carregada no Warmup',[],'');
     if(note)note.textContent='Carregue o relatório no painel Warmup para ver esta análise.';
@@ -33930,7 +34079,7 @@ function execRenderWarmup(w){
   execOpsCard('exec-summary-warmup','Warmup','ti-map-2','Chamados no recorte',execN(w.total),'var(--blue)',
     'PI · MA · PA · AM · AP · de '+execN(w.totalRel)+' no relatório',
     [['Backbone: '+execN(w.backbone)],['Acesso: '+execN(w.acesso)],['Massivas: '+execN(w.massiva)],['≥24h: '+execN(w.o24),w.o24?'var(--red-dk)':'']],'Espelha o recorte da tela do Warmup');
-  if(note)note.innerHTML='<i class="ti ti-link"></i> Mesmos números do painel <b>Warmup</b>'+(w.arquivo?' ('+eh(w.arquivo)+')':'')+'. Filtros do painel: '+eh(execFiltrosTxt(w.filtros))+'. Os filtros de Ano/Mês/Semana não se aplicam (relatório do dia). <span class="card-action" onclick="switchTab(\'warmap\')">Abrir painel</span>';
+  if(note)note.innerHTML='<i class="ti ti-link"></i> Mesmos números do painel <b>Warmup</b>'+(w.arquivo?' ('+eh(w.arquivo)+')':'')+'. Filtros do painel: '+eh(execFiltrosTxt(w.filtros))+'.'+(w.ufsExec&&w.ufsExec.length?' Filtro Cluster Rede do Executivo: UF '+eh(w.ufsExec.join(', '))+'.':'')+' Ano/Mês/Semana: o relatório do dia aparece só se estiver no período filtrado. <span class="card-action" onclick="switchTab(\'warmap\')">Abrir painel</span>';
   const K=[['Total no recorte',execN(w.total),'PI · MA · PA · AM · AP'],['Backbone (TX/IP)',execN(w.backbone),'trechos de transporte'],['Acesso',execN(w.acesso),'OLT/rede externa'],['Massivas',execN(w.massiva),'afetação em massa'],
     ['Abertos há ≥ 24 h',execN(w.o24),'tempo decorrido'],['Tempo médio decorrido',execH1(w.mediaH),'dos chamados com tempo'],['Backlog',execN(w.backlog.total),'chamados em backlog'],['No relatório',execN(w.totalRel),'todas as UFs']];
   if(kpi)kpi.innerHTML=K.map(([l,v,sub])=>'<div class="exec-kpi"><div class="lb">'+eh(l)+'</div><div class="vl">'+eh(v)+'</div><div class="lb" style="margin-top:2px">'+eh(sub)+'</div></div>').join('');
@@ -33945,6 +34094,8 @@ function execRenderWarmup(w){
 }
 function execOpsReportLines(o,w){
   const L=[];
+  if(o&&o.foraDoPeriodo){L.push('▸ ABERTOS OFS: '+execForaTxt('Abertos OFS',o.baseDate));o=null;}
+  if(w&&w.foraDoPeriodo){L.push((L.length?'\n':'')+'▸ WARMUP: '+execForaTxt('Warmup',w.dataRelIso?w.dataRelIso.split('-').reverse().join('/'):''));w=null;}
   if(o){L.push('▸ ABERTOS OFS (base de '+(o.baseDate||'—')+' · filtros do painel: '+execFiltrosTxt(o.filtros)+')');
     L.push('  '+execN(o.tot)+' atividades · taxa de conclusão '+o.taxa+'% · '+execN(o.cnt['Em aberto'])+' em aberto ('+o.unass+' sem técnico) · '+execN(o.cnt['Suspensa']+o.cnt['Não concluída'])+' suspensas/não concluídas.');
     L.push('  SLA da fila: '+o.sla.o24+' de '+o.sla.abertas+' abertas há 24 h ou mais ('+o.sla.o48+' acima de 48 h); maior tempo '+o.sla.maxTxt+'.');
@@ -33955,11 +34106,14 @@ function execOpsReportLines(o,w){
     if(w.top[0])L.push('  Maior tempo em aberto: '+(w.top[0].req||'—')+' ('+(w.top[0].cat||'')+', '+(w.top[0].cidade||'')+') com '+execH1(w.top[0].h)+'.');}
   return L.join('\n');
 }
-/* ─── Apresentação do Executivo (.pptx) — pedido do usuário (2026-10-17): APENAS os
-   quadros Redir Rede (Prazo e Outlier) e Redir B2B (Prazo <8h e Outlier >12h), mais a capa.
-   As tabelas são copiadas do que já está desenhado no Executivo (mesmos valores, cabeçalhos,
-   cores e grupos expandidos), no ano escolhido em cada seletor de Redir — nada é recalculado
-   aqui, então a apresentação nunca diverge da tela. Cores lidas sempre no tema claro. */
+/* ─── Apresentação do Executivo (.pptx) com conteúdo escolhido pelo usuário ───
+   Pedido do usuário (2026-10-17): "criar um controle do que deseja levar para a
+   apresentação" + "a apresentação deverá obrigatoriamente obedecer aos filtros realizados
+   no momento". O controle "Conteúdo do PPT" lista os blocos do Executivo; o padrão são os
+   4 quadros Redir (pedido anterior). A escolha fica salva neste navegador. Tudo sai do que
+   o Executivo está mostrando AGORA, com os filtros atuais: snapshots (execRedeSnapshot etc.,
+   que já usam os filtros do Executivo) e os quadros Redir copiados da tela (que no
+   Executivo obedecem a Ano/Mês/Semana/Cluster — ver EXEC_REDIR_CTX). */
 function execRgbHex(c){const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c||'');if(!m||(m[4]!==undefined&&+m[4]<0.05))return null;return[m[1],m[2],m[3]].map(x=>(+x).toString(16).padStart(2,'0')).join('').toUpperCase();}
 function execTabelaParaPptx(table){
   const NAVY=PPTX_NAVY,WHITE=PPTX_WHITE;
@@ -33976,56 +34130,223 @@ function execTabelaParaPptx(table){
     return{text:txt,options:o};
   }));
 }
+const EXEC_PPT_ITENS=[
+  {k:'resumo',g:'Visão geral',l:'Resumo — farol dos painéis'},
+  {k:'leitura',g:'Visão geral',l:'Leitura executiva'},
+  {k:'rede',g:'Rede',l:'Rede — baremo e semana contra semana'},
+  {k:'redeFca',g:'Rede',l:'Rede — FCA'},
+  {k:'rr_mttr',g:'Redir Rede',l:'Redir Rede — MTTR',redir:'rede',m:'mttr'},
+  {k:'rr_prazo',g:'Redir Rede',l:'Redir Rede — Prazo',redir:'rede',m:'prazo',padrao:true},
+  {k:'rr_outlier',g:'Redir Rede',l:'Redir Rede — Outlier',redir:'rede',m:'outlier',padrao:true},
+  {k:'rr_volEventos',g:'Redir Rede',l:'Redir Rede — Volume de Eventos',redir:'rede',m:'volEventos'},
+  {k:'rr_volOutlier',g:'Redir Rede',l:'Redir Rede — Volume de Outlier',redir:'rede',m:'volOutlier'},
+  {k:'rr_fca',g:'Redir Rede',l:'Redir Rede — FCA dos quadros escolhidos',redir:'rede'},
+  {k:'enc',g:'B2B Encerrados',l:'B2B Encerrados — baremo e semana contra semana'},
+  {k:'encFca',g:'B2B Encerrados',l:'B2B Encerrados — FCA'},
+  {k:'rb_prazo',g:'Redir B2B',l:'Redir B2B — Prazo < 8h',redir:'b2b',m:'prazo',padrao:true},
+  {k:'rb_outlier',g:'Redir B2B',l:'Redir B2B — Outlier > 12h',redir:'b2b',m:'outlier',padrao:true},
+  {k:'rb_fca',g:'Redir B2B',l:'Redir B2B — FCA dos quadros escolhidos',redir:'b2b'},
+  {k:'b2c',g:'B2C',l:'B2C — baremo e semana contra semana'},
+  {k:'b2cFca',g:'B2C',l:'B2C — FCA'},
+  {k:'ofs',g:'Operação do dia',l:'Abertos OFS'},
+  {k:'warmup',g:'Operação do dia',l:'Warmup'}
+];
+const EXEC_PPT_KEY='jarvis:exec:pptItens:v1';
+let EXEC_PPT_SEL=null;
+function execPptSel(){
+  if(EXEC_PPT_SEL)return EXEC_PPT_SEL;
+  try{const v=JSON.parse(localStorage.getItem(EXEC_PPT_KEY)||'null');if(Array.isArray(v))EXEC_PPT_SEL=new Set(v.filter(k=>EXEC_PPT_ITENS.some(i=>i.k===k)));}catch(e){}
+  if(!EXEC_PPT_SEL)EXEC_PPT_SEL=new Set(EXEC_PPT_ITENS.filter(i=>i.padrao).map(i=>i.k));
+  return EXEC_PPT_SEL;
+}
+function execPptSalvar(){try{localStorage.setItem(EXEC_PPT_KEY,JSON.stringify([...execPptSel()]));}catch(e){}}
+let _execPptSnaps=null;
+/* Tem dado para este item no filtro atual? (item sem dado fica marcado, mas não gera slide) */
+function execPptDisponivel(it,sn){
+  sn=sn||{};
+  if(it.redir==='rede'){if(it.m){const t=document.querySelector('#exec-rde-redir-body-table-'+it.m+' table');return!!(t&&t.rows.length>1);}return!!document.querySelector('#exec-rde-redir-body table');}
+  if(it.redir==='b2b'){if(it.m){const t=document.querySelector('#exec-redir-table-'+it.m+' table');return!!(t&&t.rows.length>1);}return!!document.querySelector('#exec-redir-table-prazo table');}
+  if(it.k==='rede'||it.k==='redeFca')return!!(sn.rede&&sn.rede.total);
+  if(it.k==='enc'||it.k==='encFca')return!!(sn.enc&&sn.enc.total);
+  if(it.k==='b2c'||it.k==='b2cFca')return!!(sn.b2c&&sn.b2c.total);
+  if(it.k==='ofs')return!!(sn.ofs&&!sn.ofs.foraDoPeriodo&&sn.ofs.tot>0);
+  if(it.k==='warmup')return!!(sn.wm&&!sn.wm.foraDoPeriodo&&sn.wm.total>0);
+  return!!((sn.rede&&sn.rede.total)||(sn.enc&&sn.enc.total)||(sn.b2c&&sn.b2c.total)||(sn.ofs&&!sn.ofs.foraDoPeriodo)||(sn.wm&&!sn.wm.foraDoPeriodo));
+}
+function execRenderPptPick(snaps){
+  if(snaps)_execPptSnaps=snaps;
+  const box=document.getElementById('exec-ppt-list');if(!box)return;
+  const sel=execPptSel();let html='',g='';
+  EXEC_PPT_ITENS.forEach(it=>{
+    if(it.g!==g){g=it.g;html+='<div class="exec-ppt-grp">'+eh(g)+'</div>';}
+    const ok=execPptDisponivel(it,_execPptSnaps);
+    html+='<label class="exec-ppt-item'+(ok?'':' off')+'"><input type="checkbox" data-k="'+it.k+'"'+(sel.has(it.k)?' checked':'')+' onchange="execPptToggle(this)"><span>'+eh(it.l)+(ok?'':' <small>(sem dados no filtro atual)</small>')+'</span></label>';
+  });
+  box.innerHTML=html;
+  const n=EXEC_PPT_ITENS.filter(it=>sel.has(it.k)&&execPptDisponivel(it,_execPptSnaps)).length;
+  const c=document.getElementById('exec-ppt-count');if(c)c.textContent=String(n);
+}
+function execPptToggle(cb){const s=execPptSel();if(cb.checked)s.add(cb.dataset.k);else s.delete(cb.dataset.k);execPptSalvar();execRenderPptPick();}
+function execPptPreset(p){
+  EXEC_PPT_SEL=new Set(p==='todos'?EXEC_PPT_ITENS.map(i=>i.k):p==='nenhum'?[]:EXEC_PPT_ITENS.filter(i=>i.padrao).map(i=>i.k));
+  execPptSalvar();execRenderPptPick();
+}
+document.addEventListener('click',e=>{const d=document.getElementById('exec-ppt-pick');if(d&&d.open&&!d.contains(e.target))d.open=false;});
+/* A janela do controle abre sempre DENTRO da tela: a barra de filtros quebra linha conforme a largura, então o botão pode ficar à esquerda ou à direita. */
+document.addEventListener('toggle',e=>{const d=e.target;if(!d||d.id!=='exec-ppt-pick'||!d.open)return;const pop=d.querySelector('.exec-ppt-pop');if(!pop)return;pop.style.left='0px';pop.style.right='auto';const rc=pop.getBoundingClientRect();if(rc.right>window.innerWidth-8){pop.style.left='auto';pop.style.right='0px';}},true);
+
 async function execGerarApresentacao(){
   if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
   const btn=document.getElementById('exec-pptx-btn');const h=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';}
   const temaAntes=document.body.dataset.theme;
   try{
-    redirRenderAll();rdeRedirRenderAll(); // garante os quadros atualizados na tela do Executivo
-    const quadros=[
-      {id:'exec-rde-redir-body-table-prazo',grupo:'REDIR REDE',titulo:'Redir Rede — Prazo',anoSel:'exec-rde-redir-ano-sel',
-        nota:'Prazo por cluster (Backbone + Acesso) · meta '+pp(RDE_M89)+'% · ΔMoM = mês atual − meta · mesma tabela do Painel Rede/Executivo'},
-      {id:'exec-rde-redir-body-table-outlier',grupo:'REDIR REDE',titulo:'Redir Rede — Outlier',anoSel:'exec-rde-redir-ano-sel',
-        nota:'Outlier por cluster (Backbone + Acesso) · máx. '+pp(RDE_MOUT)+'% · ΔMoM = mês atual − meta · mesma tabela do Painel Rede/Executivo'},
-      {id:'exec-redir-table-prazo',grupo:'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)',titulo:'Redir B2B — Prazo < 8h',anoSel:'exec-redir-ano-sel',
-        nota:'Prazo de reparos B2B ≤ 8h · meta '+pp(ENC_META_PRAZO)+'% · ΔMoM = mês atual − meta · mesma tabela do B2B Encerrados/Executivo'},
-      {id:'exec-redir-table-outlier',grupo:'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)',titulo:'Redir B2B — Outlier > 12h',anoSel:'exec-redir-ano-sel',
-        nota:'Outlier de reparos B2B > 12h · máx. '+pp(ENC_META_OUTLIER)+'% · ΔMoM = mês atual − meta · mesma tabela do B2B Encerrados/Executivo'}
-    ];
-    document.body.dataset.theme='light'; // cores do PPT sempre as do tema claro
-    const lidos=quadros.map(q=>{const el=document.getElementById(q.id);const t=el&&el.querySelector('table');
-      const sel=document.getElementById(q.anoSel);const ano=sel&&sel.value?sel.options[sel.selectedIndex].textContent:'';
-      return{...q,ano,linhas:t&&t.rows.length>1?execTabelaParaPptx(t):null};});
-    document.body.dataset.theme=temaAntes;
-    const comDado=lidos.filter(q=>q.linhas);
-    if(!comDado.length){alert('Os quadros Redir estão vazios. Carregue as bases de Rede e/ou B2B Encerrados.');return;}
-    const NAVY=PPTX_NAVY,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE;
-    const N=1+comDado.length;let pg=1;
+    /* 1) Atualiza o Executivo com os filtros do momento (a apresentação obedece a eles). */
+    renderExecutivo();
+    const sn=_execPptSnaps||{};
+    const rede=sn.rede||{total:0,indicadores:[]},enc=sn.enc||{total:0,indicadores:[]},b2c=sn.b2c||{total:0,indicadores:[]};
+    const ofs=sn.ofs&&!sn.ofs.foraDoPeriodo&&sn.ofs.tot>0?sn.ofs:null,wm=sn.wm&&!sn.wm.foraDoPeriodo&&sn.wm.total>0?sn.wm:null;
+    const sel=execPptSel();
+    const itens=EXEC_PPT_ITENS.filter(it=>sel.has(it.k)&&execPptDisponivel(it,sn));
+    if(!itens.length){alert(sel.size?'Nenhum dos itens escolhidos em "Conteúdo do PPT" tem dados no filtro atual. Ajuste os filtros ou escolha outros itens.':'Escolha o que levar para a apresentação em "Conteúdo do PPT".');return;}
+
+    const NAVY=PPTX_NAVY,BLUE=PPTX_BLUE,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=PPTX_GREY,GREYL=PPTX_GREYL,WHITE=PPTX_WHITE,BGCARD=PPTX_BGCARD;
+    const ST={ok:GREEN,wn:ORANGE,bd:RED,na:GREY};
+    const recorte=execFiltrosExecTxt()||'Todo o período';
+    const clTxt=[selExecRedeCluster.length?'Rede: '+selExecRedeCluster.map(c=>RDE_CLUSTER_LABELS[c]||c).join(', '):'',selExecEncCluster.length?'Encerrados: '+selExecEncCluster.join(', '):'',selExecB2cCluster.length?'B2C: '+selExecB2cCluster.join(', '):''].filter(Boolean).join(' · ');
+    const kickRec=(recorte+(clTxt?' · '+clTxt:'')).toUpperCase();
     const pptx=pptxNewDeck();
+    const slides=[];// adiados até saber o total (numeração "n / N")
+    const slide=(k,t)=>{const sl=pptx.addSlide();slides.push({sl,k,t});return sl;};
+    const th=t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:10,valign:'middle'}});
+    const td=(t,o)=>({text:String(t==null?'':t),options:{fontSize:10,valign:'middle',...(o||{})}});
+    const card=(sl,x,y,w,hh,lab,txt,cor,fs)=>{sl.addShape('rect',{x,y,w,h:hh,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
+      sl.addText([{text:lab+'\n',options:{bold:true,fontSize:10,color:cor||GREY,breakLine:true}},{text:txt,options:{fontSize:fs||11.5,color:NAVY}}],{x:x+0.18,y:y+0.08,w:w-0.36,h:hh-0.16,valign:'top'});};
+    const kpi=(sl,x,y,w,lab,val,sub,cor)=>{sl.addShape('rect',{x,y,w,h:1.15,fill:{color:WHITE},line:{color:GREYL,width:0.75}});
+      sl.addShape('rect',{x,y,w,h:0.06,fill:{color:cor||BLUE},line:{type:'none'}});
+      sl.addText(lab,{x:x+0.12,y:y+0.12,w:w-0.24,h:0.28,fontSize:9,bold:true,color:GREY});
+      sl.addText(String(val),{x:x+0.12,y:y+0.38,w:w-0.24,h:0.45,fontSize:20,bold:true,color:NAVY});
+      if(sub)sl.addText(sub,{x:x+0.12,y:y+0.8,w:w-0.24,h:0.3,fontSize:8.5,color:GREY});};
+    const fmtR=i=>execFmtIndicadorResultado(i);
+    const fmtM=i=>i.meta==null?'—':(String(i.meta).replace('.',',')+(i.unidade||''));
+    const fmtS=(v,u)=>v==null||isNaN(v)?'—':(v.toFixed(u==='h'?2:1).replace('.',',')+(u||''));
     const dataTxt=new Date().toLocaleString('pt-BR',{dateStyle:'long',timeStyle:'short'});
-    // capa
+    const blocoDe={rede:{t:'Rede',snap:rede},enc:{t:'B2B Encerrados',snap:enc},b2c:{t:'B2C',snap:b2c}};
+
+    // capa (sempre)
     const c=pptx.addSlide();
     c.background={color:NAVY};
     c.addShape('rect',{x:0,y:6.9,w:13.333,h:0.12,fill:{color:'42C34B'},line:{type:'none'}});
     c.addText([{text:'Jarvis ',options:{color:WHITE}},{text:'MCLL',options:{color:'42C34B'}},{text:' · alloha FIBRA',options:{color:WHITE}}],{x:0.7,y:0.6,w:12,h:0.5,fontSize:16,bold:true});
-    c.addText('Apresentação Executiva',{x:0.7,y:2.3,w:12,h:1,fontSize:40,bold:true,color:WHITE});
-    c.addText('Redir Rede (Prazo e Outlier) · Redir B2B (Prazo e Outlier)',{x:0.7,y:3.35,w:12,h:0.5,fontSize:18,color:'9FC9EE'});
-    const anos=[...new Set(comDado.map(q=>q.ano).filter(Boolean))];
-    c.addText(anos.length?'Ano: '+anos.join(' / '):'',{x:0.7,y:4.3,w:12,h:0.5,fontSize:13,color:WHITE});
+    c.addText('Apresentação Executiva',{x:0.7,y:2.1,w:12,h:1,fontSize:40,bold:true,color:WHITE});
+    const grupos=[...new Set(itens.map(i=>i.g))];
+    c.addText(grupos.join(' · '),{x:0.7,y:3.15,w:12,h:0.5,fontSize:17,color:'9FC9EE'});
+    c.addText('Filtros: '+recorte+(clTxt?'\nClusters: '+clTxt:''),{x:0.7,y:4.0,w:12,h:1.0,fontSize:13,color:WHITE,valign:'top'});
     c.addText('Gerado em '+dataTxt,{x:0.7,y:6.25,w:12,h:0.4,fontSize:11,color:'9FC9EE'});
-    // um slide por quadro
-    comDado.forEach(q=>{
-      const sl=pptx.addSlide();
-      pptxHeader(sl,q.grupo+(q.ano?' · ANO '+q.ano:''),q.titulo,`${++pg} / ${N}`);
-      const nCol=q.linhas[0].length;
-      const w0=1.9,wR=(12.5-w0)/Math.max(1,nCol-1);
-      const nRows=q.linhas.length;
-      const rowH=nRows>16?0.24:nRows>10?0.3:0.38;
-      sl.addTable(q.linhas,{x:0.4,y:1.95,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
-      sl.addText(q.nota,{x:0.4,y:7.0,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+
+    const redirLido={};// cache das tabelas Redir lidas da tela (tema claro)
+    document.body.dataset.theme='light';
+    const lerRedir=(fam,m)=>{const k=fam+'_'+m;if(k in redirLido)return redirLido[k];const id=fam==='rede'?'exec-rde-redir-body-table-'+m:'exec-redir-table-'+m;const t=document.querySelector('#'+id+' table');return(redirLido[k]=t&&t.rows.length>1?execTabelaParaPptx(t):null);};
+    const fcaRedir=(fam,m)=>{const el=document.getElementById(fam==='rede'?'exec-rde-redir-body-fca-'+m:'exec-redir-fca-'+m);return el?(el.innerText||el.textContent||'').trim():'';};
+    const anoRedir=fam=>{const s2=document.getElementById(fam==='rede'?'exec-rde-redir-ano-sel':'exec-redir-ano-sel');return s2&&s2.value?s2.value:'';};
+    const REDIR_NOTA={rede:{mttr:'MTTR médio por cluster (h) · meta '+String(RDE_MTME).replace('.',',')+' h',prazo:'Prazo por cluster (Backbone + Acesso) · meta '+pp(RDE_M89)+'%',outlier:'Outlier por cluster (Backbone + Acesso) · máx. '+pp(RDE_MOUT)+'%',volEventos:'Volume de eventos por cluster',volOutlier:'Volume de outlier por cluster'},
+      b2b:{prazo:'Prazo de reparos B2B ≤ 8h · meta '+pp(ENC_META_PRAZO)+'%',outlier:'Outlier de reparos B2B > 12h · máx. '+pp(ENC_META_OUTLIER)+'%'}};
+    const slideRedir=it=>{
+      const lin=lerRedir(it.redir,it.m);if(!lin)return;
+      const ano=anoRedir(it.redir);
+      const sl=slide((it.redir==='rede'?'REDIR REDE':'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)')+(ano&&!selExecAno.length?' · ANO '+ano:'')+' · '+kickRec,it.l);
+      const nCol=lin[0].length,w0=1.9,wR=(12.5-w0)/Math.max(1,nCol-1),nRows=lin.length,rowH=nRows>16?0.24:nRows>10?0.3:0.38;
+      sl.addTable(lin,{x:0.4,y:1.95,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
+      sl.addText((REDIR_NOTA[it.redir][it.m]||'')+' · ΔMoM = mês − meta · filtros: '+recorte+(clTxt?' · '+clTxt:''),{x:0.4,y:7.0,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+    };
+    const slideRedirFca=fam=>{
+      const ms=itens.filter(i=>i.redir===fam&&i.m).map(i=>i.m);
+      const lista=(ms.length?ms:(fam==='rede'?['prazo','outlier']:['prazo','outlier'])).map(m=>[m,fcaRedir(fam,m)]).filter(x=>x[1]);
+      lista.forEach(([m,txt])=>{
+        const rot=fam==='rede'?RDE_REDIR_METRICS[m].label:(m==='prazo'?'Prazo < 8h':'Outlier > 12h');
+        const sl=slide((fam==='rede'?'REDIR REDE':'REDIR B2B')+' · PLANO DE AÇÃO · '+kickRec,'FCA — '+(fam==='rede'?'Redir Rede':'Redir B2B')+' · '+rot);
+        card(sl,0.4,1.95,12.5,4.95,'FATO · CAUSA · AÇÃO',txt.length>1500?txt.slice(0,1500)+'…':txt,BLUE,txt.length>900?9:10.5);
+      });
+    };
+    const slideBaremo=b=>{
+      const sn2=b.snap;
+      const sa=slide(b.t.toUpperCase()+' · '+kickRec+' · '+execN(sn2.total)+' registros','Baremo e semana contra semana — '+b.t);
+      const tr=[[th('Indicador'),th('Resultado'),th('Meta'),th(sn2.semAnteriorLabel||'Sem. ant.'),th(sn2.semAtualLabel||'Sem. atual'),th('Δ'),th('Status')]];
+      sn2.indicadores.forEach(i=>tr.push([td(i.label),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),td(fmtS(i.semAnterior,i.unidade)),td(fmtS(i.semAtual,i.unidade)),
+        td(i.diffSem==null?'—':(i.diffSem>0?'+':'')+fmtS(i.diffSem,i.unidade==='%'?' p.p.':i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})]));
+      sa.addTable(tr,{x:0.4,y:1.9,w:8.1,colW:[2.4,1.0,0.8,1.0,1.0,0.9,1.0],rowH:tr.length>9?0.3:0.36,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:tr.length>9?8.5:10});
+      const ri=sn2.wowRefIdx!=null&&sn2.wowRefIdx>=0?sn2.wowRefIdx:(sn2.wow||[]).length-1;
+      const ws=(sn2.wow||[]).slice(Math.max(0,ri-7),ri+1);
+      sa.addText('Volume por semana',{x:8.8,y:1.85,w:4.1,h:0.3,fontSize:11,bold:true,color:NAVY});
+      if(ws.length)sa.addChart(pptx.ChartType.bar,[{name:'Registros',labels:ws.map(w=>String(w.label||w.semana)),values:ws.map(w=>w.total||0)}],
+        {x:8.8,y:2.15,w:4.1,h:3.0,barDir:'col',showValue:true,dataLabelFontSize:8,chartColors:ws.map((w,ix)=>ix===ws.length-1?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'}});
+      card(sa,8.8,5.3,4.1,1.55,'SEMANA CONTRA SEMANA',execWoWInsightTxt(sn2.wow,sn2.wowRefIdx));
+    };
+    const slideFca=b=>{
+      const sf=slide(b.t.toUpperCase()+' · PLANO DE AÇÃO · '+kickRec,'FCA — '+b.t);
+      const f=b.snap.fca||{fato:'Sem dado suficiente no recorte.',causa:'—',acao:'—'};
+      [['FATO',f.fato,0.4],['CAUSA',f.causa,4.6],['AÇÃO',f.acao,8.8]].forEach(([l,t,x])=>card(sf,x,1.95,4.1,3.9,l,t||'—',BLUE));
+      sf.addTable([[th('Prazo'),th('Responsável'),th('Status')],[td(''),td(''),td('')]],{x:0.4,y:6.0,w:12.5,colW:[3,6.5,3],rowH:[0.3,0.4],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
+      sf.addText('Preencher Prazo, Responsável e Status com o plano definido.',{x:0.4,y:6.85,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+    };
+    const blocosComDado=['rede','enc','b2c'].map(k=>blocoDe[k]).filter(b=>b.snap.total>0);
+    let rrFcaFeito=false,rbFcaFeito=false;
+    itens.forEach(it=>{
+      if(it.k==='resumo'){
+        const s2=slide('PAINEL EXECUTIVO · '+kickRec,'Resumo — farol dos painéis');
+        const rows=[[th('Painel'),th('Indicador'),th('Resultado'),th('Meta'),th('Sem. anterior → atual'),th('Status')]];
+        blocosComDado.forEach(b=>b.snap.indicadores.forEach((i,ix)=>rows.push([td(ix?'':b.t,{bold:true}),td(i.label),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),
+          td(i.semAnterior==null&&i.semAtual==null?'—':fmtS(i.semAnterior,i.unidade)+' → '+fmtS(i.semAtual,i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})])));
+        if(ofs)[['Taxa de conclusão',ofs.taxa+'%'],['Em aberto (sem técnico)',execN(ofs.cnt['Em aberto'])+' ('+ofs.unass+')'],['SLA da fila ≥ 24 h',ofs.sla.o24+' de '+ofs.sla.abertas]].forEach((x,ix)=>
+          rows.push([td(ix?'':'Abertos OFS',{bold:true}),td(x[0]),td(x[1],{bold:true}),td('—'),td('base de '+(ofs.baseDate||'—')),td('—',{color:GREY})]));
+        if(wm)[['Chamados (PI/MA/PA/AM/AP)',execN(wm.total)],['Backbone · Acesso · Massivas',wm.backbone+' · '+wm.acesso+' · '+wm.massiva],['Abertos há ≥ 24 h',execN(wm.o24)]].forEach((x,ix)=>
+          rows.push([td(ix?'':'Warmup',{bold:true}),td(x[0]),td(x[1],{bold:true}),td('—'),td('relatório do dia'),td('—',{color:GREY})]));
+        const small=rows.length>18;
+        s2.addTable(rows,{x:0.4,y:1.9,w:12.5,colW:[1.9,3.6,1.6,1.1,2.6,1.7],rowH:small?0.22:0.27,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:small?8.5:10});
+      }else if(it.k==='leitura'){
+        const s3=slide('PAINEL EXECUTIVO · '+kickRec,'Leitura executiva');
+        const ler=[];
+        blocosComDado.forEach(b=>{const cr=b.snap.indicadores.filter(i=>i.status==='bd'),at=b.snap.indicadores.filter(i=>i.status==='wn'),ok=b.snap.indicadores.filter(i=>i.status==='ok');
+          ler.push({t:b.t,cor:cr.length?RED:at.length?ORANGE:GREEN,txt:execN(b.snap.total)+' registros · '+ok.length+' na meta, '+at.length+' em atenção, '+cr.length+' crítico(s)'+(cr.length?' ('+cr.map(i=>i.label).join(', ')+')':'')+'. '+(b.snap.fca&&b.snap.fca.fato?b.snap.fca.fato:'')});});
+        if(ofs)ler.push({t:'Abertos OFS',cor:ofs.sla.o48?ORANGE:BLUE,txt:execN(ofs.tot)+' atividades, '+ofs.taxa+'% concluídas, '+execN(ofs.cnt['Em aberto'])+' em aberto ('+ofs.unass+' sem técnico); '+ofs.sla.o24+' na fila há 24 h ou mais.'});
+        if(wm)ler.push({t:'Warmup',cor:wm.o24?ORANGE:BLUE,txt:execN(wm.total)+' chamados ('+wm.backbone+' backbone, '+wm.acesso+' acesso, '+wm.massiva+' massivas); '+wm.o24+' abertos há 24 h ou mais'+(wm.backlog.total?'; backlog de '+wm.backlog.total+'.':'.')});
+        const hh=Math.min(1.05,4.9/Math.max(1,ler.length)-0.1);
+        ler.forEach((l,ix)=>card(s3,0.4,1.95+ix*(hh+0.1),12.5,hh,l.t.toUpperCase(),l.txt,l.cor));
+      }else if(it.k==='rede'||it.k==='enc'||it.k==='b2c')slideBaremo(blocoDe[it.k]);
+      else if(it.k==='redeFca')slideFca(blocoDe.rede);
+      else if(it.k==='encFca')slideFca(blocoDe.enc);
+      else if(it.k==='b2cFca')slideFca(blocoDe.b2c);
+      else if(it.redir&&it.m)slideRedir(it);
+      else if(it.k==='rr_fca'&&!rrFcaFeito){rrFcaFeito=true;slideRedirFca('rede');}
+      else if(it.k==='rb_fca'&&!rbFcaFeito){rbFcaFeito=true;slideRedirFca('b2b');}
+      else if(it.k==='ofs'&&ofs){
+        const so=slide('ABERTOS OFS · BASE DE '+(ofs.baseDate||'—')+' · '+kickRec+' · FILTROS DO PAINEL: '+execFiltrosTxt(ofs.filtros).toUpperCase(),'Abertos OFS — execução do dia');
+        [['TAXA DE CONCLUSÃO',ofs.taxa+'%',ofs.cnt['Concluída']+' de '+ofs.valid,GREEN],['EM ABERTO',execN(ofs.cnt['Em aberto']),ofs.unass+' sem técnico',BLUE],['SUSP./NÃO CONCL.',execN(ofs.cnt['Suspensa']+ofs.cnt['Não concluída']),'',ORANGE],
+          ['TÉCNICOS',execN(ofs.tecnicos),'em campo',BLUE],['SLA ≥ 24 H',ofs.sla.o24+' / '+ofs.sla.abertas,ofs.sla.o48+' acima de 48 h',ofs.sla.o48?RED:BLUE]].forEach(([l,v,sb,cor],ix)=>kpi(so,0.4+ix*2.52,1.9,2.38,l,v,sb,cor));
+        const cr=[[th('Cluster'),th('Ativ.'),th('Concl.'),th('Taxa'),th('Aberto'),th('Sem téc.'),th('≥24h')]];
+        ofs.porCluster.slice(0,12).forEach(x=>cr.push([td(x.cluster,{bold:true}),td(x.tot),td(x.concl),td(x.taxa+'%'),td(x.aberto),td(x.semTec),td(x.o24,{bold:!!x.o24,color:x.o24?RED:NAVY})]));
+        so.addTable(cr,{x:0.4,y:3.25,w:6.4,colW:[1.3,0.85,0.85,0.85,0.85,0.85,0.85],rowH:0.27,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9});
+        so.addText('Pontos de atenção',{x:7.1,y:3.2,w:5.8,h:0.3,fontSize:11,bold:true,color:NAVY});
+        so.addText(ofs.alertas.slice(0,6).map(a=>({text:a.txt,options:{bullet:true,breakLine:true,color:a.nivel==='bd'?RED:a.nivel==='wn'?'B7791F':a.nivel==='ok'?GREEN:NAVY}})),{x:7.1,y:3.55,w:5.8,h:3.3,fontSize:10,valign:'top',paraSpaceAfter:4});
+      }else if(it.k==='warmup'&&wm){
+        const sw=slide('WARMUP · '+(wm.arquivo||'RELATÓRIO DO DIA').toUpperCase()+' · '+kickRec+' · FILTROS DO PAINEL: '+execFiltrosTxt(wm.filtros).toUpperCase(),'Warmup — incidentes de Backbone e Acesso');
+        [['CHAMADOS',execN(wm.total),'PI · MA · PA · AM · AP',BLUE],['BACKBONE (TX/IP)',execN(wm.backbone),'',BLUE],['ACESSO',execN(wm.acesso),'',BLUE],['MASSIVAS',execN(wm.massiva),'',ORANGE],['ABERTOS ≥ 24 H',execN(wm.o24),'média '+execH1(wm.mediaH),wm.o24?RED:GREEN]]
+          .forEach(([l,v,sb,cor],ix)=>kpi(sw,0.4+ix*2.52,1.9,2.38,l,v,sb,cor));
+        const ur=[[th('UF'),th('Total'),th('Backbone'),th('Acesso'),th('Massivas'),th('≥24h')]];
+        wm.porUf.forEach(x=>ur.push([td(x.uf,{bold:true}),td(x.total),td(x.backbone),td(x.acesso),td(x.massiva),td(x.o24,{bold:!!x.o24,color:x.o24?RED:NAVY})]));
+        sw.addTable(ur,{x:0.4,y:3.25,w:5.2,colW:[0.8,0.88,0.88,0.88,0.88,0.88],rowH:0.28,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9.5});
+        if(wm.backlog.total){const bk=[[th('Tratativa do backlog'),th('Qtd'),th('%')],...wm.backlog.buckets.map(([k,v])=>[td(k),td(v),td(execPct1(v/wm.backlog.total*100))])];
+          sw.addTable(bk,{x:0.4,y:3.35+0.28*ur.length,w:5.2,colW:[3.0,1.1,1.1],rowH:0.27,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9.5});}
+        const tp=[[th('Maior tempo em aberto'),th('Categoria'),th('Cidade/UF'),th('Horas')],...wm.top.slice(0,8).map(x=>[td(x.req||'—'),td(x.cat||'—'),td((x.cidade||'—')+(x.uf?'/'+x.uf:'')),td(execH1(x.h),{bold:true,color:x.h>=24?RED:NAVY})])];
+        sw.addTable(tp,{x:5.9,y:3.25,w:7.0,colW:[2.0,1.4,2.5,1.1],rowH:0.28,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:9.5});
+      }
     });
-    await pptx.writeFile({fileName:'Apresentacao_Executiva_Redir_'+(anos.join('_')||'atual')+'_'+new Date().toISOString().slice(0,10)+'.pptx'});
+    document.body.dataset.theme=temaAntes;
+    const N=1+slides.length;
+    slides.forEach((x,ix)=>pptxHeader(x.sl,x.k,x.t,(ix+2)+' / '+N));
+    if(!slides.length){alert('Nenhum dos itens escolhidos tem dados no filtro atual.');return;}
+    const slug=x=>x.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+    await pptx.writeFile({fileName:'Apresentacao_Executiva_'+slug(recorte+(clTxt?' '+clTxt:''))+'_'+new Date().toISOString().slice(0,10)+'.pptx'});
   }catch(e){console.error('Apresentação executiva',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}
   finally{document.body.dataset.theme=temaAntes;if(btn){btn.disabled=false;btn.innerHTML=h;}}
 }
