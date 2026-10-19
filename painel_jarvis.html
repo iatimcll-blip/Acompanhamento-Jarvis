@@ -11019,6 +11019,38 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-ppt-pop-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
   #panel-executivo .exec-ppt-acts button{font:inherit;font-size:11.5px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx);border-radius:8px;padding:2px 8px;margin-left:4px;cursor:pointer}
   #panel-executivo .exec-ppt-hint{margin:0 0 8px;font-size:11.5px;color:var(--tx3)}
+/* Pré-visualização da apresentação do Executivo (execPptPrevAbrir) */
+#exec-pv{position:fixed;inset:0;z-index:10050;background:rgba(10,14,30,.94);display:none;flex-direction:column;color:#fff}
+#exec-pv .pv-hd{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;gap:12px;flex-wrap:wrap}
+#exec-pv .pv-tt{font-weight:700;font-size:15px}
+#exec-pv .pv-tt small{font-weight:500;opacity:.75;margin-left:8px;font-size:12.5px}
+#exec-pv .pv-fn{font-size:11.5px;opacity:.6;font-weight:400;margin-top:2px}
+#exec-pv .pv-acts{display:flex;gap:6px;flex-wrap:wrap}
+#exec-pv .pv-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+#exec-pv .pv-btn:hover{background:rgba(255,255,255,.22)}
+#exec-pv .pv-btn:disabled{opacity:.6;cursor:default}
+#exec-pv .pv-dl{background:#003BD6;border-color:#003BD6}
+#exec-pv .pv-dl:hover{background:#1f55e6}
+#exec-pv .pv-body{flex:1;display:flex;min-height:0;gap:12px;padding:0 16px}
+#exec-pv .pv-thumbs{width:196px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px 6px 2px 0;flex:0 0 auto}
+#exec-pv .pv-th{position:relative;background:#fff;border:2px solid transparent;border-radius:6px;padding:0;cursor:pointer;width:184px;height:105px;flex:0 0 auto;overflow:hidden;opacity:.75}
+#exec-pv .pv-th:hover{opacity:1}
+#exec-pv .pv-th.on{border-color:#5B8CFF;opacity:1}
+#exec-pv .pv-thbox{width:1280px;height:720px;transform:scale(.140625);transform-origin:0 0;pointer-events:none}
+#exec-pv .pv-thn{position:absolute;left:4px;top:3px;z-index:2;background:rgba(0,0,0,.65);color:#fff;font-size:10px;border-radius:4px;padding:0 5px;line-height:16px}
+#exec-pv .pv-main{flex:1;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0}
+#exec-pv .pv-frame{box-shadow:0 10px 40px rgba(0,0,0,.55);overflow:hidden;background:#fff;border-radius:4px}
+#exec-pv .pv-stage{transform-origin:0 0;width:1280px;height:720px}
+#exec-pv .pv-ft{font-size:12px;opacity:.7;padding:8px 16px 12px;text-align:center}
+.pv-slide{position:relative;width:1280px;height:720px;overflow:hidden;color:#000;text-align:left;line-height:1.15;font-family:"Segoe UI",system-ui,sans-serif}
+.pv-slide .pv-el{position:absolute;box-sizing:border-box;margin:0}
+.pv-slide .pv-txt{display:flex;flex-direction:column;overflow:hidden}
+.pv-slide .pv-p{white-space:pre-wrap;margin:0}
+.pv-slide .pv-tbl{border-collapse:collapse;table-layout:fixed;line-height:1.15;background:transparent}
+.pv-slide .pv-tbl td{line-height:1.15;letter-spacing:0;text-transform:none}
+body.pv-aberto{overflow:hidden}
+@media(max-width:760px){#exec-pv .pv-thumbs{display:none}}
+
   #panel-executivo .exec-ppt-grp{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px}
   #panel-executivo .exec-ppt-item{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:3px 0;cursor:pointer}
   #panel-executivo .exec-ppt-item.off{color:var(--tx3)}
@@ -11102,7 +11134,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div id="exec-ppt-list"></div>
         </div>
       </details>
-      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Gera a apresentação (.pptx) com o conteúdo escolhido em &quot;Conteúdo do PPT&quot;, obedecendo aos filtros aplicados agora no Executivo"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
+      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Monta a apresentação com o conteúdo escolhido em &quot;Conteúdo do PPT&quot; (filtros aplicados agora no Executivo) e abre a pré-visualização dos slides para análise — o download (.pptx) é feito na própria tela"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
       </div>
     </div>
 
@@ -34570,7 +34602,144 @@ document.addEventListener('click',e=>{const d=document.getElementById('exec-ppt-
 /* A janela do controle abre sempre DENTRO da tela: a barra de filtros quebra linha conforme a largura, então o botão pode ficar à esquerda ou à direita. */
 document.addEventListener('toggle',e=>{const d=e.target;if(!d||d.id!=='exec-ppt-pick'||!d.open)return;const pop=d.querySelector('.exec-ppt-pop');if(!pop)return;pop.style.left='0px';pop.style.right='auto';const rc=pop.getBoundingClientRect();if(rc.right>window.innerWidth-8){pop.style.left='auto';pop.style.right='0px';}},true);
 
-async function execGerarApresentacao(){
+/* ================= PRÉ-VISUALIZAÇÃO DA APRESENTAÇÃO (pedido do usuário, 2026-10-19) =================
+   "Criar uma tela na qual irá gerar a apresentação em PPT para análise antes de baixar".
+   O deck é montado normalmente (mesma execGerarApresentacao) e cada chamada feita aos slides
+   (addText/addTable/addShape/addImage/addChart + background) é GRAVADA e redesenhada aqui em
+   HTML, na escala do slide 16:9 (13,333 × 7,5 pol) — o que aparece na tela é o que vai no
+   arquivo. O download só acontece no botão "Baixar PPT" desta tela, com o mesmo objeto. */
+let _execPrev=null;
+function execPptGravar(pptx){
+  const rec=[];const orig=pptx.addSlide.bind(pptx);
+  pptx.addSlide=(...a)=>{const sl=orig(...a);const ops=[];rec.push({sl,ops});
+    ['addText','addTable','addShape','addImage','addChart'].forEach(fn=>{const o=sl[fn].bind(sl);sl[fn]=(...x)=>{let cp;try{cp=JSON.parse(JSON.stringify(x));}catch(e){cp=x;}ops.push([fn,cp]);return o(...x);};/* cópia: o PptxGenJS altera as opções recebidas */});
+    return sl;};
+  return rec;
+}
+const EXEC_PREV_PX=96;// px por polegada no desenho base (1280 × 720)
+function _pvCor(c,def){if(!c)return def||'transparent';const s=String(c).replace('#','');return/^[0-9a-f]{6}$/i.test(s)?'#'+s:def||'transparent';}
+function _pvFonte(face,bold){const f=String(face||'Segoe UI');const w=/light/i.test(f)?300:/semibold/i.test(f)?600:bold?700:400;return{fam:"'"+f.replace(/ (Light|Semibold)$/i,'').replace(/'/g,'')+"','Segoe UI',system-ui,sans-serif",w};/* aspas simples: vai dentro de style="..." */}
+function _pvIn(v){return(+v||0)*EXEC_PREV_PX;}
+function _pvPt(v){return(+v||0)*EXEC_PREV_PX/72;}
+function _pvMargem(m,def){// PptxGenJS: margem em pt (número ou [l,r,b,t]... aqui [t,r,b,l] na prática: todos iguais no uso real)
+  if(m===undefined||m===null)return def;
+  if(Array.isArray(m))return m.map(_pvPt).join('px ')+'px';
+  return _pvPt(m)+'px';
+}
+function _pvRuns(txt,base){
+  const runs=Array.isArray(txt)?txt:[{text:String(txt==null?'':txt),options:{}}];
+  let html='',linha='';const fim=()=>{html+='<div class="pv-p">'+(linha||'&nbsp;')+'</div>';linha='';};
+  runs.forEach(r=>{
+    const o=Object.assign({},base,r.options||{});const f=_pvFonte(o.fontFace,o.bold);
+    const st='font-family:'+f.fam+';font-weight:'+f.w+';font-size:'+_pvPt(o.fontSize||18)+'px;color:'+_pvCor(o.color,'#000')+(o.italic?';font-style:italic':'')+(o.charSpacing?';letter-spacing:'+_pvPt(o.charSpacing)+'px':'');
+    const partes=String(r.text==null?'':r.text).split('\n');
+    partes.forEach((p,i)=>{if(i)fim();linha+=(o.bullet&&!linha?'<span style="'+st+'">•&nbsp;</span>':'')+'<span style="'+st+'">'+(p?eh(p):'&#8203;')+'</span>';});
+    if(o.breakLine)fim();
+  });
+  if(linha)fim();
+  return html;
+}
+function _pvTexto(txt,o){
+  const al=o.align||'left',va=o.valign||'top';
+  const jc=va==='middle'?'center':va==='bottom'?'flex-end':'flex-start';
+  return'<div class="pv-el pv-txt" style="left:'+_pvIn(o.x)+'px;top:'+_pvIn(o.y)+'px;width:'+_pvIn(o.w)+'px;height:'+_pvIn(o.h)+'px;justify-content:'+jc+';text-align:'+al+';padding:'+_pvMargem(o.margin,'4.8px 9.6px')+(o.fill&&o.fill.color?';background:'+_pvCor(o.fill.color):'')+'">'+_pvRuns(txt,o)+'</div>';
+}
+function _pvForma(tipo,o){
+  const x=_pvIn(o.x),y=_pvIn(o.y),w=_pvIn(o.w),h=_pvIn(o.h);
+  const semLinha=!o.line||o.line.type==='none';
+  const lc=semLinha?'none':_pvCor(o.line.color,'#000'),lw=semLinha?0:Math.max(1,_pvPt(o.line.width||0.75));
+  const fill=o.fill&&o.fill.color?_pvCor(o.fill.color):'none';
+  if(tipo==='custGeom'&&Array.isArray(o.points)){
+    let d='';o.points.forEach((p,i)=>{if(p.close){d+=' Z';return;}const px=_pvIn(p.x),py=_pvIn(p.y);
+      if(!i)d+='M'+px+' '+py;else if(p.curve&&p.curve.type==='quadratic')d+=' Q'+_pvIn(p.curve.x1)+' '+_pvIn(p.curve.y1)+' '+px+' '+py;else d+=' L'+px+' '+py;});
+    return'<svg class="pv-el" style="left:'+x+'px;top:'+y+'px;overflow:visible" width="'+Math.max(1,w)+'" height="'+Math.max(1,h)+'"><path d="'+d+'" fill="'+fill+'" stroke="'+lc+'" stroke-width="'+lw+'"/></svg>';
+  }
+  const r=tipo==='ellipse'?'50%':tipo==='roundRect'?'6px':'0';
+  return'<div class="pv-el" style="left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;border-radius:'+r+';background:'+(fill==='none'?'transparent':fill)+';'+(semLinha?'':'box-shadow:inset 0 0 0 '+lw+'px '+lc)+'"></div>';
+}
+function _pvTabela(rows,o){
+  const colW=Array.isArray(o.colW)?o.colW:null;
+  const rowH=i=>Array.isArray(o.rowH)?o.rowH[Math.min(i,o.rowH.length-1)]:o.rowH;
+  const bc=o.border&&o.border.color?_pvCor(o.border.color):'#D1D5DB';
+  let html='<table class="pv-el pv-tbl" style="left:'+_pvIn(o.x)+'px;top:'+_pvIn(o.y)+'px;width:'+_pvIn(o.w)+'px">';
+  if(colW)html+='<colgroup>'+colW.map(w=>'<col style="width:'+_pvIn(w)+'px">').join('')+'</colgroup>';
+  rows.forEach((r,ri)=>{
+    html+='<tr style="height:'+_pvIn(rowH(ri)||0.3)+'px">';
+    r.forEach(c=>{
+      const cell=c&&typeof c==='object'&&'text' in c?c:{text:c,options:{}};const co=Object.assign({fontSize:o.fontSize||12},cell.options||{});
+      const f=_pvFonte(co.fontFace,co.bold);
+      const pad=_pvMargem(co.margin,'2px 5px');
+      html+='<td'+(co.colspan?' colspan="'+co.colspan+'"':'')+(co.rowspan?' rowspan="'+co.rowspan+'"':'')+' style="'+/* !important: o app tem td{color:...!important} global */['border:1px solid '+bc,'padding:'+pad,'text-align:'+(co.align||'left'),'vertical-align:'+(co.valign==='middle'?'middle':co.valign==='bottom'?'bottom':'top'),'background:'+(co.fill&&co.fill.color?_pvCor(co.fill.color):'transparent'),'color:'+_pvCor(co.color,'#000'),'font-family:'+f.fam,'font-weight:'+f.w,'font-size:'+_pvPt(co.fontSize)+'px','white-space:normal','line-height:1.15'].map(x=>x+' !important').join(';')+'">'+eh(String(cell.text==null?'':cell.text)).replace(/\n/g,'<br>')+'</td>';
+    });
+    html+='</tr>';
+  });
+  return html+'</table>';
+}
+function _pvGrafico(data,o){
+  const s=(data&&data[0])||{labels:[],values:[]};const vals=s.values||[],max=Math.max(1,...vals);
+  const cores=o.chartColors||[];const n=vals.length||1;
+  const w=_pvIn(o.w),h=_pvIn(o.h),lab=22,top=16,bw=(w/n)*0.62;
+  let svg='<svg class="pv-el" style="left:'+_pvIn(o.x)+'px;top:'+_pvIn(o.y)+'px" width="'+w+'" height="'+h+'">';
+  vals.forEach((v,i)=>{const bh=(h-lab-top)*(v/max),cx=(i+0.5)*(w/n),cor=_pvCor(cores[i]||cores[0]||'003BD6');
+    svg+='<rect x="'+(cx-bw/2)+'" y="'+(h-lab-bh)+'" width="'+bw+'" height="'+bh+'" fill="'+cor+'"/>';
+    if(o.showValue)svg+='<text x="'+cx+'" y="'+(h-lab-bh-3)+'" font-size="'+_pvPt(o.dataLabelFontSize||9)+'" text-anchor="middle" fill="#1F2937">'+eh(String(v))+'</text>';
+    svg+='<text x="'+cx+'" y="'+(h-6)+'" font-size="'+_pvPt(o.catAxisLabelFontSize||9)+'" text-anchor="middle" fill="#6B7280">'+eh(String((s.labels||[])[i]||''))+'</text>';});
+  return svg+'<line x1="0" x2="'+w+'" y1="'+(h-lab)+'" y2="'+(h-lab)+'" stroke="#D1D5DB"/></svg>';
+}
+function execPptRenderSlide(r){
+  const bg=r.sl.background||r.sl._background||r.sl.bkgd;
+  const cor=bg&&typeof bg==='object'?_pvCor(bg.color||bg.fill,'#fff'):_pvCor(bg,'#fff');
+  let html='';
+  r.ops.forEach(([fn,a])=>{
+    try{
+      if(fn==='addText')html+=_pvTexto(a[0],a[1]||{});
+      else if(fn==='addShape')html+=_pvForma(a[0],a[1]||{});
+      else if(fn==='addImage'){const o=a[0]||{};html+='<img class="pv-el" alt="" src="'+(o.data||o.path||'')+'" style="left:'+_pvIn(o.x)+'px;top:'+_pvIn(o.y)+'px;width:'+_pvIn(o.w)+'px;height:'+_pvIn(o.h)+'px">';}
+      else if(fn==='addTable')html+=_pvTabela(a[0]||[],a[1]||{});
+      else if(fn==='addChart')html+=_pvGrafico(a[1],a[2]||{});
+    }catch(e){console.warn('pré-visualização: elemento ignorado',fn,e);}
+  });
+  return'<div class="pv-slide" style="background:'+cor+'">'+html+'</div>';
+}
+function execPptPrevAbrir(pptx,fileName,rec){
+  _execPrev={pptx,fileName,rec,html:rec.map(execPptRenderSlide),i:0};
+  let m=document.getElementById('exec-pv');
+  if(!m){m=document.createElement('div');m.id='exec-pv';m.setAttribute('role','dialog');m.setAttribute('aria-modal','true');m.setAttribute('aria-label','Pré-visualização da apresentação');document.body.appendChild(m);}
+  m.innerHTML='<div class="pv-hd"><div class="pv-tt"><i class="ti ti-presentation"></i> Pré-visualização da apresentação <small id="exec-pv-cnt"></small><div class="pv-fn">'+eh(fileName)+'</div></div>'
+    +'<div class="pv-acts"><button type="button" class="pv-btn" onclick="execPptPrevIr(-1)" title="Slide anterior (←)"><i class="ti ti-chevron-left"></i></button><button type="button" class="pv-btn" onclick="execPptPrevIr(1)" title="Próximo slide (→)"><i class="ti ti-chevron-right"></i></button>'
+    +'<button type="button" class="pv-btn pv-dl" id="exec-pv-dl" onclick="execPptPrevBaixar()"><i class="ti ti-download"></i> Baixar PPT</button><button type="button" class="pv-btn" onclick="execPptPrevFechar()" title="Fechar (Esc)"><i class="ti ti-x"></i> Fechar</button></div></div>'
+    +'<div class="pv-body"><div class="pv-thumbs" id="exec-pv-thumbs">'+_execPrev.html.map((h,i)=>'<button type="button" class="pv-th" data-i="'+i+'" onclick="execPptPrevIr(0,'+i+')" aria-label="Slide '+(i+1)+'"><span class="pv-thn">'+(i+1)+'</span><div class="pv-thbox">'+h+'</div></button>').join('')+'</div>'
+    +'<div class="pv-main" id="exec-pv-main"><div class="pv-frame" id="exec-pv-frame"><div class="pv-stage" id="exec-pv-stage"></div></div></div></div>'
+    +'<div class="pv-ft">Confira os slides antes de baixar. Para mudar o conteúdo, feche, ajuste os filtros ou o "Conteúdo do PPT" e gere de novo.</div>';
+  m.style.display='flex';document.body.classList.add('pv-aberto');
+  if(!m._kb){m._kb=true;document.addEventListener('keydown',e=>{if(!_execPrev||document.getElementById('exec-pv').style.display!=='flex')return;
+    if(e.key==='Escape')execPptPrevFechar();else if(e.key==='ArrowRight'||e.key==='PageDown')execPptPrevIr(1);else if(e.key==='ArrowLeft'||e.key==='PageUp')execPptPrevIr(-1);});
+    window.addEventListener('resize',()=>{if(_execPrev)execPptPrevEscala();});}
+  execPptPrevIr(0,0);
+}
+function execPptPrevEscala(){
+  const main=document.getElementById('exec-pv-main'),st=document.getElementById('exec-pv-stage');if(!main||!st)return;
+  const k=Math.min((main.clientWidth-24)/1280,(main.clientHeight-24)/720);
+  const kk=Math.max(0.1,k);st.style.transform='scale('+kk+')';
+  const fr=document.getElementById('exec-pv-frame');if(fr){fr.style.width=Math.floor(1280*kk)+'px';fr.style.height=Math.floor(720*kk)+'px';}
+}
+function execPptPrevIr(d,abs){
+  if(!_execPrev)return;const n=_execPrev.html.length;
+  _execPrev.i=abs!=null?abs:Math.min(n-1,Math.max(0,_execPrev.i+d));
+  const st=document.getElementById('exec-pv-stage');if(st)st.innerHTML=_execPrev.html[_execPrev.i];
+  const c=document.getElementById('exec-pv-cnt');if(c)c.textContent='slide '+(_execPrev.i+1)+' de '+n;
+  document.querySelectorAll('#exec-pv-thumbs .pv-th').forEach(b=>{const on=+b.dataset.i===_execPrev.i;b.classList.toggle('on',on);if(on)b.scrollIntoView({block:'nearest'});});
+  execPptPrevEscala();
+}
+async function execPptPrevBaixar(){
+  if(!_execPrev)return;const b=document.getElementById('exec-pv-dl');const h=b?b.innerHTML:'';
+  if(b){b.disabled=true;b.innerHTML='<i class="ti ti-loader-2"></i> Baixando…';}
+  try{await _execPrev.pptx.writeFile({fileName:_execPrev.fileName});if(b)b.innerHTML='<i class="ti ti-check"></i> Baixado';}
+  catch(e){console.error('Baixar apresentação',e);alert('Não foi possível baixar a apresentação: '+(e&&e.message?e.message:e));if(b)b.innerHTML=h;}
+  finally{if(b){b.disabled=false;setTimeout(()=>{if(b.isConnected)b.innerHTML=h;},2500);}}
+}
+function execPptPrevFechar(){const m=document.getElementById('exec-pv');if(m){m.style.display='none';m.innerHTML='';}document.body.classList.remove('pv-aberto');_execPrev=null;}
+async function execGerarApresentacao(modo){
   if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
   const btn=document.getElementById('exec-pptx-btn');const h=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';}
@@ -34592,6 +34761,7 @@ async function execGerarApresentacao(){
     const kickRec=(recorte+(clTxt?' · '+clTxt:'')).toUpperCase();
     const pptx=pptxNewDeck();
     pptx.theme={headFontFace:'Segoe UI',bodyFontFace:'Segoe UI'};
+    const _rec=execPptGravar(pptx);// grava os slides pra pré-visualização
     const slides=[];// adiados até saber o total (numeração "n / N")
     const slide=(k,t)=>{const sl=pptx.addSlide();slides.push({sl,k,t});return sl;};
     const th=t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:10,valign:'middle'}});
@@ -34727,7 +34897,11 @@ async function execGerarApresentacao(){
     slides.forEach((x,ix)=>execTplConteudo(pptx,x.sl,x.t,'Gerado automaticamente pelo Painel Executivo em '+hojeTxt+' · dados do período: '+periodo+(clTxt?' · '+clTxt:'')+' · '+(ix+2)+'/'+N));
     if(!slides.length){alert('Nenhum dos itens escolhidos tem dados no filtro atual.');return;}
     const slug=x=>x.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
-    await pptx.writeFile({fileName:'Apresentacao_Executiva_'+slug(recorte+(clTxt?' '+clTxt:''))+'_'+new Date().toISOString().slice(0,10)+'.pptx'});
+    const fileName='Apresentacao_Executiva_'+slug(recorte+(clTxt?' '+clTxt:''))+'_'+new Date().toISOString().slice(0,10)+'.pptx';
+    /* Padrão: abre a tela de pré-visualização; o download é feito por lá ("Baixar PPT").
+       execGerarApresentacao('direto') mantém o download imediato, sem a tela. */
+    if(modo==='direto')await pptx.writeFile({fileName});
+    else execPptPrevAbrir(pptx,fileName,_rec);
   }catch(e){console.error('Apresentação executiva',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}
   finally{document.body.dataset.theme=temaAntes;if(btn){btn.disabled=false;btn.innerHTML=h;}}
 }
