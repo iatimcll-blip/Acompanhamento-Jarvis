@@ -11134,7 +11134,8 @@ body.pv-aberto{overflow:hidden}
           <div id="exec-ppt-list"></div>
         </div>
       </details>
-      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao()" title="Monta a apresentação com o conteúdo escolhido em &quot;Conteúdo do PPT&quot; (filtros aplicados agora no Executivo) e abre a pré-visualização dos slides para análise — o download (.pptx) é feito na própria tela"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
+      <button type="button" class="dash-action" id="exec-pptx-btn" onclick="execGerarApresentacao('direto')" title="Gera a apresentação (.pptx) com o conteúdo escolhido em &quot;Conteúdo do PPT&quot;, obedecendo aos filtros aplicados agora no Executivo"><i class="ti ti-presentation"></i> Gerar apresentação (PPT)</button>
+      <button type="button" class="dash-action" id="exec-pptx-prev-btn" onclick="execGerarApresentacao('previa')" title="Abre uma tela com os slides da apresentação (mesmo conteúdo e filtros do PPT) para visualizar e analisar as informações — dá pra baixar o .pptx por lá também"><i class="ti ti-eye"></i> Visualizar apresentação</button>
       </div>
     </div>
 
@@ -34741,7 +34742,7 @@ async function execPptPrevBaixar(){
 function execPptPrevFechar(){const m=document.getElementById('exec-pv');if(m){m.style.display='none';m.innerHTML='';}document.body.classList.remove('pv-aberto');_execPrev=null;}
 async function execGerarApresentacao(modo){
   if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
-  const btn=document.getElementById('exec-pptx-btn');const h=btn?btn.innerHTML:'';
+  const btn=document.getElementById(modo==='previa'?'exec-pptx-prev-btn':'exec-pptx-btn');const h=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';}
   const temaAntes=document.body.dataset.theme;
   try{
@@ -34898,10 +34899,11 @@ async function execGerarApresentacao(modo){
     if(!slides.length){alert('Nenhum dos itens escolhidos tem dados no filtro atual.');return;}
     const slug=x=>x.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
     const fileName='Apresentacao_Executiva_'+slug(recorte+(clTxt?' '+clTxt:''))+'_'+new Date().toISOString().slice(0,10)+'.pptx';
-    /* Padrão: abre a tela de pré-visualização; o download é feito por lá ("Baixar PPT").
-       execGerarApresentacao('direto') mantém o download imediato, sem a tela. */
-    if(modo==='direto')await pptx.writeFile({fileName});
-    else execPptPrevAbrir(pptx,fileName,_rec);
+    /* Pedido do usuário (2026-10-19): "Gerar apresentação (PPT)" mantém a função anterior
+       (baixa direto); o botão ao lado, "Visualizar apresentação" ('previa'), abre a tela com
+       os slides para análise (com "Baixar PPT" lá também). */
+    if(modo==='previa')execPptPrevAbrir(pptx,fileName,_rec);
+    else await pptx.writeFile({fileName});
   }catch(e){console.error('Apresentação executiva',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}
   finally{document.body.dataset.theme=temaAntes;if(btn){btn.disabled=false;btn.innerHTML=h;}}
 }
