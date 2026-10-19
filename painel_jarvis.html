@@ -12263,6 +12263,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="rede-cbx" style="min-height:280px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:260px"><canvas id="rprj-trend-ch"></canvas></div></div>
         <div class="rede-cbx" style="min-height:280px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:260px"><canvas id="rprj-daily-ch"></canvas></div></div>
       </div>
+      <!-- Tendência de projeção do MTTR em linhas, uma por cluster + Total (pedido 2026-10-19) -->
+      <div class="rede-cbx" style="min-height:330px;margin-top:4px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:310px"><canvas id="rprj-mttr-ch" aria-label="Tendência de projeção do MTTR por cluster"></canvas></div></div>
       <!-- Cities + Causes -->
       <div class="rede-section-title" style="margin-top:20px">Cidades ofensoras &amp; Principais causas</div>
       <div class="rede-sub">Cidades com maior peso nos indicadores e causas mais frequentes de não-conformidade.</div>
@@ -30552,7 +30554,42 @@ function rdeBuildReportText(recs,allForWow){
    Volume = ritmo diário (MTD ÷ dias decorridos × dias do mês). MTTR segue a regra do card
    (expurgo e chamados < 15 min fora). Recalcula em todo renderRede() — inclusive depois
    de anexar base. */
-let rdePrjMetric='prazo',rdePrjChartCl='',rdePrjTrendCh=null,rdePrjDailyCh=null;
+let rdePrjMetric='prazo',rdePrjChartCl='',rdePrjTrendCh=null,rdePrjDailyCh=null,rdePrjMttrCh=null;
+/* Tendência de projeção do MTTR em linhas (pedido 2026-10-19): sempre MTTR, independente do
+   seletor de métrica — uma linha por cluster + Total; sólido = meses fechados, tracejado =
+   mês corrente projetado + 3 meses (mesma rdePrjTendencia dos outros gráficos). */
+const RDE_PRJ_CORES={C:'#007aff',I:'#af52de',P:'#34c759',N:'#ff9500',T:'#5a5a5f'};
+function rdePrjRenderMttrLinhas(base,ctx){
+  if(rdePrjMttrCh){try{rdePrjMttrCh.destroy();}catch(e){}rdePrjMttrCh=null;}
+  const cv=document.getElementById('rprj-mttr-ch');if(!cv||!ctx)return;
+  const meses=[...new Set(base.map(r=>r.m).filter(m=>m&&m<ctx.mes))].sort().slice(-6);
+  const trT=rdePrjTendencia(base,ctx,'mttr');
+  const keys=[...meses,ctx.mes,...trT.fut.map(f=>f.key)],nM=meses.length;
+  const cls=rdePrjClusters(base);
+  const series=cls.map(k=>({k,lbl:RDE_CLUSTER_LABELS[k]||k,rows:base.filter(r=>r.cl===k)}));
+  if(cls.length>1)series.push({k:'T',lbl:'Total',rows:base});
+  const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93';
+  const grid=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(128,128,128,.2)';
+  const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+  const ds=[];
+  series.forEach(sr=>{
+    const tr=rdePrjTendencia(sr.rows,ctx,'mttr'),cor=RDE_PRJ_CORES[sr.k],tot=sr.k==='T';
+    const real=meses.map(m=>rdeRedirStatsFor(sr.rows.filter(r=>r.m===m),'mttr').val);
+    const proj=[...meses.map((_,i)=>i===nM-1?real[i]:null),tr.projCur,...tr.fut.map(f=>f.val)];
+    ds.push({label:sr.lbl,data:[...real,null,null,null,null],borderColor:cor,backgroundColor:cor,borderWidth:tot?3:2,tension:.3,pointRadius:3,spanGaps:true,_grp:sr.k});
+    ds.push({label:sr.lbl+' (proj.)',data:proj,borderColor:cor,backgroundColor:'transparent',borderDash:[6,4],borderWidth:tot?3:2,tension:.3,pointRadius:proj.map((v,i)=>i>=nM&&v!==null?3:0),_grp:sr.k,_dlIdx:i=>i===proj.length-1});
+  });
+  ds.push({label:'Meta',data:keys.map(()=>RDE_MTME),borderColor:'rgba(255,59,48,.7)',borderDash:[3,3],borderWidth:1.5,pointRadius:0});
+  rdePrjMttrCh=new Chart(cv,{type:'line',data:{labels:keys.map(rdeMname),datasets:ds},plugins:DL?[DL]:[],options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18,right:44}},
+    plugins:{title:{display:true,text:'Tendência de projeção do MTTR (h) por cluster — sólido = realizado · tracejado = projeção · meta '+String(RDE_MTME).replace('.',',')+' h',color:txC,font:{size:12,weight:'600'}},
+      legend:{labels:{boxWidth:12,color:txC,filter:i=>!i.text.endsWith(' (proj.)')},
+        /* clicar no cluster oculta/mostra o realizado E a projeção dele juntos */
+        onClick:(e,item,leg)=>{const ch=leg.chart,g=ch.data.datasets[item.datasetIndex]._grp;const vis=!ch.isDatasetVisible(item.datasetIndex);
+          ch.data.datasets.forEach((d,i)=>{if(i===item.datasetIndex||(g&&d._grp===g))ch.setDatasetVisibility(i,vis);});ch.update();}},
+      tooltip:{callbacks:{label:c=>c.raw===null?'':c.dataset.label+': '+c.raw.toFixed(2).replace('.',',')+' h'}},
+      datalabels:{display:c=>!!(c.dataset._dlIdx&&c.dataset.data[c.dataIndex]!==null&&c.dataset._dlIdx(c.dataIndex)),align:'right',anchor:'center',offset:4,clamp:true,clip:false,color:c=>c.dataset.borderColor,font:{size:10,weight:'700'},formatter:v=>v.toFixed(1).replace('.',',')}},
+    scales:{y:{grid:{color:grid},ticks:{color:txC,callback:v=>v+' h'},beginAtZero:true},x:{grid:{display:false},ticks:{color:txC}}}}});
+}
 const RDE_PRJ_FIM=new WeakMap();
 function rdePrjDataFim(r){
   const raw=r._raw;if(!raw)return null;
@@ -30674,12 +30711,13 @@ function rdePrjRender(){
   const base=rdePrjBase(),ctx=base.length?rdePrjCtx(base):null;
   const refEl=document.getElementById('rprj-ref');
   [rdePrjTrendCh,rdePrjDailyCh].forEach(c=>{if(c){try{c.destroy();}catch(e){}}});rdePrjTrendCh=rdePrjDailyCh=null;
-  if(!ctx){sec.innerHTML='<tr><td style="color:var(--tx3)">Sem dados para projetar.</td></tr>';document.getElementById('rprj-sem').innerHTML='';if(refEl)refEl.textContent='';return;}
+  if(!ctx){if(rdePrjMttrCh){try{rdePrjMttrCh.destroy();}catch(e){}rdePrjMttrCh=null;}sec.innerHTML='<tr><td style="color:var(--tx3)">Sem dados para projetar.</td></tr>';document.getElementById('rprj-sem').innerHTML='';if(refEl)refEl.textContent='';return;}
   const metric=rdePrjMetric;
   const semNum=(/-W(\d{2})$/.exec(ctx.sem)||[])[1]||'';
   if(refEl)refEl.innerHTML='Base até <b>'+ctx.fim.toLocaleDateString('pt-BR')+'</b> · mês: dia <b>'+ctx.dia+'</b> de '+ctx.diasMes+' · semana S'+semNum+': dia <b>'+ctx.diaSem+'</b> de 7';
   rdePrjTabela('rprj-mes',base,ctx,metric,'mes');
   rdePrjTabela('rprj-sem',base,ctx,metric,'sem');
+  rdePrjRenderMttrLinhas(base,ctx);
   // seletor de recorte dos gráficos
   const cls=rdePrjClusters(base);
   if(rdePrjChartCl&&!cls.includes(rdePrjChartCl))rdePrjChartCl='';
