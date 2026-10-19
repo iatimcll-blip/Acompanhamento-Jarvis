@@ -34628,7 +34628,9 @@ async function execCapturarGraficos(itens){
         selYear=selExecAno.slice();selMes=selExecMes.slice();selWeek=execSemanaComEquivalentes(selExecSemana);
         selCluster=selExecEncCluster.slice();selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
         if(srch)srch.value='';
-        await fora('panel-encerrados',()=>renderAllEnc());
+        /* WoW com Semana filtrada: compara as semanas do Ano/Mês (mesma regra do baremo no
+           snapshot), senão sobraria 1 semana só e o gráfico sairia vazio. */
+        await fora('panel-encerrados',()=>{renderAllEnc();if(selExecSemana.length){const w=selWeek;selWeek=[];try{rChWowEnc();}finally{selWeek=w;}}});
       }finally{dEnc=dAll;({selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,encChartBucket}=sv);if(srch)srch.value=srchV;}
     }
     if(pain.has('b2c')&&typeof b2cRenderCharts==='function'){
@@ -35045,10 +35047,13 @@ async function execGerarApresentacao(modo){
       }
     });
     document.body.dataset.theme=temaAntes;
-    const N=1+slides.length;
+    const N=2+slides.length;// capa + conteúdo + Obrigado
     const hojeTxt=new Date().toLocaleDateString('pt-BR');
     slides.forEach((x,ix)=>execTplConteudo(pptx,x.sl,x.t,'Gerado automaticamente pelo Painel Executivo em '+hojeTxt+' · dados do período: '+periodo+(clTxt?' · '+clTxt:'')+' · '+(ix+2)+'/'+N));
     if(!slides.length){alert('Nenhum dos itens escolhidos tem dados no filtro atual.');return;}
+    /* Slide final "Obrigado" (pedido do usuário, 2026-10-19): mesmo padrão da capa (fundo
+       navy, painel azul com a logo GIGA+ branca e a linha decorativa). */
+    execTplCapa(pptx,'Obrigado!','Painel Executivo — Acompanhamento das Operações',periodo+(clTxt?' · '+clTxt:''));
     const slug=x=>x.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
     const fileName='Apresentacao_Executiva_'+slug(recorte+(clTxt?' '+clTxt:''))+'_'+new Date().toISOString().slice(0,10)+'.pptx';
     /* Pedido do usuário (2026-10-19): "Gerar apresentação (PPT)" mantém a função anterior
