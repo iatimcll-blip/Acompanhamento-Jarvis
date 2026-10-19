@@ -7134,7 +7134,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="nav-btn admin-only" onclick="openReportModal()" title="Gerar Relatório" style="color:var(--blue)"><i class="ti ti-file-text"></i></div>
         <div class="nav-btn admin-only" onclick="openUserPanel()" title="Usuários"><i class="ti ti-users"></i></div>
         <div class="nav-btn admin-only" id="sheets-nav-btn" onclick="openSyncSettings()" title="Configurar sincronização entre dispositivos"><i class="ti ti-cloud"></i></div>
-        <div class="nav-btn admin-only" onclick="syncNow(true)" title="Sincronizar bases agora"><i class="ti ti-cloud-upload"></i></div>
+        <div data-up="*" class="nav-btn admin-only" onclick="syncNow(true)" title="Sincronizar bases agora"><i class="ti ti-cloud-upload"></i></div>
         <div class="nav-zoom" title="Ajustar o tamanho da tela — fica salvo neste navegador">
           <button type="button" class="nav-btn" onclick="uiZoomStep(-1)" title="Diminuir zoom"><i class="ti ti-zoom-out"></i></button>
           <span class="nav-zoom-pct" id="nav-zoom-pct" onclick="uiZoomReset()" title="Clique para voltar a 100%">100%</span>
@@ -11245,8 +11245,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="mop-ref-btn" onclick="abrirModalRegrasSla()" title="Como o relógio de SLA é calculado"><i class="ti ti-clock-hour-4"></i> Regras de SLA</button>
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')" data-up="abertos"><i class="ti ti-database"></i> Atualizar base</button>
           <label data-up="abertos" class="mop-ref-btn admin-only" style="cursor:pointer" title="Base nacional sem filtro prévio (aba Export) — separa automaticamente os chamados de PI/MA/PA/AM/AP, inferindo a cidade pelo Título quando a UF não vier preenchida. Vale para Abertos e SWAP juntos."><i class="ti ti-world-upload"></i> Anexar base geral<input type="file" id="file-ab-geral" accept=".xlsx,.xls" style="display:none"></label>
-          <button class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
-          <span class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
+          <button data-up="abertos" class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
+          <span data-up="abertos" class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
           <span class="ab-upd-badge admin-only" id="atrix-running-timer" title="Tempo decorrido desde o clique em Atualizar — o ciclo completo leva ~15 min"><i class="ti ti-loader-2"></i><span id="atrix-running-timer-txt">Rodando há 00:00</span></span>
           <span class="atrix-progress-wrap" id="atrix-progress-wrap" title="% de chamados já verificados no ciclo do Agente Atrix em andamento">
             <span class="atrix-progress-bar"><span class="atrix-progress-fill" id="atrix-progress-fill" style="width:0%"></span></span>
@@ -14792,7 +14792,7 @@ function applyPermissions(){
      sem .admin-only (B2C, MAX) somem pra quem não pode anexar. */
   const _adm=!!canEdit();
   document.querySelectorAll('[data-up]').forEach(el=>{
-    const ok=canEdit(el.dataset.up);
+    const ok=el.dataset.up==='*'?(_adm||_hasSrEditRights()):canEdit(el.dataset.up);
     if(el.classList.contains('admin-only'))el.classList.toggle('sr-up-on',ok&&!_adm);
     else el.style.display=ok?'':'none';
   });
@@ -15542,7 +15542,9 @@ function _ghToast(msg,color,dur=3500){
 }
 
 async function syncNow(manual=true){
-  if(!canEdit()){alert('Apenas administradores podem sincronizar.');return}
+  /* Admin ou Usuário Sr com algum painel liberado (2026-10-19) — o Sr já empurra as próprias
+     alterações automaticamente (_hasSrEditRights); aqui só ganha o botão manual. */
+  if(!canEdit()&&!_hasSrEditRights()){alert('Apenas administradores ou usuários Sr com painel liberado podem sincronizar.');return}
   await saveGhState(manual);
 }
 
@@ -20058,7 +20060,7 @@ async function _atrixResumeIfRunning(){
   _atrixStartMonitoring(triggeredAtIso,Math.floor(minsAgo));
 }
 async function triggerAtrixUpdateNow(btn){
-  if(!canEdit())return;
+  if(!canEdit('abertos'))return; // Admin ou Usuário Sr liberado no B2B Abertos (2026-10-19)
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
     btn.classList.remove('atrix-start-ok','atrix-start-err');
