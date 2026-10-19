@@ -531,6 +531,9 @@ body {
 .app-body { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .panel { display: none; flex: 1; overflow-y: auto; padding: 20px 24px 32px; }
 .panel.active { display: block; }
+/* captura dos gráficos pro PPT do Executivo (execCapturarGraficos): painel desenhado fora da tela */
+.panel.exec-ppt-render { display:block !important; position:fixed !important; left:-30000px !important; top:0 !important; width:1400px !important; height:auto !important; max-height:none !important; overflow:visible !important; pointer-events:none !important; }
+.panel.exec-ppt-render > * { animation:none !important; }
 .panel > * { max-width: 100%; }
 
 /* ─── EMPTY STATE ─── */
@@ -33967,18 +33970,18 @@ function fillFiltersExec(){
 
   const redeClOpts=RDE_CLUSTER_KEYS.filter(c=>redeFlat.some(r=>r.cl===c));
   selExecRedeCluster=selExecRedeCluster.filter(c=>redeClOpts.includes(c));
-  mselRender('exec-rede-cluster-selector',redeClOpts,selExecRedeCluster,{allLabel:'Todos os clusters',labelFn:c=>RDE_CLUSTER_LABELS[c]||c,onChange:(v)=>{selExecRedeCluster=v;renderExecutivo();saveState();}});
+  mselRender('exec-rede-cluster-selector',redeClOpts,selExecRedeCluster,{allLabel:'Todos os clusters',labelFn:c=>RDE_CLUSTER_LABELS[c]||c,onChange:(v)=>execSyncCluster('rede',v)});
 
   const encAllC=[...new Set(encFlat.map(d=>d.cluster).filter(Boolean))];
   const encClOpts=clusterOptionsComRegioes(encAllC);
   const encClOptsVals=encClOpts.map(c=>c.value);
   selExecEncCluster=selExecEncCluster.filter(c=>encClOptsVals.includes(c));
-  mselRender('exec-enc-cluster-selector',encClOpts,selExecEncCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selExecEncCluster=v;renderExecutivo();saveState();}});
+  mselRender('exec-enc-cluster-selector',encClOpts,selExecEncCluster,{allLabel:'Todos os clusters',onChange:(v)=>execSyncCluster('enc',v)});
 
   const b2cAllC=[...new Set(b2cFlat.map(r=>r.novoCluster).filter(Boolean))];
   const b2cClOpts=B2C_CLUSTER_ORDER.filter(c=>b2cAllC.includes(c));
   selExecB2cCluster=selExecB2cCluster.filter(c=>b2cClOpts.includes(c));
-  mselRender('exec-b2c-cluster-selector',b2cClOpts,selExecB2cCluster,{allLabel:'Todos os clusters',onChange:(v)=>{selExecB2cCluster=v;renderExecutivo();saveState();}});
+  mselRender('exec-b2c-cluster-selector',b2cClOpts,selExecB2cCluster,{allLabel:'Todos os clusters',onChange:(v)=>execSyncCluster('b2c',v)});
 }
 function clearExecFilters(){
   selExecAno=[];selExecMes=[];selExecSemana=[];selExecRedeCluster=[];selExecEncCluster=[];selExecB2cCluster=[];
@@ -34560,6 +34563,124 @@ const EXEC_PPT_ITENS=[
   {k:'ofs',g:'Operação do dia',l:'Abertos OFS'},
   {k:'warmup',g:'Operação do dia',l:'Warmup'}
 ];
+/* ─── Gráficos dos painéis na apresentação (pedido do usuário, 2026-10-19: "os gráficos dos
+   painéis pais devem constar na apresentação" + "o conteúdo do PPT deverá casar com os
+   filtros selecionados") ───
+   Cada item abaixo vira 1 slide com até 2 gráficos. Os gráficos são redesenhados no próprio
+   painel de origem com os filtros do Executivo (Ano/Mês/Semana/Cluster — mesmo "troca →
+   calcula → restaura" dos snapshots), com o painel renderizado FORA da tela (posição
+   negativa, sem animação e em tema claro, pra sair legível no slide branco); a imagem de
+   cada canvas é capturada e o painel volta exatamente ao filtro que estava. */
+const EXEC_PPT_GRAFICOS=[
+  {k:'g_rede_evol',g:'Gráficos — Rede',l:'Rede — Prazo & Outlier e TME/TMR por período',painel:'rede',cv:['rde-line-ch','rde-time-ch']},
+  {k:'g_rede_wow',g:'Gráficos — Rede',l:'Rede — semana contra semana (WoW)',painel:'rede',cv:['rde-wow-ch']},
+  {k:'g_rede_cid',g:'Gráficos — Rede',l:'Rede — cidades ofensoras e principais causas',painel:'rede',cv:['rde-city-ch','rde-cause-ch']},
+  {k:'g_rede_mttrof',g:'Gráficos — Rede',l:'Rede — ofensores do MTTR',painel:'rede',cv:['rde-mttr-of-ch-top','rde-mttr-of-ch-cause']},
+  {k:'g_rede_prj',g:'Gráficos — Rede',l:'Rede — projeções (tendência e dia a dia)',painel:'rede',cv:['rprj-trend-ch','rprj-daily-ch']},
+  {k:'g_rede_prjmttr',g:'Gráficos — Rede',l:'Rede — tendência de projeção do MTTR por cluster',painel:'rede',cv:['rprj-mttr-ch']},
+  {k:'g_4a_out',g:'Gráficos — Rede 4-Analytics',l:'Rede 4-Analytics — Outlier (mensal e diário)',painel:'rede',cv:['rde4-out-m-ch','rde4-out-d-ch']},
+  {k:'g_4a_prz',g:'Gráficos — Rede 4-Analytics',l:'Rede 4-Analytics — Prazo (mensal e diário)',painel:'rede',cv:['rde4-prz-m-ch','rde4-prz-d-ch']},
+  {k:'g_4a_tme',g:'Gráficos — Rede 4-Analytics',l:'Rede 4-Analytics — TME/TMR (mensal e diário)',painel:'rede',cv:['rde4-tme-m-ch','rde4-tme-d-ch']},
+  {k:'g_4a_qtd',g:'Gráficos — Rede 4-Analytics',l:'Rede 4-Analytics — Quantidade (mensal e diário)',painel:'rede',cv:['rde4-qtd-m-ch','rde4-qtd-d-ch']},
+  {k:'g_enc_dist',g:'Gráficos — B2B Encerrados',l:'B2B Encerrados — distribuição por prazo e volume por semana',painel:'enc',cv:['ch-enc','ch-sem']},
+  {k:'g_enc_meta',g:'Gráficos — B2B Encerrados',l:'B2B Encerrados — evolução da meta semanal e WoW',painel:'enc',cv:['ch-meta-enc','ch-wow-enc']},
+  {k:'g_b2c',g:'Gráficos — B2C',l:'B2C — indicadores (maior e menor é melhor)',painel:'b2c',cv:['b2c-chart-higher','b2c-chart-lower']},
+];
+EXEC_PPT_ITENS.push(...EXEC_PPT_GRAFICOS);
+function _execGrafTitulo(cv,ch){
+  /* gráfico com título próprio (Chart.js) já traz o título na imagem: sem legenda extra */
+  const t=ch&&ch.options&&ch.options.plugins&&ch.options.plugins.title;
+  if(t&&t.display&&t.text)return'';
+  const box=cv.closest('.rede-cbx,.rde4-cbx,.b2c-chart-card,.card,.chart-card,.cbx');
+  const h=box&&box.querySelector('h3,h4,.card-title,.rde4-title,.chart-title,.tsec-title');
+  return h?(h.textContent||'').replace(/\s+/g,' ').trim():'';
+}
+const _execFrame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+async function execCapturarGraficos(itens){
+  const out={};const pain=new Set(itens.filter(i=>i.painel).map(i=>i.painel));
+  if(!pain.size||typeof Chart==='undefined')return out;
+  const ids=new Set();itens.forEach(i=>(i.cv||[]).forEach(c=>ids.add(c)));
+  const ler=()=>ids.forEach(id=>{if(out[id])return;const cv=document.getElementById(id);const ch=cv&&Chart.getChart(cv);
+    if(cv&&ch&&cv.width>20&&cv.height>20&&cv.offsetParent!==null){try{out[id]={data:cv.toDataURL('image/png'),w:cv.width,h:cv.height,titulo:_execGrafTitulo(cv,ch)};}catch(e){console.warn('captura',id,e);}}});
+  const fora=async(panelId,desenhar)=>{const p=document.getElementById(panelId);if(!p)return;p.classList.add('exec-ppt-render');
+    try{desenhar();await _execFrame();ler();}finally{p.classList.remove('exec-ppt-render');}};
+  const anim=Chart.defaults.animation,dpr=Chart.defaults.devicePixelRatio;Chart.defaults.animation=false;Chart.defaults.devicePixelRatio=2;// nítido no slide
+  try{
+    if(pain.has('rede')){
+      const sv={rdeTab,rdeCluster,rdeYear,rdeGran,rdePeriod};
+      try{
+        rdeTab='AMBOS';rdeCluster=selExecRedeCluster.slice();rdeYear=selExecAno.slice();
+        if(selExecSemana.length){rdeGran='w';rdePeriod=selExecSemana.slice();}
+        else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes.slice();}
+        else{rdeGran='all';rdePeriod=[];}
+        await fora('panel-rede',()=>renderRede());
+      }finally{({rdeTab,rdeCluster,rdeYear,rdeGran,rdePeriod}=sv);}
+    }
+    if(pain.has('enc')&&typeof renderAllEnc==='function'){
+      const sv={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,encChartBucket};
+      const srch=document.getElementById('f-srch-enc'),srchV=srch?srch.value:'';
+      /* Volume/Semana e Meta semanal do painel usam a base inteira (só cluster): no PPT ficam
+         no(s) ano(s) do filtro (ou do mês/semana filtrado), como a evolução da Rede. */
+      const dAll=dEnc;
+      const anos=selExecAno.length?selExecAno:[...new Set([...selExecMes.map(m=>m.slice(0,4)),...selExecSemana.map(w=>w.slice(0,4))])];
+      try{
+        if(anos.length)dEnc=dAll.filter(d=>anos.includes(String(d.mes||d.semana||'').slice(0,4)));
+        selYear=selExecAno.slice();selMes=selExecMes.slice();selWeek=execSemanaComEquivalentes(selExecSemana);
+        selCluster=selExecEncCluster.slice();selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
+        if(srch)srch.value='';
+        await fora('panel-encerrados',()=>renderAllEnc());
+      }finally{dEnc=dAll;({selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,encChartBucket}=sv);if(srch)srch.value=srchV;}
+    }
+    if(pain.has('b2c')&&typeof b2cRenderCharts==='function'){
+      const sv={selB2cCluster,selB2cAno,selB2cMes,selB2cSemana},ind=B2C_SUMMARY.indicators;
+      try{
+        selB2cCluster=selExecB2cCluster.slice();selB2cAno=selExecAno.slice();selB2cMes=selExecMes.slice();selB2cSemana=selExecSemana.slice();
+        B2C_SUMMARY.indicators=b2cComputeIndicators();
+        await fora('panel-b2c',()=>b2cRenderCharts());
+      }finally{B2C_SUMMARY.indicators=ind;({selB2cCluster,selB2cAno,selB2cMes,selB2cSemana}=sv);}
+    }
+  }finally{Chart.defaults.animation=anim;Chart.defaults.devicePixelRatio=dpr;}
+  return out;
+}
+/* Redesenha os painéis tocados pela captura com os filtros DELES (já restaurados) e no tema
+   atual — chamado depois que o tema volta ao normal. */
+function execRedesenharPaineisGraficos(pain){
+  try{if(pain.has('rede'))renderRede();}catch(e){console.warn(e);}
+  try{if(pain.has('enc')&&typeof renderAllEnc==='function')renderAllEnc();}catch(e){console.warn(e);}
+  try{if(pain.has('b2c')&&typeof b2cRenderCharts==='function')b2cRenderCharts();}catch(e){console.warn(e);}
+}
+/* ─── "Cluster vale para todos" (pedido do usuário, 2026-10-19) ───
+   Escolher cluster num dos 3 seletores do Executivo ajusta os outros 2 pro equivalente:
+   Rede (C/I/P/N) ↔ B2B Encerrados (MA CAP, MA INT, Piauí, Norte…) ↔ B2C (regionais). O B2C
+   só tem a regional, então MA CAP ou MA INT viram "C.32 - Maranhão". Limpar um limpa todos. */
+const EXEC_CL_UNI={MA_CAP:{rede:['C'],enc:['MA CAP'],b2c:['C.32 - Maranhão']},MA_INT:{rede:['I'],enc:['MA INT'],b2c:['C.32 - Maranhão']},
+  PI:{rede:['P'],enc:['Piauí'],b2c:['C.31 - Piaui']},NORTE:{rede:['N'],enc:['Norte'],b2c:['C.28 - Norte']}};
+function execClUnidades(fam,vals){
+  const u=new Set();
+  (vals||[]).forEach(v=>{
+    if(fam==='rede'){const k={C:'MA_CAP',I:'MA_INT',P:'PI',N:'NORTE'}[v];if(k)u.add(k);}
+    else if(fam==='enc'){if(v==='MA CAP')u.add('MA_CAP');else if(v==='MA INT')u.add('MA_INT');else if(v==='Maranhão'){u.add('MA_CAP');u.add('MA_INT');}
+      else if(v==='PI CAP'||v==='PI INT'||v==='Piauí')u.add('PI');else if(v==='Norte'||CLUSTER_NORTE_MEMBERS.includes(v))u.add('NORTE');}
+    else{if(/maranh/i.test(v)){u.add('MA_CAP');u.add('MA_INT');}else if(/piau/i.test(v))u.add('PI');else if(/norte/i.test(v))u.add('NORTE');}
+  });
+  return u;
+}
+function execClDe(fam,u){
+  const out=new Set();let uu=[...u];
+  if(fam==='enc'&&u.has('MA_CAP')&&u.has('MA_INT')){out.add('Maranhão');uu=uu.filter(x=>x!=='MA_CAP'&&x!=='MA_INT');}
+  uu.forEach(k=>EXEC_CL_UNI[k][fam].forEach(v=>out.add(v)));
+  return[...out];
+}
+function execSyncCluster(fam,v){
+  v=v||[];
+  if(fam==='rede')selExecRedeCluster=v;else if(fam==='enc')selExecEncCluster=v;else selExecB2cCluster=v;
+  const u=execClUnidades(fam,v);
+  if(fam!=='rede')selExecRedeCluster=execClDe('rede',u);
+  if(fam!=='enc')selExecEncCluster=execClDe('enc',u);
+  if(fam!=='b2c')selExecB2cCluster=execClDe('b2c',u);
+  renderExecutivo();saveState();
+}
+
 const EXEC_PPT_KEY='jarvis:exec:pptItens:v1';
 let EXEC_PPT_SEL=null;
 function execPptSel(){
@@ -34573,6 +34694,7 @@ let _execPptSnaps=null;
 /* Tem dado para este item no filtro atual? (item sem dado fica marcado, mas não gera slide) */
 function execPptDisponivel(it,sn){
   sn=sn||{};
+  if(it.painel)return it.painel==='rede'?!!(sn.rede&&sn.rede.total):it.painel==='enc'?!!(sn.enc&&sn.enc.total):!!(sn.b2c&&sn.b2c.total);
   if(it.redir==='rede'){if(it.m){const t=document.querySelector('#exec-rde-redir-body-table-'+it.m+' table');return!!(t&&t.rows.length>1);}return!!document.querySelector('#exec-rde-redir-body table');}
   if(it.redir==='b2b'){if(it.m){const t=document.querySelector('#exec-redir-table-'+it.m+' table');return!!(t&&t.rows.length>1);}return!!document.querySelector('#exec-redir-table-prazo table');}
   if(it.k==='rede'||it.k==='redeFca')return!!(sn.rede&&sn.rede.total);
@@ -34589,7 +34711,7 @@ function execRenderPptPick(snaps){
   EXEC_PPT_ITENS.forEach(it=>{
     if(it.g!==g){g=it.g;html+='<div class="exec-ppt-grp">'+eh(g)+'</div>';}
     const ok=execPptDisponivel(it,_execPptSnaps);
-    html+='<label class="exec-ppt-item'+(ok?'':' off')+'"><input type="checkbox" data-k="'+it.k+'"'+(sel.has(it.k)?' checked':'')+' onchange="execPptToggle(this)"><span>'+eh(it.l)+(ok?'':' <small>(sem dados no filtro atual)</small>')+'</span></label>';
+    html+='<label class="exec-ppt-item'+(ok?'':' off')+'"'+(ok?'':' title="Sem dados no filtro atual — volta a ficar disponível quando o filtro tiver dados"')+'><input type="checkbox" data-k="'+it.k+'"'+(sel.has(it.k)&&ok?' checked':'')+(ok?'':' disabled')+' onchange="execPptToggle(this)"><span>'+eh(it.l)+(ok?'':' <small>(sem dados no filtro atual)</small>')+'</span></label>';
   });
   box.innerHTML=html;
   const n=EXEC_PPT_ITENS.filter(it=>sel.has(it.k)&&execPptDisponivel(it,_execPptSnaps)).length;
@@ -34748,6 +34870,7 @@ async function execGerarApresentacao(modo){
   const btn=document.getElementById(modo==='previa'?'exec-pptx-prev-btn':'exec-pptx-btn');const h=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';}
   const temaAntes=document.body.dataset.theme;
+  let _painGraf=new Set();
   try{
     /* 1) Atualiza o Executivo com os filtros do momento (a apresentação obedece a eles). */
     renderExecutivo();
@@ -34763,6 +34886,10 @@ async function execGerarApresentacao(modo){
     const recorte=execFiltrosExecTxt()||'Todo o período';
     const clTxt=[selExecRedeCluster.length?'Rede: '+selExecRedeCluster.map(c=>RDE_CLUSTER_LABELS[c]||c).join(', '):'',selExecEncCluster.length?'Encerrados: '+selExecEncCluster.join(', '):'',selExecB2cCluster.length?'B2C: '+selExecB2cCluster.join(', '):''].filter(Boolean).join(' · ');
     const kickRec=(recorte+(clTxt?' · '+clTxt:'')).toUpperCase();
+    /* Gráficos dos painéis com os filtros do Executivo (tema claro pro slide branco). */
+    document.body.dataset.theme='light';
+    const graf=await execCapturarGraficos(itens);
+    _painGraf=new Set(itens.filter(i=>i.painel).map(i=>i.painel));
     const pptx=pptxNewDeck();
     pptx.theme={headFontFace:'Segoe UI',bodyFontFace:'Segoe UI'};
     const _rec=execPptGravar(pptx);// grava os slides pra pré-visualização
@@ -34795,7 +34922,9 @@ async function execGerarApresentacao(modo){
     const fcaRedirDom=(fam,m)=>{const el=document.getElementById(fam==='rede'?'exec-rde-redir-body-fca-'+m:'exec-redir-fca-'+m);return el?(el.innerText||el.textContent||'').trim():'';};
     const fcaRedir=(fam,m)=>fam+'_'+m in fcaLido?fcaLido[fam+'_'+m]:fcaRedirDom(fam,m);
     if(itens.some(it=>it.redir)){
-      EXEC_REDIR_TODOS_MESES=true;
+      /* (2026-10-19) "o conteúdo do PPT deverá casar com os filtros": os quadros Redir agora
+         seguem o Mês/Semana do Executivo (antes saíam com todos os meses do ano). */
+      EXEC_REDIR_TODOS_MESES=false;
       try{
         redirRenderAll();rdeRedirRenderAll();
         RDE_REDIR_METRICS_ORDER.forEach(m=>{lerRedir('rede',m);fcaLido['rede_'+m]=fcaRedirDom('rede',m);});
@@ -34811,7 +34940,7 @@ async function execGerarApresentacao(modo){
       const sl=slide((it.redir==='rede'?'REDIR REDE':'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)')+(ano&&!selExecAno.length?' · ANO '+ano:'')+' · '+kickRec,it.l);
       const nCol=lin[0].length,w0=nCol>16?1.15:1.9,wR=(12.5-w0)/Math.max(1,nCol-1),nRows=lin.length,rowH=nRows>16?0.24:nRows>10?0.3:0.38;
       sl.addTable(lin,{x:0.4,y:1.95,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
-      sl.addText((REDIR_NOTA[it.redir][it.m]||'')+' · todos os meses do ano'+(ano?' '+ano:'')+' com Projetada · ΔMoM = mês − meta'+(selExecMes.length||selExecSemana.length?' · os filtros de mês/semana não cortam os quadros Redir':''),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+      sl.addText((REDIR_NOTA[it.redir][it.m]||'')+' · '+(selExecMes.length||selExecSemana.length?'período do filtro: '+execPeriodoTxt():'todos os meses do ano'+(ano?' '+ano:''))+' com Projetada · ΔMoM = mês − meta',{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
     };
     const slideRedirFca=fam=>{
       const ms=itens.filter(i=>i.redir===fam&&i.m).map(i=>i.m);
@@ -34871,6 +35000,26 @@ async function execGerarApresentacao(modo){
       else if(it.k==='encFca')slideFca(blocoDe.enc);
       else if(it.k==='b2cFca')slideFca(blocoDe.b2c);
       else if(it.redir&&it.m)slideRedir(it);
+      else if(it.painel){
+        const imgs=(it.cv||[]).map(id=>graf[id]).filter(Boolean);
+        if(!imgs.length)return;
+        const sg=slide(it.g.replace('Gráficos — ','').toUpperCase()+' · GRÁFICOS · '+kickRec,it.l);
+        /* 2 gráficos: lado a lado ou empilhados — o que deixar as imagens maiores (gráficos
+           muito largos, como os diários, ficam melhores um embaixo do outro). */
+        const n=imgs.length,gap=0.3,top=1.9,areaH=4.6,tit=0.32;
+        const caixa=(im,W,H)=>{const rz=im.w/im.h,mx=H-(im.titulo?tit:0);let w=W,hh=w/rz;if(hh>mx){hh=mx;w=hh*rz;}return{w,hh};};
+        const lado=n<2?null:imgs.map(im=>caixa(im,(12.5-gap)/2,areaH)),pilha=n<2?null:imgs.map(im=>caixa(im,12.5,(areaH-gap)/2));
+        const area=a=>a.reduce((t,b)=>t+b.w*b.hh,0);
+        const empilha=n===2&&area(pilha)>area(lado);
+        imgs.forEach((im,ix)=>{
+          const W=n<2?12.5:empilha?12.5:(12.5-gap)/2,H=n<2?areaH:empilha?(areaH-gap)/2:areaH;
+          const x=0.4+(empilha||n<2?0:ix*(W+gap)),y=top+(empilha?ix*(H+gap):0);
+          if(im.titulo)sg.addText(im.titulo,{x,y,w:W,h:0.3,fontSize:10.5,bold:true,color:NAVY,margin:0});
+          const c=caixa(im,W,H);
+          sg.addImage({data:im.data,x:x+(W-c.w)/2,y:y+(im.titulo?tit:0),w:c.w,h:c.hh});
+        });
+        sg.addText('Gráficos redesenhados nos painéis de origem com os filtros do Executivo: '+periodo+(clTxt?' · '+clTxt:''),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+      }
       else if(it.k==='rr_fca'&&!rrFcaFeito){rrFcaFeito=true;slideRedirFca('rede');}
       else if(it.k==='rb_fca'&&!rbFcaFeito){rbFcaFeito=true;slideRedirFca('b2b');}
       else if(it.k==='ofs'&&ofs){
@@ -34908,7 +35057,7 @@ async function execGerarApresentacao(modo){
     if(modo==='previa')execPptPrevAbrir(pptx,fileName,_rec);
     else await pptx.writeFile({fileName});
   }catch(e){console.error('Apresentação executiva',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}
-  finally{document.body.dataset.theme=temaAntes;if(btn){btn.disabled=false;btn.innerHTML=h;}}
+  finally{document.body.dataset.theme=temaAntes;if(_painGraf.size)execRedesenharPaineisGraficos(_painGraf);if(btn){btn.disabled=false;btn.innerHTML=h;}}
 }
 function execAppendOpsReport(rede,enc,b2c,o,w){
   const el=document.getElementById('exec-global-report');if(!el||(!o&&!w))return;
