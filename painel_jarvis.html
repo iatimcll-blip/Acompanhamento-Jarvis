@@ -29719,7 +29719,7 @@ function rdeElapsedFromDetail(det){
   const ab=rdeParseDateBR(partes[0]),fc=rdeParseDateBR(partes[1]);
   return(ab&&fc&&fc>=ab)?(fc-ab)/36e5:null;
 }
-function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';const eh=r[isAC?9:8];const elapsedH=(typeof eh==='number'&&eh>=0)?eh:rdeElapsedFromDetail(det);return{m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,elapsedH,_raw:r,_scope:isAC?'ac':'bb'};}).filter(r=>r.m||r.w);}
+function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';const eh=r[isAC?9:8];const elapsedH=(typeof eh==='number'&&eh>=0)?eh:rdeElapsedFromDetail(det);const o={m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,elapsedH,_raw:r,_scope:isAC?'ac':'bb'};if(RDE_T_MTTR)rdeTComoMttr(o);return o;}).filter(r=>r.m||r.w);}
 function rdeTabFlat(){
   let out;
   if(rdeTab==='ACESSO')out=rdeToFlat(rdeAD,'AC');
@@ -30613,8 +30613,10 @@ function rdePrjRenderMttrLinhas(base,ctx){
     const tr=rdePrjTendencia(sr.rows,ctx,'mttr'),cor=RDE_PRJ_CORES[sr.k],tot=sr.k==='T';
     const real=meses.map(m=>rdeRedirStatsFor(sr.rows.filter(r=>r.m===m),'mttr').val);
     const proj=[...meses.map((_,i)=>i===nM-1?real[i]:null),tr.projCur,...tr.fut.map(f=>f.val)];
-    ds.push({label:sr.lbl,data:[...real,null,null,null,null],borderColor:cor,backgroundColor:cor,borderWidth:tot?3:2,tension:.3,pointRadius:3,spanGaps:true,_grp:sr.k,_side:side});
-    ds.push({label:sr.lbl+' (proj.)',data:proj,borderColor:cor,backgroundColor:'transparent',borderDash:[6,4],borderWidth:tot?3:2,tension:.3,pointRadius:proj.map((v,i)=>i>=nM&&v!==null?3:0),_grp:sr.k,_side:side,_dlIdx:i=>i>=nM});
+    const pc=arr=>arr.map(v=>rdePrjCor('mttr',v,cor));
+    const realD=[...real,null,null,null,null];
+    ds.push({label:sr.lbl,data:realD,borderColor:cor,backgroundColor:cor,borderWidth:tot?3:2,tension:.3,pointRadius:4,pointBackgroundColor:pc(realD),pointBorderColor:pc(realD),spanGaps:true,_grp:sr.k,_side:side});
+    ds.push({label:sr.lbl+' (proj.)',data:proj,borderColor:cor,backgroundColor:'transparent',borderDash:[6,4],borderWidth:tot?3:2,tension:.3,pointRadius:proj.map((v,i)=>i>=nM&&v!==null?4:0),pointBorderColor:pc(proj),pointBackgroundColor:'#fff',_grp:sr.k,_side:side,_dlIdx:i=>i>=nM});
   });
   ds.push({label:'Meta',data:keys.map(()=>RDE_MTME),borderColor:'rgba(255,59,48,.85)',borderDash:[3,3],borderWidth:1.5,pointRadius:0,_meta:true});
   rdePrjMttrCh=new Chart(cv,{type:'line',data:{labels:keys.map(rdeMname),datasets:ds},plugins:DL?[DL]:[],options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:24,right:44,left:16,bottom:8}},
@@ -30626,7 +30628,7 @@ function rdePrjRenderMttrLinhas(base,ctx){
       tooltip:{callbacks:{label:c=>c.raw===null?'':c.dataset.label+': '+c.raw.toFixed(2).replace('.',',')+' h'}},
       datalabels:{display:rdePrjDlShow,align:c=>c.dataset._meta?'left':((rdePrjDeclutter(c.chart)[c.datasetIndex+':'+c.dataIndex]||{}).align||c.dataset._side),anchor:c=>c.dataset._meta?'start':'center',
         offset:c=>c.dataset._meta?3:((rdePrjDeclutter(c.chart)[c.datasetIndex+':'+c.dataIndex]||{}).offset??3),clip:false,
-        backgroundColor:c=>c.dataset._meta?null:(getComputedStyle(document.body).getPropertyValue('--surface').trim()||'#fff')+'',borderRadius:3,padding:{top:0,bottom:0,left:2,right:2},color:c=>c.dataset.borderColor,font:c=>({size:c.dataset._meta?9:10,weight:'700'}),formatter:(v,c)=>(c.dataset._meta?'Meta ':'')+v.toFixed(1).replace('.',',')}},
+        backgroundColor:c=>c.dataset._meta?null:(getComputedStyle(document.body).getPropertyValue('--surface').trim()||'#fff')+'',borderRadius:3,padding:{top:0,bottom:0,left:2,right:2},color:c=>c.dataset._meta?c.dataset.borderColor:rdePrjCor('mttr',c.dataset.data[c.dataIndex],c.dataset.borderColor),font:c=>({size:c.dataset._meta?9:10,weight:'700'}),formatter:(v,c)=>(c.dataset._meta?'Meta ':'')+v.toFixed(1).replace('.',',')}},
     scales:{y:{grid:{color:grid},ticks:{color:txC,callback:v=>v+' h'},beginAtZero:true},x:{grid:{display:false},ticks:{color:txC}}}}});
 }
 const RDE_PRJ_FIM=new WeakMap();
@@ -30648,6 +30650,17 @@ function rdePrjBase(){
 }
 function rdePrjClusters(base){const pres=new Set(base.map(r=>r.cl));return RDE_CLUSTER_KEYS.filter(k=>pres.has(k));}
 function rdePrjMeta(metric){return metric==='prazo'?RDE_M89:metric==='outlier'?RDE_MOUT:metric==='mttr'?RDE_MTME:null;}
+/* Cor por status (pedido do usuário, 2026-10-20): fora da meta = vermelho, próximo da meta =
+   amarelo, na meta (ou melhor) = verde. "Próximo": Prazo até 3 p.p. abaixo; Outlier até 1 p.p.
+   acima; MTTR até 10% acima da meta. Mesma régua do status das tabelas de projeção. */
+const RDE_PRJ_STATUS_COR={ok:'#34c759',wn:'#e6ac00',bd:'#ff3b30'};
+function rdePrjStatus(metric,v){
+  const meta=rdePrjMeta(metric);if(meta===null||v===null||v===undefined||!isFinite(v))return null;
+  if(metric==='prazo')return v>=meta?'ok':v>=meta-3?'wn':'bd';
+  const tol=metric==='outlier'?1:meta*0.1;
+  return v<=meta?'ok':v<=meta+tol?'wn':'bd';
+}
+function rdePrjCor(metric,v,def){const st=rdePrjStatus(metric,v);return st?RDE_PRJ_STATUS_COR[st]:def;}
 function rdePrjFmt(metric,v){if(v===null||v===undefined||!isFinite(v))return'—';return metric==='volEventos'?Math.round(v).toLocaleString('pt-BR'):metric==='mttr'?v.toFixed(2).replace('.',',')+' h':v.toFixed(1).replace('.',',')+'%';}
 /* Contexto de datas: referência (última data de fechamento), mês e semana correntes. */
 function rdePrjCtx(base){
@@ -30701,9 +30714,8 @@ function rdePrjLinha(rows,metric,curKey,prevKeys,keyFn,dec,tot){
   }
   let st='—';
   if(meta!==null&&proj!==null){
-    const better=metric==='prazo'?proj>=meta:proj<=meta;
-    const perto=metric==='prazo'?proj>=meta-3:metric==='outlier'?proj<=meta+1:proj<=meta+0.5;
-    st=better?'<span class="rede-chip ok">na meta</span>':perto?'<span class="rede-chip wn">no limite</span>':'<span class="rede-chip bd">fora da meta</span>';
+    const stt=rdePrjStatus(metric,proj);
+    st=stt==='ok'?'<span class="rede-chip ok">na meta</span>':stt==='wn'?'<span class="rede-chip wn">próximo da meta</span>':'<span class="rede-chip bd">fora da meta</span>';
   }
   const gap=meta!==null&&proj!==null?proj-meta:null;
   return{n,real,proj,meta,gap,need,st,volProj,rest,mediaHist};
@@ -30790,8 +30802,12 @@ function rdePrjRender(){
   const DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
   const fmtPt=v=>v===null||v===undefined?'':metric==='volEventos'?Math.round(v):metric==='mttr'?v.toFixed(1).replace('.',','):v.toFixed(1).replace('.',',');
   const cor=metric==='prazo'?'#34c759':metric==='outlier'?'#ff3b30':metric==='mttr'?'#007aff':'#af52de';
+  /* nós e trechos coloridos pelo status do valor vs meta (sem meta = cor da métrica) */
+  const stCor=(v,def)=>rdePrjCor(metric,v,def||cor);
+  const stPts=arr=>arr.map(v=>stCor(v));
+  const stSeg={borderColor:c=>stCor(c.p1.parsed.y)};
   const optsBase=titulo=>({responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},plugins:{title:{display:true,text:titulo,color:txC,font:{size:12,weight:'600'}},legend:{labels:{boxWidth:12,color:txC}},
-    datalabels:{display:rdePrjDlShow,align:c=>c.dataset._meta?'left':c.dataset._side||'top',anchor:c=>c.dataset._meta?'start':'end',offset:2,clip:false,color:c=>c.dataset.borderColor,font:c=>({size:c.dataset._meta?9:10,weight:'600'}),formatter:(v,c)=>c.dataset._meta?(metric==='volEventos'?'Média ':'Meta ')+fmtPt(v):fmtPt(v)}},
+    datalabels:{display:rdePrjDlShow,align:c=>c.dataset._meta?'left':c.dataset._side||'top',anchor:c=>c.dataset._meta?'start':'end',offset:2,clip:false,color:c=>c.dataset._meta?c.dataset.borderColor:rdePrjCor(metric,c.dataset.data[c.dataIndex],c.dataset.borderColor),font:c=>({size:c.dataset._meta?9:10,weight:'600'}),formatter:(v,c)=>c.dataset._meta?(metric==='volEventos'?'Média ':'Meta ')+fmtPt(v):fmtPt(v)}},
     scales:{y:{grid:{color:grid},ticks:{color:txC},beginAtZero:metric!=='prazo'},x:{grid:{display:false},ticks:{color:txC}}}});
   // ── Tendência ──
   const tr=rdePrjTendencia(rows,ctx,metric);
@@ -30803,9 +30819,9 @@ function rdePrjRender(){
   const tCv=document.getElementById('rprj-trend-ch');
   if(tCv){
     const ds=[
-      {label:'Realizado',data:realData,borderColor:cor,backgroundColor:cor,borderWidth:2,tension:.3,pointRadius:3,_dl:true},
-      {label:'MTD (parcial)',data:mtdData,borderColor:'#8e8e93',backgroundColor:'transparent',pointRadius:5,pointStyle:'rectRot',showLine:false,_dl:true,_side:'bottom'},
-      {label:'Projeção',data:projData,borderColor:cor,backgroundColor:'transparent',borderDash:[6,4],borderWidth:2,tension:.3,pointRadius:3,pointStyle:'circle',_dl:true,_dlIdx:i=>i>=nM}
+      {label:'Realizado',data:realData,borderColor:cor,backgroundColor:cor,borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:stPts(realData),pointBorderColor:stPts(realData),segment:stSeg,_dl:true},
+      {label:'MTD (parcial)',data:mtdData,borderColor:'#8e8e93',backgroundColor:'transparent',pointRadius:5,pointStyle:'rectRot',pointBorderColor:mtdData.map(v=>stCor(v,'#8e8e93')),showLine:false,_dl:true,_side:'bottom'},
+      {label:'Projeção',data:projData,borderColor:cor,backgroundColor:'transparent',borderDash:[6,4],borderWidth:2,tension:.3,pointRadius:4,pointStyle:'circle',pointBorderColor:stPts(projData),pointBackgroundColor:'#fff',segment:stSeg,_dl:true,_dlIdx:i=>i>=nM}
     ];
     if(meta!==null)ds.push({label:'Meta',data:tLabels.map(()=>meta),borderColor:'rgba(255,149,0,.9)',borderDash:[3,3],borderWidth:1.5,pointRadius:0,_meta:true});
     rdePrjTrendCh=new Chart(tCv,{type:'line',data:{labels:tLabels,datasets:ds},plugins:DL?[DL]:[],options:optsBase('Tendência — '+nomeM+' · '+recorte+' (tracejado = projeção)')});
@@ -30826,8 +30842,8 @@ function rdePrjRender(){
   if(dCv){
     const ultimo=ctx.diasMes-1;
     const ds=[
-      {label:metric==='volEventos'?'Acumulado no mês':'Acumulado MTD',data:acum,borderColor:cor,backgroundColor:cor+'22',fill:metric==='volEventos',borderWidth:2,tension:.25,pointRadius:3,_dl:true},
-      {label:'Projeção',data:proj,borderColor:cor,borderDash:[6,4],borderWidth:2,pointRadius:proj.map((v,i)=>v!==null&&i>=ctx.dia?(i===ultimo?4:2.5):0),backgroundColor:'transparent',_dl:true,_dlIdx:i=>i>=ctx.dia}
+      {label:metric==='volEventos'?'Acumulado no mês':'Acumulado MTD',data:acum,borderColor:cor,backgroundColor:cor+'22',fill:metric==='volEventos',borderWidth:2,tension:.25,pointRadius:3,pointBackgroundColor:stPts(acum),pointBorderColor:stPts(acum),segment:stSeg,_dl:true},
+      {label:'Projeção',data:proj,borderColor:cor,borderDash:[6,4],borderWidth:2,pointRadius:proj.map((v,i)=>v!==null&&i>=ctx.dia?(i===ultimo?4:2.5):0),pointBorderColor:stPts(proj),pointBackgroundColor:'#fff',segment:stSeg,backgroundColor:'transparent',_dl:true,_dlIdx:i=>i>=ctx.dia}
     ];
     if(meta!==null)ds.push({label:'Meta',data:acum.map(()=>meta),borderColor:'rgba(255,149,0,.9)',borderDash:[3,3],borderWidth:1.5,pointRadius:0,_meta:true});
     else if(tl.vals.some(v=>v!==null)){const h=tl.vals.filter(v=>v!==null);const mh=h.reduce((a,b)=>a+b,0)/h.length;ds.push({label:'Média mensal (meses fechados)',data:acum.map(()=>mh),borderColor:'rgba(142,142,147,.9)',borderDash:[3,3],borderWidth:1.5,pointRadius:0,_meta:true});}
@@ -34602,8 +34618,15 @@ async function execCapturarGraficos(itens){
   const ids=new Set();itens.forEach(i=>(i.cv||[]).forEach(c=>ids.add(c)));
   const ler=()=>ids.forEach(id=>{if(out[id])return;const cv=document.getElementById(id);const ch=cv&&Chart.getChart(cv);
     if(cv&&ch&&cv.width>20&&cv.height>20&&cv.offsetParent!==null){try{out[id]={data:cv.toDataURL('image/png'),w:cv.width,h:cv.height,titulo:_execGrafTitulo(cv,ch)};}catch(e){console.warn('captura',id,e);}}});
+  const sanear=()=>ids.forEach(id=>{const cv=document.getElementById(id);const ch=cv&&Chart.getChart(cv);if(!ch)return;let mud=false;
+    const f=v=>{if(typeof v==='string'){const n=execPptLimpaTxt(v);if(n!==v)mud=true;return n;}if(Array.isArray(v))return v.map(f);return v;};
+    try{const t=ch.options.plugins&&ch.options.plugins.title;if(t&&t.text)t.text=f(t.text);
+      (ch.data.datasets||[]).forEach(d=>{if(d.label)d.label=f(d.label);});
+      Object.values(ch.options.scales||{}).forEach(sc=>{if(sc&&sc.title&&sc.title.text)sc.title.text=f(sc.title.text);});
+      if(mud)ch.update('none');}catch(e){console.warn('sanear gráfico',id,e);}});
   const fora=async(panelId,desenhar)=>{const p=document.getElementById(panelId);if(!p)return;p.classList.add('exec-ppt-render');
-    try{desenhar();await _execFrame();ler();}finally{p.classList.remove('exec-ppt-render');}};
+    try{desenhar();await _execFrame();sanear();await _execFrame();ler();}finally{p.classList.remove('exec-ppt-render');}};
+  const meses=execPptMesesSel();
   const anim=Chart.defaults.animation,dpr=Chart.defaults.devicePixelRatio;Chart.defaults.animation=false;Chart.defaults.devicePixelRatio=2;// nítido no slide
   try{
     if(pain.has('rede')){
@@ -34613,7 +34636,8 @@ async function execCapturarGraficos(itens){
         if(selExecSemana.length){rdeGran='w';rdePeriod=selExecSemana.slice();}
         else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes.slice();}
         else{rdeGran='all';rdePeriod=[];}
-        await fora('panel-rede',()=>renderRede());
+        /* WoW da Rede: só as semanas dos meses filtrados (o painel mostra o ano inteiro). */
+        await fora('panel-rede',()=>{renderRede();if(meses){const base=rdeGetAllFlat().filter(x=>rdeClFilter(x.cl)&&meses.includes(x.m));rdeRenderWow(base);}});
       }finally{({rdeTab,rdeCluster,rdeYear,rdeGran,rdePeriod}=sv);}
     }
     if(pain.has('enc')&&typeof renderAllEnc==='function'){
@@ -34624,7 +34648,8 @@ async function execCapturarGraficos(itens){
       const dAll=dEnc;
       const anos=selExecAno.length?selExecAno:[...new Set([...selExecMes.map(m=>m.slice(0,4)),...selExecSemana.map(w=>w.slice(0,4))])];
       try{
-        if(anos.length)dEnc=dAll.filter(d=>anos.includes(String(d.mes||d.semana||'').slice(0,4)));
+        if(meses)dEnc=dAll.filter(d=>meses.includes(d.mes));
+        else if(anos.length)dEnc=dAll.filter(d=>anos.includes(String(d.mes||d.semana||'').slice(0,4)));
         selYear=selExecAno.slice();selMes=selExecMes.slice();selWeek=execSemanaComEquivalentes(selExecSemana);
         selCluster=selExecEncCluster.slice();selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
         if(srch)srch.value='';
@@ -34867,12 +34892,103 @@ async function execPptPrevBaixar(){
   finally{if(b){b.disabled=false;setTimeout(()=>{if(b.isConnected)b.innerHTML=h;},2500);}}
 }
 function execPptPrevFechar(){const m=document.getElementById('exec-pv');if(m){m.style.display='none';m.innerHTML='';}_execPrev=null;}
+/* ================= Apresentação — 10 ajustes do usuário (2026-10-20) =================
+   1) só o recorte dos filtros  2) slides em sequência por segmento (Rede inteiro, depois B2B…)
+   3) TME/TMR vira MTTR  4) sem o termo "Redir"  5) só o que estiver marcado no Conteúdo do PPT
+   6) Leitura executiva por cluster selecionado  7) título do baremo = nome dos indicadores
+   8) tabelas de indicador + chamados que puxam o indicador, por cluster  9) idem no MTTR
+   10) cores de status nos gráficos de projeção (rdePrjStatus/rdePrjCor). */
+
+/* 3) Durante a geração, o "t" dos chamados da Rede passa a ser o MTTR (tempo real entre
+   abertura e fechamento, sem expurgo e sem os fechados em < 15 min — mesma regra do card
+   MTTR). Assim baremo, leitura e gráficos de "TME/TMR" saem com o valor do MTTR, igual aos
+   quadros de MTTR por cluster. Fora da geração nada muda. */
+var RDE_T_MTTR=false;
+function rdeTComoMttr(o){const ch=rdeChaveExpurgo(o);o.t=(o.elapsedH!==null&&o.elapsedH!==undefined&&o.elapsedH>RDE_MTTR_MIN_H&&!(ch&&rdeExpurgo[ch]))?o.elapsedH:0;}
+/* 3+4) Todo texto que entra num slide passa por aqui: TME/TMR → MTTR e sem "Redir". */
+function execPptLimpaTxt(s){
+  return String(s).replace(/TME\s*\/\s*TMR|TMR\s*\/\s*TME/g,'MTTR').replace(/\bTM[ER]\b/g,'MTTR').replace(/MTTR médio/g,'MTTR')
+    .replace(/\bredir\b\s*/gi,'').replace(/ {2,}/g,' ').replace(/^\s*[·—]\s+/,'');// nunca tira "-" (sinal de valor negativo)
+}
+function execPptLimpaArg(a){
+  if(typeof a==='string')return execPptLimpaTxt(a);
+  if(Array.isArray(a))return a.map(execPptLimpaArg);
+  if(a&&typeof a==='object'&&'text' in a)return{...a,text:a.text==null?a.text:execPptLimpaTxt(a.text)};
+  return a;
+}
+function execPptSanear(sl){['addText','addTable'].forEach(fn=>{const o=sl[fn].bind(sl);sl[fn]=(x,...rest)=>o(execPptLimpaArg(x),...rest);});return sl;}
+/* 2) Ordem fixa por segmento: Visão geral → Rede (baremo, indicadores por cluster, FCA,
+   gráficos) → B2B (idem) → B2C → Operação do dia. A lista "Conteúdo do PPT" segue a mesma. */
+const EXEC_PPT_ORDEM=['resumo','leitura',
+  'rede','rr_mttr','rr_prazo','rr_outlier','rr_volEventos','rr_volOutlier','rr_fca','redeFca',
+  'g_rede_evol','g_rede_wow','g_rede_cid','g_rede_mttrof','g_rede_prj','g_rede_prjmttr','g_4a_out','g_4a_prz','g_4a_tme','g_4a_qtd',
+  'enc','rb_prazo','rb_outlier','rb_fca','encFca','g_enc_dist','g_enc_meta',
+  'b2c','b2cFca','g_b2c','ofs','warmup'];
+const EXEC_PPT_SEG={resumo:'geral',leitura:'geral',ofs:'op',warmup:'op'};
+function execPptSeg(it){if(EXEC_PPT_SEG[it.k])return EXEC_PPT_SEG[it.k];if(it.painel)return it.painel==='enc'?'b2b':it.painel;if(it.redir)return it.redir==='rede'?'rede':'b2b';
+  return /^rede/.test(it.k)?'rede':/^enc/.test(it.k)?'b2b':/^b2c/.test(it.k)?'b2c':'geral';}
+(function(){
+  const REN={rr_mttr:'Rede — MTTR por cluster',rr_prazo:'Rede — Prazo por cluster',rr_outlier:'Rede — Outlier por cluster',rr_volEventos:'Rede — Volume de eventos por cluster',
+    rr_volOutlier:'Rede — Volume de outlier por cluster',rr_fca:'Rede — FCA dos indicadores por cluster',rb_prazo:'B2B — Prazo ≤ 8h por cluster',rb_outlier:'B2B — Outlier > 12h por cluster',
+    rb_fca:'B2B — FCA dos indicadores por cluster',rede:'Rede — indicadores (Prazo, Outlier, MTTR)',enc:'B2B Encerrados — indicadores (Prazo, Outlier)',b2c:'B2C — indicadores',
+    g_rede_evol:'Rede — Prazo & Outlier e MTTR por período',g_4a_tme:'Rede 4-Analytics — MTTR (mensal e diário)'};
+  EXEC_PPT_ITENS.forEach(it=>{if(REN[it.k])it.l=REN[it.k];if(it.redir)it.g=it.redir==='rede'?'Rede':'B2B Encerrados';});
+  EXEC_PPT_ITENS.sort((a,b)=>{const ia=EXEC_PPT_ORDEM.indexOf(a.k),ib=EXEC_PPT_ORDEM.indexOf(b.k);return(ia<0?999:ia)-(ib<0?999:ib);});
+})();
+/* 1) Registros exatamente do recorte do Executivo (mesmo swap dos snapshots). */
+function execPptRedeRecs(){
+  const sv={rdeTab,rdeCluster,rdeYear,rdeGran,rdePeriod};
+  try{rdeTab='AMBOS';rdeCluster=selExecRedeCluster;rdeYear=selExecAno;
+    if(selExecSemana.length){rdeGran='w';rdePeriod=selExecSemana;}else if(selExecMes.length){rdeGran='m';rdePeriod=selExecMes;}else{rdeGran='all';rdePeriod=[];}
+    return rdeGetDisplayRecs();
+  }finally{({rdeTab,rdeCluster,rdeYear,rdeGran,rdePeriod}=sv);}
+}
+function execPptEncRecs(){
+  const sv={selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,encChartBucket};
+  try{selYear=selExecAno;selMes=selExecMes;selWeek=execSemanaComEquivalentes(selExecSemana);selCluster=selExecEncCluster;
+    selEncCluster=[];selEncAging=[];selEncCausa=[];selEncUf=[];selEncSemana=[];selEncSeg=[];selEncOut=[];encChartBucket='';
+    return encScope();
+  }finally{({selYear,selMes,selWeek,selCluster,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,encChartBucket}=sv);}
+}
+/* Meses do filtro (Mês, ou os meses tocados pelas Semanas); null = sem filtro de período. */
+function execPptMesesSel(){
+  if(selExecMes.length)return selExecMes.slice();
+  if(!selExecSemana.length)return null;
+  const st=new Set();selExecSemana.forEach(k=>{const d=execIsoMonday(k);if(!d)return;for(let i=0;i<7;i++){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()+i);st.add(x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0'));}});
+  return[...st];
+}
+/* 8/9) Chamados que puxam o indicador para baixo, maior tempo primeiro. */
+function execPptOfRede(recs,metric){
+  let off;
+  if(metric==='prazo')off=recs.filter(r=>r.p!==1);
+  else if(metric==='outlier'||metric==='volOutlier')off=recs.filter(r=>r.o===1);
+  else if(metric==='mttr'||metric==='tme')off=recs.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch])&&r.elapsedH!==null&&r.elapsedH!==undefined&&r.elapsedH>RDE_MTME;});
+  else return[];
+  return off.map(r=>{const d=rdePrjDataFim(r);return{cl:r.cl,clLbl:RDE_CLUSTER_LABELS[r.cl]||r.cl,os:execRedeOsChamado(r),tipo:r._scope==='ac'?'Acesso':'Backbone',
+    cidade:r.cidade||'—',causa:r.c||'—',h:(r.elapsedH!==null&&r.elapsedH!==undefined)?r.elapsedH:(+r.t||0),data:d?String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'):'—'};})
+    .sort((a,b)=>b.h-a.h);
+}
+function execPptOfEnc(recs,metric){
+  const off=metric==='prazo'?recs.filter(x=>!x.dentro8h):recs.filter(x=>x.outlier24h);
+  return off.map(x=>({cl:x.cluster||'—',clLbl:x.cluster||'—',os:x.os||x.protocolo||'—',tipo:'',cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',
+    h:+x.tempoTotal||0,data:String(x.dataFechamento||'').slice(0,5)||'—'})).sort((a,b)=>b.h-a.h);
+}
+/* Distribui as linhas da tabela entre os clusters (rodízio), pra todo cluster aparecer. */
+function execPptTopPorCluster(lista,maxRows,ordem){
+  const g=new Map();lista.forEach(o=>{if(!g.has(o.cl))g.set(o.cl,[]);g.get(o.cl).push(o);});
+  const keys=[...g.keys()].sort((a,b)=>{const ia=ordem.indexOf(a),ib=ordem.indexOf(b);return((ia<0?99:ia)-(ib<0?99:ib))||String(a).localeCompare(String(b));});
+  const al={};keys.forEach(k=>al[k]=0);let rest=maxRows,mov=true;
+  while(rest>0&&mov){mov=false;for(const k of keys){if(rest<=0)break;if(al[k]<g.get(k).length){al[k]++;rest--;mov=true;}}}
+  const rows=[];keys.forEach(k=>rows.push(...g.get(k).slice(0,al[k])));
+  return{rows,cont:keys.map(k=>[g.get(k)[0].clLbl,g.get(k).length])};
+}
 async function execGerarApresentacao(modo){
   if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
   const btn=document.getElementById(modo==='previa'?'exec-pptx-prev-btn':'exec-pptx-btn');const h=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';}
   const temaAntes=document.body.dataset.theme;
   let _painGraf=new Set();
+  RDE_T_MTTR=true;// 3) TME/TMR da Rede vira MTTR durante toda a geração
   try{
     /* 1) Atualiza o Executivo com os filtros do momento (a apresentação obedece a eles). */
     renderExecutivo();
@@ -34880,13 +34996,16 @@ async function execGerarApresentacao(modo){
     const rede=sn.rede||{total:0,indicadores:[]},enc=sn.enc||{total:0,indicadores:[]},b2c=sn.b2c||{total:0,indicadores:[]};
     const ofs=sn.ofs&&!sn.ofs.foraDoPeriodo&&sn.ofs.tot>0?sn.ofs:null,wm=sn.wm&&!sn.wm.foraDoPeriodo&&sn.wm.total>0?sn.wm:null;
     const sel=execPptSel();
+    /* 5) Só o que está marcado (e com dados); 2) na ordem fixa por segmento. */
     const itens=EXEC_PPT_ITENS.filter(it=>sel.has(it.k)&&execPptDisponivel(it,sn));
     if(!itens.length){alert(sel.size?'Nenhum dos itens escolhidos em "Conteúdo do PPT" tem dados no filtro atual. Ajuste os filtros ou escolha outros itens.':'Escolha o que levar para a apresentação em "Conteúdo do PPT".');return;}
+    const segsSel=new Set(itens.map(execPptSeg).filter(s=>s!=='geral'));
+    const segOn=s=>segsSel.size?segsSel.has(s):true;// só Resumo/Leitura marcados: vale tudo que tiver dado
 
-    const NAVY=EXEC_TPL.navy,BLUE=EXEC_TPL.blue,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=EXEC_TPL.cinza,GREYL=EXEC_TPL.linha,WHITE=PPTX_WHITE,BGCARD='F5F7FB';
+    const NAVY=EXEC_TPL.navy,BLUE=EXEC_TPL.blue,GREEN=PPTX_GREEN,RED=PPTX_RED,ORANGE=PPTX_ORANGE,GREY=EXEC_TPL.cinza,GREYL=EXEC_TPL.linha,WHITE=PPTX_WHITE,BGCARD='F5F7FB',YEL='C99700';
     const ST={ok:GREEN,wn:ORANGE,bd:RED,na:GREY};
     const recorte=execFiltrosExecTxt()||'Todo o período';
-    const clTxt=[selExecRedeCluster.length?'Rede: '+selExecRedeCluster.map(c=>RDE_CLUSTER_LABELS[c]||c).join(', '):'',selExecEncCluster.length?'Encerrados: '+selExecEncCluster.join(', '):'',selExecB2cCluster.length?'B2C: '+selExecB2cCluster.join(', '):''].filter(Boolean).join(' · ');
+    const clTxt=[selExecRedeCluster.length?'Rede: '+selExecRedeCluster.map(c=>RDE_CLUSTER_LABELS[c]||c).join(', '):'',selExecEncCluster.length?'B2B: '+selExecEncCluster.join(', '):'',selExecB2cCluster.length?'B2C: '+selExecB2cCluster.join(', '):''].filter(Boolean).join(' · ');
     const kickRec=(recorte+(clTxt?' · '+clTxt:'')).toUpperCase();
     /* Gráficos dos painéis com os filtros do Executivo (tema claro pro slide branco). */
     document.body.dataset.theme='light';
@@ -34896,8 +35015,8 @@ async function execGerarApresentacao(modo){
     pptx.theme={headFontFace:'Segoe UI',bodyFontFace:'Segoe UI'};
     const _rec=execPptGravar(pptx);// grava os slides pra pré-visualização
     const slides=[];// adiados até saber o total (numeração "n / N")
-    const slide=(k,t)=>{const sl=pptx.addSlide();slides.push({sl,k,t});return sl;};
-    const th=t=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:10,valign:'middle'}});
+    const slide=(k,t)=>{const sl=execPptSanear(pptx.addSlide());slides.push({sl,k,t:execPptLimpaTxt(t)});return sl;};
+    const th=(t,fs)=>({text:t,options:{bold:true,color:WHITE,fill:{color:NAVY},fontSize:fs||10,valign:'middle'}});
     const td=(t,o)=>({text:String(t==null?'':t),options:{fontSize:10,valign:'middle',...(o||{})}});
     const card=(sl,x,y,w,hh,lab,txt,cor,fs)=>{sl.addShape('rect',{x,y,w,h:hh,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
       sl.addText([{text:lab+'\n',options:{bold:true,fontSize:10,color:cor||GREY,breakLine:true}},{text:txt,options:{fontSize:fs||11.5,color:NAVY}}],{x:x+0.18,y:y+0.08,w:w-0.36,h:hh-0.16,valign:'top'});};
@@ -34909,63 +35028,120 @@ async function execGerarApresentacao(modo){
     const fmtR=i=>execFmtIndicadorResultado(i);
     const fmtM=i=>i.meta==null?'—':(String(i.meta).replace('.',',')+(i.unidade||''));
     const fmtS=(v,u)=>v==null||isNaN(v)?'—':(v.toFixed(u==='h'?2:1).replace('.',',')+(u||''));
-    const dataTxt=new Date().toLocaleString('pt-BR',{dateStyle:'long',timeStyle:'short'});
-    const blocoDe={rede:{t:'Rede',snap:rede},enc:{t:'B2B Encerrados',snap:enc},b2c:{t:'B2C',snap:b2c}};
+    const fH=v=>v==null||!isFinite(v)?'—':v.toFixed(1).replace('.',',')+' h';
+    const fP=v=>v==null||!isFinite(v)?'—':v.toFixed(1).replace('.',',')+'%';
+    const blocoDe={rede:{t:'Rede',snap:rede,seg:'rede'},enc:{t:'B2B Encerrados',snap:enc,seg:'b2b'},b2c:{t:'B2C',snap:b2c,seg:'b2c'}};
+    /* Status/cor de um valor vs meta (mesma régua das projeções): verde / amarelo / vermelho. */
+    const stInd=(dir,v,meta,tol)=>v==null||!isFinite(v)||meta==null?'na':dir==='higher'?(v>=meta?'ok':v>=meta-tol?'wn':'bd'):(v<=meta?'ok':v<=meta+tol?'wn':'bd');
+    const COR_ST={ok:GREEN,wn:YEL,bd:RED,na:GREY};
+    const ordRede=['C','I','P','N'],ordEnc=CLUSTER_ORDER;
+    const recsRede=segOn('rede')&&rede.total?execPptRedeRecs():[],recsEnc=segOn('b2b')&&enc.total?execPptEncRecs():[];
 
-    // capa (sempre)
-    const grupos=[...new Set(itens.map(i=>i.g))];
+    // capa (sempre) — subtítulo com os segmentos escolhidos
+    const SEG_NOME={geral:'Visão geral',rede:'Rede',b2b:'B2B Encerrados',b2c:'B2C',op:'Operação do dia'};
+    const segsCapa=[...new Set(itens.map(execPptSeg))].map(s=>SEG_NOME[s]);
     const periodo=execPeriodoTxt();
-    execTplCapa(pptx,'Painel Executivo',grupos.join(' · '),periodo+(clTxt?' · '+clTxt:''));
+    execTplCapa(pptx,'Painel Executivo',segsCapa.join(' · '),periodo+(clTxt?' · '+clTxt:''));
 
-    const redirLido={};// cache das tabelas Redir lidas da tela (tema claro)
+    /* Tabela "chamados que puxam o indicador para baixo", distribuída por cluster. */
+    const tabOfensores=(sl,y,yFim,lista,o)=>{
+      if(!lista.length){sl.addText(o.titulo+' — nenhum chamado fora da meta no recorte.',{x:o.x||0.4,y,w:o.w||12.5,h:0.3,fontSize:10,italic:true,color:GREEN,margin:0});return 0;}
+      const rowH=0.235,maxRows=Math.max(1,Math.floor((yFim-y-0.34-rowH)/rowH));
+      const tp=execPptTopPorCluster(lista,maxRows,o.ordem);
+      sl.addText([{text:o.titulo,options:{bold:true,color:NAVY}},{text:'   fora da meta: '+tp.cont.map(c=>c[0]+' '+c[1]).join(' · ')+(tp.cont.length>1?' (total '+lista.length+')':'')+(tp.rows.length<lista.length&&!o.w?' — maiores tempos de cada cluster':''),options:{color:GREY}}],{x:o.x||0.4,y,w:o.w||12.5,h:0.3,fontSize:o.w?8.5:9.5,margin:0});
+      const cols=[['Cluster',1.1,r=>td(r.clLbl,{bold:true,fontSize:8.5})],['Chamado',1.6,r=>td(r.os,{fontSize:8.5})]];
+      if(o.tipo)cols.push(['Tipo',1.0,r=>td(r.tipo,{fontSize:8.5})]);
+      if(o.ind)cols.unshift(['Indicador',1.1,r=>td(r.ind,{fontSize:8,bold:true})]);
+      cols.push(['Cidade',2.2,r=>td(r.cidade,{fontSize:8.5})],['Causa',3.4,r=>td(r.causa,{fontSize:8.5})],['Fech.',0.9,r=>td(r.data,{fontSize:8.5})],['Tempo',0.9,r=>td(fH(r.h),{fontSize:8.5,bold:true,color:RED})]);
+      if(o.mttr)cols.push(['Acima da meta',1.2,r=>td('+'+fH(r.h-RDE_MTME),{fontSize:8.5,color:RED})]);
+      if(o.colW)cols.forEach(c=>{if(o.colW[c[0]])c[1]=o.colW[c[0]];});
+      const W=o.w||12.5,soma=cols.reduce((t,c)=>t+c[1],0),k=W/soma;
+      sl.addTable([cols.map(c=>th(c[0],8.5)),...tp.rows.map(r=>cols.map(c=>c[2](r)))],{x:o.x||0.4,y:y+0.32,w:W,colW:cols.map(c=>c[1]*k),rowH,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:8.5});
+      return tp.rows.length;
+    };
+    /* 9) Efeito no MTTR dos chamados mais longos do recorte. */
+    const notaMttr=recs=>{
+      const v=recs.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch])&&r.elapsedH!==null&&r.elapsedH!==undefined&&r.elapsedH>RDE_MTTR_MIN_H;}).map(r=>r.elapsedH).sort((a,b)=>b-a);
+      if(v.length<3)return'';
+      const md=a=>a.reduce((t,x)=>t+x,0)/a.length,n=Math.min(10,Math.max(1,Math.floor(v.length*0.1)));
+      const acima=v.filter(x=>x>RDE_MTME);
+      return'MTTR do recorte '+fH(md(v))+' em '+v.length+' chamados · '+acima.length+' acima da meta de '+fH(RDE_MTME)+' · '+(n===1?'sem o chamado mais longo':'sem os '+n+' mais longos')+', o MTTR iria para '+fH(md(v.slice(n)));
+    };
+
+    const redirLido={};
     document.body.dataset.theme='light';
     const lerRedir=(fam,m)=>{const k=fam+'_'+m;if(k in redirLido)return redirLido[k];const id=fam==='rede'?'exec-rde-redir-body-table-'+m:'exec-redir-table-'+m;const t=document.querySelector('#'+id+' table');return(redirLido[k]=t&&t.rows.length>1?execTabelaParaPptx(t):null);};
     const fcaLido={};
     const fcaRedirDom=(fam,m)=>{const el=document.getElementById(fam==='rede'?'exec-rde-redir-body-fca-'+m:'exec-redir-fca-'+m);return el?(el.innerText||el.textContent||'').trim():'';};
     const fcaRedir=(fam,m)=>fam+'_'+m in fcaLido?fcaLido[fam+'_'+m]:fcaRedirDom(fam,m);
     if(itens.some(it=>it.redir)){
-      /* (2026-10-19) "o conteúdo do PPT deverá casar com os filtros": os quadros Redir agora
-         seguem o Mês/Semana do Executivo (antes saíam com todos os meses do ano). */
-      EXEC_REDIR_TODOS_MESES=false;
-      try{
-        redirRenderAll();rdeRedirRenderAll();
-        RDE_REDIR_METRICS_ORDER.forEach(m=>{lerRedir('rede',m);fcaLido['rede_'+m]=fcaRedirDom('rede',m);});
-        ['prazo','outlier'].forEach(m=>{lerRedir('b2b',m);fcaLido['b2b_'+m]=fcaRedirDom('b2b',m);});
-      }finally{EXEC_REDIR_TODOS_MESES=false;redirRenderAll();rdeRedirRenderAll();}
+      EXEC_REDIR_TODOS_MESES=false;// 1) quadros por cluster seguem Mês/Semana do filtro
+      redirRenderAll();rdeRedirRenderAll();
+      RDE_REDIR_METRICS_ORDER.forEach(m=>{lerRedir('rede',m);fcaLido['rede_'+m]=fcaRedirDom('rede',m);});
+      ['prazo','outlier'].forEach(m=>{lerRedir('b2b',m);fcaLido['b2b_'+m]=fcaRedirDom('b2b',m);});
     }
     const anoRedir=fam=>{const s2=document.getElementById(fam==='rede'?'exec-rde-redir-ano-sel':'exec-redir-ano-sel');return s2&&s2.value?s2.value:'';};
-    const REDIR_NOTA={rede:{mttr:'MTTR médio por cluster (h) · meta '+String(RDE_MTME).replace('.',',')+' h',prazo:'Prazo por cluster (Backbone + Acesso) · meta '+pp(RDE_M89)+'%',outlier:'Outlier por cluster (Backbone + Acesso) · máx. '+pp(RDE_MOUT)+'%',volEventos:'Volume de eventos por cluster',volOutlier:'Volume de outlier por cluster'},
+    const NOTA_IND={rede:{mttr:'MTTR médio por cluster (h) · meta '+String(RDE_MTME).replace('.',',')+' h',prazo:'Prazo por cluster (Backbone + Acesso) · meta '+pp(RDE_M89)+'%',outlier:'Outlier por cluster (Backbone + Acesso) · máx. '+pp(RDE_MOUT)+'%',volEventos:'Volume de eventos por cluster',volOutlier:'Volume de outlier por cluster'},
       b2b:{prazo:'Prazo de reparos B2B ≤ 8h · meta '+pp(ENC_META_PRAZO)+'%',outlier:'Outlier de reparos B2B > 12h · máx. '+pp(ENC_META_OUTLIER)+'%'}};
-    const slideRedir=it=>{
+    /* 8/9) Slide do indicador por cluster: tabela do indicador + chamados que puxam o indicador. */
+    const slideInd=it=>{
       const lin=lerRedir(it.redir,it.m);if(!lin)return;
-      const ano=anoRedir(it.redir);
-      const sl=slide((it.redir==='rede'?'REDIR REDE':'REDIR B2B · REGIONAL R7.2 (MA, PA, PI E AP)')+(ano&&!selExecAno.length?' · ANO '+ano:'')+' · '+kickRec,it.l);
-      const nCol=lin[0].length,w0=nCol>16?1.15:1.9,wR=(12.5-w0)/Math.max(1,nCol-1),nRows=lin.length,rowH=nRows>16?0.24:nRows>10?0.3:0.38;
-      sl.addTable(lin,{x:0.4,y:1.95,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
-      sl.addText((REDIR_NOTA[it.redir][it.m]||'')+' · '+(selExecMes.length||selExecSemana.length?'período do filtro: '+execPeriodoTxt():'todos os meses do ano'+(ano?' '+ano:''))+' com Projetada · ΔMoM = mês − meta',{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+      const ano=anoRedir(it.redir),rede1=it.redir==='rede';
+      const kick=(rede1?'REDE':'B2B · REGIONAL R7.2 (MA, PA, PI E AP)')+(ano&&!selExecAno.length?' · ANO '+ano:'')+' · '+kickRec;
+      const sl=slide(kick,it.l);
+      const nCol=lin[0].length,w0=nCol>16?1.15:1.9,wR=(12.5-w0)/Math.max(1,nCol-1),nRows=lin.length,rowH=nRows>8?0.26:0.32;
+      sl.addTable(lin,{x:0.4,y:1.85,w:12.5,colW:[w0,...Array(nCol-1).fill(wR)],rowH:[0.62,...Array(nRows-1).fill(rowH)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
+      const yTab=1.85+0.62+(nRows-1)*rowH+0.22;
+      const nota=(NOTA_IND[it.redir][it.m]||'')+' · '+(selExecMes.length||selExecSemana.length?'período do filtro: '+periodo:'todos os meses do ano'+(ano?' '+ano:''))+' com Projetada · ΔMoM = mês − meta';
+      const metric=it.m==='volOutlier'?'outlier':it.m;
+      const lista=it.m==='volEventos'?null:rede1?execPptOfRede(recsRede.length?recsRede:execPptRedeRecs(),metric):execPptOfEnc(recsEnc.length?recsEnc:execPptEncRecs(),metric);
+      const titOf=it.m==='mttr'?'Chamados que derrubam o MTTR':'Chamados que puxam o indicador para baixo';
+      const opt={titulo:titOf,ordem:rede1?ordRede:ordEnc,tipo:rede1,mttr:it.m==='mttr'};
+      if(lista){
+        if(6.6-yTab>=1.3)tabOfensores(sl,yTab,6.6,lista,opt);
+        else{sl.addText(nota,{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+          const s2=slide(kick,it.l+' — chamados');tabOfensores(s2,1.85,6.6,lista,opt);
+          if(it.m==='mttr')s2.addText(notaMttr(rede1?recsRede:[]),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
+          return;}
+      }
+      sl.addText(it.m==='mttr'&&rede1?notaMttr(recsRede)||nota:nota,{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
     };
-    const slideRedirFca=fam=>{
-      const ms=itens.filter(i=>i.redir===fam&&i.m).map(i=>i.m);
-      const lista=(ms.length?ms:(fam==='rede'?['prazo','outlier']:['prazo','outlier'])).map(m=>[m,fcaRedir(fam,m)]).filter(x=>x[1]);
-      lista.forEach(([m,txt])=>{
-        const rot=fam==='rede'?RDE_REDIR_METRICS[m].label:(m==='prazo'?'Prazo < 8h':'Outlier > 12h');
-        const sl=slide((fam==='rede'?'REDIR REDE':'REDIR B2B')+' · PLANO DE AÇÃO · '+kickRec,'FCA — '+(fam==='rede'?'Redir Rede':'Redir B2B')+' · '+rot);
+    const slideIndFca=fam=>{
+      const ms=itens.filter(i=>i.redir===fam&&i.m).map(i=>i.m);// 5) só os indicadores marcados
+      ms.map(m=>[m,fcaRedir(fam,m)]).filter(x=>x[1]).forEach(([m,txt])=>{
+        const rot=fam==='rede'?RDE_REDIR_METRICS[m].label:(m==='prazo'?'Prazo ≤ 8h':'Outlier > 12h');
+        const sl=slide((fam==='rede'?'REDE':'B2B')+' · PLANO DE AÇÃO · '+kickRec,'FCA — '+(fam==='rede'?'Rede':'B2B')+' · '+rot);
         card(sl,0.4,1.95,12.5,4.95,'FATO · CAUSA · AÇÃO',txt.length>1500?txt.slice(0,1500)+'…':txt,BLUE,txt.length>900?9:10.5);
       });
     };
+    /* 7) Título = nome dos indicadores; 8) chamados que puxam os indicadores, por cluster. */
+    const NOME_IND=i=>execPptLimpaTxt(i.label).replace(/^No prazo/,'Prazo');
     const slideBaremo=b=>{
       const sn2=b.snap;
-      const sa=slide(b.t.toUpperCase()+' · '+kickRec+' · '+execN(sn2.total)+' registros','Baremo e semana contra semana — '+b.t);
+      const sa=slide(b.t.toUpperCase()+' · '+kickRec+' · '+execN(sn2.total)+' registros',b.t+' — '+sn2.indicadores.map(NOME_IND).join(' · '));
       const tr=[[th('Indicador'),th('Resultado'),th('Meta'),th(sn2.semAnteriorLabel||'Sem. ant.'),th(sn2.semAtualLabel||'Sem. atual'),th('Δ'),th('Status')]];
-      sn2.indicadores.forEach(i=>tr.push([td(i.label),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),td(fmtS(i.semAnterior,i.unidade)),td(fmtS(i.semAtual,i.unidade)),
+      sn2.indicadores.forEach(i=>tr.push([td(NOME_IND(i)),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),td(fmtS(i.semAnterior,i.unidade)),td(fmtS(i.semAtual,i.unidade)),
         td(i.diffSem==null?'—':(i.diffSem>0?'+':'')+fmtS(i.diffSem,i.unidade==='%'?' p.p.':i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})]));
-      sa.addTable(tr,{x:0.4,y:1.9,w:8.1,colW:[2.4,1.0,0.8,1.0,1.0,0.9,1.0],rowH:tr.length>9?0.3:0.36,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:tr.length>9?8.5:10});
+      const rowH=tr.length>9?0.3:0.34;
+      sa.addTable(tr,{x:0.4,y:1.85,w:8.1,colW:[2.4,1.0,0.8,1.0,1.0,0.9,1.0],rowH,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:tr.length>9?8.5:10});
       const ri=sn2.wowRefIdx!=null&&sn2.wowRefIdx>=0?sn2.wowRefIdx:(sn2.wow||[]).length-1;
       const ws=(sn2.wow||[]).slice(Math.max(0,ri-7),ri+1);
-      sa.addText('Volume por semana',{x:8.8,y:1.85,w:4.1,h:0.3,fontSize:11,bold:true,color:NAVY});
+      sa.addText('Volume por semana',{x:8.8,y:1.8,w:4.1,h:0.3,fontSize:11,bold:true,color:NAVY});
       if(ws.length)sa.addChart(pptx.ChartType.bar,[{name:'Registros',labels:ws.map(w=>String(w.label||w.semana)),values:ws.map(w=>w.total||0)}],
-        {x:8.8,y:2.15,w:4.1,h:3.0,barDir:'col',showValue:true,dataLabelFontSize:8,chartColors:ws.map((w,ix)=>ix===ws.length-1?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'}});
-      card(sa,8.8,5.3,4.1,1.55,'SEMANA CONTRA SEMANA',execWoWInsightTxt(sn2.wow,sn2.wowRefIdx));
+        {x:8.8,y:2.1,w:4.1,h:2.9,barDir:'col',showValue:true,dataLabelFontSize:8,chartColors:ws.map((w,ix)=>ix===ws.length-1?BLUE:'BCC5D6'),showLegend:false,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'}});
+      card(sa,8.8,5.15,4.1,1.5,'SEMANA CONTRA SEMANA',execWoWInsightTxt(sn2.wow,sn2.wowRefIdx));
+      // chamados que puxam os indicadores (Rede e B2B; o B2C não tem lista de chamados)
+      const y0=1.85+tr.length*rowH+0.25;
+      if(b.seg==='rede'||b.seg==='b2b'){
+        const lista=[];
+        const curto=i=>/prazo/i.test(i.key)?'Prazo':/outlier/i.test(i.key)?'Outlier':'MTTR';
+        sn2.indicadores.forEach(i=>{const of=b.seg==='rede'?execPptOfRede(recsRede,i.key):execPptOfEnc(recsEnc,i.key);of.forEach(o=>lista.push({...o,ind:curto(i)}));});
+        lista.sort((a,b2)=>b2.h-a.h);
+        // uma linha por chamado (o mesmo chamado pode estourar mais de um indicador)
+        const vist=new Map();lista.forEach(o=>{const k=o.os+'|'+o.cidade+'|'+o.data+'|'+o.h;if(vist.has(k))vist.get(k).ind+=' + '+o.ind;else vist.set(k,{...o});});
+        tabOfensores(sa,y0,6.65,[...vist.values()],{titulo:'Chamados que puxam os indicadores para baixo',ordem:b.seg==='rede'?ordRede:ordEnc,ind:true,x:0.4,w:8.1,
+          colW:{Indicador:1.75,Cluster:0.8,Chamado:0.9,Cidade:1.4,Causa:1.75,'Fech.':0.55,Tempo:0.65}});
+      }
     };
     const slideFca=b=>{
       const sf=slide(b.t.toUpperCase()+' · PLANO DE AÇÃO · '+kickRec,'FCA — '+b.t);
@@ -34974,40 +35150,86 @@ async function execGerarApresentacao(modo){
       sf.addTable([[th('Prazo'),th('Responsável'),th('Status')],[td(''),td(''),td('')]],{x:0.4,y:6.0,w:12.5,colW:[3,6.5,3],rowH:[0.3,0.4],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
       sf.addText('Preencher Prazo, Responsável e Status com o plano definido.',{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
     };
-    const blocosComDado=['rede','enc','b2c'].map(k=>blocoDe[k]).filter(b=>b.snap.total>0);
+    /* 6) Leitura executiva: por segmento e por cluster do recorte, com cores de status. */
+    const leituraBlocos=()=>{
+      const out=[];
+      const topo=(lista,campo)=>{const c={};lista.forEach(o=>{const k=o[campo]||'—';c[k]=(c[k]||0)+1;});const e=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];return e?{k:e[0],n:e[1]}:null;};
+      const run=(t,o)=>({text:t,options:o||{}});
+      if(segOn('rede')&&recsRede.length){
+        const cls=ordRede.filter(k=>recsRede.some(r=>r.cl===k));
+        const lin=cls.map(k=>{const rs=recsRede.filter(r=>r.cl===k);
+          const pz=rdeRedirStatsFor(rs,'prazo').val,ou=rdeRedirStatsFor(rs,'outlier').val,mt=rdeRedirStatsFor(rs,'mttr').val;
+          const sp=stInd('higher',pz,RDE_M89,3),so=stInd('lower',ou,RDE_MOUT,1),sm=stInd('lower',mt,RDE_MTME,RDE_MTME*0.1);
+          return[run((RDE_CLUSTER_LABELS[k]||k)+' · '+execN(rs.length)+' chamados:  ',{bold:true,color:NAVY}),
+            run('Prazo '+fP(pz),{bold:true,color:COR_ST[sp]}),run(pz!=null?' ('+(pz-RDE_M89>=0?'+':'')+(pz-RDE_M89).toFixed(1).replace('.',',')+' p.p.)':'',{color:GREY}),
+            run('   Outlier '+fP(ou),{bold:true,color:COR_ST[so]}),run(ou!=null?' ('+(ou-RDE_MOUT>=0?'+':'')+(ou-RDE_MOUT).toFixed(1).replace('.',',')+' p.p.)':'',{color:GREY}),
+            run('   MTTR '+fH(mt),{bold:true,color:COR_ST[sm]}),run(mt!=null?' ('+(mt-RDE_MTME>=0?'+':'')+(mt-RDE_MTME).toFixed(1).replace('.',',')+' h)':'',{color:GREY})];});
+        const off=execPptOfRede(recsRede,'prazo'),cid=topo(off,'cidade'),cau=topo(off,'causa');
+        const ag=rdeRedirStatsFor(recsRede,'prazo').val;
+        out.push({t:'REDE · '+execN(recsRede.length)+' chamados no recorte',cor:COR_ST[stInd('higher',ag,RDE_M89,3)],lin,
+          dest:off.length?'Atenção: '+off.length+' chamados fora do prazo'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro do prazo.'});
+      }
+      if(segOn('b2b')&&recsEnc.length){
+        const cls=[...new Set(recsEnc.map(x=>x.cluster).filter(Boolean))].sort((a,b)=>{const ia=ordEnc.indexOf(a),ib=ordEnc.indexOf(b);return(ia<0?99:ia)-(ib<0?99:ib);});
+        const lin=cls.map(k=>{const rs=recsEnc.filter(x=>x.cluster===k),stt=encRuleStats(rs);
+          const sp=stInd('higher',stt.pPrazo,ENC_META_PRAZO,3),so=stInd('lower',stt.pOut,ENC_META_OUTLIER,1);
+          return[run(k+' · '+execN(rs.length)+' chamados:  ',{bold:true,color:NAVY}),
+            run('Prazo ≤ 8h '+fP(stt.pPrazo),{bold:true,color:COR_ST[sp]}),run(' ('+(stt.pPrazo-ENC_META_PRAZO>=0?'+':'')+(stt.pPrazo-ENC_META_PRAZO).toFixed(1).replace('.',',')+' p.p.)',{color:GREY}),
+            run('   Outlier > 12h '+fP(stt.pOut),{bold:true,color:COR_ST[so]}),run(' ('+(stt.pOut-ENC_META_OUTLIER>=0?'+':'')+(stt.pOut-ENC_META_OUTLIER).toFixed(1).replace('.',',')+' p.p.)',{color:GREY})];});
+        const off=execPptOfEnc(recsEnc,'prazo'),cid=topo(off,'cidade'),cau=topo(off,'causa'),stt=encRuleStats(recsEnc);
+        out.push({t:'B2B ENCERRADOS · '+execN(recsEnc.length)+' chamados no recorte',cor:COR_ST[stInd('higher',stt.pPrazo,ENC_META_PRAZO,3)],lin,
+          dest:off.length?'Atenção: '+off.length+' chamados acima de 8h'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa raiz mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro de 8h.'});
+      }
+      if(segOn('b2c')&&b2c.total){
+        const lin=[b2c.indicadores.map((i,ix)=>[run((ix?'   ':'')+NOME_IND(i)+' ',{bold:true,color:NAVY}),run(fmtR(i),{bold:true,color:COR_ST[i.status==='wn'?'wn':i.status]||GREY})]).flat()];
+        const cr=b2c.indicadores.filter(i=>i.status==='bd');
+        out.push({t:'B2C'+(selExecB2cCluster.length?' · '+selExecB2cCluster.join(', '):''),cor:cr.length?RED:GREEN,lin,dest:cr.length?'Fora da meta: '+cr.map(NOME_IND).join(', ')+'.':'Indicadores dentro da meta.'});
+      }
+      if(segOn('op')&&ofs&&itens.some(i=>i.k==='ofs'))out.push({t:'ABERTOS OFS',cor:ofs.sla.o48?ORANGE:BLUE,lin:[[run(execN(ofs.tot)+' atividades · '+ofs.taxa+'% concluídas · '+execN(ofs.cnt['Em aberto'])+' em aberto ('+ofs.unass+' sem técnico) · '+ofs.sla.o24+' na fila há 24 h ou mais',{color:NAVY})]],dest:''});
+      if(segOn('op')&&wm&&itens.some(i=>i.k==='warmup'))out.push({t:'WARMUP',cor:wm.o24?ORANGE:BLUE,lin:[[run(execN(wm.total)+' chamados ('+wm.backbone+' backbone, '+wm.acesso+' acesso, '+wm.massiva+' massivas) · '+wm.o24+' abertos há 24 h ou mais',{color:NAVY})]],dest:''});
+      return out;
+    };
+    const blocosComDado=['rede','enc','b2c'].map(k=>blocoDe[k]).filter(b=>b.snap.total>0&&segOn(b.seg));
     let rrFcaFeito=false,rbFcaFeito=false;
     itens.forEach(it=>{
       if(it.k==='resumo'){
         const s2=slide('PAINEL EXECUTIVO · '+kickRec,'Resumo — farol dos painéis');
         const rows=[[th('Painel'),th('Indicador'),th('Resultado'),th('Meta'),th('Sem. anterior → atual'),th('Status')]];
-        blocosComDado.forEach(b=>b.snap.indicadores.forEach((i,ix)=>rows.push([td(ix?'':b.t,{bold:true}),td(i.label),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),
+        blocosComDado.forEach(b=>b.snap.indicadores.forEach((i,ix)=>rows.push([td(ix?'':b.t,{bold:true}),td(NOME_IND(i)),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),
           td(i.semAnterior==null&&i.semAtual==null?'—':fmtS(i.semAnterior,i.unidade)+' → '+fmtS(i.semAtual,i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})])));
-        if(ofs)[['Taxa de conclusão',ofs.taxa+'%'],['Em aberto (sem técnico)',execN(ofs.cnt['Em aberto'])+' ('+ofs.unass+')'],['SLA da fila ≥ 24 h',ofs.sla.o24+' de '+ofs.sla.abertas]].forEach((x,ix)=>
+        if(ofs&&itens.some(i=>i.k==='ofs'))[['Taxa de conclusão',ofs.taxa+'%'],['Em aberto (sem técnico)',execN(ofs.cnt['Em aberto'])+' ('+ofs.unass+')'],['SLA da fila ≥ 24 h',ofs.sla.o24+' de '+ofs.sla.abertas]].forEach((x,ix)=>
           rows.push([td(ix?'':'Abertos OFS',{bold:true}),td(x[0]),td(x[1],{bold:true}),td('—'),td('base de '+(ofs.baseDate||'—')),td('—',{color:GREY})]));
-        if(wm)[['Chamados (PI/MA/PA/AM/AP)',execN(wm.total)],['Backbone · Acesso · Massivas',wm.backbone+' · '+wm.acesso+' · '+wm.massiva],['Abertos há ≥ 24 h',execN(wm.o24)]].forEach((x,ix)=>
+        if(wm&&itens.some(i=>i.k==='warmup'))[['Chamados (PI/MA/PA/AM/AP)',execN(wm.total)],['Backbone · Acesso · Massivas',wm.backbone+' · '+wm.acesso+' · '+wm.massiva],['Abertos há ≥ 24 h',execN(wm.o24)]].forEach((x,ix)=>
           rows.push([td(ix?'':'Warmup',{bold:true}),td(x[0]),td(x[1],{bold:true}),td('—'),td('relatório do dia'),td('—',{color:GREY})]));
+        if(rows.length<2)return;
         const small=rows.length>18;
         s2.addTable(rows,{x:0.4,y:1.9,w:12.5,colW:[1.9,3.6,1.6,1.1,2.6,1.7],rowH:small?0.22:0.27,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:small?8.5:10});
       }else if(it.k==='leitura'){
+        const bl=leituraBlocos();if(!bl.length)return;
         const s3=slide('PAINEL EXECUTIVO · '+kickRec,'Leitura executiva');
-        const ler=[];
-        blocosComDado.forEach(b=>{const cr=b.snap.indicadores.filter(i=>i.status==='bd'),at=b.snap.indicadores.filter(i=>i.status==='wn'),ok=b.snap.indicadores.filter(i=>i.status==='ok');
-          ler.push({t:b.t,cor:cr.length?RED:at.length?ORANGE:GREEN,txt:execN(b.snap.total)+' registros · '+ok.length+' na meta, '+at.length+' em atenção, '+cr.length+' crítico(s)'+(cr.length?' ('+cr.map(i=>i.label).join(', ')+')':'')+'. '+(b.snap.fca&&b.snap.fca.fato?b.snap.fca.fato:'')});});
-        if(ofs)ler.push({t:'Abertos OFS',cor:ofs.sla.o48?ORANGE:BLUE,txt:execN(ofs.tot)+' atividades, '+ofs.taxa+'% concluídas, '+execN(ofs.cnt['Em aberto'])+' em aberto ('+ofs.unass+' sem técnico); '+ofs.sla.o24+' na fila há 24 h ou mais.'});
-        if(wm)ler.push({t:'Warmup',cor:wm.o24?ORANGE:BLUE,txt:execN(wm.total)+' chamados ('+wm.backbone+' backbone, '+wm.acesso+' acesso, '+wm.massiva+' massivas); '+wm.o24+' abertos há 24 h ou mais'+(wm.backlog.total?'; backlog de '+wm.backlog.total+'.':'.')});
-        const hh=Math.min(1.05,4.9/Math.max(1,ler.length)-0.1);
-        ler.forEach((l,ix)=>card(s3,0.4,1.95+ix*(hh+0.1),12.5,hh,l.t.toUpperCase(),execPtNum(l.txt),l.cor));
+        const nLin=bl.reduce((t,b)=>t+b.lin.length+1+(b.dest?1:0),0),gap=0.12;
+        const lh=Math.min(0.215,(4.85-gap*(bl.length-1)-0.2*bl.length)/Math.max(1,nLin)),fs=lh>=0.2?11:lh>=0.17?10:9;
+        let y=1.85;
+        bl.forEach(b=>{
+          const hh=0.2+lh*(b.lin.length+1+(b.dest?1:0));
+          s3.addShape('rect',{x:0.4,y,w:12.5,h:hh,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
+          s3.addShape('rect',{x:0.4,y,w:0.07,h:hh,fill:{color:b.cor},line:{type:'none'}});
+          const runs=[{text:b.t,options:{bold:true,color:b.cor,fontSize:fs,breakLine:true}}];
+          b.lin.forEach(l=>{l.forEach((r,ix)=>runs.push({text:r.text,options:{...r.options,fontSize:fs,breakLine:ix===l.length-1}}));});
+          if(b.dest)runs.push({text:b.dest,options:{italic:true,color:GREY,fontSize:fs-0.5,breakLine:true}});
+          s3.addText(runs,{x:0.6,y:y+0.06,w:12.2,h:hh-0.12,valign:'top',margin:0});
+          y+=hh+gap;
+        });
       }else if(it.k==='rede'||it.k==='enc'||it.k==='b2c')slideBaremo(blocoDe[it.k]);
       else if(it.k==='redeFca')slideFca(blocoDe.rede);
       else if(it.k==='encFca')slideFca(blocoDe.enc);
       else if(it.k==='b2cFca')slideFca(blocoDe.b2c);
-      else if(it.redir&&it.m)slideRedir(it);
+      else if(it.redir&&it.m)slideInd(it);
       else if(it.painel){
         const imgs=(it.cv||[]).map(id=>graf[id]).filter(Boolean);
         if(!imgs.length)return;
         const sg=slide(it.g.replace('Gráficos — ','').toUpperCase()+' · GRÁFICOS · '+kickRec,it.l);
-        /* 2 gráficos: lado a lado ou empilhados — o que deixar as imagens maiores (gráficos
-           muito largos, como os diários, ficam melhores um embaixo do outro). */
+        /* 2 gráficos: lado a lado ou empilhados — o que deixar as imagens maiores. */
         const n=imgs.length,gap=0.3,top=1.9,areaH=4.6,tit=0.32;
         const caixa=(im,W,H)=>{const rz=im.w/im.h,mx=H-(im.titulo?tit:0);let w=W,hh=w/rz;if(hh>mx){hh=mx;w=hh*rz;}return{w,hh};};
         const lado=n<2?null:imgs.map(im=>caixa(im,(12.5-gap)/2,areaH)),pilha=n<2?null:imgs.map(im=>caixa(im,12.5,(areaH-gap)/2));
@@ -35022,8 +35244,8 @@ async function execGerarApresentacao(modo){
         });
         sg.addText('Gráficos redesenhados nos painéis de origem com os filtros do Executivo: '+periodo+(clTxt?' · '+clTxt:''),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
       }
-      else if(it.k==='rr_fca'&&!rrFcaFeito){rrFcaFeito=true;slideRedirFca('rede');}
-      else if(it.k==='rb_fca'&&!rbFcaFeito){rbFcaFeito=true;slideRedirFca('b2b');}
+      else if(it.k==='rr_fca'&&!rrFcaFeito){rrFcaFeito=true;slideIndFca('rede');}
+      else if(it.k==='rb_fca'&&!rbFcaFeito){rbFcaFeito=true;slideIndFca('b2b');}
       else if(it.k==='ofs'&&ofs){
         const so=slide('ABERTOS OFS · BASE DE '+(ofs.baseDate||'—')+' · '+kickRec+' · FILTROS DO PAINEL: '+execFiltrosTxt(ofs.filtros).toUpperCase(),'Abertos OFS — execução do dia');
         [['TAXA DE CONCLUSÃO',ofs.taxa+'%',ofs.cnt['Concluída']+' de '+ofs.valid,GREEN],['EM ABERTO',execN(ofs.cnt['Em aberto']),ofs.unass+' sem técnico',BLUE],['SUSP./NÃO CONCL.',execN(ofs.cnt['Suspensa']+ofs.cnt['Não concluída']),'',ORANGE],
@@ -35051,18 +35273,20 @@ async function execGerarApresentacao(modo){
     const hojeTxt=new Date().toLocaleDateString('pt-BR');
     slides.forEach((x,ix)=>execTplConteudo(pptx,x.sl,x.t,'Gerado automaticamente pelo Painel Executivo em '+hojeTxt+' · dados do período: '+periodo+(clTxt?' · '+clTxt:'')+' · '+(ix+2)+'/'+N));
     if(!slides.length){alert('Nenhum dos itens escolhidos tem dados no filtro atual.');return;}
-    /* Slide final "Obrigado" (pedido do usuário, 2026-10-19): mesmo padrão da capa (fundo
-       navy, painel azul com a logo GIGA+ branca e a linha decorativa). */
+    /* Slide final "Obrigado" (pedido do usuário, 2026-10-19): mesmo padrão da capa. */
     execTplCapa(pptx,'Obrigado!','Painel Executivo — Acompanhamento das Operações',periodo+(clTxt?' · '+clTxt:''));
     const slug=x=>x.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
     const fileName='Apresentacao_Executiva_'+slug(recorte+(clTxt?' '+clTxt:''))+'_'+new Date().toISOString().slice(0,10)+'.pptx';
-    /* Pedido do usuário (2026-10-19): "Gerar apresentação (PPT)" mantém a função anterior
-       (baixa direto); o botão ao lado, "Visualizar apresentação" ('previa'), abre a tela com
-       os slides para análise (com "Baixar PPT" lá também). */
+    /* "Gerar apresentação (PPT)" baixa direto; "Visualizar apresentação" ('previa') abre a tela. */
     if(modo==='previa')execPptPrevAbrir(pptx,fileName,_rec);
     else await pptx.writeFile({fileName});
   }catch(e){console.error('Apresentação executiva',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}
-  finally{document.body.dataset.theme=temaAntes;if(_painGraf.size)execRedesenharPaineisGraficos(_painGraf);if(btn){btn.disabled=false;btn.innerHTML=h;}}
+  finally{
+    RDE_T_MTTR=false;document.body.dataset.theme=temaAntes;
+    try{renderExecutivo();}catch(e){console.warn(e);}// tela volta aos valores normais (TME/TMR)
+    if(_painGraf.size)execRedesenharPaineisGraficos(_painGraf);
+    if(btn){btn.disabled=false;btn.innerHTML=h;}
+  }
 }
 function execAppendOpsReport(rede,enc,b2c,o,w){
   const el=document.getElementById('exec-global-report');if(!el||(!o&&!w))return;
