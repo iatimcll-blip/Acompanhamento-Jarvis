@@ -19912,10 +19912,17 @@ function _atrixRenderTimerBadge(){
   const ms=Date.now()-new Date(atrixLastSyncAt).getTime();
   const min=Math.floor(ms/60000);
   let txt;
-  if(min<1)txt='Sincronizado agora';
-  else if(min<60)txt=`Última sincronização: há ${min} min`;
-  else{const h=Math.floor(min/60),m=min%60;txt=`Última sincronização: há ${h}h${m>0?m+'min':''}`;}
+  if(min<1)txt='Verificado agora';
+  else if(min<60)txt=`Última verificação: há ${min} min`;
+  else if(min<48*60){const h=Math.floor(min/60),m=min%60;txt=`Última verificação: há ${h}h${m>0?m+'min':''}`;}
+  else txt='Última verificação: '+new Date(atrixLastSyncAt).toLocaleDateString('pt-BR');
+  const st=atrixRunnerSt;
+  if(st&&st.state==='error'&&st.lastRunCompletedAt&&st.lastRunCompletedAt>atrixLastSyncAt)txt='Última rodada com erro · '+txt.replace('Última verificação: ','verificado ');
   el.textContent=txt;
+  badge.title='Última verificação do agente Atrix: '+new Date(atrixLastSyncAt).toLocaleString('pt-BR')+
+    (st&&st.lastTicketsChecked?' · '+st.lastTicketsChecked+' chamados verificados, '+(st.lastTicketsChanged||0)+' substatus alterado(s)':'')+
+    (st&&st.state==='running'?' · rodada em andamento ('+(st.lastTicketsProgress||0)+'/'+(st.lastTicketsTotal||'—')+')':'')+
+    (st&&st.lastError?' · '+st.lastError:'');
   badge.classList.toggle('fresh',min<35);
   badge.classList.toggle('stale',min>120);
 }
@@ -20091,46 +20098,81 @@ async function _syncPutViaWorker(sha,content){
    `startTries` permite retomar já contando as tentativas que já teriam passado desde
    o disparo original (calculado a partir de jarvis:atrix:lastTriggerAt), pra não
    esticar o timeout total além dos ~18min pretendidos só porque a página recarregou. */
+/* (2026-10-20) Bug real: "estou atualizando e não estou vendo a última atualização".
+   Duas causas no painel (o agente rodava normalmente):
+   1) a rodada só era dada como concluída se algum substatus MUDASSE (updatedAt novo em
+      data/atrix_updates.json) — numa rodada sem mudanças o agente nem regrava esse
+      arquivo, então o painel nunca "via" o fim;
+   2) o acompanhamento desistia em 18 min, mas a rodada leva 17–20 min (já levou 1h49 com
+      fila no runner) — o polling expirava em silêncio, sem aviso nem recarga.
+   Agora o fim da rodada vem de data/atrix-runner-status.json (lastRunCompletedAt /
+   lastRunConclusion / lastTicketsChecked / lastTicketsChanged, gravados pelo agente em
+   TODA rodada, com ou sem mudança). Espera até 30 min o agente começar e até 3 h no total. */
+const ATRIX_ESPERA_INICIO_MIN=30,ATRIX_ESPERA_TOTAL_MIN=180;
+let atrixRunnerSt=null;
+function _atrixAplicarStatus(st){
+  if(!st)return;
+  atrixRunnerSt=st;
+  const ok=st.lastRunConclusion==='success'||st.lastRunConclusion==='partial';
+  if(ok&&st.lastRunCompletedAt&&st.lastRunCompletedAt>(atrixLastSyncAt||''))atrixLastSyncAt=st.lastRunCompletedAt;
+  _atrixRenderTimerBadge();
+}
 function _atrixStartMonitoring(triggeredAtIso,startTries){
   _atrixRunningNow=true;
   _atrixStartRunningTimer();
   _atrixStartProgressPolling(triggeredAtIso);
   clearInterval(_atrixPickupTimer);
-  let tries=startTries||0;
-  _atrixPickupTimer=setInterval(async()=>{
-    tries++;
-    const lastUpdate=await loadAtrixUpdates();
-    const finished=!!(lastUpdate&&lastUpdate>triggeredAtIso);
-    if(finished||tries>=18){
-      clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
-      _atrixRunningNow=false;
-      _atrixStopRunningTimer();
-      _atrixStopProgressPolling(finished);
-      /* Pedido do usuário: ao concluir a atualização de substatus, recarregar a
-         página automaticamente (F5) em vez de confiar só na mesclagem em memória —
-         garante que a tela reflita 100% o que foi salvo no GitHub, em qualquer
-         dispositivo com a aba aberta no momento em que o ciclo termina. */
-      if(finished){
-        _ghToast('Atualização de substatus concluída — recarregando a página…','var(--green-dk)',2400);
-        setTimeout(()=>window.location.reload(),2500);
+  const t0=Date.now()-(startTries||0)*60000;
+  /* tolerância de 2 min pra diferença entre o relógio deste aparelho e o do runner */
+  const ref=new Date(new Date(triggeredAtIso).getTime()-120000).toISOString();
+  const encerrar=finished=>{
+    clearInterval(_atrixPickupTimer);_atrixPickupTimer=null;
+    _atrixRunningNow=false;_atrixStopRunningTimer();_atrixStopProgressPolling(finished);
+  };
+  const tick=async()=>{
+    const st=await loadAtrixRunnerStatus();
+    const min=(Date.now()-t0)/60000;
+    const comecou=!!(st&&st.lastRunStartedAt&&st.lastRunStartedAt>=ref);
+    const terminou=!!(comecou&&st.state!=='running'&&st.lastRunCompletedAt&&st.lastRunCompletedAt>=st.lastRunStartedAt);
+    if(terminou){
+      _atrixAplicarStatus(st);
+      if(st.lastRunConclusion==='failure'||st.state==='error'){
+        encerrar(false);
+        _ghToast('O agente terminou com erro: '+(st.lastError||'falha não informada')+'. Os substatus não foram atualizados.','var(--red)',9000);
+        return;
       }
+      const mudou=Number(st.lastTicketsChanged||0);
+      await loadAtrixUpdates();
+      encerrar(true);
+      if(mudou>0){
+        _ghToast('Agente concluiu: '+mudou+' substatus atualizado(s) de '+(st.lastTicketsChecked||'—')+' chamados verificados — recarregando a página…','var(--green-dk)',3000);
+        setTimeout(()=>window.location.reload(),3000);
+      }else{
+        _ghToast('Agente concluiu: '+(st.lastTicketsChecked||'—')+' chamados verificados — nenhum substatus mudou desde a última atualização.'+(st.lastError?' ('+st.lastError+')':''),'var(--green-dk)',8000);
+      }
+      return;
     }
-  },60000);
+    if(!comecou&&min>=ATRIX_ESPERA_INICIO_MIN){
+      encerrar(false);
+      _ghToast('O agente não começou em '+ATRIX_ESPERA_INICIO_MIN+' min (runner ocupado ou desligado). Tente de novo mais tarde.','var(--red)',9000);
+      return;
+    }
+    if(min>=ATRIX_ESPERA_TOTAL_MIN){encerrar(false);_ghToast('O agente ainda não terminou depois de 3 h — o acompanhamento foi encerrado; o resultado aparece quando ele concluir.','var(--orange)',9000);}
+  };
+  tick();
+  _atrixPickupTimer=setInterval(tick,30000);
 }
-/* Retoma o cronômetro/barra de progresso ao carregar a página, se o último disparo
-   (jarvis:atrix:lastTriggerAt) ainda estiver dentro da janela plausível de um ciclo em
-   andamento (~18min, mesmo orçamento do polling) e o ciclo ainda não tiver sido
-   confirmado concluído (loadAtrixUpdates não achou nada mais novo que o disparo). */
+/* Ao abrir a página: lê o status do agente (mostrador) e, se houver rodada em andamento —
+   disparada daqui ou de QUALQUER outro aparelho/usuário —, retoma barra e cronômetro. */
 async function _atrixResumeIfRunning(){
-  let lastAt=0;
-  try{lastAt=Number(localStorage.getItem('jarvis:atrix:lastTriggerAt')||0);}catch(_){}
-  if(!lastAt)return;
-  const minsAgo=(Date.now()-lastAt)/60000;
-  if(minsAgo>=18)return;
-  const triggeredAtIso=new Date(lastAt).toISOString();
-  const lastUpdate=await loadAtrixUpdates();
-  if(lastUpdate&&lastUpdate>triggeredAtIso)return;
-  _atrixStartMonitoring(triggeredAtIso,Math.floor(minsAgo));
+  const st=await loadAtrixRunnerStatus();
+  _atrixAplicarStatus(st);
+  if(!st||st.state!=='running'||!st.lastRunStartedAt)return;
+  const minsAgo=(Date.now()-new Date(st.lastRunStartedAt).getTime())/60000;
+  if(minsAgo>ATRIX_ESPERA_TOTAL_MIN)return;
+  let lastAt=0;try{lastAt=Number(localStorage.getItem('jarvis:atrix:lastTriggerAt')||0);}catch(_){}
+  const trig=lastAt&&lastAt<=new Date(st.lastRunStartedAt).getTime()+120000?new Date(lastAt).toISOString():st.lastRunStartedAt;
+  _atrixStartMonitoring(trig,Math.max(0,Math.floor((Date.now()-new Date(trig).getTime())/60000)));
 }
 /* Quem pode mandar o agente Atrix atualizar os substatus do B2B Abertos (pedido do usuário,
    2026-10-20): Admin ou QUALQUER Usuário Sr que enxergue o painel B2B Abertos — não depende
@@ -20194,7 +20236,7 @@ async function loadAtrixUpdates(){
     const atrixFechadoFallback=atrixMatched.filter(ticket=>(updates[ticket.id]||updates[ticket.ticketId]).source==='fechado');
     if(atrixMatched.length>=5&&atrixFechadoFallback.length/atrixMatched.length>=0.9){
       console.warn(`[Atrix Agent] ${atrixFechadoFallback.length}/${atrixMatched.length} chamados vieram como "Fechado" por falha de leitura (source:'fechado') — atualização de substatus ignorada nesta rodada (suspeita de falha geral do agente).`);
-      if(latestAt){atrixLastSyncAt=latestAt;_atrixRenderTimerBadge();}
+      if(latestAt&&latestAt>(atrixLastSyncAt||'')){atrixLastSyncAt=latestAt;_atrixRenderTimerBadge();}
       return'';
     }
     let count=0;
@@ -20236,7 +20278,7 @@ async function loadAtrixUpdates(){
       fillFiltersAb();renderAllAb();fillFiltersSwap();renderAllSwap();saveState();
       console.log(`[Atrix Agent] ${count} atualização(ões) aplicada(s) do agente.`);
     }
-    if(latestAt){atrixLastSyncAt=latestAt;_atrixRenderTimerBadge();}
+    if(latestAt&&latestAt>(atrixLastSyncAt||'')){atrixLastSyncAt=latestAt;_atrixRenderTimerBadge();}
     return latestAt;
   }catch(e){console.warn('[Atrix Agent] Não foi possível carregar atualizações:',e);return'';}
 }
