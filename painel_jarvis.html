@@ -11292,8 +11292,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="mop-ref-btn" onclick="abrirModalRegrasSla()" title="Como o relógio de SLA é calculado"><i class="ti ti-clock-hour-4"></i> Regras de SLA</button>
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')" data-up="abertos"><i class="ti ti-database"></i> Atualizar base</button>
           <label data-up="abertos" class="mop-ref-btn admin-only" style="cursor:pointer" title="Base nacional sem filtro prévio (aba Export) — separa automaticamente os chamados de PI/MA/PA/AM/AP, inferindo a cidade pelo Título quando a UF não vier preenchida. Vale para Abertos e SWAP juntos."><i class="ti ti-world-upload"></i> Anexar base geral<input type="file" id="file-ab-geral" accept=".xlsx,.xls" style="display:none"></label>
-          <button data-up="abertos" class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
-          <span data-up="abertos" class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
+          <button data-up="atrix" class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
+          <span data-up="atrix" class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
           <span class="ab-upd-badge admin-only" id="atrix-running-timer" title="Tempo decorrido desde o clique em Atualizar — o ciclo completo leva ~15 min"><i class="ti ti-loader-2"></i><span id="atrix-running-timer-txt">Rodando há 00:00</span></span>
           <span class="atrix-progress-wrap" id="atrix-progress-wrap" title="% de chamados já verificados no ciclo do Agente Atrix em andamento">
             <span class="atrix-progress-bar"><span class="atrix-progress-fill" id="atrix-progress-fill" style="width:0%"></span></span>
@@ -14865,7 +14865,7 @@ function applyPermissions(){
      sem .admin-only (B2C, MAX) somem pra quem não pode anexar. */
   const _adm=!!canEdit();
   document.querySelectorAll('[data-up]').forEach(el=>{
-    const ok=el.dataset.up==='*'?(_adm||_hasSrEditRights()):canEdit(el.dataset.up);
+    const ok=el.dataset.up==='*'?(_adm||_hasSrEditRights()):el.dataset.up==='atrix'?canAtrixAtualizar():canEdit(el.dataset.up);
     if(el.classList.contains('admin-only'))el.classList.toggle('sr-up-on',ok&&!_adm);
     else el.style.display=ok?'':'none';
   });
@@ -20132,8 +20132,16 @@ async function _atrixResumeIfRunning(){
   if(lastUpdate&&lastUpdate>triggeredAtIso)return;
   _atrixStartMonitoring(triggeredAtIso,Math.floor(minsAgo));
 }
+/* Quem pode mandar o agente Atrix atualizar os substatus do B2B Abertos (pedido do usuário,
+   2026-10-20): Admin ou QUALQUER Usuário Sr que enxergue o painel B2B Abertos — não depende
+   mais da liberação "Anexar base" (perms.editPanels). Viewer continua sem o botão. */
+function canAtrixAtualizar(){
+  if(!currentUser)return false;
+  if(currentUser.role==='admin')return true;
+  return normRole(currentUser.role)==='sr'&&canSeePanel('abertos');
+}
 async function triggerAtrixUpdateNow(btn){
-  if(!canEdit('abertos'))return; // Admin ou Usuário Sr liberado no B2B Abertos (2026-10-19)
+  if(!canAtrixAtualizar())return;
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
     btn.classList.remove('atrix-start-ok','atrix-start-err');
