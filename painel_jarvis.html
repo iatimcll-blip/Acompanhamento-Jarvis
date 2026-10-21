@@ -27922,6 +27922,14 @@ function fapAudProcessar(rows,fileName){
   const dic={placa:[],tipo:[],status:[],motorista:[],cidade:[]};
   const idx={placa:new Map(),tipo:new Map(),status:new Map(),motorista:new Map(),cidade:new Map()};
   const put=(k,v)=>{let i=idx[k].get(v);if(i===undefined){i=dic[k].length;dic[k].push(v);idx[k].set(v,i);}return i;};
+  /* (2026-10-21) Pedido do usuário: o bloco de transações (Auditoria e Conciliação) só
+     reporta as PLACAS CADASTRADAS no painel — ao anexar uma base nova, as transações de
+     placas fora do cadastro ficam de fora (contadas e listadas no resumo da base). Sem
+     nenhuma placa cadastrada, a base não é importada (nada seria reportado). */
+  const nPl=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const cadastradas=new Set(FAP_PLACAS.map(p=>nPl(p.placa)).filter(Boolean));
+  if(!cadastradas.size){alert('Nenhuma placa cadastrada no painel.\n\nA Auditoria e a Conciliação só reportam as placas cadastradas — cadastre as placas (bloco Placas) e anexe o relatório de novo.\n\nNada foi alterado.');return;}
+  const foraCad={};let nForaCad=0;
   const out=[];let ignoradas=0,de='',ate='';
   const bases={},outras={};const selBase=fapBaseAlelo||'';
   for(let r=1;r<rows.length;r++){
@@ -27934,6 +27942,7 @@ function fapAudProcessar(rows,fileName){
     const rawV=row[FAP_AUD_COL.valor];
     const valor=typeof rawV==='number'?rawV:fapParseValor(rawV);
     if(!placa||!tipo||isNaN(valor)){ignoradas++;continue;}
+    if(!cadastradas.has(placa)){foraCad[placa]=(foraCad[placa]||0)+1;nForaCad++;continue;}
     const data=fapAudDataIso(row[FAP_AUD_COL.data]);
     if(data){const d=data.slice(0,10);if(!de||d<de)de=d;if(!ate||d>ate)ate=d;}
     out.push([put('placa',placa),put('tipo',tipo),Math.round(valor*100)/100,data,
@@ -27941,16 +27950,18 @@ function fapAudProcessar(rows,fileName){
       put('motorista',fapNomeProprio(row[FAP_AUD_COL.motorista])),
       put('cidade',String(row[FAP_AUD_COL.cidade]||'').trim())]);
   }
+  if(!out.length&&nForaCad){alert('Nenhuma transação das placas cadastradas neste arquivo ('+nForaCad.toLocaleString('pt-BR')+' transação(ões) de '+Object.keys(foraCad).length+' placa(s) fora do cadastro).\n\nNada foi alterado.');return;}
   if(!out.length){
     if(selBase&&Object.keys(bases).length&&!bases[selBase]){alert('Nenhuma transação da base reportada ('+fapBaseAleloLabel(selBase)+') neste arquivo.\n\nBases encontradas: '+Object.keys(bases).sort().map(b=>b+' ('+bases[b]+')').join(', ')+'.\n\nNada foi alterado. Para usar outra base, troque "Base Alelo reportada" no bloco Auditoria e anexe de novo.');return;}
     alert('Nenhuma transação válida encontrada (coluna C = Placa, AA = Tipo de transação, G = Valor).');return;
   }
   const now=new Date().toISOString();
-  FAP_AUDIT={v:1,file:String(fileName||''),importedAt:now,de,ate,dic,rows:out,base:selBase,basesNoArquivo:bases,outrasBases:outras};
+  FAP_AUDIT={v:1,file:String(fileName||''),importedAt:now,de,ate,dic,rows:out,base:selBase,basesNoArquivo:bases,outrasBases:outras,soCadastradas:true,foraCadastro:foraCad};
   fapAuditAt=now;
   saveState();
   fapRenderAuditoria();
   const _nOutras=Object.values(outras).reduce((a,b)=>a+b,0);
+  if(nForaCad)_ghToast(nForaCad.toLocaleString('pt-BR')+' transação(ões) de '+Object.keys(foraCad).length+' placa(s) não cadastrada(s) ficaram fora da Auditoria/Conciliação.','var(--orange)',7000);
   _ghToast(`Base de auditoria importada ✓ ${fapBaseAleloLabel(selBase)}: ${out.length} transação(ões), ${dic.placa.length} placa(s)${_nOutras?`, ${_nOutras} de outras bases (${Object.keys(outras).sort().join(', ')}) fora da análise`:''}${ignoradas?`, ${ignoradas} linha(s) ignorada(s)`:''} (substituiu a anterior)`,'var(--green-dk)',6500);
 }
 function fapAudLimparBase(){
@@ -28515,7 +28526,9 @@ function fapRenderAuditoria(){
     const imp=FAP_AUDIT.importedAt?new Date(FAP_AUDIT.importedAt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     info.style.display='';
     const _out=FAP_AUDIT.outrasBases?Object.values(FAP_AUDIT.outrasBases).reduce((a,b)=>a+b,0):0;
-    info.textContent=`${FAP_AUDIT.base!==undefined?fapBaseAleloLabel(FAP_AUDIT.base)+' · ':''}${_out?_out.toLocaleString('pt-BR')+' transações de outras bases fora da análise · ':''}Arquivo: ${FAP_AUDIT.file||'—'} · ${rows.length.toLocaleString('pt-BR')} transações · ${dic.placa.length} placas · período ${FAP_AUDIT.de?fapFmtDate(FAP_AUDIT.de):'—'} a ${FAP_AUDIT.ate?fapFmtDate(FAP_AUDIT.ate):'—'}${imp?` · anexada em ${imp}`:''}`;
+    const _fc=FAP_AUDIT.foraCadastro||{},_nfc=Object.values(_fc).reduce((a,b)=>a+b,0),_pfc=Object.keys(_fc).sort();
+    info.title=_pfc.length?'Placas não cadastradas (fora da análise): '+_pfc.map(p=>p+' ('+_fc[p]+')').join(', '):'';
+    info.textContent=`${FAP_AUDIT.soCadastradas?'Só placas cadastradas'+(_nfc?' ('+_nfc.toLocaleString('pt-BR')+' transações de '+_pfc.length+' placa(s) fora do cadastro excluídas)':'')+' · ':'Base anexada antes do filtro de placas cadastradas — anexe de novo para aplicar · '}${FAP_AUDIT.base!==undefined?fapBaseAleloLabel(FAP_AUDIT.base)+' · ':''}${_out?_out.toLocaleString('pt-BR')+' transações de outras bases fora da análise · ':''}Arquivo: ${FAP_AUDIT.file||'—'} · ${rows.length.toLocaleString('pt-BR')} transações · ${dic.placa.length} placas · período ${FAP_AUDIT.de?fapFmtDate(FAP_AUDIT.de):'—'} a ${FAP_AUDIT.ate?fapFmtDate(FAP_AUDIT.ate):'—'}${imp?` · anexada em ${imp}`:''}`;
   }
   const placasOpt=dic.placa.slice().sort();
   const tiposOpt=dic.tipo.slice().sort((a,b)=>a.localeCompare(b,'pt'));
