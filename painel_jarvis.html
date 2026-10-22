@@ -10593,7 +10593,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="fap-panel">
       <div class="fap-hist-head">
-        <div><h3 style="margin-bottom:2px">E-mail</h3><p class="fap-desc" style="margin:0">Modelo de mensagem pronto para envio — atualiza automaticamente conforme os filtros de UF/Placa/período aplicados acima, e o filtro de GO abaixo (só para este e-mail).</p></div>
+        <div><h3 style="margin-bottom:2px">E-mail</h3><p class="fap-desc" style="margin:0">Modelo de mensagem pronto para envio só com as <b>compras realizadas</b> (Compra · Aprovada, da base de Auditoria/Conciliação) — atualiza conforme os filtros de UF/Placa/período aplicados acima e o filtro de GO abaixo (só para este e-mail).</p></div>
         <button class="fap-export-btn" onclick="fapCopyEmailText()"><i class="ti ti-copy" style="font-size:13px;vertical-align:-1px"></i> Copiar texto do e-mail</button>
       </div>
       <div class="fap-field" style="max-width:260px;margin-bottom:12px"><label>GO (Gestor Operacional)</label>
@@ -29334,47 +29334,29 @@ function fapEmailFiltroResumo(){
   return partes.length?partes.join(' · '):'Todo o período (sem filtro aplicado)';
 }
 const FAP_EM_H='\u0002';
+/* E-mail só com as compras realizadas (pedido 2026-10-22): a relação de aportes saiu —
+   a mensagem traz apenas Compra · Aprovada da base de Auditoria/Conciliação, por placa,
+   com o total utilizado por GO (fapEmailComprasTexto). */
 function fapEmailRaw(){
   const go=fapEmailGoSelecionado();
-  const list=fapAportesFiltrados().filter(a=>{
-    if(!go)return true;
-    const p=fapPlacaById(a.placaId);
-    const pGo=p?fapGoNome(p.go):'';
-    return pGo===go;
-  });
-  const total=list.reduce((s,a)=>s+a.valor,0);
-  const linhas=list.map(a=>{
-    const p=fapPlacaById(a.placaId);
-    const placa=p?p.placa:'—';
-    const uf=p?p.uf:'—';
-    const go=p&&fapGoNome(p.go)?fapGoNome(p.go):'sem GO vinculado';
-    return`${placa} (${uf}) — GO: ${go} — ${fapFmtDate(a.data)} — ${fapFmtMoney(a.valor)}`;
-  });
-  const corpo=linhas.length?linhas.join('\n'):'Nenhum aporte no período/filtro selecionado.';
   const compras=fapEmailComprasTexto(go);
-  return`Assunto: Relatório de Aportes de Saldo — Frota e Combustível
+  return`Assunto: Relatório de Compras de Combustível por Placa — Frota e Combustível
 
 Prezados(as),
 
-Segue, para conhecimento e registro, o relatório dos aportes de saldo realizados por placa no período de referência.
+Segue, para conhecimento e registro, o relatório das compras de combustível realizadas por placa no período de referência.
 
 Filtro aplicado: ${fapEmailFiltroResumo()}
 
-RELAÇÃO DE APORTES
-
-${corpo}
-
-Total geral aportado no período: ${fapFmtMoney(total)}
-Total de lançamentos: ${list.length}
-
 ${compras}
 
-Os valores acima refletem os aportes registrados no Painel de Controle de Aportes de Saldo, por placa, com data de cada lançamento e nome do Gestor Operacional (GO) responsável.
+Os valores acima refletem as compras aprovadas (Tipo de transação: Compra · Status: Aprovada) do relatório de transações do Portal Alelo, por placa, com a data de cada transação e o total utilizado por Gestor Operacional (GO).
 
 Ficamos à disposição para esclarecimentos adicionais.
 
 Atenciosamente,`;
 }
+
 /* Compras por placa no e-mail (pedido 2026-10-22): todas as compras aprovadas (Tipo =
    Compra, Status = Aprovada) da base de Auditoria/Conciliação, agrupadas por placa com a
    data/hora de cada transação — mesmo recorte do Total por placa (placas do filtro +
