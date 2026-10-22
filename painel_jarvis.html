@@ -29350,6 +29350,7 @@ function fapEmailText(){
     return`${placa} (${uf}) — GO: ${go} — ${fapFmtDate(a.data)} — ${fapFmtMoney(a.valor)}`;
   });
   const corpo=linhas.length?linhas.join('\n'):'Nenhum aporte no período/filtro selecionado.';
+  const compras=fapEmailComprasTexto(go);
   return`Assunto: Relatório de Aportes de Saldo — Frota e Combustível
 
 Prezados(as),
@@ -29365,11 +29366,34 @@ ${corpo}
 Total geral aportado no período: ${fapFmtMoney(total)}
 Total de lançamentos: ${list.length}
 
+${compras}
+
 Os valores acima refletem os aportes registrados no Painel de Controle de Aportes de Saldo, por placa, com data de cada lançamento e nome do Gestor Operacional (GO) responsável.
 
 Ficamos à disposição para esclarecimentos adicionais.
 
 Atenciosamente,`;
+}
+/* Compras por placa no e-mail (pedido 2026-10-22): todas as compras aprovadas (Tipo =
+   Compra, Status = Aprovada) da base de Auditoria/Conciliação, agrupadas por placa com a
+   data/hora de cada transação — mesmo recorte do Total por placa (placas do filtro +
+   período) e do GO escolhido no e-mail. */
+function fapEmailComprasTexto(go){
+  const titulo='COMPRAS REALIZADAS POR PLACA (Compra · Aprovada)';
+  if(!FAP_AUDIT)return titulo+'\n\nSem base de transações anexada em Auditoria/Conciliação.';
+  const f=fapGetFiltros();
+  const comp=fapComprasPorPlaca(f.de,f.ate);
+  const placas=fapPlacasFiltradas().filter(p=>!go||fapGoNome(p.go)===go).sort((a,b)=>a.placa.localeCompare(b.placa));
+  let totC=0,n=0;const blocos=[];
+  placas.forEach(p=>{
+    const cl=(comp.get(p.placa)||[]).slice().sort((a,b)=>a.data.localeCompare(b.data));
+    if(!cl.length)return;
+    const sub=cl.reduce((x,c)=>x+Math.round(c.valor*100),0);totC+=sub;n+=cl.length;
+    blocos.push(p.placa+' ('+(p.uf||'—')+') — GO: '+(fapGoNome(p.go)||'sem GO vinculado')+' — '+cl.length+' compra(s) — '+fapFmtMoney(sub/100)+'\n'+
+      cl.map(c=>'  • '+fapAudFmtDataHora(c.data)+' — '+(c.motorista||'—')+' — '+(c.cidade||'—')+' — '+fapFmtMoney(c.valor)).join('\n'));
+  });
+  if(!blocos.length)return titulo+'\n\nNenhuma compra aprovada no período/filtro selecionado.';
+  return titulo+'\n\n'+blocos.join('\n\n')+'\n\nTotal geral de compras no período: '+fapFmtMoney(totC/100)+'\nTotal de compras: '+n;
 }
 function fapRenderEmailBlock(){
   const box=document.getElementById('fap-emailPreview');
