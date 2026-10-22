@@ -1699,6 +1699,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 @media(max-width:600px){.fap-form-two{grid-template-columns:1fr}.fap-cards{grid-template-columns:1fr}.fap-novo-head{flex-wrap:wrap}.fap-filterbar select,.fap-filterbar input{min-width:0;width:100%}.fap-filterbar .fap-field{flex:1 1 140px}}
 .fap-dup-row td{background:var(--orange-bg)}
 .fap-comp-btn{background:none;border:0;color:var(--tx);cursor:pointer;padding:0;font:inherit;display:inline-flex;align-items:flex-start;gap:4px;text-align:left}
+.fap-farol-dif{margin-top:4px;font-size:11.5px;font-weight:600;color:var(--orange);white-space:nowrap}
+.fap-farol-dif i{font-size:10px;vertical-align:0}
 .fap-comp-det>td{background:var(--surface2);padding:8px 10px 10px 28px}
 .fap-comp-det table{width:100%;border-collapse:collapse;font-size:12.5px}
 .fap-comp-det th,.fap-comp-det td{padding:4px 8px;text-align:left;border-bottom:.5px solid var(--bd)}
@@ -26734,6 +26736,16 @@ function fapRenderPlacaTable(){
       :cl.length
         ?`<button type="button" class="fap-comp-btn" onclick="fapPlacaCompToggle('${eh(p.placa)}')" aria-expanded="${aberta?'true':'false'}" title="${aberta?'Ocultar':'Ver'} as compras aprovadas com as datas"><i class="ti ti-chevron-${aberta?'up':'down'}" style="font-size:13px"></i><span><b>${eh(fapFmtMoney(cTot))}</b><div class="fap-sub" style="font-size:11.5px;color:var(--tx3)">${cl.length} compra(s)</div></span></button>`
         :'<span style="color:var(--tx3)">—</span>';
+    /* Farol de diferença (pedido 2026-10-22). Na auditoria vale o valor da planilha
+       (compras aprovadas da base). Quando o utilizado é MENOR que o aportado
+       manualmente, mostra a diferença. Compara só os aportes até a última data da base:
+       aporte posterior ainda não poderia ter compra na base. */
+    let farol='';
+    if(!semBase){
+      const apBaseC=_ap.filter(a=>!FAP_AUDIT.ate||a.data<=FAP_AUDIT.ate).reduce((x,a)=>x+Math.round(a.valor*100),0);
+      const difC=apBaseC-Math.round(cTot*100);
+      if(apBaseC>0&&difC>0)farol=`<div class="fap-farol-dif" title="Aportado manualmente${FAP_AUDIT.ate?' até '+fapFmtDate(FAP_AUDIT.ate)+' (fim da base)':''}: ${eh(fapFmtMoney(apBaseC/100))} · Utilizado (compras aprovadas da base): ${eh(fapFmtMoney(cTot))}"><i class="ti ti-circle-filled"></i> Diferença ${eh(fapFmtMoney(difC/100))}${FAP_AUDIT.dic.placa.includes(p.placa)?'':'<div class="fap-sub" style="font-weight:400;font-size:11px" title="A base só guarda as placas cadastradas no momento em que foi anexada — reanexe a base para incluir esta placa">placa fora da base anexada</div>'}</div>`;
+    }
     const det=aberta?`<tr class="fap-comp-det"><td colspan="9"><table><thead><tr><th>Data da transação</th><th>Motorista</th><th>Cidade</th><th>Tipo</th><th>Status</th><th style="text-align:right">Valor</th></tr></thead><tbody>${
       cl.map(c=>`<tr><td>${eh(fapAudFmtDataHora(c.data))}</td><td>${eh(c.motorista||'—')}</td><td>${eh(c.cidade||'—')}</td><td>Compra</td><td>Aprovada</td><td style="text-align:right">${eh(fapFmtMoney(c.valor))}</td></tr>`).join('')
     }<tr style="font-weight:700"><td colspan="5">Total (${cl.length})</td><td style="text-align:right">${eh(fapFmtMoney(cTot))}</td></tr></tbody></table></td></tr>`:'';
@@ -26744,7 +26756,7 @@ function fapRenderPlacaTable(){
       <td>${hh.ga?eh(hh.ga)+(p.ga?'':' <span class="fap-sub" title="Sem GA no cadastro — vem da hierarquia dos condutores que usam a placa">(hierarquia)</span>'):'<span style="color:var(--tx3)">—</span>'}</td>
       <td class="fap-saldo-val">${eh(fapFmtMoney(total))}</td>
       <td>${ult?eh(fapFmtDate(ult.data)+' às '+ult.hora):'—'}</td>
-      <td>${compCell}</td>
+      <td>${compCell}${farol}</td>
       <td>${cl.length?eh(fapAudFmtDataHora(cl[0].data)):'—'}</td>
       <td style="white-space:nowrap"><button class="fap-del-icon" onclick="fapEditPlaca('${eh(p.id)}')" title="Editar" aria-label="Editar placa ${eh(p.placa)}"><i class="ti ti-pencil"></i></button><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover" aria-label="Remover placa ${eh(p.placa)}">✕</button></td>
     </tr>${det}`;
@@ -29509,7 +29521,41 @@ function fapNormalizarGoPlacas(){
   if(n){_fapPlacaGoCache.ref=null;_fapPlacaHierMemo.k='';if(canEdit()){fapAt=new Date().toISOString();saveState();}}
   return n;
 }
+/* Placa cadastrada 2× (pedido 2026-10-22: "duplicidades indo para o e-mail"). Um
+   cadastro manual antigo (sem GA, nomes abreviados) e o da planilha de placas tinham ids
+   diferentes; o merge da sincronização é por id e manteve os dois. Cada placa saía 2×
+   no e-mail e no Total por placa.
+   Unifica por placa. Fica o cadastro mais completo, que é o da planilha: tem o campo GA
+   e categoria, e conta mais campos preenchidos. Campos vazios dele são completados pelo
+   outro. Os aportes do removido passam para o que ficou. O removido ganha tombstone com
+   `mergedInto`, então um dispositivo atrasado que reenviar o id antigo (ou um aporte
+   apontando para ele) é corrigido de novo aqui. */
+function fapDedupPlacas(){
+  const nota=p=>('ga' in p&&p.ga!==undefined?4:0)+(p.tipo?2:0)+['uf','go','ga','tecnico'].filter(k=>p[k]).length+String(p.tecnico||'').length/1000;
+  const grupos=new Map();
+  FAP_PLACAS.forEach(p=>{if(!p||!p.placa)return;const l=grupos.get(p.placa)||[];l.push(p);grupos.set(p.placa,l);});
+  const alias=new Map();
+  (FAP_PLACAS_DEL||[]).forEach(t=>{if(t&&t.mergedInto)alias.set(t.id,t.mergedInto);});
+  const nowIso=new Date().toISOString();let n=0;
+  grupos.forEach(l=>{
+    if(l.length<2)return;
+    const keep=l.slice().sort((a,b)=>nota(b)-nota(a))[0];
+    l.forEach(p=>{
+      if(p===keep)return;
+      ['uf','go','ga','tecnico','tipo'].forEach(k=>{if(!keep[k]&&p[k])keep[k]=p[k];});
+      alias.set(p.id,keep.id);
+      FAP_PLACAS_DEL.push({id:p.id,at:nowIso,mergedInto:keep.id});
+      n++;
+    });
+  });
+  if(n){const rm=new Set([...alias.keys()]);FAP_PLACAS=FAP_PLACAS.filter(p=>!rm.has(p.id));}
+  let rem=0;
+  if(alias.size)FAP_APORTES.forEach(a=>{let d=a.placaId,g=0;while(alias.has(d)&&g++<10)d=alias.get(d);if(d!==a.placaId){a.placaId=d;rem++;}});
+  if(n||rem){_fapPlacaGoCache.ref=null;_fapPlacaHierMemo.k='';if(canEdit()){fapAt=nowIso;saveState();}}
+  return{placas:n,aportes:rem};
+}
 function fapRenderAll(){
+  fapDedupPlacas();
   fapNormalizarGoPlacas();
   fapRenderSubBar();
   fapRenderCicloTopo();
