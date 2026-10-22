@@ -29384,16 +29384,21 @@ function fapEmailComprasTexto(go){
   const f=fapGetFiltros();
   const comp=fapComprasPorPlaca(f.de,f.ate);
   const placas=fapPlacasFiltradas().filter(p=>!go||fapGoNome(p.go)===go).sort((a,b)=>a.placa.localeCompare(b.placa));
-  let totC=0,n=0;const blocos=[];
+  let totC=0,n=0;const blocos=[],porGo=new Map();
   placas.forEach(p=>{
     const cl=(comp.get(p.placa)||[]).slice().sort((a,b)=>a.data.localeCompare(b.data));
     if(!cl.length)return;
     const sub=cl.reduce((x,c)=>x+Math.round(c.valor*100),0);totC+=sub;n+=cl.length;
+    const gk=fapGoNome(p.go)||'Sem GO vinculado';const g=porGo.get(gk)||{c:0,n:0,placas:0};g.c+=sub;g.n+=cl.length;g.placas++;porGo.set(gk,g);
     blocos.push(p.placa+' ('+(p.uf||'—')+') — GO: '+(fapGoNome(p.go)||'sem GO vinculado')+' — '+cl.length+' compra(s) — '+fapFmtMoney(sub/100)+'\n'+
       cl.map(c=>'  • '+fapAudFmtDataHora(c.data)+' — '+(c.motorista||'—')+' — '+(c.cidade||'—')+' — '+fapFmtMoney(c.valor)).join('\n'));
   });
   if(!blocos.length)return titulo+'\n\nNenhuma compra aprovada no período/filtro selecionado.';
-  return titulo+'\n\n'+blocos.join('\n\n')+'\n\nTotal geral de compras no período: '+fapFmtMoney(totC/100)+'\nTotal de compras: '+n;
+  /* Valor total utilizado por GO (pedido 2026-10-22): soma das compras aprovadas das
+     placas de cada GO (GO do cadastro da placa); "Sem GO vinculado" por último. */
+  const goLinhas=[...porGo.entries()].sort((a,b)=>(a[0]==='Sem GO vinculado')-(b[0]==='Sem GO vinculado')||b[1].c-a[1].c)
+    .map(([gk,g])=>'  • '+gk+' — '+fapFmtMoney(g.c/100)+' ('+g.n+' compra(s) em '+g.placas+' placa(s))');
+  return titulo+'\n\n'+blocos.join('\n\n')+'\n\nVALOR TOTAL UTILIZADO POR GO\n'+goLinhas.join('\n')+'\n\nTotal geral de compras no período: '+fapFmtMoney(totC/100)+'\nTotal de compras: '+n;
 }
 function fapRenderEmailBlock(){
   const box=document.getElementById('fap-emailPreview');
