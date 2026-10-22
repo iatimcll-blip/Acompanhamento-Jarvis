@@ -1699,6 +1699,18 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 @media(max-width:600px){.fap-form-two{grid-template-columns:1fr}.fap-cards{grid-template-columns:1fr}.fap-novo-head{flex-wrap:wrap}.fap-filterbar select,.fap-filterbar input{min-width:0;width:100%}.fap-filterbar .fap-field{flex:1 1 140px}}
 .fap-dup-row td{background:var(--orange-bg)}
 .fap-comp-btn{background:none;border:0;color:var(--tx);cursor:pointer;padding:0;font:inherit;display:inline-flex;align-items:flex-start;gap:4px;text-align:left}
+/* Reestruturação 2026-10-22: KPIs (4) + linha secundária menor (3), grids 50/50. */
+.fap-cards-kpi{margin-bottom:10px}
+.fap-cards-sec{grid-template-columns:repeat(3,1fr);gap:10px}
+.fap-cards-sec .fap-card{padding:10px 14px}
+.fap-cards-sec .fap-value{font-size:18px}
+.fap-label-sub{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
+.fap-card-alerta{border-color:var(--orange);box-shadow:inset 3px 0 0 var(--orange)}
+.fap-card-alerta .fap-value{color:var(--orange)}
+.fap-grid-eq{grid-template-columns:1fr 1fr}
+#fap-view-geral #fap-placaTable{min-width:860px}
+@media(max-width:900px){.fap-grid-eq{grid-template-columns:1fr}}
+@media(max-width:600px){.fap-cards-sec{grid-template-columns:1fr 1fr}}
 .fap-farol-dif{margin-top:4px;font-size:11.5px;font-weight:600;color:var(--orange);white-space:nowrap}
 .fap-farol-dif i{font-size:10px;vertical-align:0}
 .fap-comp-det>td{background:var(--surface2);padding:8px 10px 10px 28px}
@@ -10452,9 +10464,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
 
     <div class="fap-subtabs" role="tablist" aria-label="Seções do painel Aportes Combustível">
-      <button type="button" role="tab" class="fap-subtab" data-sub="aportes" onclick="fapSetSub('aportes')"><i class="ti ti-gas-station"></i> Aportes e Saldo</button>
+      <button type="button" role="tab" class="fap-subtab" data-sub="geral" onclick="fapSetSub('geral')"><i class="ti ti-layout-dashboard"></i> Visão geral</button>
+      <button type="button" role="tab" class="fap-subtab" data-sub="lancamentos" onclick="fapSetSub('lancamentos')"><i class="ti ti-gas-station"></i> Lançamentos</button>
       <button type="button" role="tab" class="fap-subtab" data-sub="consumo" onclick="fapSetSub('consumo')"><i class="ti ti-chart-bar"></i> Consumo</button>
       <button type="button" role="tab" class="fap-subtab" data-sub="auditoria" onclick="fapSetSub('auditoria')"><i class="ti ti-zoom-check"></i> Auditoria e Conciliação</button>
+      <button type="button" role="tab" class="fap-subtab" data-sub="email" onclick="fapSetSub('email')"><i class="ti ti-mail"></i> E-mail</button>
     </div>
     <div class="fap-ciclo-bar fap-ciclo-topo">
       <label for="fap-cicloTopo"><i class="ti ti-calendar-time" style="font-size:12px;vertical-align:-1px"></i> Ciclo (dia 15 ao dia 14)</label>
@@ -10462,6 +10476,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <span class="fap-desc" id="fap-cicloTopoInfo" style="margin:0"></span>
     </div>
     <div class="fap-sub" id="fap-sub-aportes" role="tabpanel">
+    <!-- Filtros compartilhados por Visão geral, Lançamentos e E-mail (reestruturação 2026-10-22) -->
     <div class="fap-filterbar">
       <div class="fap-field"><label>UF</label>
         <select id="fap-fUf" autocomplete="off"><option value="">Todas</option><option value="PI">PI</option><option value="MA">MA</option><option value="PA">PA</option><option value="AM">AM</option><option value="AP">AP</option></select>
@@ -10476,21 +10491,64 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="fap-reset-btn" onclick="fapResetFiltros()">Limpar filtros</button>
     </div>
 
-    <div class="fap-cards">
-      <div class="fap-card fap-accent-green"><div class="fap-label">Total aportado</div><div class="fap-value" id="fap-cTotal">R$ 0,00</div><div class="fap-foot" id="fap-cTotalFoot">—</div></div>
-      <div class="fap-card fap-accent-blue"><div class="fap-label">Aportado hoje</div><div class="fap-value" id="fap-cHoje">R$ 0,00</div><div class="fap-foot" id="fap-cHojeFoot">—</div></div>
-      <div class="fap-card"><div class="fap-label">Aportado no ciclo</div><div class="fap-value" id="fap-cMes">R$ 0,00</div><div class="fap-foot" id="fap-cMesFoot">—</div></div>
+    <div class="fap-view" id="fap-view-geral">
+    <div class="fap-cards fap-cards-kpi">
+      <div class="fap-card fap-accent-blue"><div class="fap-label">Saldo do mês</div><div class="fap-value" id="fap-cSaldo">R$ 0,00</div><div class="fap-foot" id="fap-cSaldoFoot">—</div></div>
+      <div class="fap-card fap-accent-green"><div class="fap-label">Aportado no ciclo</div><div class="fap-value" id="fap-cMes">R$ 0,00</div><div class="fap-foot" id="fap-cMesFoot">—</div></div>
+      <div class="fap-card"><div class="fap-label">Utilizado <span class="fap-label-sub">(compras aprovadas)</span></div><div class="fap-value" id="fap-cUtil">R$ 0,00</div><div class="fap-foot" id="fap-cUtilFoot">—</div></div>
+      <div class="fap-card" id="fap-cDifCard"><div class="fap-label">Diferença <span class="fap-label-sub">(aportado − utilizado)</span></div><div class="fap-value" id="fap-cDif">R$ 0,00</div><div class="fap-foot" id="fap-cDifFoot">—</div></div>
+    </div>
+    <div class="fap-cards fap-cards-sec">
+      <div class="fap-card"><div class="fap-label">Total aportado (filtro)</div><div class="fap-value" id="fap-cTotal">R$ 0,00</div><div class="fap-foot" id="fap-cTotalFoot">—</div></div>
+      <div class="fap-card"><div class="fap-label">Aportado hoje</div><div class="fap-value" id="fap-cHoje">R$ 0,00</div><div class="fap-foot" id="fap-cHojeFoot">—</div></div>
       <div class="fap-card"><div class="fap-label">Placas ativas</div><div class="fap-value" id="fap-cPlacas">0</div><div class="fap-foot">com ao menos 1 aporte</div></div>
     </div>
 
     <div class="fap-panel">
-      <h3 style="margin-bottom:2px">Saldo do Mês</h3>
-      <p class="fap-desc" style="margin:0 0 14px">Saldo disponível pra trabalhar no período (ciclo de competência do dia 15 ao dia 14 do mês seguinte) — é debitado automaticamente a cada aporte registrado. Use "Definir" pra corrigir o total, ou "Mais aportes" pra somar um reforço ao saldo já definido.</p>
-      <div id="fap-saldoMesContent"></div>
-      <div id="fap-saldoHist" style="margin-top:14px"></div>
+      <div class="fap-hist-head" style="margin-bottom:4px">
+        <h3 style="margin:0">Total por placa</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="fap-export-btn" id="fap-placaCompToggleAll" style="display:none" onclick="fapPlacaCompToggleAll()" title="Abre/fecha a lista de compras aprovadas de todas as placas"><i class="ti ti-list-details" style="font-size:13px;vertical-align:-1px"></i> <span>Expandir compras</span></button>
+          <button class="fap-export-btn" onclick="fapBaixarPlanilhaPlacas()" title="Baixa o cadastro atual + as placas da base Alelo ainda não cadastradas, para completar GO/UF e importar de volta"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Planilha de placas</button>
+          <label class="fap-export-btn admin-only" style="cursor:pointer" title="Cadastra/atualiza placas em lote a partir de uma planilha com as colunas Placa, UF, GO, GA, Técnico e Categoria"><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar placas<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarPlacas(event)"></label>
+        </div>
+      </div>
+      <p class="fap-desc">Soma dos aportes registrados para cada placa e as <b>compras aprovadas</b> da base anexada em Auditoria/Conciliação (Tipo de transação = Compra, Status = Aprovada), no período do filtro. Clique no valor das compras para ver cada uma com a data da transação.</p>
+      <div style="max-height:560px;overflow:auto">
+        <table class="fap-table" id="fap-placaTable">
+          <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>GA</th><th>Aportado</th><th>Último aporte</th><th>Compras aprovadas</th><th>Última compra</th><th></th></tr></thead>
+          <tbody id="fap-placaTableBody"></tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="fap-grid-2">
+    <div class="fap-panel">
+      <h3 style="margin-bottom:2px">Consumo do GO por semana</h3>
+      <p class="fap-desc" style="margin:0 0 14px">Total aportado por Gestor Operacional em cada semana do ciclo atual (15 a 14 do mês seguinte), com projeção de fechamento para a semana em andamento.</p>
+      <div class="fap-hist-wrap">
+        <table class="fap-table" id="fap-goWeekTable" style="min-width:640px">
+          <thead><tr id="fap-goWeekHead"></tr></thead>
+          <tbody id="fap-goWeekBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="fap-grid-2b fap-grid-eq">
+      <div class="fap-panel">
+        <h3>Aportes por dia — últimos 14 dias</h3>
+        <p class="fap-desc">Volume diário de aportes lançados.</p>
+        <div class="fap-chart-box"><canvas id="fap-chart-diario"></canvas></div>
+      </div>
+      <div class="fap-panel">
+        <h3>Total aportado por UF</h3>
+        <p class="fap-desc">Distribuição dos aportes entre regionais.</p>
+        <div class="fap-chart-box"><canvas id="fap-chart-uf"></canvas></div>
+      </div>
+    </div>
+    </div>
+
+    <div class="fap-view" id="fap-view-lancamentos" style="display:none">
+    <div class="fap-grid-2 fap-grid-eq">
       <div class="fap-panel">
         <div class="fap-novo-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div>
@@ -10536,47 +10594,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </div>
         </form>
       </div>
-
       <div class="fap-panel">
-        <div class="fap-hist-head" style="margin-bottom:4px">
-          <h3 style="margin:0">Total por placa</h3>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="fap-export-btn" id="fap-placaCompToggleAll" style="display:none" onclick="fapPlacaCompToggleAll()" title="Abre/fecha a lista de compras aprovadas de todas as placas"><i class="ti ti-list-details" style="font-size:13px;vertical-align:-1px"></i> <span>Expandir compras</span></button>
-            <button class="fap-export-btn" onclick="fapBaixarPlanilhaPlacas()" title="Baixa o cadastro atual + as placas da base Alelo ainda não cadastradas, para completar GO/UF e importar de volta"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Planilha de placas</button>
-            <label class="fap-export-btn admin-only" style="cursor:pointer" title="Cadastra/atualiza placas em lote a partir de uma planilha com as colunas Placa, UF, GO, GA, Técnico e Categoria"><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar placas<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarPlacas(event)"></label>
-          </div>
-        </div>
-        <p class="fap-desc">Soma dos aportes registrados para cada placa e as <b>compras aprovadas</b> da base anexada em Auditoria/Conciliação (Tipo de transação = Compra, Status = Aprovada), no período do filtro. Clique no valor das compras para ver cada uma com a data da transação.</p>
-        <div style="max-height:400px;overflow-y:auto">
-          <table class="fap-table" id="fap-placaTable">
-            <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>GA</th><th>Aportado</th><th>Último aporte</th><th>Compras aprovadas</th><th>Última compra</th><th></th></tr></thead>
-            <tbody id="fap-placaTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="fap-panel">
-      <h3 style="margin-bottom:2px">Consumo do GO por semana</h3>
-      <p class="fap-desc" style="margin:0 0 14px">Total aportado por Gestor Operacional em cada semana do ciclo atual (15 a 14 do mês seguinte), com projeção de fechamento para a semana em andamento.</p>
-      <div class="fap-hist-wrap">
-        <table class="fap-table" id="fap-goWeekTable" style="min-width:640px">
-          <thead><tr id="fap-goWeekHead"></tr></thead>
-          <tbody id="fap-goWeekBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="fap-grid-2b">
-      <div class="fap-panel">
-        <h3>Aportes por dia — últimos 14 dias</h3>
-        <p class="fap-desc">Volume diário de aportes lançados.</p>
-        <div class="fap-chart-box"><canvas id="fap-chart-diario"></canvas></div>
-      </div>
-      <div class="fap-panel">
-        <h3>Total aportado por UF</h3>
-        <p class="fap-desc">Distribuição dos aportes entre regionais.</p>
-        <div class="fap-chart-box"><canvas id="fap-chart-uf"></canvas></div>
+        <h3 style="margin-bottom:2px">Saldo do Mês</h3>
+        <p class="fap-desc" style="margin:0 0 14px">Saldo disponível pra trabalhar no período (ciclo de competência do dia 15 ao dia 14 do mês seguinte) — é debitado automaticamente a cada aporte registrado. Use "Definir" pra corrigir o total, ou "Mais aportes" pra somar um reforço ao saldo já definido.</p>
+        <div id="fap-saldoMesContent"></div>
+        <div id="fap-saldoHist" style="margin-top:14px"></div>
       </div>
     </div>
 
@@ -10592,7 +10614,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </table>
       </div>
     </div>
+    </div>
 
+    <div class="fap-view" id="fap-view-email" style="display:none">
     <div class="fap-panel">
       <div class="fap-hist-head">
         <div><h3 style="margin-bottom:2px">E-mail</h3><p class="fap-desc" style="margin:0">Modelo de mensagem pronto para envio só com as <b>compras realizadas</b> (Compra · Aprovada, da base de Auditoria/Conciliação) — atualiza conforme os filtros de UF/Placa/período aplicados acima e o filtro de GO abaixo (só para este e-mail).</p></div>
@@ -10602,6 +10626,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <select id="fap-fEmailGo" autocomplete="off"><option value="">Todos os GOs</option></select>
       </div>
       <div class="fap-email-preview" id="fap-emailPreview"></div>
+    </div>
     </div>
 
     </div>
@@ -26800,8 +26825,43 @@ function fapRenderCards(){
   document.getElementById('fap-cMes').textContent=fapFmtMoney(doMes.reduce((s,a)=>s+a.valor,0));
   document.getElementById('fap-cMesFoot').textContent=`${doMes.length} lançamento(s) neste ciclo`;
   document.getElementById('fap-cPlacas').textContent=new Set(list.map(a=>a.placaId)).size;
+  fapRenderCardsKpi(list);
 }
 
+/* Indicadores da Visão geral (reestruturação 2026-10-22). Utilizado = compras aprovadas
+   da base (mesmo recorte do Total por placa). Diferença = soma, por placa, do que foi
+   aportado (até o fim da base) e não utilizado. São as mesmas diferenças dos faróis do
+   Total por placa, então placa que gastou acima do aportado não abate a de outra. */
+function fapRenderCardsKpi(list){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  const cv=fapCicloVis();
+  if(!cv.todos&&!cv.atual){
+    const def=(FAP_SALDO_CICLOS.saldo||{})[cv.start];
+    const apt=FAP_APORTES.filter(a=>a.data>=cv.start&&a.data<=cv.end).reduce((x,a)=>x+a.valor,0);
+    set('fap-cSaldo',typeof def==='number'?fapFmtMoney(def-apt):'—');set('fap-cSaldoFoot','ciclo encerrado · somente consulta');
+  }else{
+    const apt=fapAportadoMesAtual();
+    set('fap-cSaldo',fapFmtMoney(fapSaldoMes-apt));set('fap-cSaldoFoot','de '+fapFmtMoney(fapSaldoMes)+' definidos no período');
+  }
+  const card=document.getElementById('fap-cDifCard');
+  if(!FAP_AUDIT){
+    set('fap-cUtil','—');set('fap-cUtilFoot','sem base anexada em Auditoria');
+    set('fap-cDif','—');set('fap-cDifFoot','precisa da base de transações');
+    if(card)card.classList.remove('fap-card-alerta');return;
+  }
+  const f=fapGetFiltros();const comp=fapComprasPorPlaca(f.de,f.ate);
+  let utilC=0,nComp=0,difC=0,nDif=0;
+  fapPlacasFiltradas().forEach(p=>{
+    const cl=comp.get(p.placa)||[];
+    const cC=cl.reduce((x,c)=>x+Math.round(c.valor*100),0);utilC+=cC;nComp+=cl.length;
+    const apC=list.filter(a=>a.placaId===p.id&&(!FAP_AUDIT.ate||a.data<=FAP_AUDIT.ate)).reduce((x,a)=>x+Math.round(a.valor*100),0);
+    if(apC>0&&apC>cC){difC+=apC-cC;nDif++;}
+  });
+  set('fap-cUtil',fapFmtMoney(utilC/100));set('fap-cUtilFoot',nComp+' compra(s) · base até '+(FAP_AUDIT.ate?fapFmtDate(FAP_AUDIT.ate):'—'));
+  set('fap-cDif',fapFmtMoney(difC/100));
+  set('fap-cDifFoot',nDif?nDif+' placa(s) com aporte não utilizado':'nenhuma placa com sobra');
+  if(card)card.classList.toggle('fap-card-alerta',nDif>0);
+}
 function fapRenderCharts(){
   /* Dias do ciclo visível até "hoje" (ciclo encerrado = ciclo inteiro); em "todos", últimos 14 dias. */
   const days=[];const cv0=fapCicloVis();
@@ -29486,19 +29546,32 @@ function fapScheduleRenderAll(){
    são 3 seções; só a aberta é desenhada (as outras são desenhadas ao abrir — gráficos
    Chart.js precisam do canvas visível pra medir o tamanho). A seção aberta é
    preferência deste navegador (localStorage), não sincroniza. */
+/* Reestruturação por fluxo de trabalho (pedido 2026-10-22): 5 abas visíveis (FAP_VIEWS).
+   Visão geral, Lançamentos e E-mail são "vistas" da seção de aportes: dividem a mesma
+   barra de filtros e o mesmo estado FAP_FILTRO.aportes. Por isso `fapSubAtiva` continua
+   valendo 'aportes' | 'consumo' | 'auditoria' (chave dos filtros e períodos), e a aba
+   escolhida fica em `fapViewAtiva`. */
 const FAP_SUBS=['aportes','consumo','auditoria'];
-let fapSubAtiva=(()=>{try{const v=localStorage.getItem('fap:subaba');return FAP_SUBS.includes(v)?v:'aportes';}catch(_){return'aportes';}})();
+const FAP_VIEWS=['geral','lancamentos','consumo','auditoria','email'];
+const FAP_VIEWS_APORTES=['geral','lancamentos','email'];
+let fapViewAtiva=(()=>{try{let v=localStorage.getItem('fap:subaba');if(v==='aportes')v='geral';return FAP_VIEWS.includes(v)?v:'geral';}catch(_){return'geral';}})();
+let fapSubAtiva=FAP_VIEWS_APORTES.includes(fapViewAtiva)?'aportes':fapViewAtiva;
 function fapRenderSubBar(){
   FAP_SUBS.forEach(k=>{
     const el=document.getElementById('fap-sub-'+k);if(el)el.style.display=k===fapSubAtiva?'':'none';
   });
+  FAP_VIEWS_APORTES.forEach(k=>{
+    const el=document.getElementById('fap-view-'+k);if(el)el.style.display=k===fapViewAtiva?'':'none';
+  });
   document.querySelectorAll('#panel-aportes .fap-subtab').forEach(b=>{
-    const on=b.dataset.sub===fapSubAtiva;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false');
+    const on=b.dataset.sub===fapViewAtiva;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false');
   });
 }
 function fapSetSub(k){
-  if(!FAP_SUBS.includes(k))k='aportes';
-  fapSubAtiva=k;
+  if(k==='aportes')k='geral';
+  if(!FAP_VIEWS.includes(k))k='geral';
+  fapViewAtiva=k;
+  fapSubAtiva=FAP_VIEWS_APORTES.includes(k)?'aportes':k;
   try{localStorage.setItem('fap:subaba',k);}catch(_){}
   mselCloseAll();
   fapRenderAll();
@@ -29566,7 +29639,7 @@ function fapRenderAll(){
   fapRenderPlacaTable();
   fapRenderHist();
   fapRenderCards();
-  fapRenderCharts();
+  if(fapViewAtiva==='geral')fapRenderCharts();
   fapRenderSaldoMesCard();
   fapRenderAporteSaldoMini();
   fapRenderGoWeekTable();
