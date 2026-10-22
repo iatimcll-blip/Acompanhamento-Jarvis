@@ -29491,7 +29491,26 @@ function fapSetSub(k){
   mselCloseAll();
   fapRenderAll();
 }
+/* GO abreviado no cadastro de placas (pedido 2026-10-22: "Wanderson Marcellus" →
+   "Wanderson Marcellus Penha Costa"): GO que é o começo de UM único nome mais completo
+   já usado em OUTRA placa do cadastro vira esse nome. Corre a cada
+   render — corrige também o que outro dispositivo ainda sincronizar com o nome curto
+   (o merge de FAP_PLACAS é por id e o lado local vence). Quem pode editar grava. */
+function fapNormalizarGoPlacas(){
+  const pool=new Map();
+  const add=g=>{const n=fapHierNorm(g);if(n&&!pool.has(n))pool.set(n,fapGoNome(g));};
+  FAP_PLACAS.forEach(p=>add(p.go));
+  let n=0;
+  FAP_PLACAS.forEach(p=>{
+    const k=fapHierNorm(p.go);if(!k)return;
+    const c=[...pool.entries()].filter(([pn])=>pn.startsWith(k+' '));
+    if(c.length===1){p.go=c[0][1];n++;}
+  });
+  if(n){_fapPlacaGoCache.ref=null;_fapPlacaHierMemo.k='';if(canEdit()){fapAt=new Date().toISOString();saveState();}}
+  return n;
+}
 function fapRenderAll(){
+  fapNormalizarGoPlacas();
   fapRenderSubBar();
   fapRenderCicloTopo();
   fapPopulateSelects();
