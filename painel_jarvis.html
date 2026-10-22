@@ -1698,6 +1698,11 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-grid-2>*,.fap-grid-2b>*{min-width:0}
 @media(max-width:600px){.fap-form-two{grid-template-columns:1fr}.fap-cards{grid-template-columns:1fr}.fap-novo-head{flex-wrap:wrap}.fap-filterbar select,.fap-filterbar input{min-width:0;width:100%}.fap-filterbar .fap-field{flex:1 1 140px}}
 .fap-dup-row td{background:var(--orange-bg)}
+.fap-comp-btn{background:none;border:0;color:var(--tx);cursor:pointer;padding:0;font:inherit;display:inline-flex;align-items:flex-start;gap:4px;text-align:left}
+.fap-comp-det>td{background:var(--surface2);padding:8px 10px 10px 28px}
+.fap-comp-det table{width:100%;border-collapse:collapse;font-size:12.5px}
+.fap-comp-det th,.fap-comp-det td{padding:4px 8px;text-align:left;border-bottom:.5px solid var(--bd)}
+.fap-comp-det th{color:var(--tx3);font-weight:600}
 .fap-subfiltros{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);padding:12px 14px;margin-bottom:8px}
 .fap-subfiltros-nota{margin:0 0 14px;font-size:12.5px}
 .fap-hier-cell{font-size:12px;line-height:1.35;white-space:nowrap}
@@ -10534,14 +10539,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fap-hist-head" style="margin-bottom:4px">
           <h3 style="margin:0">Total por placa</h3>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="fap-export-btn" id="fap-placaCompToggleAll" style="display:none" onclick="fapPlacaCompToggleAll()" title="Abre/fecha a lista de compras aprovadas de todas as placas"><i class="ti ti-list-details" style="font-size:13px;vertical-align:-1px"></i> <span>Expandir compras</span></button>
             <button class="fap-export-btn" onclick="fapBaixarPlanilhaPlacas()" title="Baixa o cadastro atual + as placas da base Alelo ainda não cadastradas, para completar GO/UF e importar de volta"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px"></i> Planilha de placas</button>
             <label class="fap-export-btn admin-only" style="cursor:pointer" title="Cadastra/atualiza placas em lote a partir de uma planilha com as colunas Placa, UF, GO, GA, Técnico e Categoria"><i class="ti ti-file-upload" style="font-size:13px;vertical-align:-1px"></i> Importar placas<input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="fapImportarPlacas(event)"></label>
           </div>
         </div>
-        <p class="fap-desc">Soma dos aportes registrados para cada placa.</p>
+        <p class="fap-desc">Soma dos aportes registrados para cada placa e as <b>compras aprovadas</b> da base anexada em Auditoria/Conciliação (Tipo de transação = Compra, Status = Aprovada), no período do filtro. Clique no valor das compras para ver cada uma com a data da transação.</p>
         <div style="max-height:400px;overflow-y:auto">
           <table class="fap-table" id="fap-placaTable">
-            <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>GA</th><th>Aportado</th><th>Último aporte</th><th></th></tr></thead>
+            <thead><tr><th>Placa</th><th>UF</th><th>GO</th><th>GA</th><th>Aportado</th><th>Último aporte</th><th>Compras aprovadas</th><th>Última compra</th><th></th></tr></thead>
             <tbody id="fap-placaTableBody"></tbody>
           </table>
         </div>
@@ -26662,25 +26668,86 @@ function fapAportesFiltrados(){
   }).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
 }
 
+/* Compras aprovadas por placa (pedido 2026-10-22): o bloco Total por placa busca na base
+   anexada em Auditoria/Conciliação (FAP_AUDIT — a mesma do subbloco Transações) as
+   transações com Tipo de transação = Compra e Status = Aprovada, no período do filtro
+   (Data inicial/final, pela data da TRANSAÇÃO), e lista cada compra com a data. Não
+   depende dos filtros do bloco Auditoria (placas/tipos/negadas são de lá). */
+function fapComprasPorPlaca(de,ate){
+  const out=new Map();
+  if(!FAP_AUDIT)return out;
+  const{dic,rows}=FAP_AUDIT;
+  const okTipo=new Set(),okStatus=new Set();
+  dic.tipo.forEach((t,i)=>{if(fapAudNorm(t)==='compra')okTipo.add(i);});
+  dic.status.forEach((t,i)=>{if(fapAudNorm(t).startsWith('aprovad'))okStatus.add(i);});
+  if(!okTipo.size||!okStatus.size)return out;
+  for(const r of rows){
+    if(!okTipo.has(r[1])||!okStatus.has(r[4]))continue;
+    const data=r[3]||'',d=data.slice(0,10);
+    if(de&&(!d||d<de))continue;
+    if(ate&&(!d||d>ate))continue;
+    const placa=dic.placa[r[0]];
+    let l=out.get(placa);if(!l){l=[];out.set(placa,l);}
+    l.push({data,valor:r[2],motorista:dic.motorista[r[5]]||'',cidade:dic.cidade[r[6]]||''});
+  }
+  out.forEach(l=>l.sort((a,b)=>b.data.localeCompare(a.data)));
+  return out;
+}
+/* Placas com a lista de compras aberta — só estado de tela (não sincroniza). */
+const _fapPlacaCompAbertas=new Set();
+function fapPlacaCompToggle(placa){
+  if(_fapPlacaCompAbertas.has(placa))_fapPlacaCompAbertas.delete(placa);else _fapPlacaCompAbertas.add(placa);
+  fapRenderPlacaTable();
+}
+function fapPlacaCompToggleAll(){
+  const f=fapGetFiltros();const comp=fapComprasPorPlaca(f.de,f.ate);
+  const com=fapPlacasFiltradas().map(p=>p.placa).filter(pl=>comp.has(pl));
+  const todasAbertas=com.length&&com.every(pl=>_fapPlacaCompAbertas.has(pl));
+  if(todasAbertas)com.forEach(pl=>_fapPlacaCompAbertas.delete(pl));else com.forEach(pl=>_fapPlacaCompAbertas.add(pl));
+  fapRenderPlacaTable();
+}
 function fapRenderPlacaTable(){
   const body=document.getElementById('fap-placaTableBody');
   const list=fapPlacasFiltradas();
-  if(!list.length){body.innerHTML=`<tr><td colspan="7"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;return;}
+  const btnAll=document.getElementById('fap-placaCompToggleAll');
+  if(!list.length){body.innerHTML=`<tr><td colspan="9"><div class="fap-empty">Nenhuma placa cadastrada ainda. Use "+ cadastrar nova placa" ao lado.</div></td></tr>`;if(btnAll)btnAll.style.display='none';return;}
   const _per=fapGetFiltros();
   const _apsPer=FAP_APORTES.filter(a=>(!_per.de||a.data>=_per.de)&&(!_per.ate||a.data<=_per.ate));
+  const comp=fapComprasPorPlaca(_per.de,_per.ate);
+  const semBase=!FAP_AUDIT;
+  const comCompra=list.filter(p=>comp.has(p.placa));
+  if(btnAll){
+    btnAll.style.display=comCompra.length?'':'none';
+    const todas=comCompra.length&&comCompra.every(p=>_fapPlacaCompAbertas.has(p.placa));
+    btnAll.querySelector('span').textContent=todas?'Recolher compras':'Expandir compras';
+  }
   body.innerHTML=list.map(p=>{
     const _ap=_apsPer.filter(a=>a.placaId===p.id);
     const total=_ap.reduce((x,a)=>x+a.valor,0);
     const ult=_ap.sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora))[0]||null;
+    const cl=comp.get(p.placa)||[];
+    const cTot=cl.reduce((x,c)=>x+Math.round(c.valor*100),0)/100;
+    const aberta=cl.length&&_fapPlacaCompAbertas.has(p.placa);
+    const hh=fapPlacaHier(p.placa);
+    const compCell=semBase
+      ?'<span style="color:var(--tx3)" title="Sem base anexada em Auditoria/Conciliação — anexe o relatório de transações do Portal Alelo">sem base</span>'
+      :cl.length
+        ?`<button type="button" class="fap-comp-btn" onclick="fapPlacaCompToggle('${eh(p.placa)}')" aria-expanded="${aberta?'true':'false'}" title="${aberta?'Ocultar':'Ver'} as compras aprovadas com as datas"><i class="ti ti-chevron-${aberta?'up':'down'}" style="font-size:13px"></i><span><b>${eh(fapFmtMoney(cTot))}</b><div class="fap-sub" style="font-size:11.5px;color:var(--tx3)">${cl.length} compra(s)</div></span></button>`
+        :'<span style="color:var(--tx3)">—</span>';
+    const det=aberta?`<tr class="fap-comp-det"><td colspan="9"><table><thead><tr><th>Data da transação</th><th>Motorista</th><th>Cidade</th><th>Tipo</th><th>Status</th><th style="text-align:right">Valor</th></tr></thead><tbody>${
+      cl.map(c=>`<tr><td>${eh(fapAudFmtDataHora(c.data))}</td><td>${eh(c.motorista||'—')}</td><td>${eh(c.cidade||'—')}</td><td>Compra</td><td>Aprovada</td><td style="text-align:right">${eh(fapFmtMoney(c.valor))}</td></tr>`).join('')
+    }<tr style="font-weight:700"><td colspan="5">Total (${cl.length})</td><td style="text-align:right">${eh(fapFmtMoney(cTot))}</td></tr></tbody></table></td></tr>`:'';
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm">${eh(p.placa)}</div><div class="fap-sub">${eh(p.tecnico||'sem condutor cadastrado')}</div></td>
       <td>${p.uf?`<span class="fap-uf-chip">${eh(p.uf)}</span>`:'<span class="fap-incompleto" title="Cadastro incompleto: sem UF">sem UF</span>'}</td>
       <td>${fapGoNome(p.go)?eh(fapGoNome(p.go)):'<span class="fap-incompleto" title="Cadastro incompleto: sem GO — fica fora do Consumo do GO e cai em &quot;Sem GO vinculado&quot; nos e-mails">sem GO</span>'}</td>
-      <td>${(()=>{const ga=p.ga?fapGoNome(p.ga):fapPlacaHier(p.placa).ga;return ga?eh(ga)+(p.ga?'':' <span class="fap-sub" title="Sem GA no cadastro — vem da hierarquia dos condutores que usam a placa">(hierarquia)</span>'):'<span style="color:var(--tx3)">—</span>';})()}</td>
+      <td>${hh.ga?eh(hh.ga)+(p.ga?'':' <span class="fap-sub" title="Sem GA no cadastro — vem da hierarquia dos condutores que usam a placa">(hierarquia)</span>'):'<span style="color:var(--tx3)">—</span>'}</td>
       <td class="fap-saldo-val">${eh(fapFmtMoney(total))}</td>
       <td>${ult?eh(fapFmtDate(ult.data)+' às '+ult.hora):'—'}</td>
+      <td>${compCell}</td>
+      <td>${cl.length?eh(fapAudFmtDataHora(cl[0].data)):'—'}</td>
       <td style="white-space:nowrap"><button class="fap-del-icon" onclick="fapEditPlaca('${eh(p.id)}')" title="Editar" aria-label="Editar placa ${eh(p.placa)}"><i class="ti ti-pencil"></i></button><button class="fap-del-icon" onclick="fapDelPlaca('${eh(p.id)}')" title="Remover" aria-label="Remover placa ${eh(p.placa)}">✕</button></td>
-    </tr>`;
+    </tr>${det}`;
   }).join('');
 }
 
@@ -27254,12 +27321,16 @@ function fapPlacaHier(placa){
   };
   const go=fapPlacaGo(placa)||votar('go');
   const cad=FAP_PLACAS.find(p=>p.placa===placa);
-  const out={go,ga:(cad&&cad.ga?fapGoNome(cad.ga):'')||votar('ga',go)};
+  /* GA "-" no cadastro = sem GA de propósito (não infere pelos condutores). */
+  const out={go,ga:cad&&cad.ga?(/^[\s\-–—]*$/.test(cad.ga)?'':fapGoNome(cad.ga)):votar('ga',go)};
   mm.set(placa,out);return out;
 }
-/* GA/GO de um registro com condutor: pela hierarquia do condutor; sem hierarquia,
-   os da placa (efetivos). */
+/* GA/GO de um registro com condutor. Pedido 2026-10-22: a hierarquia GA/GO é dada
+   pela PLACA cadastrada no painel (bloco Placas / Total por placa) — placa cadastrada
+   manda, qualquer que seja o condutor. Só placa fora do cadastro cai na hierarquia do
+   condutor (planilha) e, sem ela, nos GO/GA inferidos da placa. */
 function _fapRegHier(condutor,placa){
+  if(placa&&fapPlacaByPlaca(placa))return fapPlacaHier(placa);
   const h=condutor?fapHierDe(condutor):null;
   if(h&&(h.go||h.ga))return{go:fapGoCanon(h.go),ga:h.ga||''};
   return placa?fapPlacaHier(placa):{go:'',ga:''};
@@ -27284,11 +27355,14 @@ function fapPlacaOk(f,placa){
   if(f._cond.size){const conds=fapPlacaCondutores().get(placa);if(!conds||![...conds.keys()].some(c=>f._cond.has(c)))return false;}
   return _fapHierPassa(f,fapPlacaHier(placa));
 }
-/* Condutor (listas de opções e bloco Hierarquia): pela hierarquia dele; sem
-   hierarquia, entra se alguma placa que ele usou for do GO/GA filtrado. */
+/* Condutor (listas de opções e bloco Hierarquia): se usou placa CADASTRADA, entra
+   quando alguma delas for do GO/GA filtrado (hierarquia vem da placa — 2026-10-22);
+   senão pela hierarquia dele; sem hierarquia, pelas placas (inferidas) que usou. */
 function fapCondOk(f,nome){
   if(f._cond.size&&!f._cond.has(fapHierNorm(nome)))return false;
   if(!f._go.size&&!f._ga.size)return true;
+  const _cad=[...fapCondutorPlacas(nome)].filter(p=>fapPlacaByPlaca(p));
+  if(_cad.length)return _cad.some(p=>_fapHierPassa(f,fapPlacaHier(p)));
   const h=fapHierDe(nome);
   if(h&&(h.go||h.ga))return _fapHierPassa(f,{go:fapGoCanon(h.go),ga:h.ga||''});
   return[...fapCondutorPlacas(nome)].some(p=>_fapHierPassa(f,fapPlacaHier(p)));
@@ -27439,6 +27513,16 @@ function fapHierCelula(nome){
   const h=fapHierDe(nome);
   if(!h||(!h.ga&&!h.go))return'<span class="fap-incompleto" title="Sem hierarquia — preencha em Consumo › Hierarquia dos condutores">sem hierarquia</span>';
   return'<div class="fap-hier-cell" title="Fonte: '+eh(h.fonte)+'"><b>GA</b> '+eh(h.ga||'—')+'<br><b>GO</b> '+eh(h.go||'—')+'</div>';
+}
+/* Célula GA/GO de um registro que tem placa(s) (pedido 2026-10-22): placas
+   cadastradas mandam — GA/GO do cadastro da placa; condutor que usou placas de GOs
+   diferentes mostra cada combinação. Nenhuma placa cadastrada → hierarquia do condutor. */
+function fapHierCelulaPlacas(nome,placas){
+  const cad=[...(placas||[])].filter(p=>p&&fapPlacaByPlaca(p));
+  if(!cad.length)return nome?fapHierCelula(nome):'—';
+  const vis=new Map();
+  cad.forEach(p=>{const h=fapPlacaHier(p);const k=(h.ga||'—')+'|'+(h.go||'—');if(!vis.has(k))vis.set(k,{h,placas:[]});vis.get(k).placas.push(p);});
+  return[...vis.values()].map(({h,placas:pl})=>'<div class="fap-hier-cell" title="Fonte: cadastro da placa '+eh(pl.join(', '))+'"><b>GA</b> '+eh(h.ga||'—')+'<br><b>GO</b> '+eh(h.go||'—')+'</div>').join('');
 }
 function fapHierEditMerge(remote){
   if(!FAP_HIER_EDIT||typeof FAP_HIER_EDIT!=='object')FAP_HIER_EDIT={map:{},ts:{map:{}}};
@@ -28482,7 +28566,7 @@ function fapAudRenderResultados(){
     const jCell=podeEditar
       ?`<input type="text" aria-label="Justificativa da transação ${eh(t.placa)} de ${eh(fapAudFmtDataHora(t.data))}" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
       :(just?eh(just):(alto?'<span style="color:var(--red)">Pendente</span>':'—'));
-    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${t.motorista?fapHierCelula(t.motorista):'—'}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
+    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${fapHierCelulaPlacas(t.motorista,[t.placa])}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
   }).join('');
 }
 /* Seletor "Base Alelo reportada": opções = bases vistas no último relatório + a atual +
@@ -28555,7 +28639,7 @@ function fapAudExportar(){
   const totRow={'Placa':'TOTAL','Motorista(s)':'','Transações':list.length};
   tipos.forEach(t=>{totRow[t.tipo]=r2(t.valor);});totRow['Total (R$)']=r2(total);
   matriz.push(totRow);
-  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'GA':(fapHierDe(t.motorista)||{}).ga||'','GO':(fapHierDe(t.motorista)||{}).go||'','Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Débito Emerg. < R$ 1.000':fapAudEhDebBaixo(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
+  const det=list.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(t=>({'Data/hora':fapAudFmtDataHora(t.data),'Placa':t.placa,'Motorista':t.motorista,'GA':_fapRegHier(t.motorista,t.placa).ga||'','GO':_fapRegHier(t.motorista,t.placa).go||'','Tipo de transação':t.tipo,'Status':t.status,'Cidade':t.cidade,'Valor (R$)':t.valor,'Possível duplicidade':t.dup?'Sim':'','Crédito Emerg. >= R$ 1.000':fapAudEhCredAlto(t)?'Sim':'','Débito Emerg. < R$ 1.000':fapAudEhDebBaixo(t)?'Sim':'','Cota':fapAudCotaLabel(fapAudCotaDe(t)),'Justificativa':fapAudJustDe(t)}));
   const cotaLista=fapAudCotaLista();
   const cotaRes=fapAudCotaResumo(cotaLista);
   const cotaSheet=cotaRes.cotas.map(c=>({'Cota':fapAudCotaLabel(c.n),'Transações':c.qtd,'Valor (R$)':r2(c.valor)}));
@@ -29014,7 +29098,7 @@ function fapRenderConsumoCondutor(){
     const farolCell=farol.ratio===null?'':` <span title="${eh(farol.label)} (${Math.round(farol.ratio*100)}%)" style="display:inline-flex;align-items:center;gap:4px"><i class="ti ti-circle-filled" style="color:${farol.cor};font-size:11px"></i><span style="font-size:10.5px;color:var(--tx3)">${Math.round(farol.ratio*100)}%</span></span>`;
     return`<tr>
       <td class="fap-name-cell"><div class="fap-nm fap-nm-click" title="Ver consumo e datas de transação" onclick="fapAbrirModalCondutor('${c.condutor.replace(/'/g,"\\'")}')">${eh(c.condutor)}</div></td>
-      <td>${fapHierCelula(c.condutor)}</td>
+      <td>${fapHierCelulaPlacas(c.condutor,c.placas)}</td>
       <td>${[...c.placas].map(p=>`<span class="fap-uf-chip">${eh(p)}</span>`).join(' ')}</td>
       <td class="fap-val">${eh(fapFmtMoney(c.total))}${farolCell}</td>
       <td>${c.transacoes}</td>
