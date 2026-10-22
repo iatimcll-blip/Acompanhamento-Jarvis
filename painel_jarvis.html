@@ -29333,7 +29333,8 @@ function fapEmailFiltroResumo(){
   if(go)partes.push('GO: '+go);
   return partes.length?partes.join(' · '):'Todo o período (sem filtro aplicado)';
 }
-function fapEmailText(){
+const FAP_EM_H='\u0002';
+function fapEmailRaw(){
   const go=fapEmailGoSelecionado();
   const list=fapAportesFiltrados().filter(a=>{
     if(!go)return true;
@@ -29390,7 +29391,11 @@ function fapEmailComprasTexto(go){
     if(!cl.length)return;
     const sub=cl.reduce((x,c)=>x+Math.round(c.valor*100),0);totC+=sub;n+=cl.length;
     const gk=fapGoNome(p.go)||'Sem GO vinculado';const g=porGo.get(gk)||{c:0,n:0,placas:0};g.c+=sub;g.n+=cl.length;g.placas++;porGo.set(gk,g);
-    blocos.push(p.placa+' ('+(p.uf||'—')+') — GO: '+(fapGoNome(p.go)||'sem GO vinculado')+' — '+cl.length+' compra(s) — '+fapFmtMoney(sub/100)+'\n'+
+    /* Cabeçalho da placa no padrão pedido (2026-10-22): "Placa (UF) - Condutor - X compras -
+       Total R$", em destaque (negrito e fonte maior na prévia/cópia HTML — marca FAP_EM_H).
+       Condutor = técnico do cadastro; sem ele, quem fez as compras. */
+    const cond=p.tecnico||[...new Set(cl.map(c=>c.motorista).filter(Boolean))].join(', ')||'sem condutor cadastrado';
+    blocos.push(FAP_EM_H+p.placa+' ('+(p.uf||'—')+') - '+cond+' - '+cl.length+(cl.length===1?' compra':' compras')+' - Total '+fapFmtMoney(sub/100)+FAP_EM_H+'\n'+
       cl.map(c=>'  • '+fapAudFmtDataHora(c.data)+' — '+(c.motorista||'—')+' — '+(c.cidade||'—')+' — '+fapFmtMoney(c.valor)).join('\n'));
   });
   if(!blocos.length)return titulo+'\n\nNenhuma compra aprovada no período/filtro selecionado.';
@@ -29400,13 +29405,32 @@ function fapEmailComprasTexto(go){
     .map(([gk,g])=>'  • '+gk+' — '+fapFmtMoney(g.c/100)+' ('+g.n+' compra(s) em '+g.placas+' placa(s))');
   return titulo+'\n\n'+blocos.join('\n\n')+'\n\nVALOR TOTAL UTILIZADO POR GO\n'+goLinhas.join('\n')+'\n\nTotal geral de compras no período: '+fapFmtMoney(totC/100)+'\nTotal de compras: '+n;
 }
+/* Texto simples (sem as marcas de destaque) e HTML (linha da placa em negrito e maior). */
+function fapEmailText(){return fapEmailRaw().split(FAP_EM_H).join('');}
+function fapEmailHtml(sep){
+  return fapEmailRaw().split('\n').map(l=>{
+    const m=l.match(/^( *)(.*)$/);
+    return'&nbsp;'.repeat(m[1].length)+m[2].split(FAP_EM_H).map((p,i)=>i%2?'<b style="font-size:1.2em">'+eh(p)+'</b>':eh(p)).join('');
+  }).join(sep);
+}
 function fapRenderEmailBlock(){
   const box=document.getElementById('fap-emailPreview');
   if(!box)return;
-  box.textContent=fapEmailText();
+  box.innerHTML=fapEmailHtml('\n');
 }
 function fapCopyEmailText(){
   const texto=fapEmailText();
+  if(navigator.clipboard&&navigator.clipboard.write&&window.ClipboardItem){
+    const html='<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">'+fapEmailHtml('<br>')+'</div>';
+    navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([texto],{type:'text/plain'})})])
+      .then(()=>_ghToast('Texto do e-mail copiado ✓ (placas em destaque)','var(--green-dk)',3000))
+      .catch(()=>{
+        navigator.clipboard.writeText(texto)
+          .then(()=>_ghToast('Texto do e-mail copiado ✓ (sem formatação)','var(--green-dk)',3000))
+          .catch(()=>alert('Não foi possível copiar automaticamente. Selecione o texto no bloco e copie manualmente.'));
+      });
+    return;
+  }
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(texto)
       .then(()=>_ghToast('Texto do e-mail copiado ✓','var(--green-dk)',3000))
