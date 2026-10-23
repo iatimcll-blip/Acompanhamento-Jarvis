@@ -2130,6 +2130,26 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .s-none{color:var(--tx3)}
 #panel-redir-sem i.s-ok{background:var(--green)}#panel-redir-sem i.s-warn{background:var(--orange)}#panel-redir-sem i.s-bad{background:var(--red)}
 @media (max-width:640px){#panel-redir-sem .rs-base{margin-left:0}#panel-redir-sem .rs-form{grid-template-columns:1fr}#panel-redir-sem .card-hd .rs-note{display:none}}
+#panel-redir-sem .rs-ana-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#panel-redir-sem .rs-ana-bar .rs-btn i{font-size:12px;vertical-align:-1px}
+#panel-redir-sem .rs-ana[hidden]{display:none}
+#panel-redir-sem .rs-ana{border:.5px solid var(--blue);background:var(--blue-bg);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:11px;color:var(--tx2)}
+#panel-redir-sem .rs-ana-hd{font-weight:700;color:var(--tx);font-size:12px}
+#panel-redir-sem .rs-ana-hd i{color:var(--blue)}
+#panel-redir-sem .rs-ana-hd small{display:block;font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px}
+#panel-redir-sem .rs-ana-av{color:var(--orange);font-size:10.5px}
+#panel-redir-sem .rs-ana-vol{display:flex;flex-wrap:wrap;gap:4px 14px}
+#panel-redir-sem .rs-ana-vol b{color:var(--tx);font-size:13px}
+#panel-redir-sem .rs-ana-dims{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:6px}
+#panel-redir-sem .rs-ana-dim{background:var(--surface);border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;min-width:0}
+#panel-redir-sem .rs-ana-dim b{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3)}
+#panel-redir-sem .rs-ana-dim span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)}
+#panel-redir-sem .rs-ana-dim em{font-style:normal;color:var(--tx3);font-size:10px}
+#panel-redir-sem .rs-ana-dim small{font-size:9.5px;color:var(--tx3)}
+#panel-redir-sem .rs-ana-dim small.up{color:var(--red-dk)}
+#panel-redir-sem .rs-ana-sug b{font-size:11px;color:var(--tx)}
+#panel-redir-sem .rs-ana-sug pre{white-space:pre-wrap;font:inherit;background:var(--surface);border-radius:8px;padding:8px;margin:4px 0 0;color:var(--tx)}
+#panel-redir-sem .rs-ana .acts{display:flex;gap:6px;flex-wrap:wrap}
 .panel-dashboard{gap:16px}
 .panel-dashboard.active{display:grid}
 .dash-hero{
@@ -13651,6 +13671,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        de gestores/responsáveis, e o sync grava em repo público (LGPD). -->
   <div class="panel" id="panel-redir-sem">
     <input id="rs-file" type="file" accept=".xlsx,.xlsm,.xls,.html,.htm" hidden onchange="rsOnFile(this)">
+    <input id="rs-ind-file" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden onchange="rsOnIndFile(this)">
     <div id="rs-empty" class="empty">
       <div class="empty-icon"><i class="ti ti-calendar-stats"></i></div>
       <h2>Redir (Semanal)</h2>
@@ -37259,7 +37280,7 @@ function rsSetF(p){
 
 /* ── render ── */
 async function rsRender(forcarDraw){
-  await rsLoad();
+  await rsLoad();await rsIndLoad();
   const novo=rsDir?await rsCheckDir(false):false;
   rsMsg();
   const dash=document.getElementById('rs-dash'),empty=document.getElementById('rs-empty');
@@ -37400,6 +37421,31 @@ function rsJustCard(r,pr,sem,prev,D){
     det.innerHTML='<summary>FCA enviado na '+eh(prev)+'</summary><pre>'+eh('CAUSA\n'+(pr.causa||'—')+'\n\nAÇÃO\n'+(pr.acao||'—')+'\n\nRESP: '+(pr.resp||'—').replace(/\n/g,' | ')+'\nPRAZO: '+(pr.prazo||'—').replace(/\n/g,' | ')+'\nSTATUS: '+(pr.status_acoes||'—').replace(/\n/g,' | '))+'</pre>';c.appendChild(det);}
   const d=rsDraftFor(r),form=document.createElement('div');form.className='rs-form';const st=document.createElement('span');
   const tas=[];
+  /* base do indicador fora da meta → análise para apoiar o FCA (pedido 2026-10-23) */
+  const abar=document.createElement('div');abar.className='rs-ana-bar';const ana=document.createElement('div');ana.className='rs-ana';ana.hidden=true;
+  const aplicar=a=>{
+    const tem=RS_FIELDS.some(([f])=>String(d[f]||'').trim());
+    if(tem&&!confirm('Substituir Causa, Ação, Prazo e Status deste FCA pela sugestão da análise? (Resp fica para você preencher)'))return;
+    const v={causa:a.sug.causa,acao:a.sug.acao,resp:d.resp||'',prazo:a.sug.prazo,status_acoes:a.sug.status};
+    RS_FIELDS.forEach(([f],i)=>{d[f]=v[f]||'';tas[i].value=d[f];});rsReady(d,st);rsSaveDrafts();
+    _ghToast('Sugestão aplicada — revise o texto e preencha o Resp.','var(--green-dk)',3500);
+  };
+  const pintaBar=()=>{
+    const b=rsIndBaseFor(r.indicador);
+    abar.innerHTML='';
+    const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(b?'Trocar base':'Inserir base');
+    ins.title='Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv, ex.: a mesma do painel B2C). Ela fica só neste dispositivo e serve para todos os clusters deste indicador.';
+    ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
+    if(b){const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
+      an.onclick=()=>{if(ana.hidden)mostra();else{ana.hidden=true;rsAnaAbertas.delete(r.id);pintaBar();}};abar.appendChild(an);
+      const sp=document.createElement('span');sp.className='rs-note';sp.textContent=b.name+' · '+rsNf0.format(b.total)+' linhas';abar.appendChild(sp);}
+    else{const sp=document.createElement('span');sp.className='rs-note';sp.textContent='anexe a base do indicador para gerar uma análise de apoio ao FCA';abar.appendChild(sp);}
+  };
+  const mostra=()=>{const b=rsIndBaseFor(r.indicador);if(!b)return;
+    let a;try{a=rsAnalisarBase(b,r,D.meta);}catch(e){ana.hidden=false;ana.textContent='Não foi possível analisar: '+(e&&e.message||e);return;}
+    rsPintaAnalise(ana,a,aplicar);ana.hidden=false;rsAnaAbertas.add(r.id);pintaBar();};
+  pintaBar();c.appendChild(abar);c.appendChild(ana);
+  if(rsAnaAbertas.has(r.id))setTimeout(mostra,0);
   for(const[f,lab,w,rows]of RS_FIELDS){const lb=document.createElement('label');if(w)lb.className=w;lb.appendChild(document.createTextNode(lab));
     const ta=document.createElement('textarea');ta.rows=rows;ta.value=d[f];ta.setAttribute('aria-label',lab+' — '+r.indicador);
     ta.placeholder=f==='causa'?'1. Causa principal…':f==='acao'?'1.1 Ação para a causa 1…':f==='status_acoes'?'1.1 Em andamento':f==='prazo'?'1.1 30/out':'1.1 Nome';
@@ -37415,6 +37461,215 @@ function rsJustCard(r,pr,sem,prev,D){
     cp.textContent=ok?'Copiado ✔':'Copie o texto abaixo';setTimeout(()=>{cp.textContent='Copiar para o Excel';},2200);};
   acts.appendChild(cp);ft.appendChild(acts);c.appendChild(ft);
   return c;
+}
+/* ── base do indicador (análise de apoio ao FCA) ──
+   Uma base por indicador (ex.: IRT.xlsx), guardada só no IndexedDB deste aparelho (traz nomes de
+   técnicos — LGPD), reduzida às colunas usadas. Serve para todos os clusters daquele indicador;
+   "IRT (DU)" usa a de "IRT" se não tiver a própria. */
+/* rsAnalisarBase(base, fca, meta) — análise da base do indicador para apoiar o FCA.
+   base = {name, cols:[...], rows:[[...]]}  (linhas já reduzidas às colunas úteis)
+   fca  = linha do FCA (semana, cluster, indicador, fato…)  meta = {mes:'out/26'} */
+const RS_NK=v=>String(v==null?'':v).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase();
+const RS_COLS={
+  data:['Data Evento','Data Abertura Chamado','Data Reparo','Data Ativação','Data Abertura','data_conclusao','Data Conclusão','Data'],
+  cluster:['Novo Cluster','Cluster','Cluster_Novo','NovoCluster'],
+  cidade:['Cidade','Cidade_UF','Municipio','Município'],
+  bairro:['Bairro'],
+  motivo:['Motivo OS','Motivo','Causa da Falha','Motivo Conclusão OS','motivo_conclusao_real','classificacao','Causa'],
+  motivoAnt:['Motivo OS Anterior'],
+  tecnico:['Tecnico','Técnico','Usuário Conclusão'],
+  tecnicoAnt:['Tecnico Anterior'],
+  parceira:['Parceira','EPS','Empresa'],
+  unidade:['Unidade'],
+  olt:['OLT'],
+  contrato:['Contrato','codigo_contrato'],
+  foco:['Reparo','conclusao','conclusao_os','MAX3','Aging','Data Criação Contrato'],
+};
+const RS_DIM_LBL={cidade:'Cidade',bairro:'Bairro',motivo:'Motivo',motivoAnt:'Motivo da OS anterior',tecnico:'Técnico',tecnicoAnt:'Técnico da OS anterior',parceira:'Parceira/EPS',unidade:'Unidade',olt:'OLT'};
+/* reduz as linhas lidas (objetos por cabeçalho) às colunas usadas na análise */
+function rsReduzBase(objs,name){
+  if(!objs.length)throw new Error('a planilha está vazia');
+  const hdr=Object.keys(objs[0]);const nh=new Map(hdr.map(h=>[RS_NK(h),h]));
+  const pick={};
+  for(const[k,cands]of Object.entries(RS_COLS)){
+    if(k==='foco'){pick.foco=cands.map(c=>nh.get(RS_NK(c))).filter(Boolean);continue;}
+    for(const c of cands){const h=nh.get(RS_NK(c));if(h&&objs.some(o=>o[h]!==''&&o[h]!=null)){pick[k]=h;break;}}
+  }
+  /* cluster: coluna cujo conteúdo traz o código "C.nn" (Cluster às vezes é território T15.3) */
+  const temCod=h=>{let n=0,t=0;for(const o of objs.slice(0,400)){const v=o[h];if(v==null||v==='')continue;t++;if(/C\.?\s*\d+/i.test(String(v)))n++;}return t&&n/t>.6;};
+  pick.cluster=RS_COLS.cluster.map(c=>nh.get(RS_NK(c))).filter(Boolean).find(temCod)||null;
+  const cols=[...new Set(Object.values(pick).flat().filter(Boolean))];
+  if(!pick.data&&!pick.cidade&&!pick.motivo)throw new Error('não encontrei colunas de data, cidade ou motivo — confira se é a base do indicador');
+  return{name,cols,pick,rows:objs.map(o=>cols.map(c=>o[c]===''?null:o[c])),total:objs.length};
+}
+function rsToDate(v){
+  if(v==null||v==='')return null;
+  if(typeof v==='number'&&v>20000&&v<80000)return new Date(Math.round((v-25569)*864e5));
+  const s=String(v).trim();let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(m)return new Date(Date.UTC(+m[3]<100?2000+ +m[3]:+m[3],+m[2]-1,+m[1]));
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return new Date(Date.UTC(+m[1],+m[2]-1,+m[3]));
+  return null;
+}
+function rsIsoWeek(d){const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));const dn=(t.getUTCDay()+6)%7;t.setUTCDate(t.getUTCDate()-dn+3);
+  const y=t.getUTCFullYear(),f=new Date(Date.UTC(y,0,4));return{y,w:1+Math.round(((t-f)/864e5-3+((f.getUTCDay()+6)%7))/7)};}
+const RS_MESES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+/* quais linhas são "fora do padrão" do indicador (mesmas regras do painel B2C) */
+function rsFoco(ind,base){
+  const p=base.pick,ix=c=>base.cols.indexOf(c),fc=n=>(p.foco||[]).find(c=>RS_NK(c)===RS_NK(n));
+  const I=RS_NK(ind);
+  if(/PRAZO24|PRAZODEREPAROS|REPAROSPRAZO/.test(I)&&fc('Reparo')){const i=ix(fc('Reparo'));return{lbl:'reparos fora de 24h (coluna Reparo ≠ "Até 24 hrs")',f:r=>String(r[i]||'')!=='Até 24 hrs'};}
+  if(/AGINGALTAS/.test(I)&&fc('Data Criação Contrato')&&p.data){const a=ix(p.data),c=ix(fc('Data Criação Contrato'));return{lbl:'ativações acima de 48h (Data Ativação − Criação do Contrato > 2 dias)',f:r=>{const x=rsToDate(r[a]),y=rsToDate(r[c]);return x&&y?(x-y)/864e5>2:false;}};}
+  if(/AGINGME/.test(I)&&fc('Aging')){const i=ix(fc('Aging'));return{lbl:'mudanças acima de 2 dias (Aging > 2)',f:r=>Number(r[i])>2};}
+  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os'))){const i=ix(fc('conclusao')||fc('conclusao_os'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',f:r=>String(r[i]||'')!=='Realizado'};}
+  if(/^MAX/.test(I)&&fc('MAX3')){const i=ix(fc('MAX3'));return{lbl:'chamados com reincidência (MAX3 ≥ 1)',f:r=>Number(r[i])>=1};}
+  return{lbl:'todas as linhas da base (cada linha é um evento do indicador)',f:()=>true};
+}
+function rsLimpa(v){return String(v).replace(/_EVENTO_PRODUTIVO|_EVENTO_IMPRODUTIVO/gi,'').replace(/_/g,' ').replace(/\s+/g,' ').trim();}
+function rsTop(rows,i,n,limpa){const m=new Map();for(const r of rows){let v=r[i]==null?'':String(r[i]).trim();if(limpa)v=rsLimpa(v).toUpperCase();if(!v)continue;m.set(v,(m.get(v)||0)+1);}
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]);const tot=arr.reduce((s,x)=>s+x[1],0);
+  let ac=0,p80=0;for(const x of arr){ac+=x[1];p80++;if(ac>=tot*.8)break;}
+  return{tot,distintos:arr.length,p80,top:arr.slice(0,n||5).map(([v,c])=>({v,c,pct:tot?c/tot:0}))};}
+const rsPctTxt=v=>(Math.round(v*1000)/10).toString().replace('.',',')+'%';
+function rsAnalisarBase(base,fca,meta){
+  const p=base.pick,ix=c=>c?base.cols.indexOf(c):-1;
+  /* 1) cluster do FCA */
+  const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1];
+  let rows=base.rows,clusterOk=false;
+  if(cod&&p.cluster){const i=ix(p.cluster);const f=rows.filter(r=>{const m=String(r[i]||'').match(/C\.?\s*(\d+)/i);return m&&m[1]===cod;});if(f.length){rows=f;clusterOk=true;}}
+  const avisos=[];
+  if(!clusterOk)avisos.push(p.cluster?'a base não tem linhas do cluster '+fca.cluster+' — analisei a base inteira':'a base não tem coluna de cluster — analisei a base inteira');
+  /* 2) foco: linhas fora do padrão */
+  const foco=rsFoco(fca.indicador,base);
+  const off=rows.filter(foco.f);
+  /* 3) períodos: semana do FCA e a anterior; mês do fato */
+  const di=ix(p.data);let semRows=off,antRows=[],mesRows=off,semLbl='',antLbl='',mesLbl='';
+  if(di>=0){
+    const dt=off.map(r=>rsToDate(r[di]));
+    const wk=dt.map(d=>d?rsIsoWeek(d):null);
+    const wNum=+String(fca.semana).replace(/\D/g,'');
+    /* a semana precisa ser do ano do mês do fato (out/26 → 2026); senão vale a última da base */
+    const mmA=String(meta&&meta.mes||'').match(/\/(\d{2})$/),anoFato=mmA?2000+ +mmA[1]:null;
+    const anos=[...new Set(wk.filter(w=>w&&w.w===wNum&&(!anoFato||w.y===anoFato)).map(w=>w.y))].sort();
+    let alvo=anos.length?{y:anos[anos.length-1],w:wNum}:null;
+    if(!alvo){const all=wk.filter(Boolean).sort((a,b)=>a.y-b.y||a.w-b.w);if(all.length){alvo=all[all.length-1];avisos.push('a base não tem a '+fca.semana+' — usei a última semana da base (W'+alvo.w+'/'+alvo.y+')');}}
+    if(alvo){
+      const ant=alvo.w>1?{y:alvo.y,w:alvo.w-1}:{y:alvo.y-1,w:52};
+      semRows=off.filter((r,i)=>wk[i]&&wk[i].y===alvo.y&&wk[i].w===alvo.w);
+      antRows=off.filter((r,i)=>wk[i]&&wk[i].y===ant.y&&wk[i].w===ant.w);
+      semLbl='W'+alvo.w;antLbl='W'+ant.w;
+    }
+    const mm=String(meta&&meta.mes||'').match(/([a-zç]{3})\/(\d{2})/i);
+    let mAlvo=mm?{m:RS_MESES.indexOf(mm[1].toLowerCase()),y:2000+ +mm[2]}:null;
+    if(mAlvo&&!dt.some(d=>d&&d.getUTCFullYear()===mAlvo.y&&d.getUTCMonth()===mAlvo.m)){avisos.push('a base não tem '+meta.mes+' — usei o último mês da base');mAlvo=null;}
+    if(!mAlvo){const ds=dt.filter(Boolean).sort((a,b)=>a-b);const u=ds[ds.length-1];if(u)mAlvo={m:u.getUTCMonth(),y:u.getUTCFullYear()};}
+    if(mAlvo){mesRows=off.filter((r,i)=>dt[i]&&dt[i].getUTCFullYear()===mAlvo.y&&dt[i].getUTCMonth()===mAlvo.m);mesLbl=RS_MESES[mAlvo.m]+'/'+String(mAlvo.y).slice(2);}
+  }else avisos.push('a base não tem coluna de data — analisei o período inteiro');
+  const escopo=mesRows.length?mesRows:off;
+  /* 4) Pareto por dimensão (no mês) + o que mais cresceu na semana */
+  const dims=[];
+  for(const k of ['cidade','bairro','motivo','motivoAnt','tecnico','tecnicoAnt','parceira','unidade','olt']){
+    const i=ix(p[k]);if(i<0)continue;const lp=/^motivo/.test(k);const t=rsTop(escopo,i,5,lp);if(!t.tot||t.distintos<1)continue;
+    let alta=null;
+    if(semRows.length&&antRows.length){const a=rsTop(semRows,i,99,lp).top,b=new Map(rsTop(antRows,i,999,lp).top.map(x=>[x.v,x.c]));
+      for(const x of a){const d=x.c-(b.get(x.v)||0);if(d>0&&(!alta||d>alta.d))alta={v:x.v,d,c:x.c,ant:b.get(x.v)||0};}}
+    dims.push({k,lbl:RS_DIM_LBL[k],...t,alta});
+  }
+  /* 5) reincidência por contrato */
+  let reinc=null;const ci=ix(p.contrato);
+  if(ci>=0){const m=new Map();for(const r of escopo){const c=r[ci];if(c==null||c==='')continue;m.set(c,(m.get(c)||0)+1);}
+    const rep=[...m.values()].filter(v=>v>1);reinc={contratos:m.size,reincidentes:rep.length,eventos:rep.reduce((s,v)=>s+v,0)};}
+  /* 6) rascunho de FCA */
+  const sug=rsSugerirFca({dims,reinc,fca,mesLbl,semLbl,antLbl,sem:semRows.length,ant:antRows.length,n:escopo.length});
+  return{arquivo:base.name,cluster:clusterOk?fca.cluster:null,linhasCluster:rows.length,foco:foco.lbl,fora:off.length,
+    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl,mes:mesRows.length,n:escopo.length,dims,reinc,avisos,sug};
+}
+const RS_ACAO_MOTIVO=[
+  [/ONU|ONT|MODEM|ROTEADOR|EQUIPAMENTO/i,'Verificar lote e configuração dos equipamentos (ONU/roteador) trocados e reforçar o checklist de teste na troca'],
+  [/DROP|CONECTOR|FIBRA|CABO|EMENDA/i,'Auditoria de qualidade nas instalações (drop/conector/emenda) e reciclagem técnica dos executores'],
+  [/VELOCIDADE|LENTID|WIFI|WI-FI|SINAL/i,'Validar provisionamento/plano e exigir teste de velocidade e posicionamento do Wi-Fi no fechamento da OS'],
+  [/SEM CONEX|LOS|OLT|PON|MASSIVA|REDE/i,'Análise com o NOC dos eventos de rede (OLT/PON) e plano de manutenção preventiva nos pontos recorrentes'],
+  [/INDEVIDA|TRIAGEM|VISITA EVITADA|DESIST/i,'Reforçar a triagem (CST/NOC) antes do despacho para evitar aberturas indevidas e visitas improdutivas'],
+  [/AUSENTE|REAGEND|AGENDA|ANTECIPA|CANCEL|COMERCIAL/i,'Confirmação ativa de agenda com o cliente (contato prévio e ligação ao chegar) e reagendamento no mesmo dia'],
+  [/ENERGIA|CLIMA|CHUVA|TEMPORAL/i,'Plano de contingência para eventos climáticos/energia e priorização do backlog gerado'],
+];
+function rsSugerirFca(a){
+  const by=k=>a.dims.find(d=>d.k===k);
+  const causas=[],acoes=[];
+  const per=a.mesLbl?' em '+a.mesLbl:'';
+  const add=(c,ac)=>{causas.push(c);acoes.push(ac);};
+  const cid=by('cidade');
+  if(cid&&cid.tot>=5&&cid.distintos>1&&cid.top[0].pct>=.3){const t=cid.top.slice(0,cid.top[1]&&cid.top[1].pct>=.15?2:1);
+    add('Concentração em '+t.map(x=>x.v+' ('+rsPctTxt(x.pct)+')').join(' e ')+' dos '+cid.tot+' casos'+per,
+      'Reforço de equipe/força-tarefa em '+t.map(x=>x.v).join(' e ')+' com acompanhamento diário dos casos até normalizar');}
+  const mot=by('motivo');
+  if(mot&&mot.top[0]){const t=mot.top.slice(0,mot.top[1]&&mot.top[1].pct>=.15?2:1);
+    const ac=(RS_ACAO_MOTIVO.find(([re])=>re.test(t[0].v))||[null,'Tratativa do motivo "'+t[0].v+'" com o time responsável e acompanhamento semanal'])[1];
+    add('Motivo predominante: '+t.map(x=>x.v+' ('+rsPctTxt(x.pct)+')').join(' e '),ac);}
+  const ma=by('motivoAnt');
+  if(ma&&ma.top[0]&&ma.top[0].pct>=.25)add('Na OS anterior, o motivo mais comum foi '+ma.top[0].v+' ('+rsPctTxt(ma.top[0].pct)+') — reincidência ligada ao serviço anterior','Auditoria das OS anteriores com '+ma.top[0].v+' e checklist de qualidade no fechamento');
+  const tec=by('tecnicoAnt')||by('tecnico');
+  if(tec&&tec.top[0]){const t=tec.top.filter(x=>x.pct>=.08&&x.c>=2).slice(0,3);
+    if(t.length)add((tec.k==='tecnicoAnt'?'Técnicos da OS anterior':'Técnicos')+' com maior volume: '+t.map(x=>x.v+' ('+x.c+')').join(', '),
+      'Acompanhamento e reciclagem dos técnicos '+t.map(x=>x.v.split(' ')[0]).join(', ')+' com auditoria das OS executadas');}
+  const par=by('parceira');
+  if(par&&par.distintos>1&&par.top[0].pct>=.4&&!/GIGA/i.test(par.top[0].v))add('Parceira '+par.top[0].v+' responde por '+rsPctTxt(par.top[0].pct)+' dos casos','Alinhar plano de ação e meta com a parceira '+par.top[0].v+' (reunião semanal de acompanhamento)');
+  if(a.reinc&&a.reinc.reincidentes>=2)add(a.reinc.reincidentes+' contratos com mais de um evento'+per+' ('+a.reinc.eventos+' eventos)','Tratar os '+a.reinc.reincidentes+' contratos reincidentes com visita técnica qualificada e contato pós-atendimento');
+  const tend=a.semLbl&&a.antLbl?(a.sem>a.ant?'alta de '+(a.sem-a.ant)+' casos na '+a.semLbl+' ('+a.sem+') vs '+a.antLbl+' ('+a.ant+')':a.sem<a.ant?'queda de '+(a.ant-a.sem)+' casos na '+a.semLbl+' ('+a.sem+') vs '+a.antLbl+' ('+a.ant+')':'mesmo volume na '+a.semLbl+' e na '+a.antLbl+' ('+a.sem+')'):'';
+  const hoje=new Date();const prazo=new Date(hoje.getTime()+7*864e5);const pz=String(prazo.getDate()).padStart(2,'0')+'/'+RS_MESES[prazo.getMonth()];
+  return{
+    tendencia:tend,
+    causa:causas.map((c,i)=>(i+1)+'. '+c).join('\n'),
+    acao:acoes.map((c,i)=>(i+1)+'.1 '+c).join('\n'),
+    prazo:acoes.map((c,i)=>(i+1)+'.1 '+pz).join('\n'),
+    status:acoes.map((c,i)=>(i+1)+'.1 Em andamento').join('\n'),
+    resp:acoes.map((c,i)=>(i+1)+'.1 ').join('\n'),
+  };
+}
+const RS_IND_KEY='rs_indbase_v1';let RS_IND=null;const rsAnaAbertas=new Set();
+async function rsIndLoad(){if(RS_IND)return RS_IND;try{RS_IND=(await idbGet(RS_IND_KEY))||{};}catch(e){RS_IND={};}return RS_IND;}
+function rsIndBaseFor(ind){
+  if(!RS_IND)return null;if(RS_IND[ind])return RS_IND[ind];
+  const n=RS_NK(ind);let best=null;
+  for(const k of Object.keys(RS_IND)){const nk=RS_NK(k);if(nk&&(n.startsWith(nk)||nk.startsWith(n))&&(!best||nk.length>RS_NK(best).length))best=k;}
+  return best?RS_IND[best]:null;
+}
+async function rsLerPlanilhaObjs(file){
+  const buf=await file.arrayBuffer();
+  if(typeof b2cParseXlsxInWorker==='function'){try{return await b2cParseXlsxInWorker(buf);}catch(e){}}
+  const wb=XLSX.read(buf,{type:'array',dense:true});const sn=wb.SheetNames.find(n=>RS_NK(n)==='EXPORT')||wb.SheetNames[0];
+  return XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
+}
+let rsIndCb=null,rsIndAlvo='';
+function rsPedirBaseInd(ind,cb){
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar base neste painel. Peça ao Admin.');return;}
+  rsIndAlvo=ind;rsIndCb=cb;document.getElementById('rs-ind-file').click();
+}
+async function rsOnIndFile(inp){
+  const file=inp.files&&inp.files[0];inp.value='';if(!file||!rsIndAlvo)return;
+  const ind=rsIndAlvo;
+  _ghToast('Lendo '+file.name+' para '+ind+'… (bases grandes levam alguns segundos)','var(--blue)',6000);
+  try{
+    const objs=await rsLerPlanilhaObjs(file);
+    const b=rsReduzBase(objs,file.name);b.at=new Date().toISOString();
+    await rsIndLoad();RS_IND[ind]=b;await idbSet(RS_IND_KEY,RS_IND);
+    _ghToast('Base de '+ind+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — só neste dispositivo','var(--green-dk)',4500);
+    if(rsIndCb)rsIndCb();
+  }catch(e){alert('Não foi possível ler a base de '+ind+': '+(e&&e.message||e));}
+}
+function rsPintaAnalise(box,a,aplicar){
+  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+x.c+' · '+rsPctTxt(x.pct)+'</em></span>').join('')+
+    (d.distintos>3?'<small>'+d.p80+' de '+d.distintos+' concentram 80%</small>':'')+(d.alta?'<small class="up">▲ maior alta na '+eh(a.semLbl)+': '+eh(d.alta.v)+' (+'+d.alta.d+')</small>':'')+'</div>';
+  const vol=(a.semLbl?'<span><b>'+a.sem+'</b> na '+eh(a.semLbl)+(a.antLbl?' · '+a.ant+' na '+eh(a.antLbl):'')+'</span>':'')+(a.mesLbl?'<span><b>'+a.mes+'</b> em '+eh(a.mesLbl)+'</span>':'')+'<span><b>'+a.fora+'</b> no período da base</span>';
+  box.innerHTML='<div class="rs-ana-hd"><i class="ti ti-chart-dots"></i> Análise da base <small>'+eh(a.arquivo)+' · '+(a.cluster?'cluster '+eh(a.cluster)+' ('+rsNf0.format(a.linhasCluster)+' linhas)':'base inteira')+' · foco: '+eh(a.foco)+'</small></div>'+
+    (a.avisos.length?'<div class="rs-ana-av">'+a.avisos.map(eh).join(' · ')+'</div>':'')+
+    '<div class="rs-ana-vol">'+vol+'</div>'+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
+    '<div class="rs-ana-dims">'+a.dims.map(li).join('')+(a.reinc?'<div class="rs-ana-dim"><b>Reincidência</b><span>'+a.reinc.reincidentes+' contratos com 2+ eventos <em>'+a.reinc.eventos+' eventos</em></span></div>':'')+'</div>'+
+    '<div class="rs-ana-sug"><b>Sugestão para o FCA</b>'+(a.sug.causa?'<pre>CAUSA\n'+eh(a.sug.causa)+'\n\nAÇÃO\n'+eh(a.sug.acao)+'</pre>':'<p class="rs-note">Os dados não mostram concentração clara (cidade, motivo, técnico). Use a análise acima para descrever a causa.</p>')+'</div>';
+  const bar=document.createElement('div');bar.className='acts';
+  if(a.sug.causa){const u=document.createElement('button');u.type='button';u.className='rs-btn pri';u.textContent='Usar na justificativa';u.onclick=()=>aplicar(a);bar.appendChild(u);}
+  const cp=document.createElement('button');cp.type='button';cp.className='rs-btn';cp.textContent='Copiar análise';
+  cp.onclick=async()=>{try{await navigator.clipboard.writeText(box.innerText.replace(/Usar na justificativa|Copiar análise/g,'').trim());cp.textContent='Copiado ✔';}catch(e){cp.textContent='Não foi possível copiar';}setTimeout(()=>{cp.textContent='Copiar análise';},2000);};
+  bar.appendChild(cp);box.appendChild(bar);
 }
 function rsExportCsv(){
   const D=rsDados();if(!D)return;const sem=rsF.sem,ger=rsF.ger;
