@@ -2044,6 +2044,18 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
   overflow-y:auto;
 }
 .panel.active{display:block}
+#panel-redir-sem .rs-bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;margin-bottom:12px}
+#panel-redir-sem .rs-ttl{font-size:18px;font-weight:800;color:var(--tx);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#panel-redir-sem .rs-ttl span{font-size:12.5px;font-weight:500;color:var(--tx3)}
+#panel-redir-sem .rs-src{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+#panel-redir-sem .rs-up-btn{font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:10px;border:0;background:var(--blue);color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+#panel-redir-sem .rs-up-btn:hover{filter:brightness(1.08)}
+#panel-redir-sem .rs-msg{font-size:12.5px;color:var(--tx3)}
+#panel-redir-sem .rs-empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:48px 18px;border:1px dashed var(--bd2);border-radius:14px;color:var(--tx2);background:var(--surface)}
+#panel-redir-sem .rs-empty i{font-size:34px;color:var(--blue)}
+#panel-redir-sem .rs-empty span{max-width:60ch;font-size:13px;line-height:1.5}
+#panel-redir-sem iframe{display:block;width:100%;border:0;min-height:600px;border-radius:14px;background:transparent}
+#panel-redir-sem iframe[hidden]{display:none}
 .panel-dashboard{gap:16px}
 .panel-dashboard.active{display:grid}
 .dash-hero{
@@ -7230,6 +7242,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab ntab-main" id="ntab-pop" onclick="switchTab('pop')">
         <i class="ti ti-map-pin"></i><span class="ntab-label"> POP</span>
       </button>
+      <button class="ntab ntab-main" id="ntab-redir-sem" onclick="switchTab('redirSemanal')">
+        <i class="ti ti-calendar-stats"></i><span class="ntab-label"> Redir (Semanal)</span>
+      </button>
       <button class="ntab active" id="ntab-dash" onclick="switchTab('dashboard')">
         <i class="ti ti-layout-dashboard"></i><span class="ntab-label"> Dashboard</span>
       </button>
@@ -11042,6 +11057,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-b2c" onclick="switchTab('b2c')"><i class="ti ti-users"></i><strong>B2C</strong><span>Indicadores B2C (Reparos, IRT, IRR, IFI, IFME, Aging, Efetividade...) e desvios contra a meta.</span></button>
       <button class="dash-module" id="dash-mod-max" onclick="switchTab('max')"><i class="ti ti-arrow-back-up"></i><strong>MAX</strong><span>Diagnóstico MAX — reabertura de reparo em até 30 dias: drivers, motivos, ranking e plano FCA.</span></button>
       <button class="dash-module" id="dash-mod-aportes" onclick="switchTab('aportes')"><i class="ti ti-cash"></i><strong>Aportes Combustível</strong><span>Aportes e retiradas de saldo por placa, com histórico e gráficos.</span></button>
+      <button class="dash-module" id="dash-mod-redir-sem" onclick="switchTab('redirSemanal')"><i class="ti ti-calendar-stats"></i><strong>Redir (Semanal)</strong><span>Cluster com Desvio — entrega de FCA por gerente, justificativas e indicadores do mês por cluster.</span></button>
       <button class="dash-module" id="dash-mod-pop" onclick="switchTab('pop')"><i class="ti ti-map-pin"></i><strong>POP</strong><span>Catálogo de POPs e endereços — cidade, regime, tier, bateria, AR e mapa.</span></button>
       <button class="dash-module" id="dash-mod-swap" onclick="switchTab('swap')"><i class="ti ti-arrows-exchange"></i><strong>SWAP</strong><span>Chamados do departamento SWAP — mesma base do B2B Abertos.</span></button>
       <button class="dash-module" id="dash-mod-eve" onclick="switchTab('eve')"><i class="ti ti-calendar-event"></i><strong>EVE</strong><span>Chamados com "EVE" no Título/Assunto — mesma base do B2B Abertos.</span></button>
@@ -13555,6 +13571,26 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   </div>
 
   <!-- ── PAINEL POP (catálogo de sites — cidade, endereço, tier, bateria, AR, mapa) ── -->
+  <!-- Redir (Semanal) — pedido 2026-10-23: painel "Cluster com Desvio" (Painel_Cluster_com_Desvio_Wxx_Jarvis.html)
+       integrado ao Jarvis. O arquivo semanal é anexado e fica SÓ neste dispositivo (IndexedDB rs_base_v1):
+       traz nomes de gestores/técnicos e medidas disciplinares, e o sync grava em repo público (LGPD).
+       É desenhado num iframe same-origin (rascunhos das justificativas no localStorage continuam valendo). -->
+  <div class="panel" id="panel-redir-sem">
+    <div class="rs-bar">
+      <div class="rs-ttl"><i class="ti ti-calendar-stats"></i> Redir (Semanal) <span>Cluster com Desvio · entrega de FCA</span></div>
+      <div class="rs-src">
+        <button type="button" class="rs-up-btn" id="rs-up-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar arquivo da semana</button>
+        <input id="rs-file" type="file" accept=".html,.htm" hidden onchange="rsOnFile(this)">
+        <span class="rs-msg" id="rs-msg">Nenhum arquivo anexado neste dispositivo.</span>
+      </div>
+    </div>
+    <div class="rs-empty" id="rs-empty">
+      <i class="ti ti-file-upload"></i>
+      <b>Anexe o arquivo da semana</b>
+      <span>Use o <b>Painel_Cluster_com_Desvio_Wxx_Jarvis.html</b> recebido na semana. Ele fica salvo só neste dispositivo (contém nomes de colaboradores) e é substituído quando você anexar o da semana seguinte.</span>
+    </div>
+    <iframe id="rs-frame" title="Redir (Semanal)" hidden></iframe>
+  </div>
   <div class="panel" id="panel-pop">
     <div id="empty-pop" class="empty">
       <div class="empty-icon"><i class="ti ti-map-pin"></i></div>
@@ -14713,7 +14749,7 @@ function roleLabel(role){const r=normRole(role);return r==='admin'?'Admin - perm
    Pra habilitar um novo painel aqui, ele precisa primeiro trocar seus canEdit() de
    bare (site-wide) pra canEdit('chaveDoPainel') nos pontos de anexar/editar, mesmo
    padrão já feito em Abertos OFS e Warmap. */
-const SR_EDIT_ENABLED_PANELS=['abertosOfs','warmap','abertos','encerrados','rede','ofs','ativacoes','pop','combustivel','b2c','aportes','max'];
+const SR_EDIT_ENABLED_PANELS=['abertosOfs','warmap','abertos','encerrados','rede','ofs','ativacoes','pop','combustivel','b2c','aportes','max','redirSemanal'];
 /* (2026-10-19) Pedido do usuário: "os usuários Sr podem anexar base mediante liberação do
    Admin" — todos os painéis com anexo de base aceitam a liberação. B2B Abertos cobre SWAP/EVE
    e B2B Encerrados cobre S/Intervenção, Prefeitura e Repetidos (mesma base). Só ANEXAR:
@@ -14790,14 +14826,14 @@ function _hasSrEditRights(){
    de Horas, DSR Volante, Sobreaviso, Monitor e WhatsApp retirados do Jarvis (Preventivas POP
    também, mesmo dia) — fora das listas de painéis/abas e sem botão na navegação/Dashboard. Código e dados sincronizados
    desses painéis ficaram intactos (inacessíveis), pra permitir reativar sem perda. */
-const ALL_PANEL_KEYS=['abertosOfs','warmap','aportes','executivo','abertos','b2c','max','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','ativacoes','pop','ampli'];
+const ALL_PANEL_KEYS=['abertosOfs','warmap','aportes','executivo','abertos','b2c','max','redirSemanal','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs','combustivel','ativacoes','pop','ampli'];
 const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrados','semIntervencao','prefeitura','repetidos','rede','ofs'];
 /* Tabs que switchTab() sabe renderizar (subconjunto de ALL_PANEL_KEYS + 'dashboard' —
    dsrVolante/sobreaviso/bancoHoras/investigacaoIp/ampli são páginas standalone, link
    direto, não trocam de aba aqui). Usado tanto pra normalizar um tab desconhecido
    quanto por defaultLandingTab() pra nunca devolver algo que switchTab() não sabe
    exibir. */
-const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','max','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
+const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','max','redirSemanal','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -14877,6 +14913,7 @@ const PANEL_NAV_MAP={
   abertos:['ntab-ab','dash-mod-abertos'],
   b2c:['ntab-b2c','dash-mod-b2c'],
   max:['ntab-max','dash-mod-max'],
+  redirSemanal:['ntab-redir-sem','dash-mod-redir-sem'],
   swap:['ntab-swap','dash-mod-swap'],
   eve:['ntab-eve','dash-mod-eve'],
   encerrados:['ntab-enc','dash-mod-encerrados'],
@@ -15794,7 +15831,7 @@ function deleteUser(username){
    já que `${PANEL_LABELS[k]}` não tinha entrada pra essas 3 chaves. Bug real, não só
    falta de nome bonito — o admin não conseguia nem saber qual painel aquele checkbox
    controlava. */
-const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmup',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',max:'MAX',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
+const PANEL_LABELS={abertosOfs:'Abertos OFS',warmap:'Warmup',aportes:'Aportes Combustível',executivo:'Painel Executivo',abertos:'B2B Abertos',b2c:'B2C',max:'MAX',redirSemanal:'Redir (Semanal)',swap:'SWAP',eve:'EVE',encerrados:'B2B Encerrados',semIntervencao:'B2B S/Intervenção',prefeitura:'B2B Prefeitura',repetidos:'B2B Repetidos',rede:'Rede',ofs:'Produtividade OFS',combustivel:'Combustíveis',monitor:'Monitor',whatsapp:'WhatsApp',dsrVolante:'DSR Volante',sobreaviso:'Sobreaviso',ativacoes:'Ativações B2B',preventivas:'Agendamento de Preventivas',pop:'POP',auditMaterial:'Audit Material',saldoSap:'Saldo SAP',bancoHoras:'Banco de Horas',investigacaoIp:'Investigação de IPs',ampli:'Ampli'};
 let _permsEditUser='';
 function setUserPerms(username,perms){
   if(!canEdit())return;
@@ -25187,7 +25224,8 @@ const TAB_META={
   monitor:['Monitor','Massiva, Infraestrutura, Gerencial e Wanderson'],
   whatsapp:['WhatsApp','Espelho interno do WhatsApp Web no Jarvis MCLL'],
   pop:['POP','Catálogo de POPs e endereços — base oficial'],
-  max:['MAX','Diagnóstico MAX — reabertura de reparo em até 30 dias']
+  max:['MAX','Diagnóstico MAX — reabertura de reparo em até 30 dias'],
+  redirSemanal:['Redir (Semanal)','Cluster com Desvio — entrega de FCA, justificativas e indicadores do mês']
 };
 function openMobileNav(){
   document.getElementById('atrix-sidebar')?.classList.add('open');
@@ -25302,9 +25340,9 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   }
   activeTab=tab;
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap',isMax=tab==='max';
+  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap',isMax=tab==='max',isRs=tab==='redirSemanal';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isMax?'max':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isMax?'max':isRs?'redir-sem':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-abertos-ofs').classList.toggle('active',isAof);
   document.getElementById('panel-warmap').classList.toggle('active',isWarmap);
@@ -25322,6 +25360,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   document.getElementById('panel-combustivel').classList.toggle('active',isFuel);
   document.getElementById('panel-pop').classList.toggle('active',isPop);
   document.getElementById('panel-max').classList.toggle('active',isMax);
+  document.getElementById('panel-redir-sem').classList.toggle('active',isRs);
   document.getElementById('panel-repetidos').classList.toggle('active',isRep);
   document.getElementById('panel-monitor').classList.toggle('active',isMon);
   document.getElementById('panel-whatsapp').classList.toggle('active',isWpp);
@@ -25356,6 +25395,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(isPrevent&&!_skip('preventivas'))renderPreventAll();
   if(isPop&&!_skip('pop'))renderAllPop();
   if(isMax&&window.mxRenderAll)mxRenderAll();
+  if(isRs&&window.rsRender)rsRender();
   if(isAuditMaterial)amRenderTable();
   if(isSaldoSap)sbRenderTable();
   if(isB2c)b2cRenderAll();
@@ -25377,7 +25417,7 @@ function toggleTheme(){
   const dk=document.body.dataset.theme==='dark';
   document.body.dataset.theme=dk?'light':'dark';
   document.getElementById('ti-icon').className=dk?'ti ti-moon':'ti ti-sun';
-  setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();if(activeTab==='max'&&window.mxRenderAll)mxRenderAll();},60);
+  setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();if(activeTab==='max'&&window.mxRenderAll)mxRenderAll();if(window.rsSyncTheme)rsSyncTheme();},60);
 }
 /* Zoom da interface — ver comentário da CSS .nav-zoom. 70-130% em passos de
    10, guardado por dispositivo/navegador (não sincroniza entre aparelhos —
@@ -36850,6 +36890,80 @@ updateCentralStatus();
     mxRenderAll();
   })();
 })();
+</script>
+<script>
+/* ─── Redir (Semanal) ─────────────────────────────────────────────────────────
+   Base = o próprio HTML "Painel_Cluster_com_Desvio_Wxx_Jarvis.html" da semana (dados em
+   <script id="data-fca"> e <script id="data-matriz">). Guardado só no IndexedDB deste
+   aparelho (rs_base_v1) — nunca entra no sync (nomes de colaboradores, repo público). */
+const RS_IDB_KEY='rs_base_v1';
+let RS_BASE=null,rsLoaded=false,rsLoading=null,rsShownAt='';
+function rsResumo(html){
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const f=doc.getElementById('data-fca'),m=doc.getElementById('data-matriz');
+  if(!f||!m)throw new Error('Este arquivo não é o painel "Cluster com Desvio" (faltam os dados data-fca/data-matriz).');
+  const fca=JSON.parse(f.textContent),mat=JSON.parse(m.textContent);
+  if(!Array.isArray(fca)||!fca.length)throw new Error('O arquivo não traz linhas de FCA.');
+  const sem=[...new Set(fca.map(r=>r.semana).filter(Boolean))].sort((a,b)=>(parseInt(String(a).replace(/\D/g,''),10)||0)-(parseInt(String(b).replace(/\D/g,''),10)||0));
+  return{semanas:sem,linhas:fca.length,clusters:new Set(mat.map(r=>r.cluster)).size};
+}
+async function rsLoad(){
+  if(rsLoaded)return RS_BASE;
+  if(!rsLoading)rsLoading=(async()=>{try{RS_BASE=(await idbGet(RS_IDB_KEY))||null;}catch(e){RS_BASE=null;}rsLoaded=true;return RS_BASE;})();
+  return rsLoading;
+}
+function rsMsg(){
+  const el=document.getElementById('rs-msg');if(!el)return;
+  if(!RS_BASE){el.textContent='Nenhum arquivo anexado neste dispositivo.';return;}
+  const r=RS_BASE.resumo||{},sem=r.semanas||[];
+  el.textContent=RS_BASE.name+' · '+(sem.length?sem[0]+(sem.length>1?' a '+sem[sem.length-1]:''):'—')+' · '+(r.clusters||0)+' clusters · anexado em '+new Date(RS_BASE.at).toLocaleString('pt-BR')+' (só neste dispositivo)';
+}
+function rsTheme(){return document.body.dataset.theme==='dark'?'dark':'light';}
+function rsSyncTheme(){
+  const fr=document.getElementById('rs-frame');
+  try{const d=fr&&fr.contentDocument;if(d&&d.documentElement)d.documentElement.dataset.theme=rsTheme();}catch(e){}
+}
+function rsFitHeight(){
+  const fr=document.getElementById('rs-frame');if(!fr||fr.hidden)return;
+  try{const d=fr.contentDocument;if(!d||!d.documentElement)return;const h=Math.max(d.documentElement.scrollHeight,d.body?d.body.scrollHeight:0);if(h&&Math.abs(fr.offsetHeight-h)>2)fr.style.height=h+'px';}catch(e){}
+}
+async function rsRender(){
+  await rsLoad();
+  rsMsg();
+  const fr=document.getElementById('rs-frame'),empty=document.getElementById('rs-empty');
+  if(!fr||!empty)return;
+  if(!RS_BASE){fr.hidden=true;empty.hidden=false;fr.removeAttribute('srcdoc');rsShownAt='';return;}
+  empty.hidden=true;fr.hidden=false;
+  if(rsShownAt===RS_BASE.at){rsSyncTheme();setTimeout(rsFitHeight,60);return;}
+  rsShownAt=RS_BASE.at;
+  fr.onload=()=>{
+    rsSyncTheme();rsFitHeight();
+    try{
+      const d=fr.contentDocument;
+      if(window.ResizeObserver&&d&&d.documentElement){const ro=new ResizeObserver(()=>rsFitHeight());ro.observe(d.documentElement);if(d.body)ro.observe(d.body);}
+      /* o painel original redesenha os gráficos no resize da própria janela (= largura do iframe) */
+    }catch(e){}
+  };
+  fr.srcdoc=RS_BASE.html;
+}
+async function rsOnFile(inp){
+  const file=inp.files&&inp.files[0];inp.value='';
+  if(!file)return;
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar arquivo neste painel. Peça ao Admin.');return;}
+  try{
+    const html=await file.text();
+    const resumo=rsResumo(html);
+    const base={name:file.name,at:new Date().toISOString(),html,resumo};
+    await idbSet(RS_IDB_KEY,base);
+    RS_BASE=base;rsLoaded=true;
+    await rsRender();
+    const sem=resumo.semanas;
+    _ghToast('Redir (Semanal): '+file.name+' anexado ✓ ('+(sem.length?sem.join(', '):'—')+')','var(--green-dk)',4500);
+  }catch(e){alert('Não foi possível anexar: '+(e&&e.message||e));}
+}
+window.addEventListener('resize',()=>{if(activeTab==='redirSemanal')setTimeout(rsFitHeight,200);});
+/* aba restaurada no boot antes deste script carregar */
+if(typeof activeTab!=='undefined'&&activeTab==='redirSemanal')rsRender();
 </script>
 </body>
 </html>
