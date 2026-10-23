@@ -2050,6 +2050,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-src{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 #panel-redir-sem .rs-up-btn{font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:10px;border:0;background:var(--blue);color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 #panel-redir-sem .rs-up-btn:hover{filter:brightness(1.08)}
+#panel-redir-sem .rs-up-btn.rs-up-sec{background:transparent;color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
 #panel-redir-sem .rs-msg{font-size:12.5px;color:var(--tx3)}
 #panel-redir-sem .rs-empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:48px 18px;border:1px dashed var(--bd2);border-radius:14px;color:var(--tx2);background:var(--surface)}
 #panel-redir-sem .rs-empty i{font-size:34px;color:var(--blue)}
@@ -13571,23 +13572,24 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   </div>
 
   <!-- ── PAINEL POP (catálogo de sites — cidade, endereço, tier, bateria, AR, mapa) ── -->
-  <!-- Redir (Semanal) — pedido 2026-10-23: painel "Cluster com Desvio" (Painel_Cluster_com_Desvio_Wxx_Jarvis.html)
-       integrado ao Jarvis. O arquivo semanal é anexado e fica SÓ neste dispositivo (IndexedDB rs_base_v1):
+  <!-- Redir (Semanal) — pedido 2026-10-23: painel "Cluster com Desvio" integrado ao Jarvis. Base = planilha
+       "Cluster com Desvio – Wxx.xlsx" lida da pasta redir vinculada (ou anexada). Fica SÓ neste dispositivo (IndexedDB rs_base_v1):
        traz nomes de gestores/técnicos e medidas disciplinares, e o sync grava em repo público (LGPD).
        É desenhado num iframe same-origin (rascunhos das justificativas no localStorage continuam valendo). -->
   <div class="panel" id="panel-redir-sem">
     <div class="rs-bar">
       <div class="rs-ttl"><i class="ti ti-calendar-stats"></i> Redir (Semanal) <span>Cluster com Desvio · entrega de FCA</span></div>
       <div class="rs-src">
-        <button type="button" class="rs-up-btn" id="rs-up-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar arquivo da semana</button>
-        <input id="rs-file" type="file" accept=".html,.htm" hidden onchange="rsOnFile(this)">
-        <span class="rs-msg" id="rs-msg">Nenhum arquivo anexado neste dispositivo.</span>
+        <button type="button" class="rs-up-btn" id="rs-dir-btn" data-up="redirSemanal" onclick="rsVincularPasta()" title="Escolha a pasta redir (ex.: D:\Acompanhamento Jarvis\redir). O painel abre sempre a planilha mais recente dela."><i class="ti ti-folder"></i> <span id="rs-dir-lbl">Vincular pasta redir</span></button>
+        <button type="button" class="rs-up-btn rs-up-sec" id="rs-up-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar planilha</button>
+        <input id="rs-file" type="file" accept=".xlsx,.xlsm,.xls,.html,.htm" hidden onchange="rsOnFile(this)">
+        <span class="rs-msg" id="rs-msg">Nenhuma base neste dispositivo.</span>
       </div>
     </div>
     <div class="rs-empty" id="rs-empty">
       <i class="ti ti-file-upload"></i>
-      <b>Anexe o arquivo da semana</b>
-      <span>Use o <b>Painel_Cluster_com_Desvio_Wxx_Jarvis.html</b> recebido na semana. Ele fica salvo só neste dispositivo (contém nomes de colaboradores) e é substituído quando você anexar o da semana seguinte.</span>
+      <b>Vincule a pasta da base</b>
+      <span>Clique em <b>Vincular pasta redir</b> e escolha <b>D:\Acompanhamento Jarvis\redir</b>. O painel abre sempre a planilha <b>Cluster com Desvio – Wxx.xlsx</b> mais recente dessa pasta: é só salvar a nova semana lá. Se preferir, use <b>Anexar planilha</b>. A base fica só neste dispositivo, porque tem nomes de colaboradores.</span>
     </div>
     <iframe id="rs-frame" title="Redir (Semanal)" hidden></iframe>
   </div>
@@ -36893,12 +36895,96 @@ updateCentralStatus();
 </script>
 <script>
 /* ─── Redir (Semanal) ─────────────────────────────────────────────────────────
-   Base = o próprio HTML "Painel_Cluster_com_Desvio_Wxx_Jarvis.html" da semana (dados em
-   <script id="data-fca"> e <script id="data-matriz">). Guardado só no IndexedDB deste
-   aparelho (rs_base_v1) — nunca entra no sync (nomes de colaboradores, repo público). */
-const RS_IDB_KEY='rs_base_v1';
-let RS_BASE=null,rsLoaded=false,rsLoading=null,rsShownAt='';
-function rsResumo(html){
+   Base = planilha "Cluster com Desvio – Wxx.xlsx" (abas Wxx + aba Painel). Pedido 2026-10-23:
+   "usar a base modelo que sempre será atualizada, a da pasta D:\Acompanhamento Jarvis\redir"
+   → a pasta é vinculada uma vez (File System Access) e o painel lê o .xlsx mais recente dela a
+   cada abertura. O visual é o modelo assets/redir/cluster_desvio.html (sem dados), desenhado num
+   iframe same-origin com os dados injetados (rascunhos das justificativas no localStorage seguem
+   valendo). A base (nomes de gestores/responsáveis) fica só no IndexedDB deste aparelho e nunca
+   entra no sync (repo público, LGPD). O .html antigo da semana continua aceito em "Anexar planilha". */
+const RS_IDB_KEY='rs_base_v1',RS_DIR_KEY='rs_dir_v1',RS_TPL_URL='assets/redir/cluster_desvio.html';
+let RS_BASE=null,rsLoaded=false,rsLoading=null,rsShownAt='',rsTpl=null,rsDir=null,rsDirChecking=null;
+/* Planilha → linhas de FCA (abas Wxx) + matriz do mês (aba Painel; status pela cor da célula,
+   mesma regra do Resumo Executivo). Conferido campo a campo contra o painel HTML da W43. */
+function rsParseWorkbook(XLSX,wb){
+  const txt=v=>{if(v==null)return null;const s=String(v).replace(/\r\n?/g,'\n');return s.trim()===''?null:s;};
+  const MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  /* Prazo digitado como data no Excel vira "09/out", igual ao texto dos demais */
+  const prz=v=>{if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return String(d.getUTCDate()).padStart(2,'0')+'/'+MES[d.getUTCMonth()];}return txt(v);};
+  /* MTTR vem em formato de hora do Excel (fração de dia) → horas */
+  const hr=(ind,v)=>typeof v==='number'&&/MTTR/i.test(ind||'')?v*24:v;
+  const num=v=>typeof v==='number'&&isFinite(v)?v:null;
+  const ENT={'Sim':'Completo','Incompleto':'Incompleto','Não':'Não enviado'};
+  const semanas=wb.SheetNames.filter(n=>/^W\d{1,2}$/i.test(n.trim()));
+  if(!semanas.length)throw new Error('a planilha não tem abas de semana (W41, W42, …)');
+  const fca=[],labels={};let mes='';
+  const dd=n=>{const d=new Date(Math.round((n-25569)*864e5));return{d:String(d.getUTCDate()).padStart(2,'0'),m:MES[d.getUTCMonth()]};};
+  for(const sn of semanas){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null,blankrows:false});
+    const H=(rows[0]||[]).map(h=>h==null?'':String(h).trim());
+    const col=(re)=>H.findIndex(h=>re.test(h));
+    const C={ger:col(/^Gerente$/i),reg:col(/^Regional$/i),clu:col(/^Cluster$/i),gru:col(/^Grupo$/i),ind:col(/^Indicador$/i),
+      vs:col(/^W\d+\s*\(/i),vsa:col(/^Vs W\d+/i),vm:col(/^Mês\s*\(/i),vmom:col(/^Vs MoM/i),an:col(/^Análise$/i),fca:col(/^FCA$/i),
+      fato:col(/^Fato$/i),causa:col(/^Causa$/i),acao:col(/^Ação$/i),resp:col(/^Resp$/i),prazo:col(/^Prazo$/i),st:col(/^Status$/i),
+      ent:col(/^Entregue\?$/i),sit:col(/^Situação$/i)};
+    for(const k of ['ger','clu','ind','sit'])if(C[k]<0)throw new Error('aba '+sn+': coluna "'+k+'" não encontrada');
+    const semana=sn.trim().toUpperCase();
+    /* rótulo da semana: "Semana fecha em (domingo)" traz a data do domingo na célula ao lado */
+    const fe=H.findIndex(h=>/^Semana fecha em/i.test(h));const dom=fe>=0?rows[0][fe+1]:null;
+    if(typeof dom==='number'&&dom>20000){const a=dd(dom-6),b=dd(dom);labels[semana]=a.m===b.m?a.d+' a '+b.d+'/'+b.m:a.d+'/'+a.m+' a '+b.d+'/'+b.m;}
+    if(C.vm>=0){const mm=H[C.vm].match(/\(([^)]+)\)/);if(mm)mes=mm[1].trim();}
+    for(const r of rows.slice(1)){
+      const g=k=>C[k]<0?null:r[C[k]];
+      if(!txt(g('clu'))||!txt(g('ind')))continue;
+      const causa=txt(g('causa')),acao=txt(g('acao')),status=txt(g('st'));
+      const linhas=s=>s?s.split('\n'):[];
+      const causas=causa?(linhas(causa).filter(l=>/^\s*"?\d+\.\s/.test(l)).length||1):0;
+      const stl=linhas(status).filter(l=>l.trim());
+      const acoesN=linhas(acao).filter(l=>/^\s*"?\d+\.\d+/.test(l)).length;
+      const acoes=acao?Math.max(acoesN,stl.length,1):0;
+      const conc=stl.filter(l=>/conclu/i.test(l)).length,and=stl.filter(l=>/andamento/i.test(l)).length;
+      const ent=txt(g('ent'));
+      fca.push({semana,gerente:txt(g('ger')),regional:txt(g('reg')),cluster:txt(g('clu')),grupo:txt(g('gru')),indicador:txt(g('ind')),
+        valor_semana:num(hr(g('ind'),g('vs'))),vs_sem_ant:num(g('vsa')),valor_mes:num(hr(g('ind'),g('vm'))),vs_mom:num(g('vmom')),analise:txt(g('an')),fca:txt(g('fca')),
+        fato:txt(g('fato')),situacao:txt(g('sit')),entrega:ENT[ent]||null,causas,acoes,acoes_concluidas:conc,acoes_andamento:and,
+        causa,acao,resp:txt(g('resp')),prazo:prz(g('prazo')),status_acoes:status,id:semana+'|'+txt(g('clu'))+'|'+txt(g('ind'))});
+    }
+  }
+  // matriz do mês (aba Painel): bloco cujo cabeçalho é Gerente|Cluster|<indicadores>… e a linha seguinte é "Meta"
+  const matriz=[];let fato='';
+  const ws=wb.Sheets['Painel'];
+  if(ws){
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
+    const ref=XLSX.utils.decode_range(ws['!ref']);
+    const m=String((rows[1]||[])[0]||'').match(/Fato:\s*([^.]+)/);if(m)fato=m[1].trim();
+    const hi=rows.findIndex((r,i)=>r&&r[0]==='Gerente'&&r[1]==='Cluster'&&rows[i+1]&&rows[i+1][0]==='Meta');
+    if(hi>=0){
+      const H=rows[hi];const meta=rows[hi+1];
+      const ic=[];for(let c=2;c<H.length;c++){const h=H[c]==null?'':String(H[c]).trim();if(!h||/^(Na meta|Amarelo|Fora)$/i.test(h))break;ic.push(c);}
+      const COR={'C6EFCE':'Na meta','FFE699':'Próximo da meta','F8CBAD':'Fora da meta','F2F2F2':'Sem dado'};
+      let ordem=0;
+      for(let r=hi+2;r<rows.length&&r<=ref.e.r;r++){
+        const row=rows[r];if(!row||!txt(row[0])||!txt(row[1]))break;ordem++;
+        for(const c of ic){
+          const cell=ws[XLSX.utils.encode_cell({r,c})];const v=cell?cell.v:null;
+          const rgb=cell&&cell.s&&cell.s.fgColor&&cell.s.fgColor.rgb?String(cell.s.fgColor.rgb).slice(-6).toUpperCase():'';
+          const mt=meta[c];
+          let status=COR[rgb]||null;
+          if(!status)status='Sem dado';
+          matriz.push({gerente:txt(row[0]),cluster:txt(row[1]),ordem,indicador:String(H[c]).trim(),valor:num(hr(H[c],v)),
+            meta:num(hr(H[c],mt)),meta_texto:typeof mt==='number'?null:txt(mt),status,id:txt(row[1])+'|'+String(H[c]).trim()});
+        }
+      }
+    }
+  }
+  const sem=semanas.map(s=>s.trim().toUpperCase()).sort((a,b)=>+a.slice(1)-+b.slice(1));
+  const ult=sem[sem.length-1];
+  if(!fca.length)throw new Error('as abas de semana não trazem linhas de FCA');
+  return {fca,matriz,meta:{semanas:sem,ult,labels,mes,fato:fato||(mes?'MTD '+mes:'')},semana:ult,fato,titulo:txt((XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1})[0]||[])[0])};
+}
+function rsSemanasTxt(sem){return sem&&sem.length?sem[0]+(sem.length>1?' a '+sem[sem.length-1]:''):'—';}
+/* .html antigo (painel já pronto da semana) */
+function rsResumoHtml(html){
   const doc=new DOMParser().parseFromString(html,'text/html');
   const f=doc.getElementById('data-fca'),m=doc.getElementById('data-matriz');
   if(!f||!m)throw new Error('Este arquivo não é o painel "Cluster com Desvio" (faltam os dados data-fca/data-matriz).');
@@ -36907,16 +36993,74 @@ function rsResumo(html){
   const sem=[...new Set(fca.map(r=>r.semana).filter(Boolean))].sort((a,b)=>(parseInt(String(a).replace(/\D/g,''),10)||0)-(parseInt(String(b).replace(/\D/g,''),10)||0));
   return{semanas:sem,linhas:fca.length,clusters:new Set(mat.map(r=>r.cluster)).size};
 }
+function rsBaseDeXlsx(buf,name,lastModified,origem){
+  const wb=XLSX.read(buf,{type:'array',cellStyles:true});
+  let d;try{d=rsParseWorkbook(XLSX,wb);}catch(e){throw new Error('"'+name+'" não está no modelo Cluster com Desvio: '+e.message);}
+  return{kind:'xlsx',name,at:new Date().toISOString(),fileMod:lastModified||0,origem:origem||'anexo',
+    data:{fca:d.fca,matriz:d.matriz,meta:{...d.meta,arquivo:name}},
+    resumo:{semanas:d.meta.semanas,linhas:d.fca.length,clusters:new Set(d.matriz.map(r=>r.cluster)).size}};
+}
 async function rsLoad(){
   if(rsLoaded)return RS_BASE;
-  if(!rsLoading)rsLoading=(async()=>{try{RS_BASE=(await idbGet(RS_IDB_KEY))||null;}catch(e){RS_BASE=null;}rsLoaded=true;return RS_BASE;})();
+  if(!rsLoading)rsLoading=(async()=>{
+    try{RS_BASE=(await idbGet(RS_IDB_KEY))||null;}catch(e){RS_BASE=null;}
+    try{rsDir=(await idbGet(RS_DIR_KEY))||null;}catch(e){rsDir=null;}
+    rsLoaded=true;return RS_BASE;})();
   return rsLoading;
 }
+let rsAviso='';
 function rsMsg(){
   const el=document.getElementById('rs-msg');if(!el)return;
-  if(!RS_BASE){el.textContent='Nenhum arquivo anexado neste dispositivo.';return;}
-  const r=RS_BASE.resumo||{},sem=r.semanas||[];
-  el.textContent=RS_BASE.name+' · '+(sem.length?sem[0]+(sem.length>1?' a '+sem[sem.length-1]:''):'—')+' · '+(r.clusters||0)+' clusters · anexado em '+new Date(RS_BASE.at).toLocaleString('pt-BR')+' (só neste dispositivo)';
+  const lbl=document.getElementById('rs-dir-lbl');if(lbl)lbl.textContent=rsDir?'Atualizar da pasta '+rsDir.name:'Vincular pasta redir';
+  if(!RS_BASE){el.textContent=rsAviso||'Nenhuma base neste dispositivo.';return;}
+  const r=RS_BASE.resumo||{};
+  el.textContent=RS_BASE.name+' · '+rsSemanasTxt(r.semanas)+' · '+(r.clusters||0)+' clusters · '
+    +(RS_BASE.origem==='pasta'?'lido da pasta '+(rsDir?rsDir.name+' ':'')+'em ':'anexado em ')+new Date(RS_BASE.at).toLocaleString('pt-BR')+' (só neste dispositivo)'+(rsAviso?' · '+rsAviso:'');
+}
+/* pasta vinculada: planilha mais recente (ignora o ~$ temporário do Excel aberto) */
+async function rsArquivoMaisRecente(dir){
+  let best=null;
+  for await(const h of dir.values()){
+    if(h.kind!=='file'||!/\.xls[xm]?$/i.test(h.name)||h.name.startsWith('~$'))continue;
+    const f=await h.getFile();
+    if(!best||f.lastModified>best.lastModified||(f.lastModified===best.lastModified&&f.name>best.name))best=f;
+  }
+  return best;
+}
+/* Lê da pasta se a planilha mais recente mudou. pedir=true só vindo de clique (pedido de permissão). */
+async function rsCheckDir(pedir){
+  if(!rsDir)return false;
+  if(rsDirChecking)return rsDirChecking;
+  rsDirChecking=(async()=>{
+    try{
+      let p=await rsDir.queryPermission({mode:'read'});
+      if(p!=='granted'&&pedir)p=await rsDir.requestPermission({mode:'read'});
+      if(p!=='granted'){rsAviso='clique em "Atualizar da pasta '+rsDir.name+'" para ler a planilha mais recente';return false;}
+      const f=await rsArquivoMaisRecente(rsDir);
+      if(!f){rsAviso='a pasta '+rsDir.name+' não tem planilha .xlsx';return false;}
+      rsAviso='';
+      /* anexo manual vale até surgir planilha mais nova na pasta (o botão força a pasta) */
+      if(!pedir&&RS_BASE&&RS_BASE.origem!=='pasta'&&f.lastModified<=Date.parse(RS_BASE.at))return false;
+      if(RS_BASE&&RS_BASE.kind==='xlsx'&&RS_BASE.name===f.name&&RS_BASE.fileMod===f.lastModified){if(pedir)_ghToast('Redir (Semanal): '+f.name+' já é a planilha mais recente da pasta ✓','var(--green-dk)',3500);return false;}
+      const base=rsBaseDeXlsx(await f.arrayBuffer(),f.name,f.lastModified,'pasta');
+      await idbSet(RS_IDB_KEY,base);RS_BASE=base;
+      _ghToast('Redir (Semanal): '+f.name+' carregado da pasta ✓ ('+base.resumo.semanas.join(', ')+')','var(--green-dk)',4500);
+      return true;
+    }catch(e){rsAviso='não foi possível ler a pasta: '+(e&&e.message||e);return false;}
+    finally{rsDirChecking=null;}
+  })();
+  return rsDirChecking;
+}
+async function rsVincularPasta(){
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar base neste painel. Peça ao Admin.');return;}
+  await rsLoad();
+  if(!rsDir){
+    if(!window.showDirectoryPicker){alert('Este navegador não permite vincular pasta. Use o Chrome ou o Edge no computador, ou o botão "Anexar planilha".');return;}
+    let dir;try{dir=await window.showDirectoryPicker({id:'jarvis-redir',mode:'read'});}catch(e){return;}
+    rsDir=dir;try{await idbSet(RS_DIR_KEY,dir);}catch(e){}
+  }
+  await rsCheckDir(true);
+  await rsRender();
 }
 function rsTheme(){return document.body.dataset.theme==='dark'?'dark':'light';}
 function rsSyncTheme(){
@@ -36927,38 +37071,50 @@ function rsFitHeight(){
   const fr=document.getElementById('rs-frame');if(!fr||fr.hidden)return;
   try{const d=fr.contentDocument;if(!d||!d.documentElement)return;const h=Math.max(d.documentElement.scrollHeight,d.body?d.body.scrollHeight:0);if(h&&Math.abs(fr.offsetHeight-h)>2)fr.style.height=h+'px';}catch(e){}
 }
+function rsTemplate(){
+  if(!rsTpl)rsTpl=fetch(RS_TPL_URL,{cache:'no-cache'}).then(r=>{if(!r.ok)throw new Error('modelo do painel indisponível ('+r.status+')');return r.text();}).catch(e=>{rsTpl=null;throw e;});
+  return rsTpl;
+}
+/* JSON dentro de <script>: "<" escapado para nenhum texto da planilha fechar a tag */
+function rsJsonTag(v){return JSON.stringify(v).replace(/</g,'\\u003c');}
+async function rsHtmlDaBase(b){
+  if(b.kind!=='xlsx')return b.html;
+  const t=await rsTemplate();
+  const put=(src,id,v)=>{const a='<script type="application/json" id="'+id+'">',i=src.indexOf(a),j=src.indexOf('</'+'script>',i);if(i<0||j<0)throw new Error('modelo do painel sem '+id);return src.slice(0,i+a.length)+rsJsonTag(v)+src.slice(j);};
+  return put(put(put(t,'data-fca',b.data.fca),'data-matriz',b.data.matriz),'data-meta',b.data.meta);
+}
 async function rsRender(){
   await rsLoad();
+  const novo=rsDir?await rsCheckDir(false):false;
   rsMsg();
   const fr=document.getElementById('rs-frame'),empty=document.getElementById('rs-empty');
   if(!fr||!empty)return;
   if(!RS_BASE){fr.hidden=true;empty.hidden=false;fr.removeAttribute('srcdoc');rsShownAt='';return;}
   empty.hidden=true;fr.hidden=false;
-  if(rsShownAt===RS_BASE.at){rsSyncTheme();setTimeout(rsFitHeight,60);return;}
+  if(rsShownAt===RS_BASE.at&&!novo){rsSyncTheme();setTimeout(rsFitHeight,60);return;}
+  let html;try{html=await rsHtmlDaBase(RS_BASE);}catch(e){rsAviso='erro: '+(e&&e.message||e);rsMsg();return;}
   rsShownAt=RS_BASE.at;
   fr.onload=()=>{
     rsSyncTheme();rsFitHeight();
     try{
       const d=fr.contentDocument;
       if(window.ResizeObserver&&d&&d.documentElement){const ro=new ResizeObserver(()=>rsFitHeight());ro.observe(d.documentElement);if(d.body)ro.observe(d.body);}
-      /* o painel original redesenha os gráficos no resize da própria janela (= largura do iframe) */
     }catch(e){}
   };
-  fr.srcdoc=RS_BASE.html;
+  fr.srcdoc=html;
 }
 async function rsOnFile(inp){
   const file=inp.files&&inp.files[0];inp.value='';
   if(!file)return;
-  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar arquivo neste painel. Peça ao Admin.');return;}
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar base neste painel. Peça ao Admin.');return;}
   try{
-    const html=await file.text();
-    const resumo=rsResumo(html);
-    const base={name:file.name,at:new Date().toISOString(),html,resumo};
+    let base;
+    if(/\.html?$/i.test(file.name)){const html=await file.text();base={kind:'html',name:file.name,at:new Date().toISOString(),origem:'anexo',html,resumo:rsResumoHtml(html)};}
+    else base=rsBaseDeXlsx(await file.arrayBuffer(),file.name,file.lastModified,'anexo');
     await idbSet(RS_IDB_KEY,base);
-    RS_BASE=base;rsLoaded=true;
+    RS_BASE=base;rsLoaded=true;rsAviso='';
     await rsRender();
-    const sem=resumo.semanas;
-    _ghToast('Redir (Semanal): '+file.name+' anexado ✓ ('+(sem.length?sem.join(', '):'—')+')','var(--green-dk)',4500);
+    _ghToast('Redir (Semanal): '+file.name+' anexado ✓ ('+(base.resumo.semanas||[]).join(', ')+')','var(--green-dk)',4500);
   }catch(e){alert('Não foi possível anexar: '+(e&&e.message||e));}
 }
 window.addEventListener('resize',()=>{if(activeTab==='redirSemanal')setTimeout(rsFitHeight,200);});
