@@ -20170,8 +20170,9 @@ function _atrixStartMonitoring(triggeredAtIso,startTries){
     if(terminou){
       _atrixAplicarStatus(st);
       if(st.lastRunConclusion==='failure'||st.state==='error'){
+        await loadAtrixUpdates(); /* aplica o que foi lido certo (falha = metade ou mais sem leitura) */
         encerrar(false);
-        _ghToast('O agente terminou com erro: '+(st.lastError||'falha não informada')+'. Os substatus não foram atualizados.','var(--red)',9000);
+        _ghToast('O agente terminou com erro: '+(st.lastError||'falha não informada')+'. Chamados sem leitura mantiveram o substatus anterior (nenhum foi marcado Fechado por falha).','var(--red)',9000);
         return;
       }
       const mudou=Number(st.lastTicketsChanged||0);
@@ -20246,7 +20247,13 @@ async function loadAtrixUpdates(){
   try{
     const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
     if(!r.ok)return'';
-    const updates=await r.json();
+    const updatesRaw=await r.json();
+    /* 2026-10-23: "Fechado" da Regra 3 só vale com verified:true. O agente passou a
+       confirmar que a página aberta era a do chamado. Antes disso, tela de login ou página
+       que não carregou também viravam source:'fechado'; esses registros antigos são
+       ignorados e o chamado fica com o substatus da planilha. */
+    const updates={};
+    Object.entries(updatesRaw||{}).forEach(([tid,up])=>{if(up&&!(up.source==='fechado'&&!up.verified))updates[tid]=up;});
     let latestAt='';
     atrixUpdateMap={};
     Object.entries(updates).forEach(([tid,up])=>{

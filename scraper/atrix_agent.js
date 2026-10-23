@@ -260,9 +260,13 @@ async function ensureLoggedIn(page) {
     await _publishLoginFailureScreenshot(page, 'goto-falhou');
     return { ok: false, reason: `Não consegui abrir ${ATRIX_BASE} (timeout/erro de rede): ${e.message}` };
   }
-  await page.waitForTimeout(1500);
-
-  const needsLogin = !!(await page.$('input[type="password"]'));
+  /* Bug real (2026-10-23): a checagem antiga olhava o campo de senha 1,5 s depois de abrir
+     a página. O formulário de login do Atrix aparece depois disso, então a sessão expirada
+     passava como "ativa" e todo chamado caía na tela de login (lido como "Fechado").
+     Agora espera até 8 s pelo campo de senha e também confere o título "Login". */
+  let needsLogin = false;
+  try { await page.waitForSelector('input[type="password"]', { timeout: 8000 }); needsLogin = true; }
+  catch { needsLogin = /login/i.test(await page.title().catch(() => '')); }
   if (!needsLogin) { info('Sessao ativa — login nao necessario.'); return { ok: true, reason: '' }; }
 
   if (!ATRIX_USER || !ATRIX_PASS) {
@@ -334,11 +338,42 @@ async function selText(page, selector) {
   return v && !BLANK_VALUES.has(v.toLowerCase()) ? v : null;
 }
 
+/* Estado da página aberta para um chamado (2026-10-23):
+   - 'login': tela de login (sessão perdida). Não é chamado fechado.
+   - 'ticket': a página mostra o chamado; o nº interno ou o protocolo aparece no texto.
+   - 'desconhecido': não deu para confirmar que é a página do chamado (não renderizou).
+   Só 'ticket' autoriza a Regra 3 ("sem Status e sem Substatus → Fechado"). */
+async function pageState(page, ticket) {
+  return page.evaluate(({ ids }) => {
+    if (document.querySelector('input[type="password"]') || /login/i.test(document.title || '')) return 'login';
+    const txt = document.body ? (document.body.innerText || '') : '';
+    return ids.some(id => id && txt.includes(id)) ? 'ticket' : 'desconhecido';
+  }, { ids: [String(ticket.ticketId || ''), String(ticket.id || '')] }).catch(() => 'desconhecido');
+}
+
+/* Abre o chamado com carga COMPLETA da página. Bug real (2026-10-23): todos os links são
+   ".../addonmodules.php?module=helpdesk#/app/ticket/<id>" — mesma página, só muda o "#".
+   page.goto() nesse caso é navegação dentro do mesmo documento, o SPA não renderizava o
+   chamado novo e só o 1º chamado da rodada era lido. Passar por about:blank força a carga
+   completa. Depois espera até 20 s pelo conteúdo: um select, a tela de login ou o nº do
+   chamado no texto. */
+async function openTicket(page, ticket) {
+  await page.goto('about:blank').catch(() => {});
+  await page.goto(ticket.link, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForFunction(({ ids }) => {
+    if (document.querySelector('select') || document.querySelector('input[type="password"]')) return true;
+    const txt = document.body ? (document.body.innerText || '') : '';
+    return ids.some(id => id && txt.includes(id));
+  }, { ids: [String(ticket.ticketId || ''), String(ticket.id || '')] }, { timeout: 20000, polling: 500 }).catch(() => {});
+  await page.waitForTimeout(1500);
+}
+
 async function extractSubstatus(page, ticket) {
   const tid = ticket.id || ticket.ticketId || '?';
   try {
-    await page.goto(ticket.link, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await openTicket(page, ticket);
+    const estado0 = await pageState(page, ticket);
+    if (estado0 === 'login') { warn(`[${tid}] Pagina de login no lugar do chamado — sessao perdida.`); return { sessionLost: true }; }
 
     // Helper: extrai o valor do Status da página (rótulo, select ou texto), sem restringir
     // a valores específicos — usado como fallback quando nenhum substatus é encontrado.
@@ -419,9 +454,19 @@ async function extractSubstatus(page, ticket) {
       // Sem nenhum select: usar o Status encontrado na página, se houver
       const st = await extractPageStatus();
       if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return { value: st, source: 'status' }; }
-      // Nenhum select apareceu a tempo, nem Status nem Substatus -> Fechado (Regra 3).
-      info(`[${tid}] Nenhum select carregou, sem Status e sem Substatus — classificando como Fechado.`);
-      return { value: 'Fechado', source: 'fechado' };
+      // Regra 3 só quando a página aberta é comprovadamente a do chamado. Tela de login,
+      // página em branco ou que não renderizou NÃO é chamado fechado: vira falha de
+      // leitura e mantém o valor anterior (bug real 2026-10-23: 100% dos chamados
+      // viravam "Fechado" quando a página não carregava).
+      const estado = await pageState(page, ticket);
+      if (estado === 'login') { warn(`[${tid}] Pagina de login no lugar do chamado — sessao perdida.`); return { sessionLost: true }; }
+      if (estado !== 'ticket') {
+        const amostra = await page.evaluate(() => (document.title || '') + ' | ' + ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 120)).catch(() => '');
+        warn(`[${tid}] Pagina do chamado nao carregou (sem select e sem o nº do chamado) — mantendo o valor anterior. Pagina: ${amostra}`);
+        return null;
+      }
+      info(`[${tid}] Chamado aberto, sem Status e sem Substatus — classificando como Fechado.`);
+      return { value: 'Fechado', source: 'fechado', verified: true };
     }
 
     // ── Coleta o Substatus por todas as estratégias, sem retornar ainda ──────────
@@ -592,8 +637,12 @@ async function extractSubstatus(page, ticket) {
       await page.screenshot({ path: shot, fullPage: true });
       dbg(`[${tid}] Sem Status e sem Substatus — screenshot salvo: ${shot}`);
     }
+    // Mesma confirmação do caso sem select: só classifica Fechado se a página é do chamado.
+    const estadoF = await pageState(page, ticket);
+    if (estadoF === 'login') { warn(`[${tid}] Pagina de login no lugar do chamado — sessao perdida.`); return { sessionLost: true }; }
+    if (estadoF !== 'ticket') { warn(`[${tid}] Nao foi possivel confirmar a pagina do chamado — mantendo o valor anterior.`); return null; }
     info(`[${tid}] Sem Status e sem Substatus — classificando como Fechado.`);
-    return { value: 'Fechado', source: 'fechado' };
+    return { value: 'Fechado', source: 'fechado', verified: true };
   } catch (e) {
     if (e.name === 'TimeoutError') warn(`[${tid}] Timeout ao carregar ticket.`);
     else error(`[${tid}] Erro: ${e.message}`);
@@ -696,6 +745,7 @@ async function runCycle() {
   const { updates, sha } = await loadUpdates();
   let changed = 0;
   let errors  = 0;
+  let relogins = 0;
 
   const ctx = await chromium.launchPersistentContext(SESSION_DIR, {
     headless:  !DEBUG,
@@ -723,7 +773,18 @@ async function runCycle() {
       info(`[${i + 1}/${tickets.length}] ${tid}`);
 
       const old = (updates[tid] || {}).substatus || '';
-      const result = await extractSubstatus(page, ticket);
+      let result = await extractSubstatus(page, ticket);
+      /* Sessão caiu no meio da rodada (tela de login no lugar do chamado): faz login de
+         novo e relê o mesmo chamado. No máximo 3 novos logins por rodada. */
+      if (result && result.sessionLost) {
+        if (relogins < 3) {
+          relogins++;
+          info(`Sessao perdida — novo login (${relogins}/3) e nova leitura de ${tid}.`);
+          const re = await ensureLoggedIn(page);
+          result = re.ok ? await extractSubstatus(page, ticket) : null;
+          if (result && result.sessionLost) result = null;
+        } else result = null;
+      }
 
       if (result) {
         const { value: sub, source } = result;
@@ -733,6 +794,7 @@ async function runCycle() {
            vez de um Substatus mais específico apontaria pra um seletor de Substatus que não
            está batendo com o layout real da página daquele tipo de chamado). */
         updates[tid] = { substatus: sub, source, cliente: ticket.cliente || '', uf: loc.uf, cidade: loc.cidade, updatedAt: new Date().toISOString() };
+        if (result.verified) updates[tid].verified = true;
         if (sub !== old) {
           info(`  ✓ "${old}" → "${sub}" (via ${source})`);
           changed++;
@@ -741,6 +803,11 @@ async function runCycle() {
         }
       } else {
         errors++;
+        /* Leitura falhou: o "Fechado" que ficou de rodadas antigas sem confirmação
+           (source 'fechado' sem verified) era quase sempre falha de leitura — remove,
+           para o painel voltar a usar o substatus da planilha. */
+        const prev = updates[tid];
+        if (prev && prev.source === 'fechado' && !prev.verified) { delete updates[tid]; changed++; info(`  ✗ ${tid}: "Fechado" antigo sem confirmacao removido.`); }
       }
 
       if ((i + 1) % progressStep === 0 || i === tickets.length - 1) {
@@ -770,9 +837,11 @@ async function runCycle() {
 
   await publishRunnerStatus({
     state: 'online',
-    lastError: errors ? `${errors} chamado(s) sem leitura` : '',
+    /* Metade ou mais sem leitura = rodada falhou (antes saía 'success' mesmo com 100% dos
+       chamados ilegíveis). */
+    lastError: errors ? `${errors} de ${tickets.length} chamado(s) sem leitura${errors * 2 >= tickets.length ? ' — verifique a sessão/credenciais do Atrix' : ''}` : '',
     lastRunCompletedAt: cycleEnd.toISOString(),
-    lastRunConclusion: errors ? 'partial' : 'success',
+    lastRunConclusion: !errors ? 'success' : (errors * 2 >= tickets.length ? 'failure' : 'partial'),
     lastTicketsChecked: tickets.length,
     lastTicketsChanged: changed,
     lastTicketsErrors: errors
@@ -857,4 +926,6 @@ async function main() {
   }, INTERVAL_MIN * 60 * 1000);
 }
 
-main().catch(e => { error('Fatal:', e.message); process.exit(1); });
+// Executado direto (runner/CI) roda o agente; importado (testes) só expõe as funções.
+if (require.main === module) main().catch(e => { error('Fatal:', e.message); process.exit(1); });
+else module.exports = { ensureLoggedIn, extractSubstatus, pageState, openTicket };
