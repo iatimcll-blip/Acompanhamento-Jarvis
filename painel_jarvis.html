@@ -28285,6 +28285,7 @@ function fapAudSalvarCota(idx,el){
   el.classList.toggle('fap-aud-cota-set',!!n);
   fapAudCotaVer++;el.dataset.ver=String(fapAudCotaVer); // as outras listas da tela se refazem ao abrir
   fapAudRenderCotas();
+  fapAudRenderCredAlto(); /* o contador de Crédito >= R$ 1.000 só conta transações com cota */
   fapAudRenderEmail();
 }
 /* Só as cotas ainda LIVRES (pedido 12/10/2026): a numeração é por placa — some da
@@ -28521,16 +28522,21 @@ function fapAudSalvarJust(idx,el){
   fapAudRenderEmail();
 }
 function fapAudSetSoCredAlto(v){fapAudSoCredAlto=!!v;fapAudRenderResultados();}
+/* Pedido 2026-10-23: o contador de Crédito Emergencial a partir de R$ 1.000 (qtd, soma,
+   justificadas/pendentes, "Listar só estes" e a aba da exportação) conta SÓ as
+   transações com indicação de cota. Sem cota, a transação continua na lista geral e
+   destacada, mas fica fora do cálculo. */
+function fapAudCredAltoConta(t){return fapAudEhCredAlto(t)&&!!fapAudCotaDe(t);}
 function fapAudCredAltoLista(){
   const r=fapAudFiltrar({ignorarTipo:true});
-  return r.erro?[]:r.list.filter(fapAudEhCredAlto);
+  return r.erro?[]:r.list.filter(fapAudCredAltoConta);
 }
 function fapAudRenderCredAlto(){
   const box=document.getElementById('fap-audCredAlto');if(!box)return;
   const lista=fapAudCredAltoLista();
   const totC=lista.reduce((a,t)=>a+Math.round(t.valor*100),0);
   const just=lista.filter(t=>fapAudJustDe(t)).length,pend=lista.length-just;
-  box.innerHTML='<span><b>Crédito Emergencial de Limite a partir de R$ 1.000</b> (placas e período selecionados):</span>'+
+  box.innerHTML='<span><b>Crédito Emergencial de Limite a partir de R$ 1.000</b> com cota informada (placas e período selecionados):</span>'+
     '<span><b>'+lista.length+'</b> transação(ões)</span><span><b>'+eh(fapFmtMoney(totC/100))+'</b></span>'+
     '<span style="color:var(--green-dk)"><b>'+just+'</b> justificada(s)</span>'+
     '<span style="color:'+(pend?'var(--red)':'var(--tx3)')+'"><b>'+pend+'</b> pendente(s)</span>'+
@@ -28600,7 +28606,7 @@ function fapAudRenderResultados(){
   let credLista=null;
   if((fapAudSoCredAlto||fapAudSoDebBaixo||fapAudSoCota)&&!erro){
     credLista=fapAudFiltrar({ignorarTipo:true}).list;
-    if(fapAudSoCredAlto||fapAudSoDebBaixo)credLista=credLista.filter(t=>(fapAudSoCredAlto&&fapAudEhCredAlto(t))||(fapAudSoDebBaixo&&fapAudEhDebBaixo(t)));
+    if(fapAudSoCredAlto||fapAudSoDebBaixo)credLista=credLista.filter(t=>(fapAudSoCredAlto&&fapAudCredAltoConta(t))||(fapAudSoDebBaixo&&fapAudEhDebBaixo(t)));
     if(fapAudSoCota)credLista=credLista.filter(t=>fapAudCotaDe(t));
   }
   const vazio=!list.length&&!(credLista&&credLista.length);
