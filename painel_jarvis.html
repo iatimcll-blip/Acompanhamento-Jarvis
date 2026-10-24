@@ -2149,6 +2149,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-ana-hd i{color:var(--blue)}
 #panel-redir-sem .rs-ana-hd small{display:block;font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px}
 #panel-redir-sem .rs-ana-av{color:var(--orange);font-size:10.5px}
+#panel-redir-sem .rs-ana-kpi{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--tx)}
+#panel-redir-sem .rs-ana-kpi span:first-child{font-weight:700}
 #panel-redir-sem .rs-ana-vol{display:flex;flex-wrap:wrap;gap:4px 14px}
 #panel-redir-sem .rs-ana-vol b{color:var(--tx);font-size:13px}
 #panel-redir-sem .rs-ana-dims{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:6px}
@@ -37481,18 +37483,31 @@ function rsJustCard(r,pr,sem,prev,D){
     _ghToast('Sugestão aplicada — revise o texto e preencha o Resp.','var(--green-dk)',3500);
   };
   const pintaBar=()=>{
-    const b=rsIndBaseFor(r.indicador);
+    const f=rsFonteDe(r),m=f.m;
     abar.innerHTML='';
-    const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(b?'Trocar base':'Inserir base');
-    ins.title='Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv, ex.: a mesma do painel B2C). Ela fica só neste dispositivo e serve para todos os clusters deste indicador.';
-    ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
-    if(b){const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
+    const nota=t=>{const sp=document.createElement('span');sp.className='rs-note';sp.textContent=t;abar.appendChild(sp);};
+    if(!(m&&m.painel==='enc')){
+      const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(f.tipo==='anexo'?'Trocar base':'Inserir base');
+      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Fica só neste dispositivo e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Fica só neste dispositivo.';
+      ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
+    }
+    if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&!rsPlantaFonte()){
+      const pb=document.createElement('button');pb.type='button';pb.className='rs-btn';pb.innerHTML='<i class="ti ti-building-community"></i> Inserir Planta Média';
+      pb.title='Planta Média para calcular o IRT por unidade: '+rsModeloTxt(RS_PLANTA)+' (ou carregue-a no Painel B2C).';
+      pb.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();},true);abar.appendChild(pb);
+    }
+    if(f.tipo!=='nenhuma'){
+      const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
       an.onclick=()=>{if(ana.hidden)mostra();else{ana.hidden=true;rsAnaAbertas.delete(r.id);pintaBar();}};abar.appendChild(an);
-      const sp=document.createElement('span');sp.className='rs-note';sp.textContent=b.name+' · '+rsNf0.format(b.total)+' linhas';abar.appendChild(sp);}
-    else{const sp=document.createElement('span');sp.className='rs-note';sp.textContent='anexe a base do indicador para gerar uma análise de apoio ao FCA';abar.appendChild(sp);}
+      nota('Fonte: '+f.lbl+(f.tipo==='anexo'?' · '+rsNf0.format(f.base.total)+' linhas':''));
+    }else if(m&&m.painel==='enc')nota('sem dados: anexe a base no Painel B2B Encerrados');
+    else if(m&&m.painel==='max')nota('sem base: anexe o '+rsModeloTxt(m)+' aqui ou a base do Painel MAX');
+    else if(m)nota('sem base: anexe o '+rsModeloTxt(m)+(m.b2c?' (ou carregue-o no Painel B2C)':''));
+    else nota('sem modelo de base para este indicador — se tiver uma base, use "Inserir base"');
   };
-  const mostra=()=>{const b=rsIndBaseFor(r.indicador);if(!b)return;
-    let a;try{a=rsAnalisarBase(b,r,D.meta);}catch(e){ana.hidden=false;ana.textContent='Não foi possível analisar: '+(e&&e.message||e);return;}
+  const mostra=()=>{
+    let a;try{a=rsAnalisarFca(r,D);}catch(e){ana.hidden=false;ana.textContent='Não foi possível analisar: '+(e&&e.message||e);return;}
+    if(!a){ana.hidden=false;ana.textContent='Sem dados para analisar este indicador.';return;}
     rsPintaAnalise(ana,a,aplicar);ana.hidden=false;rsAnaAbertas.add(r.id);pintaBar();};
   pintaBar();c.appendChild(abar);c.appendChild(ana);
   if(rsAnaAbertas.has(r.id))setTimeout(mostra,0);
@@ -37533,7 +37548,7 @@ const RS_COLS={
   unidade:['Unidade'],
   olt:['OLT'],
   contrato:['Contrato','codigo_contrato'],
-  foco:['Reparo','conclusao','conclusao_os','MAX3','Aging','Data Criação Contrato'],
+  foco:['Reparo','conclusao','conclusao_os','Conclusão OS','MAX3','Aging','Data Criação Contrato','Reparo8h'],
 };
 const RS_DIM_LBL={cidade:'Cidade',bairro:'Bairro',motivo:'Motivo',motivoAnt:'Motivo da OS anterior',tecnico:'Técnico',tecnicoAnt:'Técnico da OS anterior',parceira:'Parceira/EPS',unidade:'Unidade',olt:'OLT'};
 /* reduz as linhas lidas (objetos por cabeçalho) às colunas usadas na análise */
@@ -37570,7 +37585,7 @@ function rsFoco(ind,base){
   if(/PRAZO24|PRAZODEREPAROS|REPAROSPRAZO/.test(I)&&fc('Reparo')){const i=ix(fc('Reparo'));return{lbl:'reparos fora de 24h (coluna Reparo ≠ "Até 24 hrs")',f:r=>String(r[i]||'')!=='Até 24 hrs'};}
   if(/AGINGALTAS/.test(I)&&fc('Data Criação Contrato')&&p.data){const a=ix(p.data),c=ix(fc('Data Criação Contrato'));return{lbl:'ativações acima de 48h (Data Ativação − Criação do Contrato > 2 dias)',f:r=>{const x=rsToDate(r[a]),y=rsToDate(r[c]);return x&&y?(x-y)/864e5>2:false;}};}
   if(/AGINGME/.test(I)&&fc('Aging')){const i=ix(fc('Aging'));return{lbl:'mudanças acima de 2 dias (Aging > 2)',f:r=>Number(r[i])>2};}
-  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os'))){const i=ix(fc('conclusao')||fc('conclusao_os'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',f:r=>String(r[i]||'')!=='Realizado'};}
+  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'))){const i=ix(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',f:r=>String(r[i]||'')!=='Realizado'};}
   if(/^MAX/.test(I)&&fc('MAX3')){const i=ix(fc('MAX3'));return{lbl:'chamados com reincidência (MAX3 ≥ 1)',f:r=>Number(r[i])>=1};}
   return{lbl:'todas as linhas da base (cada linha é um evento do indicador)',f:()=>true};
 }
@@ -37580,7 +37595,7 @@ function rsTop(rows,i,n,limpa){const m=new Map();for(const r of rows){let v=r[i]
   let ac=0,p80=0;for(const x of arr){ac+=x[1];p80++;if(ac>=tot*.8)break;}
   return{tot,distintos:arr.length,p80,top:arr.slice(0,n||5).map(([v,c])=>({v,c,pct:tot?c/tot:0}))};}
 const rsPctTxt=v=>(Math.round(v*1000)/10).toString().replace('.',',')+'%';
-function rsAnalisarBase(base,fca,meta){
+function rsAnalisarBase(base,fca,meta,opts){
   const p=base.pick,ix=c=>c?base.cols.indexOf(c):-1;
   /* 1) cluster do FCA */
   const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1];
@@ -37589,7 +37604,7 @@ function rsAnalisarBase(base,fca,meta){
   const avisos=[];
   if(!clusterOk)avisos.push(p.cluster?'a base não tem linhas do cluster '+fca.cluster+' — analisei a base inteira':'a base não tem coluna de cluster — analisei a base inteira');
   /* 2) foco: linhas fora do padrão */
-  const foco=rsFoco(fca.indicador,base);
+  const foco=opts&&opts.foco?opts.foco(base):rsFoco(fca.indicador,base);
   const off=rows.filter(foco.f);
   /* 3) períodos: semana do FCA e a anterior; mês do fato */
   const di=ix(p.data);let semRows=off,antRows=[],mesRows=off,semLbl='',antLbl='',mesLbl='';
@@ -37630,8 +37645,9 @@ function rsAnalisarBase(base,fca,meta){
     const rep=[...m.values()].filter(v=>v>1);reinc={contratos:m.size,reincidentes:rep.length,eventos:rep.reduce((s,v)=>s+v,0)};}
   /* 6) rascunho de FCA */
   const sug=rsSugerirFca({dims,reinc,fca,mesLbl,semLbl,antLbl,sem:semRows.length,ant:antRows.length,n:escopo.length});
-  return{arquivo:base.name,cluster:clusterOk?fca.cluster:null,linhasCluster:rows.length,foco:foco.lbl,fora:off.length,
-    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl,mes:mesRows.length,n:escopo.length,dims,reinc,avisos,sug};
+  return{arquivo:(opts&&opts.fonte)||base.name,cluster:clusterOk?fca.cluster:null,linhasCluster:rows.length,foco:foco.lbl,fora:off.length,
+    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl,mes:mesRows.length,mesAlvo:mesRows.length?mesLbl:'',n:escopo.length,dims,reinc,avisos,sug,kpis:[],
+    _escopo:escopo,_base:base};
 }
 const RS_ACAO_MOTIVO=[
   [/ONU|ONT|MODEM|ROTEADOR|EQUIPAMENTO/i,'Verificar lote e configuração dos equipamentos (ONU/roteador) trocados e reforçar o checklist de teste na troca'],
@@ -37676,12 +37692,174 @@ function rsSugerirFca(a){
   };
 }
 const RS_IND_KEY='rs_indbase_v1';let RS_IND=null;const rsAnaAbertas=new Set();
-async function rsIndLoad(){if(RS_IND)return RS_IND;try{RS_IND=(await idbGet(RS_IND_KEY))||{};}catch(e){RS_IND={};}return RS_IND;}
+/* Modelos de base por indicador (pedido 2026-10-24): a base anexada segue os modelos da pasta
+   "Modelos" (uma subpasta por indicador, arquivo com nome fixo). Sem base anexada, a análise
+   busca nos outros painéis: B2C (bases brutas), Painel MAX e Painel B2B Encerrados (Prazo de
+   Reparos B2B). IRT usa a Planta Média (do B2C ou anexada) para calcular a taxa por unidade.
+   b2c = chave em B2C_RAW/B2C_FILE_TYPES (assinatura de colunas usada para validar o arquivo). */
+const RS_MODELOS=[
+  {re:/^IRT/,modelo:'IRT',pasta:'IRT',arquivo:'IRT.xlsx',b2c:'irt',planta:true},
+  {re:/^PRAZO24H|^REPAROS24H/,modelo:'Reparos 24h',pasta:'Reparos 24h',arquivo:'Reparos Prazo.xlsx',b2c:'reparosPrazo'},
+  {re:/^MAX$/,modelo:'MAX',pasta:'MAX',arquivo:'MAX.xlsx',b2c:'maxRaw',painel:'max'},
+  {re:/^IRR$/,modelo:'IRR',pasta:'IRR',arquivo:'IRR.xlsx',b2c:'irr'},
+  {re:/^IFIALTAS$|^IFI$/,modelo:'IFI',pasta:'IFI',arquivo:'IFI.xlsx',b2c:'ifi'},
+  {re:/^IFIME$/,modelo:'IFI ME',pasta:'IFI ME',arquivo:'IFME.xlsx',b2c:'ifme'},
+  {re:/^EFETIVIDADEDEREPAROS|^EFETIVIDADEREPAROS/,modelo:'Efetividade de Reparo',pasta:'Efetividade de Reparo',arquivo:'Efetividade Reparos.xlsx',b2c:'efetividadeReparos'},
+  {re:/^EFICIENCIA(LIMPA|VENDAS)|^EFETIVIDADEDEALTAS|^EFETIVIDADEALTAS/,modelo:'Efetividade de Altas',pasta:'Efetividade de Altas',arquivo:'Efetividade Altas.xlsx',b2c:'efetividadeAltas'},
+  {re:/^EFICIENCIAME|^AGINGME/,modelo:'Mudança de Endereço',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
+  {re:/^AGINGALTAS/,modelo:'Aging Altas',pasta:'',arquivo:'Aging Altas.xlsx',b2c:'agingAltas'},
+  {re:/^PRAZODEREPAROSB2B/,modelo:'Prazo de Reparos B2B',painel:'enc'},
+];
+const RS_PLANTA={modelo:'Planta Média',pasta:'Planta Média',arquivo:'Planta Media.xlsx',b2c:'plantaMedia'};
+function rsModeloDe(ind){const n=RS_NK(ind);return RS_MODELOS.find(m=>m.re.test(n))||null;}
+function rsModeloTxt(m){return m&&m.arquivo?(m.pasta?'Modelos\\'+m.pasta+'\\':'')+m.arquivo:'';}
+let RS_MX=null,RS_B2C_CACHE={};
+async function rsIndLoad(){
+  if(!RS_IND){try{RS_IND=(await idbGet(RS_IND_KEY))||{};}catch(e){RS_IND={};}}
+  try{const mx=await idbGet('mx_base_v1');RS_MX=mx&&mx.data&&mx.data.unidades?mx:null;}catch(e){RS_MX=null;}
+  return RS_IND;
+}
+/* base anexada no Redir: chave = modelo (IRT serve IRT e IRT (DU)); bases antigas, por indicador, continuam valendo */
 function rsIndBaseFor(ind){
-  if(!RS_IND)return null;if(RS_IND[ind])return RS_IND[ind];
+  if(!RS_IND)return null;const m=rsModeloDe(ind);
+  if(m&&RS_IND[m.modelo])return RS_IND[m.modelo];
+  if(RS_IND[ind])return RS_IND[ind];
   const n=RS_NK(ind);let best=null;
-  for(const k of Object.keys(RS_IND)){const nk=RS_NK(k);if(nk&&(n.startsWith(nk)||nk.startsWith(n))&&(!best||nk.length>RS_NK(best).length))best=k;}
+  for(const k of Object.keys(RS_IND)){if(k===RS_PLANTA.modelo)continue;const nk=RS_NK(k);if(nk&&(n.startsWith(nk)||nk.startsWith(n))&&(!best||nk.length>RS_NK(best).length))best=k;}
   return best?RS_IND[best]:null;
+}
+function _rsB2cLinhas(key){const a=(typeof B2C_RAW!=='undefined'&&B2C_RAW&&Array.isArray(B2C_RAW[key]))?B2C_RAW[key]:[];return a;}
+function _rsB2cArquivo(key){try{const f=B2C_FILES&&B2C_FILES[key];return f&&f.fileName||'';}catch(e){return'';}}
+/* B2C_RAW guarda {raw:linha original,...}: reduz uma vez por tamanho de base */
+function _rsB2cBase(key){
+  const rows=_rsB2cLinhas(key);if(!rows.length)return null;
+  const c=RS_B2C_CACHE[key];if(c&&c.n===rows.length&&c.f===_rsB2cArquivo(key))return c.base;
+  const base=rsReduzBase(rows.map(r=>r&&r.raw?r.raw:r),_rsB2cArquivo(key)||key);
+  RS_B2C_CACHE[key]={n:rows.length,f:_rsB2cArquivo(key),base};return base;
+}
+/* Prazo de Reparos B2B: chamados do Painel B2B Encerrados (dEnc) da UF do cluster */
+const RS_UF_CLUSTER={31:'PI',32:'MA'};
+function _rsUfDoCluster(cl){const cod=(String(cl).match(/C\.?\s*(\d+)/i)||[])[1];if(cod&&RS_UF_CLUSTER[cod])return RS_UF_CLUSTER[cod];
+  const n=RS_NK(cl);return /MARANH/.test(n)?'MA':/PIAU/.test(n)?'PI':/PARA(?!NA)/.test(n)?'PA':/AMAZ/.test(n)?'AM':/AMAP/.test(n)?'AP':'';}
+function _rsEncBase(fca){
+  if(typeof dEnc==='undefined'||!Array.isArray(dEnc)||!dEnc.length)return null;
+  const uf=_rsUfDoCluster(fca.cluster);const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1]||'';
+  const rows=dEnc.filter(x=>!uf||String(x.uf||'').toUpperCase()===uf);if(!rows.length)return null;
+  const objs=rows.map(x=>({'Data Evento':x.dataFechamento&&x.dataFechamento!=='-'?x.dataFechamento:x.dataAbertura,'Novo Cluster':'C.'+cod+' - '+uf,'Cidade':x.cidade||'',
+    'Motivo':x.causaRaiz||'','EPS':x.mop||'','Unidade':x.clusterNome||x.cluster||'','Contrato':x.clienteId||x.cliente||'','Reparo8h':x.dentro8h?'Dentro':'Fora'}));
+  return rsReduzBase(objs,'Painel B2B Encerrados');
+}
+const _rsFocoEnc=base=>{const i=base.cols.indexOf('Reparo8h');return{lbl:'chamados B2B fora do prazo de 8h (Painel B2B Encerrados)',f:r=>i>=0&&r[i]==='Fora'};};
+/* fonte da análise de um FCA, na ordem: base anexada → Painel B2C → Painel MAX → Painel B2B Encerrados */
+function rsFonteDe(r){
+  const m=rsModeloDe(r.indicador);
+  const anex=rsIndBaseFor(r.indicador);
+  if(anex)return{tipo:'anexo',m,base:anex,lbl:'base anexada ('+anex.name+')'};
+  if(m&&m.b2c&&_rsB2cLinhas(m.b2c).length)return{tipo:'b2c',m,lbl:'Painel B2C ('+(_rsB2cArquivo(m.b2c)||m.arquivo)+')'};
+  if(m&&m.painel==='max'&&RS_MX)return{tipo:'max',m,lbl:'Painel MAX ('+((RS_MX.info&&RS_MX.info.arquivo)||'base do painel')+')'};
+  if(m&&m.painel==='enc'&&typeof dEnc!=='undefined'&&dEnc.length)return{tipo:'enc',m,lbl:'Painel B2B Encerrados ('+dEnc.length+' chamados)'};
+  return{tipo:'nenhuma',m};
+}
+/* Planta Média para o IRT: anexada no Redir ou a do Painel B2C → {cod:{unidade:planta}} */
+function rsPlantaFonte(){
+  const anex=RS_IND&&RS_IND[RS_PLANTA.modelo];
+  if(anex)return{lbl:'Planta Média anexada ('+anex.name+')',rows:anex.rows};
+  const raw=_rsB2cLinhas('plantaMedia');
+  if(raw.length)return{lbl:'Planta Média do Painel B2C ('+(_rsB2cArquivo('plantaMedia')||RS_PLANTA.arquivo)+')',rows:raw.map(x=>{const o=x&&x.raw?x.raw:x;return[o['Novo Cluster']||'',o['Unidade']||'',o['Media Base Media']];})};
+  return null;
+}
+function rsReduzPlanta(objs,name){
+  if(!objs.length)throw new Error('a planilha está vazia');
+  const h=Object.keys(objs[0]);const nh=new Map(h.map(x=>[RS_NK(x),x]));
+  const c=nh.get(RS_NK('Novo Cluster')),u=nh.get(RS_NK('Unidade')),v=nh.get(RS_NK('Media Base Media'));
+  if(!c||!u||!v)throw new Error('não é a Planta Média (faltam Novo Cluster, Unidade ou Media Base Media)');
+  return{name,planta:true,total:objs.length,at:new Date().toISOString(),rows:objs.map(o=>[o[c]||'',o[u]||'',o[v]])};
+}
+/* IRT: taxa = reparos do mês ÷ planta (clientes) — no cluster e por unidade */
+function rsIrtComPlanta(a,fca){
+  const pf=rsPlantaFonte();if(!pf){a.avisos.push('sem Planta Média: anexe a '+RS_PLANTA.arquivo+' (pasta Modelos\\'+RS_PLANTA.pasta+') ou carregue-a no Painel B2C para calcular o IRT por unidade');return;}
+  const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1];
+  const pl=new Map();let tot=0;
+  for(const [cl,un,v] of pf.rows){const m=String(cl).match(/C\.?\s*(\d+)/i);if(!m||m[1]!==cod)continue;const n=Number(v)||0;tot+=n;const k=String(un||'').trim();pl.set(k,(pl.get(k)||0)+n);}
+  if(!tot){a.avisos.push('a Planta Média não tem o cluster '+fca.cluster);return;}
+  const base=a._base,ui=base.cols.indexOf(base.pick.unidade);const rep=new Map();
+  for(const r of a._escopo){const k=ui>=0?String(r[ui]||'').trim():'';rep.set(k,(rep.get(k)||0)+1);}
+  const nRep=a._escopo.length;const taxa=nRep/tot;
+  /* 2026-10-24: a Planta Média vem por bairro × bucket (o mesmo bairro repete até 16 vezes) e a soma
+     fica ~10× acima da base usada no IRT oficial (C.32: 0,3% calculado × 4,48% oficial). Por isso a
+     planta só é usada para COMPARAR as unidades entre si (índice relativo, 1,0× = média do cluster),
+     que não depende da escala; o IRT absoluto não é exibido. */
+  a.kpis.push('IRT relativo por unidade: reparos'+(a.mesLbl?' de '+a.mesLbl:'')+' ÷ planta, comparado à média do cluster (1,0×)');
+  a.kpis.push('Planta: '+pf.lbl);
+  const fx=v=>(Math.round(v*10)/10).toString().replace('.',',')+'×';
+  const un=[...pl.entries()].filter(([k,p])=>p>=50).map(([k,p])=>({v:k,c:rep.get(k)||0,pct:taxa?((rep.get(k)||0)/p)/taxa:0,p})).filter(x=>x.c>=3).sort((x,y)=>y.pct-x.pct);
+  if(un.length){
+    a.dims.unshift({k:'irtUnidade',lbl:'IRT relativo por unidade (1,0× = média do cluster)',tot:nRep,distintos:un.length,p80:un.length,top:un.slice(0,5),rel:true,alta:null});
+    const piores=un.filter(x=>x.pct>=1.2&&x.c>=3).slice(0,2);
+    if(piores.length){
+      const c='IRT acima da média do cluster em '+piores.map(x=>x.v+' ('+fx(x.pct)+' a média, '+x.c+' reparos)').join(' e ');
+      const ac='Plano de redução de reparos em '+piores.map(x=>x.v).join(' e ')+': mapear ofensores de rede/instalação e acompanhar a taxa semanalmente';
+      const cs=a.sug.causa?a.sug.causa.split('\n'):[],as=a.sug.acao?a.sug.acao.split('\n'):[];
+      cs.unshift('X. '+c);as.unshift('X.1 '+ac);
+      const ren=(l,i,sub)=>l.replace(/^(X|\d+)(\.1)?\.?\s/,(i+1)+(sub?'.1 ':'. '));
+      a.sug.causa=cs.map((l,i)=>ren(l,i,false)).join('\n');a.sug.acao=as.map((l,i)=>ren(l,i,true)).join('\n');
+      const pz=(a.sug.prazo.split('\n')[0]||'1.1 ').replace(/^\d+\.1\s/,'');a.sug.prazo=as.map((l,i)=>(i+1)+'.1 '+pz).join('\n');a.sug.status=as.map((l,i)=>(i+1)+'.1 Em andamento').join('\n');
+    }
+  }
+}
+/* MAX pela base do Painel MAX (agregada por unidade × mês) */
+const RS_ACAO_DRIVER={
+  'Triagem/Massiva':'Tratar com o NOC os eventos massivos que geraram retorno e reforçar a triagem de afetação antes do despacho',
+  'Improdutiva Anterior':'Confirmação ativa de agenda e contato prévio com o cliente para reduzir visitas improdutivas',
+  'Qualidade Técnica':'Auditoria de qualidade dos reparos (checklist de teste no fechamento) e reciclagem dos técnicos com mais retornos',
+  'Erro de Cancelamento':'Revisar com o CAT/retenção os cancelamentos sem visita e o roteiro de validação com o cliente',
+  'Erro de Abertura':'Reforçar a triagem na abertura para evitar chamados encerrados sem visita que voltam em seguida',
+  'Problema Técnico Operacional':'Acompanhar os casos que voltam após 4 dias e o tempo de atendimento das OS de reparo',
+};
+function rsAnalisarMax(mx,fca,meta){
+  const d=mx.data;const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1];const avisos=[];
+  const doCluster=r=>{const m=String(r.cluster||'').match(/C\.?\s*(\d+)/i);return m&&m[1]===cod;};
+  let us=d.unidades.filter(doCluster);let clusterOk=!!us.length;
+  if(!clusterOk){avisos.push('a base do Painel MAX não tem o cluster '+fca.cluster+' — analisei a base inteira');us=d.unidades.slice();}
+  const mm=String(meta&&meta.mes||'').match(/([a-zç]{3})\/(\d{2})/i);
+  let mes=mm?(2000+ +mm[2])+'-'+String(RS_MESES.indexOf(mm[1].toLowerCase())+1).padStart(2,'0'):'';
+  if(!mes||!us.some(r=>r.mes===mes)){const ms=[...new Set(us.map(r=>r.mes))].sort();const u=ms[ms.length-1]||'';if(mes)avisos.push('a base do Painel MAX não tem '+meta.mes+' — usei o último mês ('+u+')');mes=u;}
+  const uSet=new Set(us.map(r=>r.unidade));const noMes=r=>r.mes===mes&&uSet.has(r.unidade);
+  const um=us.filter(r=>r.mes===mes);const reparos=um.reduce((s,r)=>s+(+r.reparos||0),0),max=um.reduce((s,r)=>s+(+r.max||0),0);
+  const mesLbl=mes?RS_MESES[+mes.slice(5,7)-1]+'/'+mes.slice(2,4):'';
+  const agrega=(lista,campo)=>{const m=new Map();for(const r of lista.filter(noMes)){const k=String(r[campo]||'').trim();if(!k)continue;m.set(k,(m.get(k)||0)+(+r.max||0));}
+    const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]);const tot=arr.reduce((s,x)=>s+x[1],0);let ac=0,p80=0;for(const x of arr){ac+=x[1];p80++;if(ac>=tot*.8)break;}
+    return{tot,distintos:arr.length,p80,top:arr.slice(0,5).map(([v,c])=>({v,c,pct:tot?c/tot:0}))};};
+  const dims=[];
+  const ut=um.map(r=>({v:r.unidade,c:+r.max||0,pct:(+r.reparos)?(+r.max||0)/(+r.reparos):0})).filter(x=>x.c>0).sort((a,b)=>b.pct-a.pct);
+  if(ut.length)dims.push({k:'maxUnidade',lbl:'MAX por unidade (MAX ÷ reparos)',tot:max,distintos:ut.length,p80:ut.length,top:ut.slice(0,5),taxa:true,alta:null});
+  const dr=agrega(d.drivers||[],'driver');if(dr.tot)dims.push({k:'driver',lbl:'Driver do retorno',...dr,alta:null});
+  const mo=agrega(d.motivos||[],'motivo_anterior');if(mo.tot)dims.push({k:'motivoAnt',lbl:'Motivo do reparo anterior',...mo,alta:null});
+  const mx2=agrega(d.motivos_max||[],'motivo');if(mx2.tot)dims.push({k:'motivo',lbl:'Motivo do chamado MAX',...mx2,alta:null});
+  const ag=agrega(d.aging||[],'faixa');if(ag.tot)dims.push({k:'aging',lbl:'Tempo até o retorno',...ag,alta:null});
+  const taxa=reparos?max/reparos:0;
+  const causas=[],acoes=[];const add=(c,a)=>{causas.push(c);acoes.push(a);};
+  if(dr.top[0]&&dr.top[0].pct>=.25)add('Driver predominante: '+dr.top[0].v+' ('+rsPctTxt(dr.top[0].pct)+' dos '+dr.tot+' MAX'+(mesLbl?' em '+mesLbl:'')+')',RS_ACAO_DRIVER[dr.top[0].v]||'Tratativa do driver "'+dr.top[0].v+'" com o time responsável');
+  const pior=ut.filter(x=>x.pct>=taxa*1.2&&x.c>=3).slice(0,2);
+  if(pior.length)add('MAX acima da média do cluster ('+rsPctTxt(taxa)+') em '+pior.map(x=>x.v+' ('+rsPctTxt(x.pct)+')').join(' e '),'Plano de ação nas unidades '+pior.map(x=>x.v).join(' e ')+' com acompanhamento semanal dos retornos');
+  if(mo.top[0]&&mo.top[0].pct>=.2){const v=rsLimpa(mo.top[0].v).toUpperCase();add('Motivo mais comum no reparo anterior: '+v+' ('+rsPctTxt(mo.top[0].pct)+')',(RS_ACAO_MOTIVO.find(([re])=>re.test(v))||[null,'Auditoria dos reparos com motivo '+v])[1]);}
+  const hoje=new Date();const prazo=new Date(hoje.getTime()+7*864e5);const pz=String(prazo.getDate()).padStart(2,'0')+'/'+RS_MESES[prazo.getMonth()];
+  const sug={tendencia:'',causa:causas.map((c,i)=>(i+1)+'. '+c).join('\n'),acao:acoes.map((c,i)=>(i+1)+'.1 '+c).join('\n'),
+    prazo:acoes.map((c,i)=>(i+1)+'.1 '+pz).join('\n'),status:acoes.map((c,i)=>(i+1)+'.1 Em andamento').join('\n'),resp:''};
+  return{arquivo:'Painel MAX ('+((mx.info&&mx.info.arquivo)||'base do painel')+')',cluster:clusterOk?fca.cluster:null,linhasCluster:um.length,foco:'chamados MAX (retorno em até 30 dias)',fora:max,
+    semLbl:'',antLbl:'',sem:0,ant:0,mesLbl,mes:max,mesAlvo:mesLbl,n:max,dims,reinc:null,avisos,sug,
+    kpis:['MAX do cluster'+(mesLbl?' em '+mesLbl:'')+': '+rsPctTxt(taxa)+' ('+rsNf0.format(max)+' de '+rsNf0.format(reparos)+' reparos)']};
+}
+/* analisa um FCA pela fonte disponível */
+function rsAnalisarFca(r,D){
+  const f=rsFonteDe(r);
+  if(f.tipo==='nenhuma')return null;
+  let a;
+  if(f.tipo==='max')a=rsAnalisarMax(RS_MX,r,D.meta);
+  else if(f.tipo==='enc'){const b=_rsEncBase(r);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{foco:_rsFocoEnc,fonte:f.lbl});}
+  else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{fonte:f.lbl});}
+  if(f.m&&f.m.planta&&RS_NK(r.indicador)==='IRT'&&a._escopo)rsIrtComPlanta(a,r);
+  delete a._escopo;delete a._base;a.fonteTipo=f.tipo;return a;
 }
 async function rsLerPlanilhaObjs(file){
   const buf=await file.arrayBuffer();
@@ -37689,30 +37867,39 @@ async function rsLerPlanilhaObjs(file){
   const wb=XLSX.read(buf,{type:'array',dense:true});const sn=wb.SheetNames.find(n=>RS_NK(n)==='EXPORT')||wb.SheetNames[0];
   return XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
 }
-let rsIndCb=null,rsIndAlvo='';
-function rsPedirBaseInd(ind,cb){
+/* confere se o arquivo segue o modelo (mesmas colunas-assinatura do Painel B2C) */
+function rsConfereModelo(m,objs){
+  if(!m||!m.b2c||typeof B2C_FILE_TYPES==='undefined')return '';
+  const t=B2C_FILE_TYPES.find(x=>x.key===m.b2c);if(!t||!objs.length)return '';
+  const tem=new Set(Object.keys(objs[0]).map(b2cNk));const falta=t.sigCols.filter(c=>!tem.has(b2cNk(c)));
+  return falta.length?'este arquivo não segue o modelo '+m.modelo+' (faltam as colunas: '+falta.join(', ')+'). Use a planilha '+rsModeloTxt(m)+'.':'';
+}
+let rsIndCb=null,rsIndAlvo='',rsIndPlanta=false;
+function rsPedirBaseInd(ind,cb,planta){
   if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar base neste painel. Peça ao Admin.');return;}
-  rsIndAlvo=ind;rsIndCb=cb;document.getElementById('rs-ind-file').click();
+  rsIndAlvo=ind;rsIndCb=cb;rsIndPlanta=!!planta;document.getElementById('rs-ind-file').click();
 }
 async function rsOnIndFile(inp){
   const file=inp.files&&inp.files[0];inp.value='';if(!file||!rsIndAlvo)return;
-  const ind=rsIndAlvo;
-  _ghToast('Lendo '+file.name+' para '+ind+'… (bases grandes levam alguns segundos)','var(--blue)',6000);
+  const ind=rsIndAlvo,planta=rsIndPlanta;const m=planta?RS_PLANTA:rsModeloDe(ind);
+  _ghToast('Lendo '+file.name+' para '+(planta?'Planta Média':ind)+'… (bases grandes levam alguns segundos)','var(--blue)',6000);
   try{
     const objs=await rsLerPlanilhaObjs(file);
-    const b=rsReduzBase(objs,file.name);b.at=new Date().toISOString();
-    await rsIndLoad();RS_IND[ind]=b;await idbSet(RS_IND_KEY,RS_IND);
-    _ghToast('Base de '+ind+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — só neste dispositivo','var(--green-dk)',4500);
+    const err=rsConfereModelo(m,objs);if(err)throw new Error(err);
+    const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name);b.at=new Date().toISOString();
+    const chave=m?m.modelo:ind;
+    await rsIndLoad();RS_IND[chave]=b;await idbSet(RS_IND_KEY,RS_IND);
+    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — só neste dispositivo','var(--green-dk)',4500);
     if(rsIndCb)rsIndCb();
-  }catch(e){alert('Não foi possível ler a base de '+ind+': '+(e&&e.message||e));}
+  }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
 }
 function rsPintaAnalise(box,a,aplicar){
-  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+x.c+' · '+rsPctTxt(x.pct)+'</em></span>').join('')+
+  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+(d.rel?(Math.round(x.pct*10)/10).toString().replace('.',',')+'× · '+x.c+' reparos':d.taxa?rsPctTxt(x.pct)+' · '+x.c+' casos':x.c+' · '+rsPctTxt(x.pct))+'</em></span>').join('')+
     (d.distintos>3?'<small>'+d.p80+' de '+d.distintos+' concentram 80%</small>':'')+(d.alta?'<small class="up">▲ maior alta na '+eh(a.semLbl)+': '+eh(d.alta.v)+' (+'+d.alta.d+')</small>':'')+'</div>';
   const vol=(a.semLbl?'<span><b>'+a.sem+'</b> na '+eh(a.semLbl)+(a.antLbl?' · '+a.ant+' na '+eh(a.antLbl):'')+'</span>':'')+(a.mesLbl?'<span><b>'+a.mes+'</b> em '+eh(a.mesLbl)+'</span>':'')+'<span><b>'+a.fora+'</b> no período da base</span>';
-  box.innerHTML='<div class="rs-ana-hd"><i class="ti ti-chart-dots"></i> Análise da base <small>'+eh(a.arquivo)+' · '+(a.cluster?'cluster '+eh(a.cluster)+' ('+rsNf0.format(a.linhasCluster)+' linhas)':'base inteira')+' · foco: '+eh(a.foco)+'</small></div>'+
+  box.innerHTML='<div class="rs-ana-hd"><i class="ti ti-chart-dots"></i> Análise da base <small>Fonte: '+eh(a.arquivo)+' · '+(a.cluster?'cluster '+eh(a.cluster)+' ('+rsNf0.format(a.linhasCluster)+' linhas)':'base inteira')+' · foco: '+eh(a.foco)+'</small></div>'+
     (a.avisos.length?'<div class="rs-ana-av">'+a.avisos.map(eh).join(' · ')+'</div>':'')+
-    '<div class="rs-ana-vol">'+vol+'</div>'+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
+    '<div class="rs-ana-vol">'+vol+'</div>'+((a.kpis||[]).length?'<div class="rs-ana-kpi">'+a.kpis.map(k=>'<span>'+eh(k)+'</span>').join('')+'</div>':'')+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
     '<div class="rs-ana-dims">'+a.dims.map(li).join('')+(a.reinc?'<div class="rs-ana-dim"><b>Reincidência</b><span>'+a.reinc.reincidentes+' contratos com 2+ eventos <em>'+a.reinc.eventos+' eventos</em></span></div>':'')+'</div>'+
     '<div class="rs-ana-sug"><b>Sugestão para o FCA</b>'+(a.sug.causa?'<pre>CAUSA\n'+eh(a.sug.causa)+'\n\nAÇÃO\n'+eh(a.sug.acao)+'</pre>':'<p class="rs-note">Os dados não mostram concentração clara (cidade, motivo, técnico). Use a análise acima para descrever a causa.</p>')+'</div>';
   const bar=document.createElement('div');bar.className='acts';
