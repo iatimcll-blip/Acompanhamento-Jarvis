@@ -37500,7 +37500,7 @@ function rsJustCard(r,pr,sem,prev,D){
     const f=rsFonteDe(r),m=f.m;
     abar.innerHTML='';
     const nota=t=>{const sp=document.createElement('span');sp.className='rs-note';sp.textContent=t;abar.appendChild(sp);};
-    if(!(m&&m.painel==='enc')){
+    if(!(m&&(m.painel==='enc'||m.painel==='rede'))){
       const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(f.tipo==='anexo'?'Trocar base':'Inserir base');
       ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Vale enquanto o painel estiver aberto e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Vale enquanto o painel estiver aberto.';
       ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
@@ -37524,6 +37524,7 @@ function rsJustCard(r,pr,sem,prev,D){
       an.onclick=()=>{if(ana.hidden)mostra();else{ana.hidden=true;rsAnaAbertas.delete(r.id);pintaBar();}};abar.appendChild(an);
       nota('Fonte: '+f.lbl+(f.tipo==='anexo'?' · '+rsNf0.format(f.base.total)+' linhas':''));
     }else if(m&&m.painel==='enc')nota('sem dados: anexe a base no Painel B2B Encerrados');
+    else if(m&&m.painel==='rede')nota('sem dados: anexe a base no Painel Rede');
     else if(m&&m.painel==='max')nota('sem base: anexe o '+rsModeloTxt(m)+' aqui ou a base do Painel MAX');
     else if(m)nota('sem base: anexe o '+rsModeloTxt(m));
     else nota('sem modelo de base para este indicador — se tiver uma base, use "Inserir base"');
@@ -37680,9 +37681,11 @@ function rsAnalisarBase(base,fca,meta,opts){
     _escopo:escopo,_base:base};
 }
 const RS_ACAO_MOTIVO=[
+  /* causas de rede física (B2B/Rede) antes das de instalação do cliente — "ROMPIMENTO DE FIBRA" não é drop/conector */
+  [/CTO|ROMPIMENTO|ATENUA|POSTE|INC[EÊ]NDIO|TERCEIROS|PRAGA|VANDALISMO|FURTO/i,'Plano de manutenção preventiva na rede (CTO, cabos e postes) com o parceiro e vistoria dos pontos com mais ocorrências'],
   [/ONU|ONT|MODEM|ROTEADOR|EQUIPAMENTO/i,'Verificar lote e configuração dos equipamentos (ONU/roteador) trocados e reforçar o checklist de teste na troca'],
   [/DROP|CONECTOR|FIBRA|CABO|EMENDA/i,'Auditoria de qualidade nas instalações (drop/conector/emenda) e reciclagem técnica dos executores'],
-  [/VELOCIDADE|LENTID|WIFI|WI-FI|SINAL/i,'Validar provisionamento/plano e exigir teste de velocidade e posicionamento do Wi-Fi no fechamento da OS'],
+  [/VELOCIDADE|LENTID|WIFI|WI-FI/i,'Validar provisionamento/plano e exigir teste de velocidade e posicionamento do Wi-Fi no fechamento da OS'],
   [/SEM CONEX|LOS|OLT|PON|MASSIVA|REDE/i,'Análise com o NOC dos eventos de rede (OLT/PON) e plano de manutenção preventiva nos pontos recorrentes'],
   [/INDEVIDA|TRIAGEM|VISITA EVITADA|DESIST/i,'Reforçar a triagem (CST/NOC) antes do despacho para evitar aberturas indevidas e visitas improdutivas'],
   [/AUSENTE|REAGEND|AGENDA|ANTECIPA|CANCEL|COMERCIAL/i,'Confirmação ativa de agenda com o cliente (contato prévio e ligação ao chegar) e reagendamento no mesmo dia'],
@@ -37739,6 +37742,7 @@ const RS_MODELOS=[
   {re:/^EFICIENCIAME|^AGINGME/,modelo:'Mudança de Endereço',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
   {re:/^AGINGALTAS/,modelo:'Aging Altas',pasta:'',arquivo:'Aging Altas.xlsx',b2c:'agingAltas'},
   {re:/^PRAZODEREPAROSB2B/,modelo:'Prazo de Reparos B2B',painel:'enc'},
+  {re:/^MTTR/,modelo:'MTTR 6H',painel:'rede'},
 ];
 const RS_PLANTA={modelo:'Planta Média',pasta:'Planta Média',arquivo:'Planta Media.xlsx',b2c:'plantaMedia'};
 function rsModeloDe(ind){const n=RS_NK(ind);return RS_MODELOS.find(m=>m.re.test(n))||null;}
@@ -37791,6 +37795,7 @@ function rsFonteDe(r){
   /* 2026-10-24: a base do Painel B2C não é mais fonte do indicador — do B2C só a Planta Média (IRT) */
   if(m&&m.painel==='max'&&RS_MX)return{tipo:'max',m,lbl:'Painel MAX ('+((RS_MX.info&&RS_MX.info.arquivo)||'base do painel')+')'};
   if(m&&m.painel==='enc'&&typeof dEnc!=='undefined'&&dEnc.length)return{tipo:'enc',m,lbl:'Painel B2B Encerrados ('+dEnc.length+' chamados)'};
+  if(m&&m.painel==='rede'&&typeof rdeAD!=='undefined'&&(rdeAD.length||rdeBD.length))return{tipo:'rede',m,lbl:'Painel Rede ('+(rdeAD.length+rdeBD.length)+' chamados)'};
   return{tipo:'nenhuma',m};
 }
 /* Planta Média para o IRT: anexada no Redir ou a do Painel B2C → {cod:{unidade:planta}} */
@@ -37927,12 +37932,78 @@ function rsAnalisarEnc(fca,D,fonte){
   return{arquivo:fonte,cluster:fca.cluster,linhasCluster:semRows.length,foco:'chamados B2B fora do prazo de 8h na semana '+kSem+' (Painel B2B Encerrados, UF '+uf+')',
     fora:fS.length,semLbl:kSem,antLbl:antRows.length?kAnt:'',sem:fS.length,ant:fA.length,mesLbl:'',mes:0,mesAlvo:'',n:fS.length,dims,reinc:null,avisos,sug,kpis,semanaFixa:true};
 }
+/* põe uma causa/ação no topo da sugestão e renumera (1., 2.… / 1.1, 2.1…) */
+function rsSugPrepend(sug,c,a){
+  const cs=[c].concat(sug.causa?sug.causa.split('\n').map(l=>l.replace(/^\d+\.\s/,'')):[]);
+  const as=[a].concat(sug.acao?sug.acao.split('\n').map(l=>l.replace(/^\d+\.1\s/,'')):[]);
+  const pz=((sug.prazo||'').split('\n')[0]||'').replace(/^\d+\.1\s/,'');
+  sug.causa=cs.map((l,i)=>(i+1)+'. '+l).join('\n');sug.acao=as.map((l,i)=>(i+1)+'.1 '+l).join('\n');
+  if(pz)sug.prazo=as.map((l,i)=>(i+1)+'.1 '+pz).join('\n');sug.status=as.map((l,i)=>(i+1)+'.1 Em andamento').join('\n');
+}
+/* MTTR 6H direto do Painel Rede (pedido 2026-10-24): mesma regra do MTTR do painel (Acesso + Backbone,
+   tempo real Abertura→Fechamento, sem expurgados e sem os fechados em até 15 min), sempre na SEMANA do
+   FCA (W43 → "2026-W43" do Painel Rede). Cluster do FCA → clusters do Rede: C.32 Maranhão = MA CAP + MA INT,
+   C.31 Piauí = PI, Norte = NORTE. */
+function _rsRedeClusters(cl){const cod=(String(cl).match(/C\.?\s*(\d+)/i)||[])[1];const n=RS_NK(cl);
+  if(cod==='32'||/MARANH/.test(n))return['C','I'];if(cod==='31'||/PIAU/.test(n))return['P'];if(/NORTE|PARA|AMAZ|AMAP/.test(n))return['N'];return null;}
+function rsAnalisarRede(fca,D,fonte){
+  if(typeof rdeAD==='undefined')return null;
+  const cls=_rsRedeClusters(fca.cluster);const avisos=[];
+  let flat=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
+  if(cls)flat=flat.filter(r=>cls.includes(r.cl));else avisos.push('cluster '+fca.cluster+' sem correspondência no Painel Rede — usei todos os clusters');
+  flat=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return!(ch&&rdeExpurgo&&rdeExpurgo[ch]);}).filter(r=>r.elapsedH!=null&&r.elapsedH>RDE_MTTR_MIN_H);
+  if(!flat.length)return null;
+  const meta=+((String(fca.indicador).match(/(\d+)\s*H/i)||[])[1])||6;
+  const semOf=r=>{const m=String(r.w||'').match(/^(\d{4})-W(\d{1,2})$/);return m?{y:+m[1],w:+m[2]}:null;};
+  const chave=(y,w)=>y+'-W'+String(w).padStart(2,'0');
+  const wNum=+String(fca.semana).replace(/\D/g,'');
+  const mmA=String(D.meta&&D.meta.mes||'').match(/([a-zç]{3})\/(\d{2})/i),anoFato=mmA?2000+ +mmA[2]:null;
+  let alvo=null;
+  if(wNum){const anos=[...new Set(flat.map(semOf).filter(x=>x&&x.w===wNum).map(x=>x.y))].sort();const y=anoFato&&anos.includes(anoFato)?anoFato:anos[anos.length-1];if(y)alvo={y,w:wNum};}
+  if(!alvo){const all=flat.map(semOf).filter(Boolean).sort((a,b)=>a.y-b.y||a.w-b.w);alvo=all[all.length-1]||null;if(alvo)avisos.push('o Painel Rede não tem a '+fca.semana+' — usei a última semana da base ('+chave(alvo.y,alvo.w)+')');}
+  if(!alvo)return null;
+  const kSem=chave(alvo.y,alvo.w),ant=alvo.w>1?{y:alvo.y,w:alvo.w-1}:{y:alvo.y-1,w:52},kAnt=chave(ant.y,ant.w);
+  const semRows=flat.filter(r=>r.w===kSem),antRows=flat.filter(r=>r.w===kAnt);
+  const mesKey=mmA?anoFato+'-'+String(RS_MESES.indexOf(mmA[1].toLowerCase())+1).padStart(2,'0'):'';const mesRows=mesKey?flat.filter(r=>r.m===mesKey):[];
+  const media=l=>l.length?l.reduce((s,r)=>s+r.elapsedH,0)/l.length:null;
+  const hh=v=>v==null?'—':rsFmt('MTTR 6H',v);
+  const acima=l=>l.filter(r=>r.elapsedH>meta);
+  const aS=acima(semRows),aA=acima(antRows);
+  const mS=media(semRows),mA=media(antRows),mM=media(mesRows);
+  const pct=(a,b)=>b?a/b:0;
+  const dH=v=>(v>0?'+':v<0?'−':'')+hh(Math.abs(v));
+  const kpis=['MTTR na '+kSem+': '+hh(mS)+' (meta '+hh(meta)+') · acima de '+meta+'h: '+aS.length+' de '+semRows.length+' chamados ('+rsPctTxt(pct(aS.length,semRows.length))+')'];
+  if(antRows.length)kpis.push('Semana anterior ('+kAnt+'): MTTR '+hh(mA)+' · '+aA.length+' de '+antRows.length+' acima de '+meta+'h ('+rsPctTxt(pct(aA.length,antRows.length))+') · variação do MTTR: '+dH(mS-mA));
+  if(mesRows.length)kpis.push('Mês '+(D.meta.mes||mesKey)+': MTTR '+hh(mM)+' ('+mesRows.length+' chamados)');
+  const det=r=>{const d=r._raw&&r._raw[r._scope==='ac'?8:7];return d&&typeof d==='object'?d:{};};
+  /* causa: junta grafias diferentes ("INCÊNDIO" × "Incendio") — maiúsculas, sem acento */
+  const normC=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+  const dim=(k,lbl,campo)=>{const camp=k==='motivo'?(r=>normC(campo(r))):campo;const tot=new Map(),ac=new Map(),acA=new Map(),hs=new Map();
+    semRows.forEach(r=>{const v=String(camp(r)||'').trim();if(!v)return;tot.set(v,(tot.get(v)||0)+1);hs.set(v,(hs.get(v)||0)+r.elapsedH);if(r.elapsedH>meta)ac.set(v,(ac.get(v)||0)+1);});
+    aA.forEach(r=>{const v=String(camp(r)||'').trim();if(v)acA.set(v,(acA.get(v)||0)+1);});
+    const arr=[...tot.entries()].map(([v,t])=>({v,c:ac.get(v)||0,t,pct:t?(ac.get(v)||0)/t:0,h:hs.get(v)/t})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c||b.h-a.h);
+    if(!arr.length)return null;const tf=arr.reduce((s,x)=>s+x.c,0);let acc=0,p80=0;for(const x of arr){acc+=x.c;p80++;if(acc>=tf*.8)break;}
+    let alta=null;for(const x of arr){const d=x.c-(acA.get(x.v)||0);if(d>0&&(!alta||d>alta.d))alta={v:x.v,d,c:x.c,ant:acA.get(x.v)||0};}
+    return{k,lbl,tot:tf,distintos:arr.length,p80,top:arr.slice(0,5),frac:true,fracLbl:'acima de '+meta+'h',alta};};
+  const dims=[dim('cidade','Cidade',r=>r.cidade),dim('motivo','Causa',r=>r.c),dim('tipo','Tipo',r=>r._scope==='ac'?'Acesso':'Backbone'),
+    dim('unidade','Cluster',r=>(typeof RDE_CL_NM!=='undefined'&&RDE_CL_NM[r.cl])||r.cl)].filter(Boolean);
+  const ofs=semRows.slice().sort((a,b)=>b.elapsedH-a.elapsedH).slice(0,5).filter(r=>r.elapsedH>meta)
+    .map(r=>{const d=det(r);return{v:(d.os||d.id?'OS '+(d.os||d.id):'sem OS')+' · '+(r.cidade||d.cidade||'—')+' · '+r.c,c:1,h:r.elapsedH};});
+  if(ofs.length)dims.push({k:'ofensores',lbl:'Maiores tempos na semana',tot:ofs.length,distintos:ofs.length,p80:ofs.length,top:ofs,lista:true,alta:null});
+  const dimsSug=dims.filter(d=>!d.lista&&d.k!=='tipo').map(d=>({...d,top:d.top.map(x=>({v:x.v,c:x.c,pct:d.tot?x.c/d.tot:0}))}));
+  const sug=rsSugerirFca({dims:dimsSug,reinc:null,fca,mesLbl:kSem,semLbl:kSem,antLbl:kAnt,sem:aS.length,ant:aA.length,n:aS.length});
+  if(mS!=null&&mS>meta)rsSugPrepend(sug,'MTTR de '+hh(mS)+' na '+kSem+', acima da meta de '+hh(meta)+': '+aS.length+' de '+semRows.length+' chamados ('+rsPctTxt(pct(aS.length,semRows.length))+') passaram de '+meta+'h',
+    'Acompanhamento diário dos chamados abertos com escalonamento a partir de '+Math.max(1,meta-2)+'h e priorização dos maiores tempos (ofensores)');
+  return{arquivo:fonte,cluster:fca.cluster,linhasCluster:semRows.length,foco:'chamados de rede (Acesso + Backbone) acima de '+meta+'h na semana '+kSem+(cls?' — '+cls.map(c=>(typeof RDE_CL_NM!=='undefined'&&RDE_CL_NM[c])||c).join(' + '):''),
+    fora:aS.length,semLbl:kSem,antLbl:antRows.length?kAnt:'',sem:aS.length,ant:aA.length,mesLbl:'',mes:0,mesAlvo:'',n:aS.length,dims,reinc:null,avisos,sug,kpis,semanaFixa:true,volLbl:'acima de '+meta+'h'};
+}
 function rsAnalisarFca(r,D){
   const f=rsFonteDe(r);
   if(f.tipo==='nenhuma')return null;
   let a;
   if(f.tipo==='max')a=rsAnalisarMax(RS_MX,r,D.meta);
   else if(f.tipo==='enc'){a=rsAnalisarEnc(r,D,f.lbl);if(!a)return null;}
+  else if(f.tipo==='rede'){a=rsAnalisarRede(r,D,f.lbl);if(!a)return null;}
   else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{fonte:f.lbl});}
   if(f.m&&f.m.planta&&RS_NK(r.indicador)==='IRT'&&a._escopo)rsIrtComPlanta(a,r);
   delete a._escopo;delete a._base;a.fonteTipo=f.tipo;return a;
@@ -38012,9 +38083,9 @@ async function rsOnIndFile(inp){
   }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
 }
 function rsPintaAnalise(box,a,aplicar){
-  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+(d.frac?x.c+' de '+x.t+' fora ('+rsPctTxt(x.pct)+')':d.rel?(Math.round(x.pct*10)/10).toString().replace('.',',')+'× · '+x.c+' reparos':d.taxa?rsPctTxt(x.pct)+' · '+x.c+' casos':x.c+' · '+rsPctTxt(x.pct))+'</em></span>').join('')+
+  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+(d.lista?rsFmt('MTTR 6H',x.h):d.frac?x.c+' de '+x.t+' '+(d.fracLbl||'fora')+' ('+rsPctTxt(x.pct)+')'+(x.h!=null?' · MTTR '+rsFmt('MTTR 6H',x.h):''):d.rel?(Math.round(x.pct*10)/10).toString().replace('.',',')+'× · '+x.c+' reparos':d.taxa?rsPctTxt(x.pct)+' · '+x.c+' casos':x.c+' · '+rsPctTxt(x.pct))+'</em></span>').join('')+
     (d.distintos>3?'<small>'+d.p80+' de '+d.distintos+' concentram 80%</small>':'')+(d.alta?'<small class="up">▲ maior alta na '+eh(a.semLbl)+': '+eh(d.alta.v)+' (+'+d.alta.d+')</small>':'')+'</div>';
-  const vol=(a.semLbl?'<span><b>'+a.sem+'</b>'+(a.semanaFixa?' fora do prazo':'')+' na '+eh(a.semLbl)+(a.antLbl?' · '+a.ant+' na '+eh(a.antLbl):'')+'</span>':'')+(a.mesLbl?'<span><b>'+a.mes+'</b> em '+eh(a.mesLbl)+'</span>':'')+(a.semanaFixa?'':'<span><b>'+a.fora+'</b> no período da base</span>');
+  const vol=(a.semLbl?'<span><b>'+a.sem+'</b>'+(a.semanaFixa?' '+(a.volLbl||'fora do prazo'):'')+' na '+eh(a.semLbl)+(a.antLbl?' · '+a.ant+' na '+eh(a.antLbl):'')+'</span>':'')+(a.mesLbl?'<span><b>'+a.mes+'</b> em '+eh(a.mesLbl)+'</span>':'')+(a.semanaFixa?'':'<span><b>'+a.fora+'</b> no período da base</span>');
   box.innerHTML='<div class="rs-ana-hd"><i class="ti ti-chart-dots"></i> Análise da base <small>Fonte: '+eh(a.arquivo)+' · '+(a.cluster?'cluster '+eh(a.cluster)+' ('+rsNf0.format(a.linhasCluster)+' linhas)':'base inteira')+' · foco: '+eh(a.foco)+'</small></div>'+
     (a.avisos.length?'<div class="rs-ana-av">'+a.avisos.map(eh).join(' · ')+'</div>':'')+
     '<div class="rs-ana-vol">'+vol+'</div>'+((a.kpis||[]).length?'<div class="rs-ana-kpi">'+a.kpis.map(k=>'<span>'+eh(k)+'</span>').join('')+'</div>':'')+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
