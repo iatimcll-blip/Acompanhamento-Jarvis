@@ -13576,7 +13576,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
       <div class="mx-empty" id="mx-empty">
         <h2>Anexe a base do MAX</h2>
-        <p>Arquivo .xlsx (aba “base”), .csv ou o .json agregado. Uma linha por reparo, com as colunas unidade, max, frente_final e mes ou data_abertura_chamado. A base fica guardada só neste dispositivo e não entra na sincronização.</p>
+        <p>Arquivo .xlsx (aba “base”), .csv ou o .json agregado. Uma linha por reparo, com as colunas unidade, max, frente_final e mes ou data_abertura_chamado. A base anexada pelo Admin ou por um usuário Sr aparece para todos os usuários (os nomes de técnicos ficam só no aparelho de quem anexou).</p>
       </div>
 
       <div id="mx-dash" hidden style="display:grid;gap:22px">
@@ -13726,7 +13726,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div id="rs-empty" class="empty">
       <div class="empty-icon"><i class="ti ti-calendar-stats"></i></div>
       <h2>Redir (Semanal)</h2>
-      <p>Vincule a pasta <b>redir</b> (ex.: D:\Acompanhamento Jarvis\redir): o painel abre sempre a planilha <b>Cluster com Desvio – Wxx.xlsx</b> mais recente dela. A base fica só neste dispositivo e não entra na sincronização.</p>
+      <p>Vincule a pasta <b>redir</b> (ex.: D:\Acompanhamento Jarvis\redir): o painel abre sempre a planilha <b>Cluster com Desvio – Wxx.xlsx</b> mais recente dela. O que o Admin ou um usuário Sr anexar aparece para todos os usuários.</p>
       <div class="rs-empty-acts">
         <button type="button" class="empty-btn eb-ab" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder" style="font-size:14px"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
         <button type="button" class="empty-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip" style="font-size:14px"></i> Anexar planilha</button>
@@ -13768,7 +13768,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="rs-base">
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar planilha</button>
-            <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Fica salva neste dispositivo até você limpar."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
+            <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Fica salva e aparece para todos os usuários até alguém limpar."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
             <button type="button" class="rs-btn rs-btn-del" id="rs-planta-del" data-up="redirSemanal" hidden onclick="rsLimparBaseInd('IRT',()=>{rsDrawPlanta();rsDrawJust();},true)" title="Remove a Planta Média anexada (contadores de clientes e IRT por unidade)."><i class="ti ti-trash"></i> Limpar Planta Média</button>
           </span>
         </div>
@@ -14813,6 +14813,38 @@ let lastAtivAt='',lastAtivFile='';
    qual base de Ativações/POP é mais recente antes de sincronizar. */
 let lastAtivBaseAt='';
 let lastPopBaseAt='';
+/* Redir (Semanal) e MAX — bases compartilhadas pelo sync (pedido 2026-10-24: "quando o Admin ou
+   usuários Sr anexar bases as informações ficam visíveis para todos"; o usuário aceitou levar as
+   bases, inclusive nomes de técnicos e contratos do Redir, para o sync — repo público). Antes
+   ficavam só no IndexedDB de quem anexou, por isso os outros usuários não viam nada.
+   Pacote = {at:ISO, ..., z:'gzip+base64 do JSON'} (z:null = base limpa, a limpeza também se
+   propaga). O conteúdo vai compactado como TEXTO: as bases do Redir somam ~13 MB de JSON e o
+   estado inteiro é lido a cada 5 min — assim o JSON.parse do estado não cresce e o pacote só é
+   descompactado quando chega um mais novo. O mais novo (at) vence. Justificativas: por FCA, cada
+   uma com seu at ({apagado:true} = texto limpo). Os nomes de técnicos do Painel MAX continuam
+   fora (decisão anterior do usuário). Os painéis escutam o evento 'jarvis-sync-pacote'. */
+var rsBaseSync=null,rsIndSync=null,rsDraftsSync=null,mxSync=null;
+async function _syncZip(obj){
+  const gz=await new Response(new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+  return await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const u=String(fr.result);res(u.slice(u.indexOf(',')+1));};fr.onerror=()=>rej(fr.error);fr.readAsDataURL(gz);});
+}
+async function _syncUnzip(z){
+  const bin=atob(z);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+}
+function _syncMaisNovo(a,b){return !!(a&&a.at&&(!b||!b.at||String(a.at)>String(b.at)));}
+function _syncAvisa(k){try{window.dispatchEvent(new CustomEvent('jarvis-sync-pacote',{detail:k}));}catch(e){}}
+function _syncAdotar(st){
+  if(!st||typeof st!=='object')return;
+  if(_syncMaisNovo(st.rsBaseSync,rsBaseSync)){rsBaseSync=st.rsBaseSync;_syncAvisa('rsBaseSync');}
+  if(_syncMaisNovo(st.rsIndSync,rsIndSync)){rsIndSync=st.rsIndSync;_syncAvisa('rsIndSync');}
+  if(_syncMaisNovo(st.mxSync,mxSync)){mxSync=st.mxSync;_syncAvisa('mxSync');}
+  if(st.rsDraftsSync&&typeof st.rsDraftsSync==='object'&&st.rsDraftsSync!==rsDraftsSync){
+    const m=rsDraftsSync||(rsDraftsSync={});let mud=false;
+    for(const[id,d]of Object.entries(st.rsDraftsSync))if(d&&d.at&&(!m[id]||!m[id].at||String(d.at)>String(m[id].at))){m[id]=d;mud=true;}
+    if(mud)_syncAvisa('rsDraftsSync');
+  }
+}
 let wppUnreadCount=0,wppInitialized=false;
 const STORAGE_KEY='atrix:painel:bases:v1';
 const STORAGE_META_KEY='atrix:painel:bases:meta:v1';
@@ -15317,6 +15349,8 @@ function _mergeGhRemoteIntoLocal(remoteSt){
   if(!(remoteSt&&remoteSt.savedAt))return;
   /* quem atualizou o Atrix: o mais recente vence, antes do gate de savedAt abaixo */
   try{if(remoteSt.atrixLastTrigger)_atrixTrigAdopt(remoteSt.atrixLastTrigger);}catch(_){}
+  /* Redir/MAX: o pacote mais novo vence, independente do gate de savedAt abaixo */
+  try{_syncAdotar(remoteSt);}catch(e){console.warn('sync: falha nas bases do Redir/MAX:',e);}
   const lastKnown=_getLastKnownRemoteSavedAt();
   if(!(!lastKnown||remoteSt.savedAt>lastKnown))return;
   {
@@ -17076,6 +17110,8 @@ let _ghAutoSyncTimer=null;
    permissão de edição. Pausa quando a aba está em segundo plano, mesmo padrão do timer de
    SLA acima. */
 function iniciarSincronizacaoAutomatica(){
+  /* Redir/MAX: depois do login, publica as bases que só existiam neste aparelho (Admin/Sr) e aplica as do sync */
+  setTimeout(()=>{try{if(window.rsSyncReconciliar)rsSyncReconciliar().catch(()=>{});if(window.mxSyncReconciliar)mxSyncReconciliar().catch(()=>{});}catch(e){}},1500);
   clearInterval(_ghAutoSyncTimer);
   _ghAutoSyncTimer=setInterval(()=>{
     if(document.visibilityState!=='visible')return;
@@ -17230,6 +17266,9 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
   {at:'usersAt',keys:['users','usersAt']},
   {at:'atrixLastTrigger.at',keys:['atrixLastTrigger']},
+  {at:'rsBaseSync.at',keys:['rsBaseSync']},
+  {at:'rsIndSync.at',keys:['rsIndSync']},
+  {at:'mxSync.at',keys:['mxSync']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -17262,7 +17301,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,atrixLastTrigger,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,atrixLastTrigger,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -17300,6 +17339,7 @@ let _lastApplyRenderedTabs = new Set();
 function applyState(st,label){
   if(!st||typeof st!=='object')return false;
   try{if(st.atrixLastTrigger)_atrixTrigAdopt(st.atrixLastTrigger);}catch(_){}
+  try{_syncAdotar(st);}catch(e){console.warn('applyState: falha nas bases do Redir/MAX:',e);}
   _lastApplyRenderedTabs = new Set();
   let changed=false;
   const clearLegacyFuelRequests=Number(st.version||0)<6;
@@ -37130,14 +37170,16 @@ updateCentralStatus();
       idbSet(MX_TEC_IDB_KEY,MXT_CACHE).catch(e=>console.warn('[MAX] não salvou técnicos no IndexedDB',e));
       Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});pickCleared=false;
       try{await idbSet(MX_IDB_KEY,{data:MXD,info:MXI});}catch(e){console.warn('[MAX] não salvou no IndexedDB',e);}
-      mxRenderAll();
+      mxRenderAll();mxPublicar();
       ok=true;
     }catch(e){
       say('Não foi possível ler a base: '+(e&&e.message?e.message:e),'err');
     }finally{busy=false;$('mx-up-btn').disabled=false;progEnd(ok);}
   });
   $('mx-src-del').addEventListener('click',async()=>{
-    if(!confirm('Remover a base do MAX deste dispositivo?'))return;
+    if(!canEdit('max')){alert('Seu usuário não tem liberação para remover a base deste painel. Peça ao Admin.');return;}
+    if(!confirm('Remover a base do MAX? Ela some para todos os usuários.'))return;
+    mxSync={at:new Date().toISOString(),z:null};autoSyncAfterBaseUpload('MAX');
     MXD=null;MXI=null;Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});
     Object.keys(CH).forEach(k=>{CH[k].destroy();delete CH[k];});
     try{await idbSet(MX_IDB_KEY,null);}catch(e){}
@@ -37180,11 +37222,39 @@ updateCentralStatus();
 
   /* técnicos: cache só local (ver MX_TEC_IDB_KEY) */
   (async()=>{try{MXT_CACHE=await idbGet(MX_TEC_IDB_KEY)||null;if(MXT_CACHE&&MXD)mxRenderAll();}catch(e){}})();
-  /* ── restaura a base deste dispositivo ── */
+  /* ── sincronização (pedido 2026-10-24): a base anexada pelo Admin/Sr aparece para todos.
+     MXD.tecnicos (nomes) nunca vai no pacote — continua só no aparelho de quem anexou. ── */
+  const mxAtIso=()=>MXI&&MXI.at?new Date(MXI.at).toISOString():'';
+  async function mxPublicar(){
+    if(!MXD||!MXI||!canEdit('max'))return;
+    try{const data={...MXD};delete data.tecnicos;
+      mxSync={at:mxAtIso(),arquivo:MXI.arquivo||'',z:await _syncZip({data,info:MXI})};autoSyncAfterBaseUpload('MAX');}
+    catch(e){console.warn('[MAX] não publicou a base',e);}
+  }
+  async function mxAplicarSync(){
+    const s=mxSync;if(!s||!s.at)return;
+    if(MXD&&mxAtIso()>=String(s.at))return;if(!MXD&&!s.z)return;
+    let v=null;try{v=s.z?await _syncUnzip(s.z):null;}catch(e){console.warn('[MAX] base do sync ilegível',e);return;}
+    if(mxSync!==s)return;
+    if(v&&v.data&&v.data.unidades){MXD=v.data;MXI=v.info||null;}else{MXD=null;MXI=null;}
+    Object.assign(MXS,{cluster:'Todos',mes:'Todos',unidades:[]});
+    Object.keys(CH).forEach(k=>{CH[k].destroy();delete CH[k];});
+    try{await idbSet(MX_IDB_KEY,MXD?{data:MXD,info:MXI}:null);}catch(e){}
+    mxRenderAll();
+  }
+  window.addEventListener('jarvis-sync-pacote',e=>{if(e.detail==='mxSync')mxAplicarSync();});
+  let mxRestaurado=false;
+  async function mxReconciliar(){
+    if(!mxRestaurado)return;
+    if(_syncMaisNovo(mxSync,MXD?{at:mxAtIso()}:null))await mxAplicarSync();
+    else if(MXD&&MXI&&(!mxSync||mxAtIso()>String(mxSync.at)))await mxPublicar();
+  }
+  window.mxSyncReconciliar=mxReconciliar;
+  /* ── restaura a base deste dispositivo e concilia com o sync ── */
   (async()=>{
     try{const st=await idbGet(MX_IDB_KEY);if(st&&st.data&&st.data.unidades){MXD=st.data;MXI=st.info||null;}}
     catch(e){console.warn('[MAX] IndexedDB indisponível',e);}
-    mxRenderAll();
+    mxRestaurado=true;mxRenderAll();await mxReconciliar();
   })();
 })();
 </script>
@@ -37327,7 +37397,7 @@ function rsMsg(){
   const el=document.getElementById('rs-msg');if(!el)return;
   if(!RS_BASE){el.textContent='';return;}
   const r=RS_BASE.resumo||{};
-  el.textContent=RS_BASE.name+' · '+rsSemanasTxt(r.semanas)+' · '+(RS_BASE.origem==='pasta'?'lido da pasta '+(rsDir?rsDir.name+' ':'')+'em ':'anexado em ')+new Date(RS_BASE.at).toLocaleString('pt-BR')+' · só neste dispositivo'+(rsAviso?' · '+rsAviso:'');
+  el.textContent=RS_BASE.name+' · '+rsSemanasTxt(r.semanas)+' · '+(RS_BASE.origem==='pasta'?'lido da pasta '+(rsDir?rsDir.name+' ':'')+'em ':'anexado em ')+new Date(RS_BASE.at).toLocaleString('pt-BR')+' · visível para todos os usuários'+(rsAviso?' · '+rsAviso:'');
 }
 /* pasta vinculada: planilha mais recente (ignora o ~$ temporário do Excel aberto) */
 async function rsArquivoMaisRecente(dir){
@@ -37355,7 +37425,7 @@ async function rsCheckDir(pedir){
       if(!pedir&&RS_BASE&&RS_BASE.origem!=='pasta'&&f.lastModified<=Date.parse(RS_BASE.at))return false;
       if(RS_BASE&&RS_BASE.kind==='xlsx'&&RS_BASE.name===f.name&&RS_BASE.fileMod===f.lastModified){if(pedir)_ghToast('Redir (Semanal): '+f.name+' já é a planilha mais recente da pasta ✓','var(--green-dk)',3500);return false;}
       const base=rsBaseDeXlsx(await f.arrayBuffer(),f.name,f.lastModified,'pasta');
-      await idbSet(RS_IDB_KEY,base);RS_BASE=base;rsF.sem=null;
+      await idbSet(RS_IDB_KEY,base);RS_BASE=base;rsF.sem=null;rsPublicarBase();
       _ghToast('Redir (Semanal): '+f.name+' carregado da pasta ✓ ('+base.resumo.semanas.join(', ')+')','var(--green-dk)',4500);
       return true;
     }catch(e){rsAviso='não foi possível ler a pasta: '+(e&&e.message||e);return false;}
@@ -37383,11 +37453,69 @@ async function rsOnFile(inp){
     if(/\.html?$/i.test(file.name)){const html=await file.text();base={kind:'html',name:file.name,at:new Date().toISOString(),origem:'anexo',html,resumo:rsResumo(rsDadosHtml(html))};}
     else base=rsBaseDeXlsx(await file.arrayBuffer(),file.name,file.lastModified,'anexo');
     await idbSet(RS_IDB_KEY,base);
-    RS_BASE=base;rsLoaded=true;rsAviso='';rsF.sem=null;
+    RS_BASE=base;rsLoaded=true;rsAviso='';rsF.sem=null;rsPublicarBase();
     await rsRender(true);
     _ghToast('Redir (Semanal): '+file.name+' anexado ✓ ('+(base.resumo.semanas||[]).join(', ')+')','var(--green-dk)',4500);
   }catch(e){alert('Não foi possível anexar: '+(e&&e.message||e));}
 }
+
+/* ── sincronização (pedido 2026-10-24): planilha, bases dos indicadores e justificativas para todos ── */
+async function rsPublicarBase(){
+  if(!RS_BASE||!canEdit('redirSemanal'))return;
+  try{rsBaseSync={at:RS_BASE.at,name:RS_BASE.name,z:await _syncZip(RS_BASE)};autoSyncAfterBaseUpload('Redir (Semanal)');}catch(e){console.warn('Redir: não publicou a planilha',e);}
+}
+async function rsPublicarInd(){
+  if(!canEdit('redirSemanal'))return;
+  try{const n=Object.keys(RS_IND||{}).length;rsIndSync={at:rsIndAt||new Date().toISOString(),n,z:n?await _syncZip(RS_IND):null};autoSyncAfterBaseUpload('Redir (Semanal) — bases');}catch(e){console.warn('Redir: não publicou as bases',e);}
+}
+function rsDraftTocou(id,d){
+  if(!canEdit('redirSemanal'))return;
+  d.at=new Date().toISOString();(rsDraftsSync||(rsDraftsSync={}))[id]={...d};saveState();
+}
+async function rsAplicarBase(){
+  const s=rsBaseSync;if(!s||!s.at)return;await rsLoad();
+  if(RS_BASE&&String(RS_BASE.at)>=String(s.at))return;if(!RS_BASE&&!s.z)return;
+  let b=null;try{b=s.z?await _syncUnzip(s.z):null;}catch(e){console.warn('Redir: planilha do sync ilegível',e);return;}
+  if(rsBaseSync!==s)return;
+  RS_BASE=b;rsData=null;rsF.sem=null;try{await idbSet(RS_IDB_KEY,b);}catch(e){}
+  if(activeTab==='redirSemanal')rsRender(true);
+}
+async function rsAplicarInd(){
+  const s=rsIndSync;if(!s||!s.at)return;await rsIndLoad();
+  if(rsIndAt&&String(rsIndAt)>=String(s.at))return;
+  let v={};try{v=s.z?await _syncUnzip(s.z):{};}catch(e){console.warn('Redir: bases do sync ilegíveis',e);return;}
+  if(rsIndSync!==s)return;
+  RS_IND=v&&typeof v==='object'?v:{};rsIndAt=s.at;await rsIndSalvar(false);
+  if(activeTab==='redirSemanal'){try{rsDrawPlanta();}catch(e){}try{rsDrawJust();}catch(e){}}
+}
+function rsAplicarDrafts(){
+  const R=rsDraftsSync;if(!R)return;const m=rsDraftsMap();let mud=false;
+  for(const[id,d]of Object.entries(R)){const l=m.get(id);
+    if(l&&l.at&&String(l.at)>=String(d.at))continue;
+    if(d.apagado){if(m.delete(id))mud=true;}
+    else{const o={};RS_FIELDS.forEach(([f])=>o[f]=d[f]||'');o.at=d.at;m.set(id,o);mud=true;}}
+  if(!mud)return;rsSaveDrafts();
+  /* não redesenha enquanto alguém digita numa justificativa deste painel */
+  const ae=document.activeElement;
+  if(activeTab==='redirSemanal'&&!(ae&&ae.tagName==='TEXTAREA'&&ae.closest('#panel-redir-sem')))try{rsDrawJust();}catch(e){}
+}
+/* ao abrir: o que estiver mais novo (deste aparelho ou do sync) vale; dado local mais novo de quem
+   pode editar é publicado — é o que leva para todos as bases que o Admin já tinha anexado antes */
+async function rsSyncReconciliar(){
+  await rsLoad();await rsIndLoad();
+  if(_syncMaisNovo(rsBaseSync,RS_BASE?{at:RS_BASE.at}:null))await rsAplicarBase();
+  else if(RS_BASE&&(!rsBaseSync||String(RS_BASE.at)>String(rsBaseSync.at)))await rsPublicarBase();
+  if(_syncMaisNovo(rsIndSync,rsIndAt?{at:rsIndAt}:null))await rsAplicarInd();
+  else if(rsIndAt&&Object.keys(RS_IND||{}).length&&(!rsIndSync||String(rsIndAt)>String(rsIndSync.at)))await rsPublicarInd();
+  if(rsDraftsSync)rsAplicarDrafts();
+  if(canEdit('redirSemanal')){let pub=false;const R=rsDraftsSync||(rsDraftsSync={});
+    for(const[id,d]of rsDraftsMap())if(d&&d.at&&(!R[id]||String(d.at)>String(R[id].at))){R[id]={...d};pub=true;}
+    if(pub)saveState();}
+}
+window.addEventListener('jarvis-sync-pacote',e=>{const k=e.detail;
+  if(k==='rsBaseSync')rsAplicarBase();else if(k==='rsIndSync')rsAplicarInd();else if(k==='rsDraftsSync')rsAplicarDrafts();});
+setTimeout(()=>{rsSyncReconciliar().catch(e=>console.warn('Redir: sync ao abrir',e));},0);
+window.rsSyncReconciliar=rsSyncReconciliar;
 
 /* ── cálculo e formatação ── */
 const RS_UNIT={'IRT (DU)':'int','Produtividade MOP':'dec','MTTR 6H':'h'};
@@ -37524,10 +37652,11 @@ function rsJustCard(r,pr,sem,prev,D){
   /* base do indicador fora da meta → análise para apoiar o FCA (pedido 2026-10-23) */
   const abar=document.createElement('div');abar.className='rs-ana-bar';const ana=document.createElement('div');ana.className='rs-ana';ana.hidden=true;
   const aplicar=a=>{
+    if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para editar as justificativas. Peça ao Admin.');return;}
     const tem=RS_FIELDS.some(([f])=>String(d[f]||'').trim());
     if(tem&&!confirm('Substituir Causa, Ação, Prazo e Status deste FCA pela sugestão da análise? (Resp fica para você preencher)'))return;
     const v={causa:a.sug.causa,acao:a.sug.acao,resp:d.resp||'',prazo:a.sug.prazo,status_acoes:a.sug.status};
-    RS_FIELDS.forEach(([f],i)=>{d[f]=v[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st,c,r);rsSaveDrafts();
+    RS_FIELDS.forEach(([f],i)=>{d[f]=v[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st,c,r);rsSaveDrafts();rsDraftTocou(r.id,d);
     _ghToast('Sugestão aplicada — revise o texto e preencha o Resp.','var(--green-dk)',3500);
   };
   const pintaBar=()=>{
@@ -37536,7 +37665,7 @@ function rsJustCard(r,pr,sem,prev,D){
     const nota=t=>{const sp=document.createElement('span');sp.className='rs-note';sp.textContent=t;abar.appendChild(sp);};
     if(!(m&&(m.painel==='enc'||m.painel==='rede'||m.painel==='max'))){
       const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(f.tipo==='anexo'?'Trocar base':'Inserir base');
-      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Fica salva neste dispositivo (volta ao atualizar o navegador) e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Fica salva neste dispositivo até você limpar.';
+      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Fica salva e aparece para todos os usuários; serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Fica salva e aparece para todos os usuários até alguém limpar.';
       ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
       /* Limpar base (pedido 2026-10-24): só existe para base anexada aqui no Redir */
       if(f.tipo==='anexo'){const lb=document.createElement('button');lb.type='button';lb.className='rs-btn rs-btn-del';lb.innerHTML='<i class="ti ti-trash"></i> Limpar base';
@@ -37572,12 +37701,13 @@ function rsJustCard(r,pr,sem,prev,D){
   for(const[f,lab,w,rows]of RS_FIELDS){const lb=document.createElement('label');if(w)lb.className=w;lb.appendChild(document.createTextNode(lab));
     const ta=document.createElement('textarea');ta.rows=rows;ta.value=d[f];ta.setAttribute('aria-label',lab+' — '+r.indicador);
     ta.placeholder=f==='causa'?'1. Causa principal…':f==='acao'?'1.1 Ação para a causa 1…':f==='status_acoes'?'1.1 Em andamento':f==='prazo'?'1.1 30/out':'1.1 Nome';
-    ta.oninput=()=>{d[f]=ta.value;rsReady(d,st,c,r);rsSaveDrafts();rsAutoAltura(ta);};lb.appendChild(ta);form.appendChild(lb);tas.push(ta);requestAnimationFrame(()=>rsAutoAltura(ta));}
+    ta.readOnly=!canEdit('redirSemanal');if(ta.readOnly)ta.title='Só o Admin ou usuário Sr com liberação no Redir edita as justificativas';
+    ta.oninput=()=>{d[f]=ta.value;rsReady(d,st,c,r);rsSaveDrafts();rsDraftTocou(r.id,d);rsAutoAltura(ta);};lb.appendChild(ta);form.appendChild(lb);tas.push(ta);requestAnimationFrame(()=>rsAutoAltura(ta));}
   c.appendChild(form);
   const ft=document.createElement('div');ft.className='rs-jfoot';rsReady(d,st,c,r);ft.appendChild(st);
   const acts=document.createElement('div');acts.className='acts';
   if(pr&&pr.causa){const b=document.createElement('button');b.type='button';b.className='rs-btn';b.textContent='Usar FCA da '+prev;
-    b.onclick=()=>{RS_FIELDS.forEach(([f],i)=>{d[f]=pr[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st,c,r);rsSaveDrafts();};acts.appendChild(b);}
+    b.onclick=()=>{if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para editar as justificativas. Peça ao Admin.');return;}RS_FIELDS.forEach(([f],i)=>{d[f]=pr[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st,c,r);rsSaveDrafts();rsDraftTocou(r.id,d);};acts.appendChild(b);}
   const cp=document.createElement('button');cp.type='button';cp.className='rs-btn pri';cp.textContent='Copiar para o Excel';
   cp.onclick=async()=>{const txt=RS_FIELDS.map(([f])=>rsQ(d[f])).join('\t');let ok=true;
     try{await navigator.clipboard.writeText(txt);}catch(e){ok=false;const old=c.querySelector('.rs-copyfb');if(old)old.remove();const ta=document.createElement('textarea');ta.className='rs-copyfb';ta.rows=3;ta.readOnly=true;ta.value=txt;c.appendChild(ta);ta.focus();ta.select();}
@@ -37783,12 +37913,19 @@ let RS_MX=null,RS_B2C_CACHE={};
    na sincronização (LGPD). "Limpar base" / "Limpar bases e análises" apagam também do IndexedDB.
    As análises abertas também voltam (localStorage). */
 const RS_ANA_LS='rs_ana_abertas_v1';
-async function rsIndSalvar(){try{await idbSet(RS_IND_KEY,RS_IND||{});}catch(e){console.warn('Redir: não salvou as bases',e);}}
+let rsIndAt='';const RS_IND_AT_KEY='rs_indbase_at_v1';
+/* publicar=false quando a mudança veio do sync (não mexe no at nem republica) */
+async function rsIndSalvar(publicar=true){
+  if(publicar)rsIndAt=new Date().toISOString();
+  try{await idbSet(RS_IND_KEY,RS_IND||{});await idbSet(RS_IND_AT_KEY,rsIndAt);}catch(e){console.warn('Redir: não salvou as bases',e);}
+  if(publicar)await rsPublicarInd();
+}
 function rsAnaSalvar(){try{localStorage.setItem(RS_ANA_LS,JSON.stringify([...rsAnaAbertas]));}catch(e){}}
 window.addEventListener('pagehide',rsAnaSalvar);
 async function rsIndLoad(){
-  if(!RS_IND){let s=null;try{s=await idbGet(RS_IND_KEY);}catch(e){}
-    RS_IND=(s&&typeof s==='object'&&!Array.isArray(s))?s:{};
+  if(!RS_IND){let s=null,a='';try{s=await idbGet(RS_IND_KEY);a=await idbGet(RS_IND_AT_KEY)||'';}catch(e){}
+    if(!RS_IND){RS_IND=(s&&typeof s==='object'&&!Array.isArray(s))?s:{};
+      rsIndAt=a||Object.values(RS_IND).reduce((m,b)=>b&&b.at&&b.at>m?b.at:m,'');}
     try{(JSON.parse(localStorage.getItem(RS_ANA_LS)||'[]')||[]).forEach(id=>rsAnaAbertas.add(id));}catch(e){}}
   try{const mx=await idbGet('mx_base_v1');RS_MX=mx&&mx.data&&mx.data.unidades?mx:null;}catch(e){RS_MX=null;}
   return RS_IND;
@@ -38136,7 +38273,7 @@ function rsTemTexto(id){const d=rsDraftsMap().get(id);return!!d&&RS_FIELDS.some(
 /* caixa de texto cresce até mostrar todo o conteúdo (pedido 2026-10-24: "informações completas, sem cortes") */
 function rsAutoAltura(ta){if(!ta||!ta.isConnected)return;ta.style.height='auto';ta.style.height=Math.max(ta.scrollHeight+2,48)+'px';}
 window.addEventListener('resize',()=>{if(activeTab==='redirSemanal')document.querySelectorAll('#panel-redir-sem .rs-form textarea').forEach(rsAutoAltura);});
-function rsApagarTextos(ids){const m=rsDraftsMap();let n=0,mud=false;ids.forEach(id=>{if(rsTemTexto(id))n++;if(m.delete(id))mud=true;});if(mud)rsSaveDrafts();return n;}
+function rsApagarTextos(ids){const m=rsDraftsMap();let n=0,mud=false;const at=new Date().toISOString();ids.forEach(id=>{if(rsTemTexto(id))n++;if(m.delete(id)){mud=true;(rsDraftsSync||(rsDraftsSync={}))[id]={apagado:true,at};}});if(mud&&canEdit('redirSemanal'))saveState();if(mud)rsSaveDrafts();return n;}
 /* Limpa a base anexada do indicador (e das linhas que usam a mesma base): base, análises e textos */
 async function rsLimparBaseInd(ind,cb,planta){
   if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para limpar base neste painel. Peça ao Admin.');return;}
@@ -38185,7 +38322,7 @@ async function rsOnIndFile(inp){
     const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name);b.at=new Date().toISOString();
     const chave=m?m.modelo:ind;
     await rsIndLoad();RS_IND[chave]=b;await rsIndSalvar();
-    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — fica salva neste dispositivo até você limpar','var(--green-dk)',4500);
+    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — visível para todos os usuários até alguém limpar','var(--green-dk)',4500);
     if(rsIndCb)rsIndCb();
     if(planta)rsDrawPlanta();
   }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
