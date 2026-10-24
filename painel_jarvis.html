@@ -2152,6 +2152,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-ana-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #panel-redir-sem .rs-btn.rs-btn-del{color:var(--red);border-color:var(--red-bg)}
 #panel-redir-sem .rs-btn.rs-btn-del:hover{background:var(--red-bg)}
+#panel-redir-sem #rs-limpar-bases[hidden]{display:none}
 #panel-redir-sem .rs-ana-bar .rs-btn i{font-size:12px;vertical-align:-1px}
 #panel-redir-sem .rs-ana[hidden]{display:none}
 #panel-redir-sem .rs-ana{border:.5px solid var(--blue);background:var(--blue-bg);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:11px;color:var(--tx2)}
@@ -13746,6 +13747,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fbar" id="rs-jbar">
           <label class="rs-chk"><input type="checkbox" id="rs-jpend" onchange="rsDrawJust()"> Só pendentes</label>
           <span class="rs-note" id="rs-jcount"></span>
+          <button type="button" class="rs-btn rs-btn-del" id="rs-limpar-bases" data-up="redirSemanal" hidden onclick="rsLimparTodasBases()" title="Remove todas as bases anexadas no Redir (inclusive a Planta Média) e fecha as análises. Os textos das justificativas não são apagados."><i class="ti ti-trash"></i> Limpar bases e análises</button>
           <span class="card-action" style="margin-left:auto" onclick="rsExportCsv()"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar justificativas (CSV)</span>
         </div>
         <div class="rs-jbody" id="rs-jlist"></div>
@@ -37461,6 +37463,7 @@ function rsDrawJust(){
   const byId=new Map(D.fca.map(r=>[r.id,r])),ord={'Não enviado':0,'Incompleto':1,'Completo':2};
   let rs=D.fca.filter(r=>r.semana===sem&&(!clu||r.cluster===clu)&&r.situacao==='Exigido');const total=rs.length;
   if(document.getElementById('rs-jpend').checked)rs=rs.filter(r=>r.entrega!=='Completo');
+  {const lb=document.getElementById('rs-limpar-bases');if(lb)lb.hidden=!(RS_IND&&Object.keys(RS_IND).length);}
   document.getElementById('rs-jcount').textContent=rs.length+' de '+total+' indicadores com FCA exigido na '+sem+' · preencha Causa, Ação, Resp, Prazo e Status (salvo neste navegador)';
   if(!rs.length){list.innerHTML='<div class="rs-vazio">'+(total?'Todos os FCAs estão completos.':'Nenhum FCA exigido na semana.')+'</div>';return;}
   const grp=new Map();for(const r of rs){if(!grp.has(r.cluster))grp.set(r.cluster,[]);grp.get(r.cluster).push(r);}
@@ -37503,7 +37506,7 @@ function rsJustCard(r,pr,sem,prev,D){
       /* Limpar base (pedido 2026-10-24): só existe para base anexada aqui no Redir */
       if(f.tipo==='anexo'){const lb=document.createElement('button');lb.type='button';lb.className='rs-btn rs-btn-del';lb.innerHTML='<i class="ti ti-trash"></i> Limpar base';
         lb.title='Remove a base anexada ('+f.base.name+') deste dispositivo. Bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.';
-        lb.onclick=()=>rsLimparBaseInd(r.indicador,()=>{rsAnaAbertas.delete(r.id);rsDrawJust();});abar.appendChild(lb);}
+        lb.onclick=()=>rsLimparBaseInd(r.indicador,()=>rsDrawJust());abar.appendChild(lb);}
     }
     if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&!rsPlantaFonte()){
       const pb=document.createElement('button');pb.type='button';pb.className='rs-btn';pb.innerHTML='<i class="ti ti-building-community"></i> Inserir Planta Média';
@@ -37913,10 +37916,26 @@ async function rsLimparBaseInd(ind,cb,planta){
   if(!planta){const D=rsDados();const inds=D?[...new Set(D.fca.map(x=>x.indicador))]:[ind];usam=inds.filter(i=>rsIndBaseFor(i)===alvo);}
   const quem=planta?'como Planta Média do IRT':(usam.length>1?'pelos indicadores '+usam.join(', '):'pelo indicador '+ind);
   if(!confirm('Limpar a base "'+alvo.name+'" deste dispositivo?\n\nEla é usada '+quem+' em todos os clusters. Depois disso, a análise volta a usar os painéis B2C, MAX ou B2B Encerrados, quando houver dados lá.'))return;
+  /* fecha as análises abertas de todas as linhas que usavam esta base (ex.: IRT e IRT (DU)) */
+  {const D=rsDados();if(D)D.fca.forEach(x=>{if(rsAnaAbertas.has(x.id)&&(planta?RS_NK(x.indicador)==='IRT':rsIndBaseFor(x.indicador)===alvo))rsAnaAbertas.delete(x.id);});}
   chaves.forEach(k=>{delete RS_IND[k];});
   try{await idbSet(RS_IND_KEY,RS_IND);}catch(e){alert('Não foi possível limpar: '+(e&&e.message||e));return;}
   _ghToast((planta?'Planta Média':'Base')+' "'+alvo.name+'" removida deste dispositivo ✓','var(--green-dk)',4000);
   if(cb)cb();
+}
+/* Limpa TODAS as bases anexadas no Redir (inclusive a Planta Média) e fecha as análises abertas
+   (pedido 2026-10-24: "um botão limpar, onde será retirada a base em anexo e as análises").
+   Os textos já escritos nas justificativas (rascunhos) ficam. */
+async function rsLimparTodasBases(){
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para limpar base neste painel. Peça ao Admin.');return;}
+  await rsIndLoad();
+  const nomes=[...new Set(Object.values(RS_IND||{}).map(b=>b&&b.name).filter(Boolean))];
+  if(!nomes.length){rsDrawJust();return;}
+  if(!confirm('Limpar todas as bases anexadas no Redir e fechar as análises?\n\nBases: '+nomes.join(', ')+'\n\nOs textos já escritos nas justificativas não são apagados. As bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.'))return;
+  RS_IND={};rsAnaAbertas.clear();
+  try{await idbSet(RS_IND_KEY,RS_IND);}catch(e){alert('Não foi possível limpar: '+(e&&e.message||e));return;}
+  _ghToast('Bases do Redir removidas deste dispositivo ('+nomes.length+') e análises fechadas ✓','var(--green-dk)',4000);
+  rsDrawJust();
 }
 function rsPedirBaseInd(ind,cb,planta){
   if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar base neste painel. Peça ao Admin.');return;}
