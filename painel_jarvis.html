@@ -2062,7 +2062,21 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-btn i{font-size:12px;vertical-align:-1px}
 #panel-redir-sem #rs-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 @media (min-width:700px){#panel-redir-sem #rs-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
-@media (min-width:1100px){#panel-redir-sem #rs-kpis{grid-template-columns:repeat(5,minmax(0,1fr))!important}}
+@media (min-width:1100px){#panel-redir-sem #rs-kpis{grid-template-columns:repeat(6,minmax(0,1fr))!important}}
+#panel-redir-sem .rs-uf{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+#panel-redir-sem .rs-uf span{font-size:10px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--purple-bg,rgba(175,82,222,.12));color:var(--tx2);white-space:nowrap}
+#panel-redir-sem .rs-uf b{color:var(--tx)}
+#panel-redir-sem .rs-loc-lnk{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:600;color:var(--blue);cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
+#panel-redir-sem .rs-loc-lnk:hover{text-decoration:underline}
+#panel-redir-sem #rs-loc{margin-bottom:16px}
+#panel-redir-sem #rs-loc .fbar{display:flex!important;flex-wrap:wrap!important;gap:8px;align-items:center}
+#panel-redir-sem #rs-loc .fbar>*{flex:0 0 auto}
+#panel-redir-sem #rs-loc .fbar .fsel{width:auto;min-width:140px}
+#panel-redir-sem #rs-loc .fbar .srch-wrap{width:240px;min-width:0}
+#panel-redir-sem #rs-loc .fbar .rs-loc-end{margin-left:auto;display:flex;gap:6px}
+#panel-redir-sem #rs-loc .tw{max-height:420px;overflow:auto}
+#panel-redir-sem #rs-loc td.rs-num,#panel-redir-sem #rs-loc th.rs-num{text-align:right}
+#panel-redir-sem #rs-loc .rs-bar{display:inline-block;height:6px;border-radius:3px;background:var(--purple,#af52de);vertical-align:middle;margin-left:6px;opacity:.7}
 #panel-redir-sem .rs-msg,#panel-redir-sem .rs-note{font-size:11px;color:var(--tx3)}
 #panel-redir-sem .card-hd .rs-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #panel-redir-sem .rs-take{display:block;font-size:12px;color:var(--tx2);line-height:1.55}
@@ -13711,6 +13725,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <!-- Ordem pedida em 2026-10-24: Contadores → Redir (Semanal) → Indicadores do mês por cluster →
            Justificativas do gerente → Entrega por gerente → Evolução. Lista de FCAs (fora da lista) vai por último. -->
       <div class="mrow" id="rs-kpis"></div>
+      <!-- Planta Média (pedido 2026-10-24): clientes da base por localidade -->
+      <div class="tsec" id="rs-loc" hidden>
+        <div class="tsec-hd"><span class="tsec-title">Clientes na base por localidade</span><span class="tsec-meta" id="rs-loc-meta"></span></div>
+        <div class="fbar">
+          <span class="week-label">Ver por</span><select class="fsel" id="rs-loc-dim" onchange="rsLoc.dim=this.value;rsDrawLoc()" aria-label="Ver por"><option value="cidade">Cidade</option><option value="unidade">Unidade</option><option value="bairro">Bairro</option></select>
+          <span class="week-label">UF</span><select class="fsel" id="rs-loc-uf" onchange="rsLoc.uf=this.value;rsDrawLoc()" aria-label="UF"></select>
+          <div class="srch-wrap"><input class="finput" id="rs-loc-q" placeholder="Buscar localidade…" oninput="rsLoc.q=this.value;rsDrawLoc()"><button class="srch-clear" onclick="document.getElementById('rs-loc-q').value='';rsLoc.q='';rsDrawLoc()" title="Limpar busca">×</button></div>
+          <span class="rs-loc-end"><button type="button" class="rs-btn" onclick="rsLocCsv()"><i class="ti ti-download"></i> CSV</button><button type="button" class="rs-btn" onclick="rsLocToggle(false)"><i class="ti ti-x"></i> Fechar</button></span>
+        </div>
+        <div class="tw"><table id="rs-loc-tab"><thead><tr><th>UF</th><th id="rs-loc-th">Cidade</th><th class="rs-num">Clientes</th><th class="rs-num">% da UF</th><th class="rs-num">% do total</th></tr></thead><tbody></tbody></table></div>
+      </div>
 
       <div class="rede-ctrlbar rs-ctrl">
         <div class="rede-ctrlrow">
@@ -13729,6 +13754,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="rs-base">
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar planilha</button>
+            <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Vale enquanto o painel estiver aberto."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
+            <button type="button" class="rs-btn rs-btn-del" id="rs-planta-del" data-up="redirSemanal" hidden onclick="rsLimparBaseInd('IRT',()=>{rsDrawPlanta();rsDrawJust();},true)" title="Remove a Planta Média anexada (contadores de clientes e IRT por unidade)."><i class="ti ti-trash"></i> Limpar Planta Média</button>
           </span>
         </div>
         <div class="rede-ctrlrow rs-take" id="rs-take"></div>
@@ -37410,7 +37437,9 @@ function rsDraw(){
     '<div class="mc c-teal"><div class="mc-label">FCAs exigidos</div><div class="mc-val"><b>'+rsNf0.format(r.exigidos||0)+'</b></div><div class="mc-sub">indicador fora da meta no mês</div></div>'+
     '<div class="mc c-green"><div class="mc-label">Completos</div><div class="mc-val" style="color:var(--green-dk)"><b>'+rsNf0.format(r.completos||0)+'</b></div><div class="mc-sub">causa, ação, resp., prazo e status</div></div>'+
     '<div class="mc c-orange"><div class="mc-label">Incompletos</div><div class="mc-val" style="color:var(--orange)"><b>'+rsNf0.format(r.incompletos||0)+'</b></div><div class="mc-sub">enviados faltando campos</div></div>'+
-    '<div class="mc c-red"><div class="mc-label">Não enviados</div><div class="mc-val" style="color:var(--red)"><b>'+rsNf0.format(r.nao_enviados||0)+'</b></div><div class="mc-sub">sem causa nem ação</div></div>';
+    '<div class="mc c-red"><div class="mc-label">Não enviados</div><div class="mc-val" style="color:var(--red)"><b>'+rsNf0.format(r.nao_enviados||0)+'</b></div><div class="mc-sub">sem causa nem ação</div></div>'+
+    '<div class="mc c-purple" id="rs-kpi-planta"></div>';
+  rsDrawPlanta();
   /* frase-resumo */
   if(!D.ger){document.getElementById('rs-take').innerHTML='A planilha <b>'+eh(D.meta.arquivo||'')+'</b> não traz linhas do gerente <b>'+eh(RS_GER_FIXO)+'</b>.';}
   else{
@@ -37793,12 +37822,73 @@ function rsPlantaFonte(){
   if(raw.length)return{lbl:'Planta Média do Painel B2C ('+(_rsB2cArquivo('plantaMedia')||RS_PLANTA.arquivo)+')',rows:raw.map(x=>{const o=x&&x.raw?x.raw:x;return[o['Novo Cluster']||'',o['Unidade']||'',o['Media Base Media'],o['Empresa_1']==null?null:o['Empresa_1']];})};
   return null;
 }
+/* Clientes da base pela Planta Média ANEXADA no Redir (pedido 2026-10-24). Soma "Media Base Media"
+   de todas as linhas com Cidade_UF (a linha "Total" e a nota de filtros do export ficam de fora);
+   todas as empresas entram. Respeita o filtro de Cluster do painel. */
+const rsLoc={aberto:false,dim:'cidade',uf:'',q:''};
+const rsPctLoc=v=>v>0&&v<.0005?'<0,1%':rsPctTxt(v);
+function rsPlantaAgg(){
+  const b=RS_IND&&RS_IND[RS_PLANTA.modelo];if(!b)return null;
+  const cod=rsF.clu?(String(rsF.clu).match(/C\.?\s*(\d+)/i)||[])[1]:null;
+  const linhas=[];let tot=0;const uf=new Map();
+  for(const x of b.rows){const cu=x[4]||'';if(!cu)continue;
+    if(cod){const m=String(x[0]).match(/C\.?\s*(\d+)/i);if(!m||m[1]!==cod)continue;}
+    const n=Number(x[2])||0;const i=cu.lastIndexOf('/');const u=i>=0?cu.slice(i+1).trim().toUpperCase():'—';
+    linhas.push({uf:u,cidade:i>=0?cu.slice(0,i).trim():cu,unidade:String(x[1]||'').trim()||'—',bairro:x[5]||'—',n});tot+=n;uf.set(u,(uf.get(u)||0)+n);}
+  return{b,tot,linhas,uf:[...uf.entries()].sort((a,c)=>c[1]-a[1])};
+}
+function rsPlantaAnexar(){rsPedirBaseInd('Planta Média',()=>{rsDrawPlanta();rsDrawJust();},true);}
+function rsLocToggle(v){rsLoc.aberto=v==null?!rsLoc.aberto:!!v;rsDrawPlanta();if(rsLoc.aberto){const s=document.getElementById('rs-loc');if(s)s.scrollIntoView({block:'nearest',behavior:'smooth'});}}
+function rsDrawPlanta(){
+  const A=rsPlantaAgg(),k=document.getElementById('rs-kpi-planta');
+  const lbl=document.getElementById('rs-planta-lbl'),del=document.getElementById('rs-planta-del');
+  if(lbl)lbl.textContent=A?'Trocar Planta Média':'Planta Média';
+  if(del)del.hidden=!A;
+  if(k){
+    if(!A)k.innerHTML='<div class="mc-label">Clientes na base</div><div class="mc-val"><b>—</b></div><div class="mc-sub">anexe a Planta Média (botão na linha Base)</div>';
+    else k.innerHTML='<div class="mc-label">Clientes na base'+(rsF.clu?' · '+eh(rsCluCurto(rsF.clu)):'')+'</div><div class="mc-val" style="color:var(--purple,#af52de)"><b>'+rsNf0.format(A.tot)+'</b></div>'+
+      '<div class="rs-uf">'+A.uf.map(([u,n])=>'<span>'+eh(u)+' <b>'+rsNf0.format(n)+'</b> · '+rsPctLoc(A.tot?n/A.tot:0)+'</span>').join('')+'</div>'+
+      '<button type="button" class="rs-loc-lnk" onclick="rsLocToggle()">'+(rsLoc.aberto?'Ocultar localidades':'Ver por localidade')+' ›</button>';
+    k.title=A?'Planta Média: '+A.b.name+' (soma de Media Base Media, todas as empresas)':'';
+  }
+  const sec=document.getElementById('rs-loc');if(!sec)return;
+  if(!A){rsLoc.aberto=false;sec.hidden=true;return;}
+  sec.hidden=!rsLoc.aberto;if(rsLoc.aberto)rsDrawLoc();
+}
+function rsLocLinhas(){
+  const A=rsPlantaAgg();if(!A)return null;
+  const ufTot=new Map(A.uf);const m=new Map();
+  for(const l of A.linhas){if(rsLoc.uf&&l.uf!==rsLoc.uf)continue;
+    const nome=rsLoc.dim==='bairro'?l.bairro+' — '+l.cidade:rsLoc.dim==='unidade'?l.unidade:l.cidade;
+    const key=l.uf+'|'+nome;const o=m.get(key)||{uf:l.uf,nome,n:0};o.n+=l.n;m.set(key,o);}
+  let rs=[...m.values()];const q=(rsLoc.q||'').trim().toLowerCase();if(q)rs=rs.filter(x=>(x.nome+' '+x.uf).toLowerCase().includes(q));
+  rs.sort((a,b)=>b.n-a.n||a.nome.localeCompare(b.nome,'pt-BR'));
+  return{A,ufTot,rs};
+}
+function rsDrawLoc(){
+  const R=rsLocLinhas();if(!R)return;const{A,ufTot,rs}=R;
+  const su=document.getElementById('rs-loc-uf');if(rsLoc.uf&&!ufTot.has(rsLoc.uf))rsLoc.uf='';
+  su.innerHTML='<option value="">Todas as UFs</option>'+A.uf.map(([u])=>'<option value="'+eh(u)+'">'+eh(u)+'</option>').join('');su.value=rsLoc.uf;
+  document.getElementById('rs-loc-dim').value=rsLoc.dim;
+  const dl={cidade:'Cidade',unidade:'Unidade',bairro:'Bairro — Cidade'}[rsLoc.dim];document.getElementById('rs-loc-th').textContent=dl;
+  const soma=rs.reduce((s,x)=>s+x.n,0),max=rs.length?rs[0].n:0;
+  document.getElementById('rs-loc-meta').textContent=rsNf0.format(rs.length)+' '+(rsLoc.dim==='cidade'?'cidades':rsLoc.dim==='unidade'?'unidades':'bairros')+' · '+rsNf0.format(soma)+' clientes'+(rsLoc.uf?' em '+rsLoc.uf:'')+(rsF.clu?' · '+rsCluCurto(rsF.clu):'');
+  document.querySelector('#rs-loc-tab tbody').innerHTML=rs.length?rs.map(x=>{const pu=ufTot.get(x.uf)?x.n/ufTot.get(x.uf):0;
+    return'<tr><td>'+eh(x.uf)+'</td><td>'+eh(x.nome)+'</td><td class="rs-num"><b>'+rsNf0.format(x.n)+'</b><span class="rs-bar" style="width:'+Math.max(2,Math.round(60*x.n/(max||1)))+'px"></span></td><td class="rs-num">'+rsPctLoc(pu)+'</td><td class="rs-num">'+rsPctLoc(A.tot?x.n/A.tot:0)+'</td></tr>';}).join('')
+    :'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">Nenhuma localidade para este filtro.</td></tr>';
+}
+function rsLocCsv(){
+  const R=rsLocLinhas();if(!R)return;const{A,ufTot,rs}=R;const NL='\n';
+  const dl={cidade:'Cidade',unidade:'Unidade',bairro:'Bairro — Cidade'}[rsLoc.dim];
+  const csv='\ufeff'+['UF;'+dl+';Clientes;% da UF;% do total'].concat(rs.map(x=>[x.uf,x.nome,Math.round(x.n),rsPctLoc(ufTot.get(x.uf)?x.n/ufTot.get(x.uf):0),rsPctLoc(A.tot?x.n/A.tot:0)].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))).join(NL);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='Planta_Media_por_'+rsLoc.dim+(rsLoc.uf?'_'+rsLoc.uf:'')+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+}
 function rsReduzPlanta(objs,name){
   if(!objs.length)throw new Error('a planilha está vazia');
   const h=Object.keys(objs[0]);const nh=new Map(h.map(x=>[RS_NK(x),x]));
-  const c=nh.get(RS_NK('Novo Cluster')),u=nh.get(RS_NK('Unidade')),v=nh.get(RS_NK('Media Base Media')),e=nh.get(RS_NK('Empresa_1'));
+  const c=nh.get(RS_NK('Novo Cluster')),u=nh.get(RS_NK('Unidade')),v=nh.get(RS_NK('Media Base Media')),e=nh.get(RS_NK('Empresa_1')),cu=nh.get(RS_NK('Cidade_UF')),ba=nh.get(RS_NK('Bairro'));
   if(!c||!u||!v)throw new Error('não é a Planta Média (faltam Novo Cluster, Unidade ou Media Base Media)');
-  return{name,planta:true,total:objs.length,at:new Date().toISOString(),rows:objs.map(o=>[o[c]||'',o[u]||'',o[v],e?(o[e]||''):null])};
+  return{name,planta:true,total:objs.length,at:new Date().toISOString(),rows:objs.map(o=>[o[c]||'',o[u]||'',o[v],e?(o[e]||''):null,cu?String(o[cu]||'').trim():'',ba?String(o[ba]||'').trim():''])};
 }
 /* IRT: taxa = reparos do mês ÷ planta (clientes) — no cluster e por unidade */
 function rsIrtComPlanta(a,fca){
@@ -38031,7 +38121,7 @@ async function rsLimparBaseInd(ind,cb,planta){
   const linhas=D?D.fca.filter(x=>planta?RS_NK(x.indicador)==='IRT':rsIndBaseFor(x.indicador)===alvo):[];
   const usam=[...new Set(linhas.map(x=>x.indicador))];
   const quem=planta?'como Planta Média do IRT':(usam.length>1?'pelos indicadores '+usam.join(', '):'pelo indicador '+(usam[0]||ind));
-  const msg=planta?'Limpar a Planta Média "'+alvo.name+'"?\n\nEla é usada '+quem+'. A análise do IRT deixa de mostrar o IRT por unidade.'
+  const msg=planta?'Limpar a Planta Média "'+alvo.name+'"?\n\nEla é usada no contador de clientes da base e '+quem+'. O contador e o IRT por unidade deixam de aparecer.'
     :'Limpar a base "'+alvo.name+'"?\n\nEla é usada '+quem+' em todos os clusters. Serão apagados a base, as análises e os textos das justificativas desses indicadores.';
   if(!confirm(msg))return;
   linhas.forEach(x=>rsAnaAbertas.delete(x.id));
@@ -38050,7 +38140,7 @@ async function rsLimparTodasBases(){
   const comTexto=ids.filter(rsTemTexto).length;
   if(!nomes.length&&!comTexto){rsDrawJust();return;}
   if(!confirm('Limpar as bases, as análises e os textos das justificativas?\n\n'+(nomes.length?'Bases: '+nomes.join(', ')+'\n':'')+(comTexto?'Justificativas preenchidas: '+comTexto+'\n':'')+'\nAs bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.'))return;
-  RS_IND={};rsAnaAbertas.clear();const n=rsApagarTextos(ids);
+  RS_IND={};rsAnaAbertas.clear();const n=rsApagarTextos(ids);rsDrawPlanta();
   _ghToast('Redir limpo: '+nomes.length+' base(s) e '+n+' justificativa(s) ✓','var(--green-dk)',4000);
   rsDrawJust();
 }
@@ -38070,6 +38160,7 @@ async function rsOnIndFile(inp){
     await rsIndLoad();RS_IND[chave]=b;
     _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — vale enquanto o painel estiver aberto','var(--green-dk)',4500);
     if(rsIndCb)rsIndCb();
+    if(planta)rsDrawPlanta();
   }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
 }
 function rsPintaAnalise(box,a,aplicar){
