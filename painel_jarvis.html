@@ -519,6 +519,10 @@ body {
 .up-enc { background: var(--green-bg); color: var(--green-dk); }
 .upload-pill:hover { opacity: .8; }
 .upload-pill i { font-size: 13px; }
+/* iniciais de quem clicou em Atualizar, ao lado de "Última verificação" (B2B Abertos) */
+.atrix-who{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;margin-left:6px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--teal) 0%,var(--blue) 100%);color:#fff;font-size:8px;font-weight:700;letter-spacing:.02em;vertical-align:middle}
+.atrix-who[hidden]{display:none}
 .avatar-btn {
   width: 28px; height: 28px; border-radius: 50%;
   background: linear-gradient(135deg, var(--teal) 0%, var(--blue) 100%);
@@ -11459,7 +11463,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="mop-ref-btn admin-only" onclick="openCentral('ab')" data-up="abertos"><i class="ti ti-database"></i> Atualizar base</button>
           <label data-up="abertos" class="mop-ref-btn admin-only" style="cursor:pointer" title="Base nacional sem filtro prévio (aba Export) — separa automaticamente os chamados de PI/MA/PA/AM/AP, inferindo a cidade pelo Título quando a UF não vier preenchida. Vale para Abertos e SWAP juntos."><i class="ti ti-world-upload"></i> Anexar base geral<input type="file" id="file-ab-geral" accept=".xlsx,.xls" style="display:none"></label>
           <button data-up="atrix" class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
-          <span data-up="atrix" class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span></span>
+          <span data-up="atrix" class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span><span class="atrix-who" id="atrix-who" hidden></span></span>
           <span class="ab-upd-badge admin-only" id="atrix-running-timer" title="Tempo decorrido desde o clique em Atualizar — o ciclo completo leva ~15 min"><i class="ti ti-loader-2"></i><span id="atrix-running-timer-txt">Rodando há 00:00</span></span>
           <span class="atrix-progress-wrap" id="atrix-progress-wrap" title="% de chamados já verificados no ciclo do Agente Atrix em andamento">
             <span class="atrix-progress-bar"><span class="atrix-progress-fill" id="atrix-progress-fill" style="width:0%"></span></span>
@@ -15259,6 +15263,8 @@ async function fetchGhRawState(){
    mesclar o que ela trouxe. */
 function _mergeGhRemoteIntoLocal(remoteSt){
   if(!(remoteSt&&remoteSt.savedAt))return;
+  /* quem atualizou o Atrix: o mais recente vence, antes do gate de savedAt abaixo */
+  try{if(remoteSt.atrixLastTrigger)_atrixTrigAdopt(remoteSt.atrixLastTrigger);}catch(_){}
   const lastKnown=_getLastKnownRemoteSavedAt();
   if(!(!lastKnown||remoteSt.savedAt>lastKnown))return;
   {
@@ -17171,6 +17177,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'AOF_SYNC_AT',keys:['AOF_SYNC_TABLE','AOF_SYNC_FILENAME','AOF_SYNC_AT']},
   {at:'WM_SYNC_AT',keys:['WM_SYNC_RECORDS','WM_SYNC_FILENAME','WM_SYNC_AT']},
   {at:'usersAt',keys:['users','usersAt']},
+  {at:'atrixLastTrigger.at',keys:['atrixLastTrigger']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -17203,7 +17210,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,atrixLastTrigger,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -17240,6 +17247,7 @@ function asArr(v){return Array.isArray(v)?v:(v?[v]:[]);}
 let _lastApplyRenderedTabs = new Set();
 function applyState(st,label){
   if(!st||typeof st!=='object')return false;
+  try{if(st.atrixLastTrigger)_atrixTrigAdopt(st.atrixLastTrigger);}catch(_){}
   _lastApplyRenderedTabs = new Set();
   let changed=false;
   const clearLegacyFuelRequests=Number(st.version||0)<6;
@@ -17859,7 +17867,7 @@ function saveState(srSubstatus){
   _localSavePend=true;
   clearTimeout(_localSaveTimer);
   _localSaveTimer=setTimeout(_flushLocalSave,350);
-  /* srSubstatus: troca de substatus no B2B Abertos feita por Usuário Sr (canAbSubstatus) também sincroniza */
+  /* srSubstatus: troca de substatus no B2B Abertos ou clique em Atualizar (Atrix) feitos por Usuário Sr (canAbSubstatus) também sincronizam */
   if(canEdit()||_hasSrEditRights()||(srSubstatus===true&&canAbSubstatus())){
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer=setTimeout(()=>{
@@ -20159,13 +20167,20 @@ let atrixUpdateMap={};
 let _atrixRunningNow=false;
 let _atrixPickupTimer=null;
 let atrixLastSyncAt='';
+/* Quem clicou em "Atualizar" por último (pedido 2026-10-24: "quando algum usuário
+   realizar a atualização, ficar o logo do usuário ao lado do indicativo da última
+   atualização"). Vai no estado sincronizado (seção própria em REMOTE_MERGE_SECTIONS),
+   então aparece em todos os dispositivos; o mais recente (at ISO) sempre vence. */
+let atrixLastTrigger={user:'',at:''};
+function _atrixTrigNorm(t){return{user:String(t&&t.user||''),at:String(t&&t.at||'')};}
+function _atrixTrigAdopt(t){t=_atrixTrigNorm(t);if(t.user&&t.at&&t.at>(atrixLastTrigger.at||'')){atrixLastTrigger=t;if(typeof _atrixRenderTimerBadge==='function')_atrixRenderTimerBadge();}}
 
 /* Timer ao lado do botão (pedido do usuário): mostra ao vivo há quanto tempo foi a
    última sincronização real de substatus via Atrix, atualizando a cada 30s. */
 function _atrixRenderTimerBadge(){
   const el=document.getElementById('atrix-timer-txt'),badge=document.getElementById('atrix-timer-badge');
   if(!el||!badge)return;
-  if(!atrixLastSyncAt){el.textContent='Nunca sincronizado';badge.classList.remove('fresh','stale');return;}
+  if(!atrixLastSyncAt){el.textContent='Nunca sincronizado';badge.classList.remove('fresh','stale');_atrixRenderWho();return;}
   const ms=Date.now()-new Date(atrixLastSyncAt).getTime();
   const min=Math.floor(ms/60000);
   let txt;
@@ -20182,6 +20197,16 @@ function _atrixRenderTimerBadge(){
     (st&&st.lastError?' · '+st.lastError:'');
   badge.classList.toggle('fresh',min<35);
   badge.classList.toggle('stale',min>120);
+  _atrixRenderWho();
+}
+function _atrixRenderWho(){
+  const w=document.getElementById('atrix-who'),badge=document.getElementById('atrix-timer-badge');if(!w)return;
+  const t=atrixLastTrigger;
+  if(!t||!t.user){w.hidden=true;w.textContent='';return;}
+  w.hidden=false;w.textContent=initials(t.user);
+  const quando=new Date(t.at).toLocaleString('pt-BR');
+  w.title='Atualização solicitada por '+t.user+' em '+quando;
+  if(badge)badge.title=badge.title.replace(/ · Última atualização solicitada por .*$/,'')+' · Última atualização solicitada por '+t.user+' em '+quando;
 }
 setInterval(_atrixRenderTimerBadge,30000);
 
@@ -20457,6 +20482,7 @@ async function triggerAtrixUpdateNow(btn){
     const r=await _atrixTriggerViaWorker(false);
     if(r.cancelled){btn.disabled=false;btn.innerHTML=orig;return;}
     try{localStorage.setItem('jarvis:atrix:lastTriggerAt',String(Date.now()));}catch(_){}
+    if(currentUser&&currentUser.username){atrixLastTrigger={user:currentUser.username,at:new Date().toISOString()};_atrixRenderTimerBadge();saveState(true);}
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
     _ghToast('Atualização de substatus via Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
     _atrixStartMonitoring(new Date().toISOString(),0);
