@@ -2069,6 +2069,14 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-loc-lnk{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:600;color:var(--blue);cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
 #panel-redir-sem .rs-loc-lnk:hover{text-decoration:underline}
 #panel-redir-sem #rs-loc{margin-bottom:16px}
+#panel-redir-sem .rs-vbtn{margin-left:auto;display:inline-flex;align-items:center;gap:5px}
+#rs-video{position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+#rs-video[hidden]{display:none}
+#rs-video .rs-vbox{background:var(--surface);border-radius:14px;max-width:1100px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden}
+#rs-video .rs-vhd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:.5px solid var(--bd);font-size:13px;color:var(--tx)}
+#rs-video .rs-vhd small{color:var(--tx3);font-size:11px}
+#rs-video .rs-vhd button{margin-left:auto}
+#rs-video video{display:block;width:100%;max-height:calc(100vh - 120px);background:#000}
 #panel-redir-sem #rs-loc .fbar{display:flex!important;flex-wrap:wrap!important;gap:8px;align-items:center}
 #panel-redir-sem #rs-loc .fbar>*{flex:0 0 auto}
 #panel-redir-sem #rs-loc .fbar .fsel{width:auto;min-width:140px}
@@ -13710,6 +13718,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        de gestores/responsáveis, e o sync grava em repo público (LGPD). -->
   <div class="panel" id="panel-redir-sem">
     <input id="rs-file" type="file" accept=".xlsx,.xlsm,.xls,.html,.htm" hidden onchange="rsOnFile(this)">
+    <div id="rs-video" hidden role="dialog" aria-modal="true" aria-label="Vídeo explicativo do Redir (Semanal)" onclick="if(event.target===this)rsVideoFechar()">
+      <div class="rs-vbox"><div class="rs-vhd"><i class="ti ti-player-play"></i><b>Vídeo explicativo · Redir (Semanal)</b><small>dados fictícios</small><button type="button" class="rs-btn" onclick="rsVideoFechar()"><i class="ti ti-x"></i> Fechar</button></div>
+      <video id="rs-video-el" controls preload="none" playsinline></video></div>
+    </div>
     <input id="rs-ind-file" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden onchange="rsOnIndFile(this)">
     <div id="rs-empty" class="empty">
       <div class="empty-icon"><i class="ti ti-calendar-stats"></i></div>
@@ -13718,6 +13730,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="rs-empty-acts">
         <button type="button" class="empty-btn eb-ab" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder" style="font-size:14px"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
         <button type="button" class="empty-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip" style="font-size:14px"></i> Anexar planilha</button>
+        <button type="button" class="empty-btn" onclick="rsVideoAbrir()"><i class="ti ti-player-play" style="font-size:14px"></i> Vídeo explicativo</button>
       </div>
       <p class="rs-aviso" id="rs-aviso-empty"></p>
     </div>
@@ -13747,6 +13760,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="week-label"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
           <select class="fsel" id="rs-f-clu" onchange="rsSetF({clu:this.value||null})" aria-label="Cluster"></select>
           <span class="card-action" id="rs-limpar" onclick="rsSetF({clu:null,sem:null,q:''})">Limpar filtros</span>
+          <button type="button" class="rs-btn rs-vbtn" onclick="rsVideoAbrir()" title="Vídeo de 3 minutos mostrando como usar o painel (dados fictícios)"><i class="ti ti-player-play"></i> Vídeo explicativo</button>
         </div>
         <div class="rede-ctrlrow">
           <span class="rede-clbl"><i class="ti ti-database"></i> Base</span>
@@ -37531,13 +37545,13 @@ function rsJustCard(r,pr,sem,prev,D){
     }
     if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&!rsPlantaFonte()){
       const pb=document.createElement('button');pb.type='button';pb.className='rs-btn';pb.innerHTML='<i class="ti ti-building-community"></i> Inserir Planta Média';
-      pb.title='Planta Média para calcular o IRT por unidade: '+rsModeloTxt(RS_PLANTA)+' (ou carregue-a no Painel B2C).';
-      pb.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();},true);abar.appendChild(pb);
+      pb.title='Planta Média para comparar o IRT por unidade: '+rsModeloTxt(RS_PLANTA)+' (a mesma do botão Planta Média e do contador de clientes).';
+      pb.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawPlanta();rsDrawJust();},true);abar.appendChild(pb);
     }
     if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&RS_IND&&RS_IND[RS_PLANTA.modelo]){
       const lp=document.createElement('button');lp.type='button';lp.className='rs-btn rs-btn-del';lp.innerHTML='<i class="ti ti-trash"></i> Limpar Planta Média';
-      lp.title='Remove a Planta Média anexada ('+RS_IND[RS_PLANTA.modelo].name+'). A do Painel B2C não é afetada.';
-      lp.onclick=()=>rsLimparBaseInd(r.indicador,()=>rsDrawJust(),true);abar.appendChild(lp);
+      lp.title='Remove a Planta Média anexada ('+RS_IND[RS_PLANTA.modelo].name+'): sai do IRT e do contador de clientes.';
+      lp.onclick=()=>rsLimparBaseInd(r.indicador,()=>{rsDrawPlanta();rsDrawJust();},true);abar.appendChild(lp);
     }
     if(f.tipo!=='nenhuma'){
       const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
@@ -37814,13 +37828,11 @@ function rsFonteDe(r){
   if(m&&m.painel==='rede'&&typeof rdeAD!=='undefined'&&(rdeAD.length||rdeBD.length))return{tipo:'rede',m,lbl:'Painel Rede ('+(rdeAD.length+rdeBD.length)+' chamados)'};
   return{tipo:'nenhuma',m};
 }
-/* Planta Média para o IRT: anexada no Redir ou a do Painel B2C → {cod:{unidade:planta}} */
+/* Planta Média para o IRT: só a anexada no Redir (botão Planta Média), a planta inteira — 2026-10-24:
+   o usuário pediu a planta anexada como base de comparação; o Painel B2C e o recorte GIGA+ não são usados */
 function rsPlantaFonte(){
   const anex=RS_IND&&RS_IND[RS_PLANTA.modelo];
-  if(anex)return{lbl:'Planta Média anexada ('+anex.name+')',rows:anex.rows};
-  const raw=_rsB2cLinhas('plantaMedia');
-  if(raw.length)return{lbl:'Planta Média do Painel B2C ('+(_rsB2cArquivo('plantaMedia')||RS_PLANTA.arquivo)+')',rows:raw.map(x=>{const o=x&&x.raw?x.raw:x;return[o['Novo Cluster']||'',o['Unidade']||'',o['Media Base Media'],o['Empresa_1']==null?null:o['Empresa_1']];})};
-  return null;
+  return anex?{lbl:'Planta Média anexada ('+anex.name+')',rows:anex.rows}:null;
 }
 /* Clientes da base pela Planta Média ANEXADA no Redir (pedido 2026-10-24). Soma "Media Base Media"
    de todas as linhas com Cidade_UF (a linha "Total" e a nota de filtros do export ficam de fora);
@@ -37837,6 +37849,16 @@ function rsPlantaAgg(){
     linhas.push({uf:u,cidade:i>=0?cu.slice(0,i).trim():cu,unidade:String(x[1]||'').trim()||'—',bairro:x[5]||'—',n});tot+=n;uf.set(u,(uf.get(u)||0)+n);}
   return{b,tot,linhas,uf:[...uf.entries()].sort((a,c)=>c[1]-a[1])};
 }
+/* Vídeo explicativo (pedido 2026-10-24): arquivo publicado junto com o painel em videos/. Aberto fora do
+   GitHub Pages (arquivo local), cai para a cópia publicada. */
+const RS_VIDEO='videos/redir_semanal_explicativo.mp4',RS_VIDEO_WEB='https://iatimcll-blip.github.io/Acompanhamento-Jarvis/'+RS_VIDEO;
+function rsVideoAbrir(){
+  const m=document.getElementById('rs-video'),v=document.getElementById('rs-video-el');if(!m||!v)return;
+  if(!v.getAttribute('src')){v.onerror=()=>{if(v.src!==RS_VIDEO_WEB){v.src=RS_VIDEO_WEB;v.play().catch(()=>{});}};v.src=location.protocol==='file:'?RS_VIDEO_WEB:RS_VIDEO;}
+  m.hidden=false;v.play().catch(()=>{});
+}
+function rsVideoFechar(){const m=document.getElementById('rs-video'),v=document.getElementById('rs-video-el');if(v)v.pause();if(m)m.hidden=true;}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){const m=document.getElementById('rs-video');if(m&&!m.hidden)rsVideoFechar();}});
 function rsPlantaAnexar(){rsPedirBaseInd('Planta Média',()=>{rsDrawPlanta();rsDrawJust();},true);}
 function rsLocToggle(v){rsLoc.aberto=v==null?!rsLoc.aberto:!!v;rsDrawPlanta();if(rsLoc.aberto){const s=document.getElementById('rs-loc');if(s)s.scrollIntoView({block:'nearest',behavior:'smooth'});}}
 function rsDrawPlanta(){
@@ -37892,12 +37914,10 @@ function rsReduzPlanta(objs,name){
 }
 /* IRT: taxa = reparos do mês ÷ planta (clientes) — no cluster e por unidade */
 function rsIrtComPlanta(a,fca){
-  const pf=rsPlantaFonte();if(!pf){a.avisos.push('sem Planta Média: anexe a '+RS_PLANTA.arquivo+' (pasta Modelos\\'+RS_PLANTA.pasta+') ou carregue-a no Painel B2C para calcular o IRT por unidade');return;}
+  const pf=rsPlantaFonte();if(!pf){a.avisos.push('sem Planta Média: anexe a '+RS_PLANTA.arquivo+' (pasta Modelos\\'+RS_PLANTA.pasta+') no botão Planta Média para comparar o IRT por unidade');return;}
   const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1];
   const pl=new Map();let tot=0;
-  /* 2026-10-24: só a planta GIGA+ (Empresa_1); planilha sem a coluna entra inteira */
-  const temEmp=pf.rows.some(x=>x[3]!=null);
-  for(const [cl,un,v,emp] of pf.rows){const m=String(cl).match(/C\.?\s*(\d+)/i);if(!m||m[1]!==cod)continue;if(temEmp&&RS_NK(emp)!=='GIGA')continue;const n=Number(v)||0;tot+=n;const k=String(un||'').trim();pl.set(k,(pl.get(k)||0)+n);}
+  for(const [cl,un,v] of pf.rows){const m=String(cl).match(/C\.?\s*(\d+)/i);if(!m||m[1]!==cod)continue;const n=Number(v)||0;tot+=n;const k=String(un||'').trim();pl.set(k,(pl.get(k)||0)+n);}
   if(!tot){a.avisos.push('a Planta Média não tem o cluster '+fca.cluster);return;}
   const base=a._base,ui=base.cols.indexOf(base.pick.unidade);const rep=new Map();
   for(const r of a._escopo){const k=ui>=0?String(r[ui]||'').trim():'';rep.set(k,(rep.get(k)||0)+1);}
@@ -37907,7 +37927,7 @@ function rsIrtComPlanta(a,fca){
      planta só é usada para COMPARAR as unidades entre si (índice relativo, 1,0× = média do cluster),
      que não depende da escala; o IRT absoluto não é exibido. */
   a.kpis.push('IRT relativo por unidade: reparos da '+(a.semLbl||'semana')+' ÷ planta, comparado à média do cluster (1,0×)');
-  a.kpis.push('Planta: '+pf.lbl+(temEmp?' · só GIGA+':''));
+  a.kpis.push('Planta: '+pf.lbl);
   const fx=v=>(Math.round(v*10)/10).toString().replace('.',',')+'×';
   const un=[...pl.entries()].filter(([k,p])=>p>=50).map(([k,p])=>({v:k,c:rep.get(k)||0,pct:taxa?((rep.get(k)||0)/p)/taxa:0,p})).filter(x=>x.c>=3).sort((x,y)=>y.pct-x.pct);
   if(un.length){
