@@ -2057,6 +2057,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-lbl i{color:var(--blue)}
 #panel-redir-sem .rs-ctrl .fsel{width:auto;flex:0 0 auto;min-width:150px}
 #panel-redir-sem .rs-ctrl .card-action,#panel-redir-sem .rs-ctrl .week-label{flex:0 0 auto}
+#panel-redir-sem .rs-ger{font-size:12px;color:var(--tx);white-space:nowrap}
 #panel-redir-sem .rs-base{margin-left:auto;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #panel-redir-sem .rs-btn i{font-size:12px;vertical-align:-1px}
 #panel-redir-sem #rs-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
@@ -13697,8 +13698,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="week-label"><i class="ti ti-calendar" style="font-size:13px;vertical-align:-2px"></i> Semana</span>
           <select class="fsel" id="rs-f-sem" onchange="rsSetF({sem:this.value})" aria-label="Semana"></select>
           <span class="week-label"><i class="ti ti-user" style="font-size:13px;vertical-align:-2px"></i> Gerente</span>
-          <select class="fsel" id="rs-f-ger" onchange="rsSetF({ger:this.value||null})" aria-label="Gerente"></select>
-          <span class="card-action" id="rs-limpar" onclick="rsSetF({ger:null,sem:null,q:''})">Limpar filtros</span>
+          <b class="rs-ger" id="rs-ger-nome">Wellington Marcio</b>
+          <span class="week-label"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
+          <select class="fsel" id="rs-f-clu" onchange="rsSetF({clu:this.value||null})" aria-label="Cluster"></select>
+          <span class="card-action" id="rs-limpar" onclick="rsSetF({clu:null,sem:null,q:''})">Limpar filtros</span>
         </div>
         <div class="rede-ctrlrow">
           <span class="rede-clbl"><i class="ti ti-database"></i> Base</span>
@@ -13722,7 +13725,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fbar">
           <div class="rs-chips" id="rs-chips"></div>
         </div>
-        <div class="fbar" id="rs-jbar" hidden>
+        <div class="fbar" id="rs-jbar">
           <label class="rs-chk"><input type="checkbox" id="rs-jpend" onchange="rsDrawJust()"> Só pendentes</label>
           <span class="rs-note" id="rs-jcount"></span>
           <span class="card-action" style="margin-left:auto" onclick="rsExportCsv()"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar justificativas (CSV)</span>
@@ -13730,17 +13733,17 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="rs-jbody" id="rs-jlist"></div>
       </div>
 
-      <div class="section-hd">Entrega por gerente <span class="sh-line"></span></div>
+      <div class="section-hd">Entrega por cluster <span class="sh-line"></span></div>
       <div class="card" style="margin-bottom:16px">
-          <div class="card-hd"><span class="card-title">% de FCA completo por gerente</span><span class="rs-note">barra = semana · cinza = semana anterior · clique para abrir</span></div>
-          <div class="rs-cw" id="rs-cw-ger"><canvas id="rs-ch-ger" role="img" aria-label="Percentual de FCA completo por gerente"></canvas></div>
+          <div class="card-hd"><span class="card-title">% de FCA completo por cluster</span><span class="rs-note">barra = semana · cinza = semana anterior · clique para filtrar</span></div>
+          <div class="rs-cw" id="rs-cw-ger"><canvas id="rs-ch-ger" role="img" aria-label="Percentual de FCA completo por cluster"></canvas></div>
       </div>
       <div class="card" style="margin-bottom:16px">
         <div class="card-hd"><span class="card-title">FCAs exigidos por indicador</span><span class="rs-note">clusters que precisam de FCA na semana e situação da entrega</span></div>
         <div class="rs-cw" id="rs-cw-ind"><canvas id="rs-ch-ind" role="img" aria-label="FCAs exigidos por indicador"></canvas></div>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <div class="card-hd"><span class="card-title" id="rs-evo-t">Evolução</span><span class="rs-note">azul = total · verde = gerente filtrado</span></div>
+        <div class="card-hd"><span class="card-title" id="rs-evo-t">Evolução</span><span class="rs-note">azul = total do gerente · demais = clusters</span></div>
         <div class="rs-cw" style="height:280px"><canvas id="rs-ch-evo" role="img" aria-label="Evolução do percentual de FCA completo por semana"></canvas></div>
       </div>
 
@@ -13753,7 +13756,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="rs-note" id="rs-fato-n"></span>
         </div>
         <div class="tw rs-tw-list"><table id="rs-tab"><thead><tr>
-          <th data-k="gerente">Gerente</th><th data-k="cluster">Cluster</th><th data-k="indicador">Indicador</th><th data-k="fato">Fato</th>
+          <th data-k="cluster">Cluster</th><th data-k="indicador">Indicador</th><th data-k="fato">Fato</th>
           <th data-k="valor_mes" class="rs-num">Mês</th><th data-k="vs_mom" class="rs-num">Vs MoM</th><th data-k="acoes" class="rs-num">Ações</th><th data-k="entrega">Entrega</th>
         </tr></thead><tbody></tbody></table></div>
       </div>
@@ -37097,7 +37100,12 @@ updateCentralStatus();
    nunca entra no sync (repo público, LGPD). O .html antigo da semana segue aceito no anexo. */
 const RS_IDB_KEY='rs_base_v1',RS_DIR_KEY='rs_dir_v1',RS_LS_DRAFTS='jarvis-fca-drafts-v1';
 let RS_BASE=null,rsLoaded=false,rsLoading=null,rsDir=null,rsDirChecking=null,rsAviso='',rsData=null,rsDataAt='';
-const rsF={sem:null,ger:null,q:'',sort:'entrega',dir:1};
+const rsF={sem:null,clu:null,q:'',sort:'entrega',dir:1};
+/* Pedido 2026-10-24: "deixar apenas os dados do gerente Wellington Marcio" — o painel inteiro
+   fica restrito aos clusters dele (C.31 Piauí e C.32 Maranhão); onde antes se comparavam
+   gerentes, agora se comparam esses clusters. */
+const RS_GER_FIXO='Wellington Marcio';
+const rsCluCurto=c=>String(c||'').replace(/^C\.\d+\|/,'');
 const rsCh={};
 /* Planilha → linhas de FCA (abas Wxx) + matriz do mês (aba Painel; status pela cor da célula,
    mesma regra do Resumo Executivo). Conferido campo a campo contra o painel HTML da W43. */
@@ -37200,8 +37208,10 @@ function rsBaseDeXlsx(buf,name,lastModified,origem){
 function rsDados(){
   if(!RS_BASE)return null;
   if(rsData&&rsDataAt===RS_BASE.at)return rsData;
-  rsData=RS_BASE.kind==='xlsx'?RS_BASE.data:rsDadosHtml(RS_BASE.html);rsDataAt=RS_BASE.at;
-  if(!rsData.meta.arquivo)rsData.meta.arquivo=RS_BASE.name;
+  const all=RS_BASE.kind==='xlsx'?RS_BASE.data:rsDadosHtml(RS_BASE.html);
+  if(!all.meta.arquivo)all.meta.arquivo=RS_BASE.name;
+  const alvo=RS_NK(RS_GER_FIXO),ger=[...new Set(all.fca.map(r=>r.gerente))].find(g=>RS_NK(g).startsWith(alvo))||null;
+  rsData={fca:all.fca.filter(r=>r.gerente===ger),matriz:all.matriz.filter(r=>r.gerente===ger),meta:all.meta,ger};rsDataAt=RS_BASE.at;
   return rsData;
 }
 async function rsLoad(){
@@ -37292,20 +37302,19 @@ function rsFmt(ind,v){
 function rsDelta(ind,v){if(v==null)return'—';return(v>0?'+':v<0?'−':'')+rsNf1.format(Math.abs(v))+((RS_UNIT[ind]||'pct')==='pct'?' p.p.':'');}
 const RS_ENT={'Completo':'ok','Incompleto':'warn','Não enviado':'bad'},RS_ENT_B={'Completo':'b-green','Incompleto':'b-orange','Não enviado':'b-red'};
 function rsPrev(D,sem){const i=D.meta.semanas.indexOf(sem);return i>0?D.meta.semanas[i-1]:null;}
-/* resumo por semana × gerente (+ "Todos"): exigidos, completos…, % completo e diferença p/ semana anterior */
-function rsResumoGer(D){
+/* resumo por semana × cluster (+ "Todos" = total do gerente): exigidos, completos…, % completo e diferença p/ semana anterior */
+function rsResumoClu(D){
   if(D._res)return D._res;
-  const gers=[...new Set(D.fca.map(r=>r.gerente))],out=[];
-  for(const w of D.meta.semanas)for(const g of[...gers,'Todos']){
-    const rs=D.fca.filter(r=>r.semana===w&&r.situacao==='Exigido'&&(g==='Todos'||r.gerente===g));
+  const clus=[...new Set(D.fca.map(r=>r.cluster))],out=[];
+  for(const w of D.meta.semanas)for(const g of[...clus,'Todos']){
+    const rs=D.fca.filter(r=>r.semana===w&&r.situacao==='Exigido'&&(g==='Todos'||r.cluster===g));
     const n=k=>rs.filter(r=>r.entrega===k).length,ex=rs.length,co=n('Completo');
-    out.push({semana:w,gerente:g,exigidos:ex,completos:co,incompletos:n('Incompleto'),nao_enviados:n('Não enviado'),pct:ex?co/ex:null});
+    out.push({semana:w,cluster:g,exigidos:ex,completos:co,incompletos:n('Incompleto'),nao_enviados:n('Não enviado'),pct:ex?co/ex:null});
   }
-  for(const r of out){const p=rsPrev(D,r.semana),o=p&&out.find(x=>x.semana===p&&x.gerente===r.gerente);r.vsAnt=o&&o.pct!=null&&r.pct!=null?r.pct-o.pct:null;}
+  for(const r of out){const p=rsPrev(D,r.semana),o=p&&out.find(x=>x.semana===p&&x.cluster===r.cluster);r.vsAnt=o&&o.pct!=null&&r.pct!=null?r.pct-o.pct:null;}
   return D._res=out;
 }
 function rsSetF(p){
-  if('ger' in p&&p.ger!==rsF.ger){const sc=!!p.ger;Object.assign(rsF,p);rsDraw();if(sc)setTimeout(()=>{const h=document.getElementById('rs-just-hd');if(h)h.scrollIntoView({behavior:'smooth',block:'start'});},80);return;}
   if('q' in p){const q=document.getElementById('rs-q');if(q)q.value=p.q;}
   Object.assign(rsF,p);rsDraw();
 }
@@ -37320,23 +37329,24 @@ async function rsRender(forcarDraw){
   let D=null;try{D=rsDados();}catch(e){rsAviso='base inválida: '+(e&&e.message||e);rsMsg();}
   empty.hidden=!!D;dash.hidden=!D;
   if(!D){Object.keys(rsCh).forEach(k=>{rsCh[k].destroy();delete rsCh[k];});return;}
-  if(novo||forcarDraw||!rsCh.ger||rsCh._at!==RS_BASE.at)rsDraw();
+  if(novo||forcarDraw||!rsCh._at||rsCh._at!==RS_BASE.at)rsDraw();
 }
 function rsDraw(){
   const D=rsDados();if(!D)return;rsCh._at=RS_BASE.at;
   if(!rsF.sem||!D.meta.semanas.includes(rsF.sem))rsF.sem=D.meta.ult;
-  const gers=[...new Set(D.fca.map(r=>r.gerente))];
-  if(rsF.ger&&!gers.includes(rsF.ger))rsF.ger=null;
-  const sem=rsF.sem,ger=rsF.ger,R=rsResumoGer(D),prev=rsPrev(D,sem);
+  const clus=[...new Set(D.fca.map(r=>r.cluster))].sort((a,b)=>rsSemOrd(a,b));
+  if(rsF.clu&&!clus.includes(rsF.clu))rsF.clu=null;
+  const sem=rsF.sem,clu=rsF.clu,R=rsResumoClu(D),prev=rsPrev(D,sem);
+  document.getElementById('rs-ger-nome').textContent=D.ger||RS_GER_FIXO;
   const ss=document.getElementById('rs-f-sem');
   ss.innerHTML=D.meta.semanas.map(w=>'<option value="'+eh(w)+'">'+eh(w)+(D.meta.labels[w]?' ('+eh(D.meta.labels[w])+')':'')+'</option>').join('');ss.value=sem;
-  const sg=document.getElementById('rs-f-ger');
-  sg.innerHTML='<option value="">Todos os gerentes</option>'+gers.map(g=>'<option value="'+eh(g)+'">'+eh(g)+'</option>').join('');sg.value=ger||'';
+  const sc=document.getElementById('rs-f-clu');
+  sc.innerHTML='<option value="">Todos os clusters</option>'+clus.map(c=>'<option value="'+eh(c)+'">'+eh(rsCluCurto(c))+'</option>').join('');sc.value=clu||'';
   document.getElementById('rs-evo-t').textContent='Evolução '+D.meta.semanas[0]+(D.meta.semanas.length>1?' → '+D.meta.ult:'')+' · % de FCA completo';
   document.getElementById('rs-mat-hd').firstChild.textContent='Indicadores do mês por cluster'+(D.meta.mes?' · '+D.meta.mes:'')+' ';
   document.getElementById('rs-fato-n').textContent=D.meta.fato?'Fato = resultado do mês ('+D.meta.fato+') contra a meta.':'';
   /* KPIs */
-  const r=R.find(x=>x.semana===sem&&x.gerente===(ger||'Todos'))||{};
+  const r=R.find(x=>x.semana===sem&&x.cluster===(clu||'Todos'))||{};
   const dv=r.vsAnt==null?(prev?'':'primeira semana da base'):'<span class="tag '+(r.vsAnt>0.0005?'tag-green':r.vsAnt<-0.0005?'tag-red':'tag-blue')+'">'+(r.vsAnt>0?'+':r.vsAnt<0?'−':'')+rsNf1.format(Math.abs(r.vsAnt*100))+' p.p.</span> vs '+eh(prev);
   document.getElementById('rs-kpis').innerHTML=
     '<div class="mc c-blue"><div class="mc-label">% FCA completo · '+eh(sem)+'</div><div class="mc-val" style="color:var(--blue)"><b>'+rsPct1(r.pct)+'</b></div><div class="mc-sub">'+dv+'</div></div>'+
@@ -37345,19 +37355,21 @@ function rsDraw(){
     '<div class="mc c-orange"><div class="mc-label">Incompletos</div><div class="mc-val" style="color:var(--orange)"><b>'+rsNf0.format(r.incompletos||0)+'</b></div><div class="mc-sub">enviados faltando campos</div></div>'+
     '<div class="mc c-red"><div class="mc-label">Não enviados</div><div class="mc-val" style="color:var(--red)"><b>'+rsNf0.format(r.nao_enviados||0)+'</b></div><div class="mc-sub">sem causa nem ação</div></div>';
   /* frase-resumo */
-  let t='Na <b>'+eh(sem)+'</b>'+(ger?', '+eh(ger)+' tem ':', ')+'<b>'+rsNf0.format(r.completos||0)+'</b> de <b>'+rsNf0.format(r.exigidos||0)+'</b> FCAs exigidos completos (<b>'+rsPct1(r.pct)+'</b>)';
-  const p=prev&&R.find(x=>x.semana===prev&&x.gerente===(ger||'Todos'));
-  if(p)t+=', contra <b>'+rsPct1(p.pct)+'</b> na '+eh(prev);
-  t+='. ';
-  if(!ger){const act=R.filter(x=>x.semana===sem&&x.gerente!=='Todos'&&x.exigidos>0),zero=act.filter(x=>!x.completos&&!x.incompletos);
-    t+=zero.length?zero.length+' de '+act.length+' gerentes ainda não enviaram nenhum FCA: '+zero.map(z=>eh(z.gerente)).join(', ')+'.':'Todos os gerentes enviaram ao menos um FCA.';}
-  else if(r.nao_enviados)t+='Faltam '+r.nao_enviados+' FCA(s) não enviados.';
-  document.getElementById('rs-take').innerHTML=t;
-  rsDrawCharts(D,R,sem,ger,prev);
-  rsDrawChips(R,sem,ger);
+  if(!D.ger){document.getElementById('rs-take').innerHTML='A planilha <b>'+eh(D.meta.arquivo||'')+'</b> não traz linhas do gerente <b>'+eh(RS_GER_FIXO)+'</b>.';}
+  else{
+    let t='Na <b>'+eh(sem)+'</b>, '+(clu?eh(rsCluCurto(clu))+' tem ':eh(D.ger)+' tem ')+'<b>'+rsNf0.format(r.completos||0)+'</b> de <b>'+rsNf0.format(r.exigidos||0)+'</b> FCAs exigidos completos (<b>'+rsPct1(r.pct)+'</b>)';
+    const p=prev&&R.find(x=>x.semana===prev&&x.cluster===(clu||'Todos'));
+    if(p)t+=', contra <b>'+rsPct1(p.pct)+'</b> na '+eh(prev);
+    t+='. ';
+    if(!clu)t+=R.filter(x=>x.semana===sem&&x.cluster!=='Todos'&&x.exigidos>0).map(x=>eh(rsCluCurto(x.cluster))+': '+x.completos+'/'+x.exigidos+(x.nao_enviados?' ('+x.nao_enviados+' não enviados)':'')).join(' · ');
+    else if(r.nao_enviados)t+='Faltam '+r.nao_enviados+' FCA(s) não enviados.';
+    document.getElementById('rs-take').innerHTML=t;
+  }
+  rsDrawMat(D,clu);
+  rsDrawChips(R,sem,clu);
   rsDrawJust();
+  rsDrawCharts(D,R,sem,clu,prev);
   rsDrawTable();
-  rsDrawMat(D,ger);
 }
 function rsChartBase(){
   const dk=document.body.dataset.theme==='dark';
@@ -37365,34 +37377,34 @@ function rsChartBase(){
     tip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8}};
 }
 function rsNewChart(k,id,cfg){if(rsCh[k]){rsCh[k].destroy();delete rsCh[k];}const c=document.getElementById(id);if(!c||typeof Chart==='undefined')return;rsCh[k]=new Chart(c,cfg);}
-function rsDrawCharts(D,R,sem,ger,prev){
+function rsDrawCharts(D,R,sem,clu,prev){
   const B=rsChartBase(),DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
-  /* % completo por gerente (barra = semana, cinza = semana anterior) */
-  const rows=R.filter(x=>x.semana===sem&&x.gerente!=='Todos'&&x.exigidos>0);
-  const pm=new Map(R.filter(x=>x.semana===prev).map(x=>[x.gerente,x]));
-  document.getElementById('rs-cw-ger').style.height=Math.max(200,rows.length*(prev?34:26)+40)+'px';
-  const ds=[{label:sem,data:rows.map(x=>x.pct==null?0:x.pct*100),backgroundColor:rows.map(x=>!ger||ger===x.gerente?'#007aff':'rgba(0,122,255,.25)'),borderRadius:5,borderSkipped:false,barPercentage:.9,categoryPercentage:prev?.8:.7,
+  /* % completo por cluster (barra = semana, cinza = semana anterior) */
+  const rows=R.filter(x=>x.semana===sem&&x.cluster!=='Todos'&&x.exigidos>0);
+  const pm=new Map(R.filter(x=>x.semana===prev).map(x=>[x.cluster,x]));
+  document.getElementById('rs-cw-ger').style.height=Math.max(200,rows.length*(prev?44:32)+60)+'px';
+  const ds=[{label:sem,data:rows.map(x=>x.pct==null?0:x.pct*100),backgroundColor:rows.map(x=>!clu||clu===x.cluster?'#007aff':'rgba(0,122,255,.25)'),borderRadius:5,borderSkipped:false,barPercentage:.9,categoryPercentage:prev?.8:.7,
     datalabels:{anchor:'end',align:'end',clip:false,color:B.lab,font:{size:10,weight:'600'},formatter:(v,c)=>{const x=rows[c.dataIndex];return rsPct0(x.pct)+' · '+x.completos+'/'+x.exigidos;}}}];
-  if(prev)ds.push({label:prev,data:rows.map(x=>{const o=pm.get(x.gerente);return o&&o.pct!=null?o.pct*100:0;}),backgroundColor:B.dk?'rgba(255,255,255,.18)':'rgba(0,0,0,.12)',borderRadius:5,borderSkipped:false,barPercentage:.9,categoryPercentage:.8,datalabels:{display:false}});
-  rsNewChart('ger','rs-ch-ger',{type:'bar',plugins:DL?[DL]:[],data:{labels:rows.map(x=>x.gerente),datasets:ds},
+  if(prev)ds.push({label:prev,data:rows.map(x=>{const o=pm.get(x.cluster);return o&&o.pct!=null?o.pct*100:0;}),backgroundColor:B.dk?'rgba(255,255,255,.18)':'rgba(0,0,0,.12)',borderRadius:5,borderSkipped:false,barPercentage:.9,categoryPercentage:.8,datalabels:{display:false}});
+  rsNewChart('ger','rs-ch-ger',{type:'bar',plugins:DL?[DL]:[],data:{labels:rows.map(x=>rsCluCurto(x.cluster)),datasets:ds},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:70}},
-      onClick:(ev,els)=>{if(!els||!els.length)return;const g=rows[els[0].index].gerente;rsSetF({ger:rsF.ger===g?null:g});},
+      onClick:(ev,els)=>{if(!els||!els.length)return;const g=rows[els[0].index].cluster;rsSetF({clu:rsF.clu===g?null:g});},
       onHover:(ev,els)=>{ev.native.target.style.cursor=els&&els.length?'pointer':'default';},
       plugins:{legend:{display:!!prev,position:'top',align:'end',labels:{boxWidth:10,font:{size:10},color:B.tick}},datalabels:DL?{}:{display:false},
-        tooltip:{...B.tip,callbacks:{label:c=>{const x=c.datasetIndex===0?rows[c.dataIndex]:pm.get(rows[c.dataIndex].gerente);return c.dataset.label+': '+(x?rsPct1(x.pct)+' ('+x.completos+'/'+x.exigidos+')':'—');}}}},
+        tooltip:{...B.tip,callbacks:{label:c=>{const x=c.datasetIndex===0?rows[c.dataIndex]:pm.get(rows[c.dataIndex].cluster);return c.dataset.label+': '+(x?rsPct1(x.pct)+' ('+x.completos+'/'+x.exigidos+')':'—');}}}},
       scales:{x:{min:0,max:100,grid:{color:B.grid},ticks:{font:{size:9},color:B.tick,callback:v=>v+'%'}},y:{grid:{display:false},ticks:{font:{size:10},color:B.tick}}}}});
-  /* evolução por semana */
-  const W=D.meta.semanas,byG=g=>W.map(w=>{const x=R.find(y=>y.semana===w&&y.gerente===g);return x&&x.pct!=null?x.pct*100:null;});
-  const gers=[...new Set(R.filter(x=>x.gerente!=='Todos').map(x=>x.gerente))];
-  const lines=gers.filter(g=>g!==ger&&R.some(x=>x.gerente===g&&x.exigidos)).map(g=>({label:g,data:byG(g),borderColor:B.dk?'rgba(255,255,255,.18)':'rgba(0,0,0,.14)',borderWidth:1.5,pointRadius:0,pointHoverRadius:3,cubicInterpolationMode:'monotone',spanGaps:true}));
-  lines.push({label:'Total',data:byG('Todos'),borderColor:'#007aff',backgroundColor:'#007aff',borderWidth:3,pointRadius:4,cubicInterpolationMode:'monotone',spanGaps:true});
-  if(ger)lines.push({label:ger,data:byG(ger),borderColor:'#34c759',backgroundColor:'#34c759',borderWidth:3,pointRadius:4,cubicInterpolationMode:'monotone',spanGaps:true});
+  /* evolução por semana: total do gerente + cada cluster */
+  const W=D.meta.semanas,byG=g=>W.map(w=>{const x=R.find(y=>y.semana===w&&y.cluster===g);return x&&x.pct!=null?x.pct*100:null;});
+  const cores=['#34c759','#ff9500','#af52de','#5ac8fa'];
+  const clus=[...new Set(R.filter(x=>x.cluster!=='Todos'&&x.exigidos).map(x=>x.cluster))];
+  const lines=[{label:'Total '+(D.ger||''),data:byG('Todos'),borderColor:'#007aff',backgroundColor:'#007aff',borderWidth:3,pointRadius:4,cubicInterpolationMode:'monotone',spanGaps:true}];
+  clus.forEach((c,i)=>lines.push({label:rsCluCurto(c),data:byG(c),borderColor:cores[i%cores.length],backgroundColor:cores[i%cores.length],borderWidth:clu&&clu!==c?1.5:2.5,pointRadius:3,borderDash:clu&&clu!==c?[4,4]:[],cubicInterpolationMode:'monotone',spanGaps:true}));
   rsNewChart('evo','rs-ch-evo',{type:'line',data:{labels:W,datasets:lines},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},
-      plugins:{legend:{display:false},datalabels:{display:false},tooltip:{...B.tip,filter:c=>c.dataset.label==='Total'||c.dataset.label===ger||c.raw!=null,callbacks:{label:c=>c.dataset.label+': '+(c.raw==null?'—':rsNf1.format(c.raw)+'%')}}},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:true,position:'top',align:'end',labels:{boxWidth:10,font:{size:10},color:B.tick}},datalabels:{display:false},tooltip:{...B.tip,callbacks:{label:c=>c.dataset.label+': '+(c.raw==null?'—':rsNf1.format(c.raw)+'%')}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10},color:B.tick}},y:{min:0,max:100,grid:{color:B.grid},ticks:{font:{size:9},color:B.tick,callback:v=>v+'%'}}}}});
   /* FCAs exigidos por indicador (empilhado por situação da entrega) */
-  const rs=D.fca.filter(x=>x.semana===sem&&x.situacao==='Exigido'&&(!ger||x.gerente===ger));
+  const rs=D.fca.filter(x=>x.semana===sem&&x.situacao==='Exigido'&&(!clu||x.cluster===clu));
   const ag=new Map();for(const x of rs){const a=ag.get(x.indicador)||{co:0,inc:0,ne:0,n:0};a.n++;if(x.entrega==='Completo')a.co++;else if(x.entrega==='Incompleto')a.inc++;else if(x.entrega==='Não enviado')a.ne++;ag.set(x.indicador,a);}
   const ind=[...ag.entries()].sort((a,b)=>b[1].n-a[1].n||a[0].localeCompare(b[0]));
   document.getElementById('rs-cw-ind').style.height=Math.max(160,ind.length*24+60)+'px';
@@ -37406,14 +37418,15 @@ function rsDrawCharts(D,R,sem,ger,prev){
       plugins:{legend:{position:'top',align:'start',labels:{boxWidth:10,font:{size:10},color:B.tick}},datalabels:{display:false},tooltip:{...B.tip,mode:'index',axis:'y',intersect:false}},
       scales:{x:{stacked:true,grid:{color:B.grid},ticks:{font:{size:9},color:B.tick,precision:0}},y:{stacked:true,grid:{display:false},ticks:{font:{size:10},color:B.tick}}}}});
 }
-function rsDrawChips(R,sem,ger){
+function rsDrawChips(R,sem,clu){
   const box=document.getElementById('rs-chips');box.innerHTML='';
-  for(const r of R.filter(x=>x.semana===sem&&x.gerente!=='Todos'&&x.exigidos>0)){
-    const b=document.createElement('button');b.type='button';const pend=r.exigidos-r.completos;
-    b.className='rs-chip'+(ger===r.gerente?' sel':'')+(pend?' pend':'');
-    b.innerHTML=eh(r.gerente)+'<small>'+(pend?pend+' pendente'+(pend>1?'s':''):'em dia')+'</small>';
-    b.onclick=()=>rsSetF({ger:ger===r.gerente?null:r.gerente});box.appendChild(b);
-  }
+  const todos=R.find(x=>x.semana===sem&&x.cluster==='Todos');
+  const mk=(lbl,val,r)=>{const b=document.createElement('button');b.type='button';const pend=r?r.exigidos-r.completos:0;
+    b.className='rs-chip'+((clu||null)===val?' sel':'')+(pend?' pend':'');
+    b.innerHTML=eh(lbl)+'<small>'+(r?(pend?pend+' pendente'+(pend>1?'s':''):'em dia'):'')+'</small>';
+    b.onclick=()=>rsSetF({clu:val});box.appendChild(b);};
+  mk('Todos os clusters',null,todos);
+  for(const r of R.filter(x=>x.semana===sem&&x.cluster!=='Todos'&&x.exigidos>0))mk(rsCluCurto(r.cluster),r.cluster,r);
 }
 /* justificativas: rascunho por FCA no localStorage (mesma chave do painel original) */
 const RS_FIELDS=[['causa','Causa','w',3],['acao','Ação','w',4],['resp','Resp','',2],['prazo','Prazo','',2],['status_acoes','Status','',2]];
@@ -37424,15 +37437,14 @@ function rsDraftFor(r){const m=rsDraftsMap();if(!m.has(r.id))m.set(r.id,Object.f
 function rsReady(d,sp){const falta=RS_FIELDS.filter(([f])=>!String(d[f]||'').trim()).map(x=>x[1]);sp.className='rs-ready'+(falta.length?'':' ok');sp.textContent=falta.length?'Faltam: '+falta.join(', '):'✔ FCA completo';}
 const rsQ=s=>'"'+String(s||'').replace(/"/g,'""')+'"';
 function rsDrawJust(){
-  const D=rsDados();if(!D)return;const sem=rsF.sem,ger=rsF.ger,prev=rsPrev(D,sem);
+  const D=rsDados();if(!D)return;const sem=rsF.sem,clu=rsF.clu,prev=rsPrev(D,sem);
   const list=document.getElementById('rs-jlist'),bar=document.getElementById('rs-jbar');list.innerHTML='';
-  if(!ger){bar.hidden=true;list.innerHTML='<div class="rs-vazio">Escolha o gerente para abrir os indicadores dele que exigem FCA, com a análise e o fato do mês. Preencha Causa, Ação, Resp, Prazo e Status: o texto fica salvo neste navegador. Copie cada FCA para colar na aba da semana (colunas Causa a Status) ou exporte tudo em CSV.</div>';return;}
   bar.hidden=false;
   const byId=new Map(D.fca.map(r=>[r.id,r])),ord={'Não enviado':0,'Incompleto':1,'Completo':2};
-  let rs=D.fca.filter(r=>r.semana===sem&&r.gerente===ger&&r.situacao==='Exigido');const total=rs.length;
+  let rs=D.fca.filter(r=>r.semana===sem&&(!clu||r.cluster===clu)&&r.situacao==='Exigido');const total=rs.length;
   if(document.getElementById('rs-jpend').checked)rs=rs.filter(r=>r.entrega!=='Completo');
-  document.getElementById('rs-jcount').textContent=rs.length+' de '+total+' indicadores com FCA exigido na '+sem;
-  if(!rs.length){list.innerHTML='<div class="rs-vazio">'+(total?'Todos os FCAs deste gerente estão completos.':'Nenhum FCA exigido para este gerente na semana.')+'</div>';return;}
+  document.getElementById('rs-jcount').textContent=rs.length+' de '+total+' indicadores com FCA exigido na '+sem+' · preencha Causa, Ação, Resp, Prazo e Status (salvo neste navegador)';
+  if(!rs.length){list.innerHTML='<div class="rs-vazio">'+(total?'Todos os FCAs estão completos.':'Nenhum FCA exigido na semana.')+'</div>';return;}
   const grp=new Map();for(const r of rs){if(!grp.has(r.cluster))grp.set(r.cluster,[]);grp.get(r.cluster).push(r);}
   for(const[cl,items]of grp){
     const sec=document.createElement('section');sec.className='rs-clu';
@@ -37704,42 +37716,42 @@ function rsPintaAnalise(box,a,aplicar){
   bar.appendChild(cp);box.appendChild(bar);
 }
 function rsExportCsv(){
-  const D=rsDados();if(!D)return;const sem=rsF.sem,ger=rsF.ger;
-  const rs=D.fca.filter(r=>r.semana===sem&&r.situacao==='Exigido'&&(!ger||r.gerente===ger));
+  const D=rsDados();if(!D)return;const sem=rsF.sem,clu=rsF.clu;
+  const rs=D.fca.filter(r=>r.semana===sem&&r.situacao==='Exigido'&&(!clu||r.cluster===clu));
   const lines=[['Semana','Gerente','Cluster','Indicador','Fato','Causa','Ação','Resp','Prazo','Status'].join(';')];
   for(const r of rs){const d=rsDraftsMap().get(r.id)||Object.fromEntries(RS_FIELDS.map(([f])=>[f,r[f]||'']));
     lines.push([r.semana,r.gerente,r.cluster,r.indicador,r.fato,d.causa,d.acao,d.resp,d.prazo,d.status_acoes].map(rsQ).join(';'));}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
-  a.download='Justificativas_FCA_'+sem+(ger?'_'+ger.replace(/\s+/g,'_'):'')+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  a.download='Justificativas_FCA_'+sem+'_'+String(D.ger||RS_GER_FIXO).replace(/\s+/g,'_')+(clu?'_'+rsCluCurto(clu).replace(/\W+/g,'_'):'')+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 function rsDrawTable(){
-  const D=rsDados();if(!D)return;const sem=rsF.sem,ger=rsF.ger;
+  const D=rsDados();if(!D)return;const sem=rsF.sem,clu=rsF.clu;
   const q=(rsF.q||'').trim().toLowerCase(),pend=document.getElementById('rs-tpend').checked;
-  let rs=D.fca.filter(r=>r.semana===sem&&r.situacao==='Exigido'&&(!ger||r.gerente===ger)&&(!pend||r.entrega!=='Completo'));
-  if(q)rs=rs.filter(r=>[r.gerente,r.cluster,r.indicador,r.fato,r.grupo].join(' ').toLowerCase().includes(q));
+  let rs=D.fca.filter(r=>r.semana===sem&&r.situacao==='Exigido'&&(!clu||r.cluster===clu)&&(!pend||r.entrega!=='Completo'));
+  if(q)rs=rs.filter(r=>[r.cluster,r.indicador,r.fato,r.grupo].join(' ').toLowerCase().includes(q));
   const ord={'Não enviado':0,'Incompleto':1,'Completo':2},k=rsF.sort;
   rs.sort((a,b)=>{let va=a[k],vb=b[k];if(k==='entrega'){va=ord[va];vb=ord[vb];}if(va==null)return 1;if(vb==null)return-1;
     const c=typeof va==='number'?va-vb:String(va).localeCompare(String(vb),'pt-BR');return c*rsF.dir||a.cluster.localeCompare(b.cluster)||a.indicador.localeCompare(b.indicador);});
   document.querySelectorAll('#rs-tab th').forEach(th=>{th.setAttribute('aria-sort',th.dataset.k===k?(rsF.dir>0?'ascending':'descending'):'none');
     th.onclick=()=>{const kk=th.dataset.k;rsF.dir=rsF.sort===kk?-rsF.dir:1;rsF.sort=kk;rsDrawTable();};});
-  document.getElementById('rs-tcount').textContent=rs.length+(rs.length===1?' linha':' linhas')+' · '+sem+(ger?' · '+ger:'');
-  document.querySelector('#rs-tab tbody').innerHTML=rs.length?rs.map(r=>'<tr><td>'+eh(r.gerente)+'</td><td>'+eh(r.cluster)+'</td><td>'+eh(r.indicador)+'</td><td class="fato">'+eh(r.fato||'—')+'</td><td class="rs-num">'+eh(rsFmt(r.indicador,r.valor_mes))+'</td><td class="rs-num">'+eh(rsDelta(r.indicador,r.vs_mom))+'</td><td class="rs-num">'+(r.acoes||'—')+'</td><td><span class="badge '+(RS_ENT_B[r.entrega]||'')+'">'+eh(r.entrega||'—')+'</span></td></tr>').join('')
-    :'<tr><td colspan="8" style="text-align:center;color:var(--tx3)">Nenhum FCA para este filtro.</td></tr>';
+  document.getElementById('rs-tcount').textContent=rs.length+(rs.length===1?' linha':' linhas')+' · '+sem+(clu?' · '+rsCluCurto(clu):'');
+  document.querySelector('#rs-tab tbody').innerHTML=rs.length?rs.map(r=>'<tr><td>'+eh(r.cluster)+'</td><td>'+eh(r.indicador)+'</td><td class="fato">'+eh(r.fato||'—')+'</td><td class="rs-num">'+eh(rsFmt(r.indicador,r.valor_mes))+'</td><td class="rs-num">'+eh(rsDelta(r.indicador,r.vs_mom))+'</td><td class="rs-num">'+(r.acoes||'—')+'</td><td><span class="badge '+(RS_ENT_B[r.entrega]||'')+'">'+eh(r.entrega||'—')+'</span></td></tr>').join('')
+    :'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">Nenhum FCA para este filtro.</td></tr>';
 }
-function rsDrawMat(D,ger){
-  const M=D.matriz,tab=document.getElementById('rs-mat'),leg=document.getElementById('rs-mat-leg');
-  if(!M.length){tab.innerHTML='<tr><td>A planilha não traz a matriz do mês (aba Painel).</td></tr>';leg.innerHTML='';return;}
+/* Matriz do mês: só os clusters do gerente fixo (sem "Total da empresa"), todas as cores. */
+function rsDrawMat(D,clu){
+  const M=D.matriz.filter(r=>!clu||r.cluster===clu),tab=document.getElementById('rs-mat'),leg=document.getElementById('rs-mat-leg');
+  if(!M.length){tab.innerHTML='<tr><td>A planilha não traz a matriz do mês (aba Painel) para este gerente.</td></tr>';leg.innerHTML='';return;}
   const inds=[...new Set(M.map(r=>r.indicador))];
-  const rows=M.filter(r=>!ger||r.gerente===ger||r.cluster==='Total da empresa');
-  const clus=[...new Map(rows.map(r=>[r.cluster,r])).values()].sort((a,b)=>a.ordem-b.ordem);
+  const clus=[...new Map(M.map(r=>[r.cluster,r])).values()].sort((a,b)=>a.ordem-b.ordem);
   const meta=new Map();for(const r of M)if(!meta.has(r.indicador))meta.set(r.indicador,r);
-  const map=new Map(rows.map(r=>[r.cluster+'|'+r.indicador,r]));
+  const map=new Map(M.map(r=>[r.cluster+'|'+r.indicador,r]));
   const sc={'Na meta':'s-ok','Próximo da meta':'s-warn','Fora da meta':'s-bad','Sem dado':'s-none'},cnt={'Na meta':0,'Próximo da meta':0,'Fora da meta':0};
   let h='<thead><tr><th class="rl">Cluster</th>'+inds.map(i=>'<th>'+eh(i)+'</th>').join('')+'</tr></thead><tbody>';
   h+='<tr class="mt"><td class="rl">Meta</td>'+inds.map(i=>{const m=meta.get(i);return'<td>'+eh(m.meta!=null?rsFmt(i,m.meta):(m.meta_texto||'—'))+'</td>';}).join('')+'</tr>';
-  for(const c of clus){const tot=c.cluster==='Total da empresa';
-    h+='<tr'+(tot?' class="tot"':'')+'><td class="rl">'+eh(c.cluster.replace(/^C\.\d+\|/,''))+'<small>'+eh(tot?'Giga+':c.cluster.split('|')[0]+' · '+c.gerente)+'</small></td>';
-    for(const i of inds){const r=map.get(c.cluster+'|'+i);if(r&&!tot&&cnt[r.status]!=null)cnt[r.status]++;
+  for(const c of clus){
+    h+='<tr><td class="rl">'+eh(rsCluCurto(c.cluster))+'<small>'+eh(c.cluster.split('|')[0])+'</small></td>';
+    for(const i of inds){const r=map.get(c.cluster+'|'+i);if(r&&cnt[r.status]!=null)cnt[r.status]++;
       h+='<td class="'+(r?sc[r.status]||'s-none':'s-none')+'"'+(r?' title="'+eh(c.cluster+' · '+i+'\nMês: '+rsFmt(i,r.valor)+'\nMeta: '+(r.meta!=null?rsFmt(i,r.meta):(r.meta_texto||'—'))+'\n'+r.status)+'"':'')+'>'+eh(r?rsFmt(i,r.valor):'—')+'</td>';}
     h+='</tr>';}
   tab.innerHTML=h+'</tbody>';
