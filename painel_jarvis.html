@@ -13754,20 +13754,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="rs-jbody" id="rs-jlist"></div>
       </div>
 
-      <div class="section-hd">Entrega por cluster <span class="sh-line"></span></div>
-      <div class="card" style="margin-bottom:16px">
-          <div class="card-hd"><span class="card-title">% de FCA completo por cluster</span><span class="rs-note">barra = semana · cinza = semana anterior · clique para filtrar</span></div>
-          <div class="rs-cw" id="rs-cw-ger"><canvas id="rs-ch-ger" role="img" aria-label="Percentual de FCA completo por cluster"></canvas></div>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-hd"><span class="card-title">FCAs exigidos por indicador</span><span class="rs-note">clusters que precisam de FCA na semana e situação da entrega</span></div>
-        <div class="rs-cw" id="rs-cw-ind"><canvas id="rs-ch-ind" role="img" aria-label="FCAs exigidos por indicador"></canvas></div>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-hd"><span class="card-title" id="rs-evo-t">Evolução</span><span class="rs-note">azul = total do gerente · demais = clusters</span></div>
-        <div class="rs-cw" style="height:280px"><canvas id="rs-ch-evo" role="img" aria-label="Evolução do percentual de FCA completo por semana"></canvas></div>
-      </div>
-
       <div class="section-hd">Lista de FCAs exigidos <span class="sh-line"></span></div>
       <div class="tsec">
         <div class="tsec-hd"><span class="tsec-title">FCAs exigidos na semana</span><span class="tsec-meta" id="rs-tcount"></span></div>
@@ -37400,7 +37386,7 @@ async function rsRender(forcarDraw){
   if(!dash||!empty)return;
   let D=null;try{D=rsDados();}catch(e){rsAviso='base inválida: '+(e&&e.message||e);rsMsg();}
   empty.hidden=!!D;dash.hidden=!D;
-  if(!D){Object.keys(rsCh).forEach(k=>{rsCh[k].destroy();delete rsCh[k];});return;}
+  if(!D){delete rsCh._at;return;}
   if(novo||forcarDraw||!rsCh._at||rsCh._at!==RS_BASE.at)rsDraw();
 }
 function rsDraw(){
@@ -37414,7 +37400,6 @@ function rsDraw(){
   ss.innerHTML=D.meta.semanas.map(w=>'<option value="'+eh(w)+'">'+eh(w)+(D.meta.labels[w]?' ('+eh(D.meta.labels[w])+')':'')+'</option>').join('');ss.value=sem;
   const sc=document.getElementById('rs-f-clu');
   sc.innerHTML='<option value="">Todos os clusters</option>'+clus.map(c=>'<option value="'+eh(c)+'">'+eh(rsCluCurto(c))+'</option>').join('');sc.value=clu||'';
-  document.getElementById('rs-evo-t').textContent='Evolução '+D.meta.semanas[0]+(D.meta.semanas.length>1?' → '+D.meta.ult:'')+' · % de FCA completo';
   document.getElementById('rs-mat-hd').firstChild.textContent='Indicadores do mês por cluster'+(D.meta.mes?' · '+D.meta.mes:'')+' ';
   document.getElementById('rs-fato-n').textContent=D.meta.fato?'Fato = resultado do mês ('+D.meta.fato+') contra a meta.':'';
   /* KPIs */
@@ -37440,55 +37425,7 @@ function rsDraw(){
   rsDrawMat(D,clu);
   rsDrawChips(R,sem,clu);
   rsDrawJust();
-  rsDrawCharts(D,R,sem,clu,prev);
   rsDrawTable();
-}
-function rsChartBase(){
-  const dk=document.body.dataset.theme==='dark';
-  return{dk,tick:dk?'#8e8e93':'#6e6e73',grid:dk?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.05)',lab:dk?'#ddd':'#333',
-    tip:{backgroundColor:'rgba(28,28,30,.92)',titleFont:{size:11},bodyFont:{size:11},padding:10,cornerRadius:8}};
-}
-function rsNewChart(k,id,cfg){if(rsCh[k]){rsCh[k].destroy();delete rsCh[k];}const c=document.getElementById(id);if(!c||typeof Chart==='undefined')return;rsCh[k]=new Chart(c,cfg);}
-function rsDrawCharts(D,R,sem,clu,prev){
-  const B=rsChartBase(),DL=typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
-  /* % completo por cluster (barra = semana, cinza = semana anterior) */
-  const rows=R.filter(x=>x.semana===sem&&x.cluster!=='Todos'&&x.exigidos>0);
-  const pm=new Map(R.filter(x=>x.semana===prev).map(x=>[x.cluster,x]));
-  document.getElementById('rs-cw-ger').style.height=Math.max(200,rows.length*(prev?44:32)+60)+'px';
-  const ds=[{label:sem,data:rows.map(x=>x.pct==null?0:x.pct*100),backgroundColor:rows.map(x=>!clu||clu===x.cluster?'#007aff':'rgba(0,122,255,.25)'),borderRadius:5,borderSkipped:false,barPercentage:.9,categoryPercentage:prev?.8:.7,
-    datalabels:{anchor:'end',align:'end',clip:false,color:B.lab,font:{size:10,weight:'600'},formatter:(v,c)=>{const x=rows[c.dataIndex];return rsPct0(x.pct)+' · '+x.completos+'/'+x.exigidos;}}}];
-  if(prev)ds.push({label:prev,data:rows.map(x=>{const o=pm.get(x.cluster);return o&&o.pct!=null?o.pct*100:0;}),backgroundColor:B.dk?'rgba(255,255,255,.18)':'rgba(0,0,0,.12)',borderRadius:5,borderSkipped:false,barPercentage:.9,categoryPercentage:.8,datalabels:{display:false}});
-  rsNewChart('ger','rs-ch-ger',{type:'bar',plugins:DL?[DL]:[],data:{labels:rows.map(x=>rsCluCurto(x.cluster)),datasets:ds},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:70}},
-      onClick:(ev,els)=>{if(!els||!els.length)return;const g=rows[els[0].index].cluster;rsSetF({clu:rsF.clu===g?null:g});},
-      onHover:(ev,els)=>{ev.native.target.style.cursor=els&&els.length?'pointer':'default';},
-      plugins:{legend:{display:!!prev,position:'top',align:'end',labels:{boxWidth:10,font:{size:10},color:B.tick}},datalabels:DL?{}:{display:false},
-        tooltip:{...B.tip,callbacks:{label:c=>{const x=c.datasetIndex===0?rows[c.dataIndex]:pm.get(rows[c.dataIndex].cluster);return c.dataset.label+': '+(x?rsPct1(x.pct)+' ('+x.completos+'/'+x.exigidos+')':'—');}}}},
-      scales:{x:{min:0,max:100,grid:{color:B.grid},ticks:{font:{size:9},color:B.tick,callback:v=>v+'%'}},y:{grid:{display:false},ticks:{font:{size:10},color:B.tick}}}}});
-  /* evolução por semana: total do gerente + cada cluster */
-  const W=D.meta.semanas,byG=g=>W.map(w=>{const x=R.find(y=>y.semana===w&&y.cluster===g);return x&&x.pct!=null?x.pct*100:null;});
-  const cores=['#34c759','#ff9500','#af52de','#5ac8fa'];
-  const clus=[...new Set(R.filter(x=>x.cluster!=='Todos'&&x.exigidos).map(x=>x.cluster))];
-  const lines=[{label:'Total '+(D.ger||''),data:byG('Todos'),borderColor:'#007aff',backgroundColor:'#007aff',borderWidth:3,pointRadius:4,cubicInterpolationMode:'monotone',spanGaps:true}];
-  clus.forEach((c,i)=>lines.push({label:rsCluCurto(c),data:byG(c),borderColor:cores[i%cores.length],backgroundColor:cores[i%cores.length],borderWidth:clu&&clu!==c?1.5:2.5,pointRadius:3,borderDash:clu&&clu!==c?[4,4]:[],cubicInterpolationMode:'monotone',spanGaps:true}));
-  rsNewChart('evo','rs-ch-evo',{type:'line',data:{labels:W,datasets:lines},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-      plugins:{legend:{display:true,position:'top',align:'end',labels:{boxWidth:10,font:{size:10},color:B.tick}},datalabels:{display:false},tooltip:{...B.tip,callbacks:{label:c=>c.dataset.label+': '+(c.raw==null?'—':rsNf1.format(c.raw)+'%')}}},
-      scales:{x:{grid:{display:false},ticks:{font:{size:10},color:B.tick}},y:{min:0,max:100,grid:{color:B.grid},ticks:{font:{size:9},color:B.tick,callback:v=>v+'%'}}}}});
-  /* FCAs exigidos por indicador (empilhado por situação da entrega) */
-  const rs=D.fca.filter(x=>x.semana===sem&&x.situacao==='Exigido'&&(!clu||x.cluster===clu));
-  const ag=new Map();for(const x of rs){const a=ag.get(x.indicador)||{co:0,inc:0,ne:0,n:0};a.n++;if(x.entrega==='Completo')a.co++;else if(x.entrega==='Incompleto')a.inc++;else if(x.entrega==='Não enviado')a.ne++;ag.set(x.indicador,a);}
-  const ind=[...ag.entries()].sort((a,b)=>b[1].n-a[1].n||a[0].localeCompare(b[0]));
-  document.getElementById('rs-cw-ind').style.height=Math.max(160,ind.length*24+60)+'px';
-  const tot={id:'rsTot',afterDatasetsDraw(ch){const{ctx}=ch,m=ch.getDatasetMeta(2);ctx.save();ctx.font='600 10px system-ui,sans-serif';ctx.fillStyle=B.lab;ctx.textBaseline='middle';
-    m.data.forEach((b,i)=>{ctx.fillText(String(ind[i][1].n),b.x+5,b.y);});ctx.restore();}};
-  rsNewChart('ind','rs-ch-ind',{type:'bar',plugins:[tot],data:{labels:ind.map(x=>x[0]),datasets:[
-      {label:'Completo',data:ind.map(x=>x[1].co),backgroundColor:'#34c759',borderRadius:3},
-      {label:'Incompleto',data:ind.map(x=>x[1].inc),backgroundColor:'#ff9500',borderRadius:3},
-      {label:'Não enviado',data:ind.map(x=>x[1].ne),backgroundColor:'#ff3b30',borderRadius:3}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:24}},
-      plugins:{legend:{position:'top',align:'start',labels:{boxWidth:10,font:{size:10},color:B.tick}},datalabels:{display:false},tooltip:{...B.tip,mode:'index',axis:'y',intersect:false}},
-      scales:{x:{stacked:true,grid:{color:B.grid},ticks:{font:{size:9},color:B.tick,precision:0}},y:{stacked:true,grid:{display:false},ticks:{font:{size:10},color:B.tick}}}}});
 }
 function rsDrawChips(R,sem,clu){
   const box=document.getElementById('rs-chips');box.innerHTML='';
@@ -37506,7 +37443,10 @@ let rsDrafts=null;
 function rsDraftsMap(){if(!rsDrafts){let s={};try{s=JSON.parse(localStorage.getItem(RS_LS_DRAFTS)||'{}')||{};}catch(e){}rsDrafts=new Map(Object.entries(s));}return rsDrafts;}
 function rsSaveDrafts(){try{localStorage.setItem(RS_LS_DRAFTS,JSON.stringify(Object.fromEntries(rsDraftsMap())));}catch(e){}}
 function rsDraftFor(r){const m=rsDraftsMap();if(!m.has(r.id))m.set(r.id,Object.fromEntries(RS_FIELDS.map(([f])=>[f,r[f]||''])));return m.get(r.id);}
-function rsReady(d,sp){const falta=RS_FIELDS.filter(([f])=>!String(d[f]||'').trim()).map(x=>x[1]);sp.className='rs-ready'+(falta.length?'':' ok');sp.textContent=falta.length?'Faltam: '+falta.join(', '):'✔ FCA completo';}
+/* c/r: card da justificativa — a borda acompanha o preenchimento (pedido 2026-10-24): completo = verde,
+   parcial = laranja, vazio = situação da planilha */
+function rsReady(d,sp,c,r){const falta=RS_FIELDS.filter(([f])=>!String(d[f]||'').trim()).map(x=>x[1]);sp.className='rs-ready'+(falta.length?'':' ok');sp.textContent=falta.length?'Faltam: '+falta.join(', '):'✔ FCA completo';
+  if(c){const p=!falta.length?'ok':falta.length<RS_FIELDS.length?'warn':(RS_ENT[r&&r.entrega]||'bad');c.classList.remove('p-ok','p-warn','p-bad');c.classList.add('p-'+p);}}
 const rsQ=s=>'"'+String(s||'').replace(/"/g,'""')+'"';
 function rsDrawJust(){
   const D=rsDados();if(!D)return;const sem=rsF.sem,clu=rsF.clu,prev=rsPrev(D,sem);
@@ -37544,7 +37484,7 @@ function rsJustCard(r,pr,sem,prev,D){
     const tem=RS_FIELDS.some(([f])=>String(d[f]||'').trim());
     if(tem&&!confirm('Substituir Causa, Ação, Prazo e Status deste FCA pela sugestão da análise? (Resp fica para você preencher)'))return;
     const v={causa:a.sug.causa,acao:a.sug.acao,resp:d.resp||'',prazo:a.sug.prazo,status_acoes:a.sug.status};
-    RS_FIELDS.forEach(([f],i)=>{d[f]=v[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st);rsSaveDrafts();
+    RS_FIELDS.forEach(([f],i)=>{d[f]=v[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st,c,r);rsSaveDrafts();
     _ghToast('Sugestão aplicada — revise o texto e preencha o Resp.','var(--green-dk)',3500);
   };
   const pintaBar=()=>{
@@ -37589,12 +37529,12 @@ function rsJustCard(r,pr,sem,prev,D){
   for(const[f,lab,w,rows]of RS_FIELDS){const lb=document.createElement('label');if(w)lb.className=w;lb.appendChild(document.createTextNode(lab));
     const ta=document.createElement('textarea');ta.rows=rows;ta.value=d[f];ta.setAttribute('aria-label',lab+' — '+r.indicador);
     ta.placeholder=f==='causa'?'1. Causa principal…':f==='acao'?'1.1 Ação para a causa 1…':f==='status_acoes'?'1.1 Em andamento':f==='prazo'?'1.1 30/out':'1.1 Nome';
-    ta.oninput=()=>{d[f]=ta.value;rsReady(d,st);rsSaveDrafts();rsAutoAltura(ta);};lb.appendChild(ta);form.appendChild(lb);tas.push(ta);requestAnimationFrame(()=>rsAutoAltura(ta));}
+    ta.oninput=()=>{d[f]=ta.value;rsReady(d,st,c,r);rsSaveDrafts();rsAutoAltura(ta);};lb.appendChild(ta);form.appendChild(lb);tas.push(ta);requestAnimationFrame(()=>rsAutoAltura(ta));}
   c.appendChild(form);
-  const ft=document.createElement('div');ft.className='rs-jfoot';rsReady(d,st);ft.appendChild(st);
+  const ft=document.createElement('div');ft.className='rs-jfoot';rsReady(d,st,c,r);ft.appendChild(st);
   const acts=document.createElement('div');acts.className='acts';
   if(pr&&pr.causa){const b=document.createElement('button');b.type='button';b.className='rs-btn';b.textContent='Usar FCA da '+prev;
-    b.onclick=()=>{RS_FIELDS.forEach(([f],i)=>{d[f]=pr[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st);rsSaveDrafts();};acts.appendChild(b);}
+    b.onclick=()=>{RS_FIELDS.forEach(([f],i)=>{d[f]=pr[f]||'';tas[i].value=d[f];rsAutoAltura(tas[i]);});rsReady(d,st,c,r);rsSaveDrafts();};acts.appendChild(b);}
   const cp=document.createElement('button');cp.type='button';cp.className='rs-btn pri';cp.textContent='Copiar para o Excel';
   cp.onclick=async()=>{const txt=RS_FIELDS.map(([f])=>rsQ(d[f])).join('\t');let ok=true;
     try{await navigator.clipboard.writeText(txt);}catch(e){ok=false;const old=c.querySelector('.rs-copyfb');if(old)old.remove();const ta=document.createElement('textarea');ta.className='rs-copyfb';ta.rows=3;ta.readOnly=true;ta.value=txt;c.appendChild(ta);ta.focus();ta.select();}
@@ -37784,8 +37724,10 @@ const RS_MODELOS=[
   {re:/^IFIME$/,modelo:'IFI ME',pasta:'IFI ME',arquivo:'IFME.xlsx',b2c:'ifme'},
   {re:/^EFETIVIDADEDEREPAROS|^EFETIVIDADEREPAROS/,modelo:'Efetividade de Reparo',pasta:'Efetividade de Reparo',arquivo:'Efetividade Reparos.xlsx',b2c:'efetividadeReparos'},
   {re:/^EFICIENCIA(LIMPA|VENDAS)|^EFETIVIDADEDEALTAS|^EFETIVIDADEALTAS/,modelo:'Efetividade de Altas',pasta:'Efetividade de Altas',arquivo:'Efetividade Altas.xlsx',b2c:'efetividadeAltas'},
-  {re:/^EFICIENCIAME|^AGINGME/,modelo:'Mudança de Endereço',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
-  {re:/^AGINGALTAS/,modelo:'Aging Altas',pasta:'',arquivo:'Aging Altas.xlsx',b2c:'agingAltas'},
+  /* 2026-10-24: Aging Altas, Aging ME e Eficiência ME têm base própria, anexada individualmente (modelo = chave em RS_IND) */
+  {re:/^EFICIENCIAME/,modelo:'Eficiência ME',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
+  {re:/^AGINGME/,modelo:'Aging ME',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
+  {re:/^AGINGALTAS/,modelo:'Aging Altas',pasta:'Aging de Altas',arquivo:'Aging Altas.xlsx',b2c:'agingAltas'},
   {re:/^PRAZODEREPAROSB2B/,modelo:'Prazo de Reparos B2B',painel:'enc'},
   {re:/^MTTR/,modelo:'MTTR 6H',painel:'rede'},
 ];
@@ -37848,22 +37790,24 @@ function rsPlantaFonte(){
   const anex=RS_IND&&RS_IND[RS_PLANTA.modelo];
   if(anex)return{lbl:'Planta Média anexada ('+anex.name+')',rows:anex.rows};
   const raw=_rsB2cLinhas('plantaMedia');
-  if(raw.length)return{lbl:'Planta Média do Painel B2C ('+(_rsB2cArquivo('plantaMedia')||RS_PLANTA.arquivo)+')',rows:raw.map(x=>{const o=x&&x.raw?x.raw:x;return[o['Novo Cluster']||'',o['Unidade']||'',o['Media Base Media']];})};
+  if(raw.length)return{lbl:'Planta Média do Painel B2C ('+(_rsB2cArquivo('plantaMedia')||RS_PLANTA.arquivo)+')',rows:raw.map(x=>{const o=x&&x.raw?x.raw:x;return[o['Novo Cluster']||'',o['Unidade']||'',o['Media Base Media'],o['Empresa_1']==null?null:o['Empresa_1']];})};
   return null;
 }
 function rsReduzPlanta(objs,name){
   if(!objs.length)throw new Error('a planilha está vazia');
   const h=Object.keys(objs[0]);const nh=new Map(h.map(x=>[RS_NK(x),x]));
-  const c=nh.get(RS_NK('Novo Cluster')),u=nh.get(RS_NK('Unidade')),v=nh.get(RS_NK('Media Base Media'));
+  const c=nh.get(RS_NK('Novo Cluster')),u=nh.get(RS_NK('Unidade')),v=nh.get(RS_NK('Media Base Media')),e=nh.get(RS_NK('Empresa_1'));
   if(!c||!u||!v)throw new Error('não é a Planta Média (faltam Novo Cluster, Unidade ou Media Base Media)');
-  return{name,planta:true,total:objs.length,at:new Date().toISOString(),rows:objs.map(o=>[o[c]||'',o[u]||'',o[v]])};
+  return{name,planta:true,total:objs.length,at:new Date().toISOString(),rows:objs.map(o=>[o[c]||'',o[u]||'',o[v],e?(o[e]||''):null])};
 }
 /* IRT: taxa = reparos do mês ÷ planta (clientes) — no cluster e por unidade */
 function rsIrtComPlanta(a,fca){
   const pf=rsPlantaFonte();if(!pf){a.avisos.push('sem Planta Média: anexe a '+RS_PLANTA.arquivo+' (pasta Modelos\\'+RS_PLANTA.pasta+') ou carregue-a no Painel B2C para calcular o IRT por unidade');return;}
   const cod=(String(fca.cluster).match(/C\.?\s*(\d+)/i)||[])[1];
   const pl=new Map();let tot=0;
-  for(const [cl,un,v] of pf.rows){const m=String(cl).match(/C\.?\s*(\d+)/i);if(!m||m[1]!==cod)continue;const n=Number(v)||0;tot+=n;const k=String(un||'').trim();pl.set(k,(pl.get(k)||0)+n);}
+  /* 2026-10-24: só a planta GIGA+ (Empresa_1); planilha sem a coluna entra inteira */
+  const temEmp=pf.rows.some(x=>x[3]!=null);
+  for(const [cl,un,v,emp] of pf.rows){const m=String(cl).match(/C\.?\s*(\d+)/i);if(!m||m[1]!==cod)continue;if(temEmp&&RS_NK(emp)!=='GIGA')continue;const n=Number(v)||0;tot+=n;const k=String(un||'').trim();pl.set(k,(pl.get(k)||0)+n);}
   if(!tot){a.avisos.push('a Planta Média não tem o cluster '+fca.cluster);return;}
   const base=a._base,ui=base.cols.indexOf(base.pick.unidade);const rep=new Map();
   for(const r of a._escopo){const k=ui>=0?String(r[ui]||'').trim():'';rep.set(k,(rep.get(k)||0)+1);}
@@ -37873,7 +37817,7 @@ function rsIrtComPlanta(a,fca){
      planta só é usada para COMPARAR as unidades entre si (índice relativo, 1,0× = média do cluster),
      que não depende da escala; o IRT absoluto não é exibido. */
   a.kpis.push('IRT relativo por unidade: reparos da '+(a.semLbl||'semana')+' ÷ planta, comparado à média do cluster (1,0×)');
-  a.kpis.push('Planta: '+pf.lbl);
+  a.kpis.push('Planta: '+pf.lbl+(temEmp?' · só GIGA+':''));
   const fx=v=>(Math.round(v*10)/10).toString().replace('.',',')+'×';
   const un=[...pl.entries()].filter(([k,p])=>p>=50).map(([k,p])=>({v:k,c:rep.get(k)||0,pct:taxa?((rep.get(k)||0)/p)/taxa:0,p})).filter(x=>x.c>=3).sort((x,y)=>y.pct-x.pct);
   if(un.length){
