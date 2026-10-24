@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-09-13T02:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-24T20:45:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13570,6 +13570,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <span class="mx-prog-pct" id="mx-prog-pct">0%</span><span class="mx-prog-txt" id="mx-prog-txt"></span>
           </div>
           <button type="button" class="mx-btn2" id="mx-src-del" hidden>Remover base</button>
+          <button type="button" class="mx-up-btn" id="mx-pub-btn" data-up="max" hidden title="Envia agora a base deste aparelho para todos os usuários"><i class="ti ti-cloud-upload"></i> Publicar para todos</button>
           <button type="button" class="mx-up-btn" id="mx-rep-btn" hidden title="Baixa o relatório em PowerPoint (.pptx) e Excel (.xlsx) do cluster, das unidades e do período selecionados" style="background:var(--mx-blue);color:#fff;margin-left:auto"><i class="ti ti-presentation"></i> Gerar relatório (PPT + Excel)</button>
         </div>
       </header>
@@ -13769,6 +13770,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar planilha</button>
             <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Fica salva e aparece para todos os usuários até alguém limpar."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
+            <button type="button" class="rs-btn pri" id="rs-pub-btn" data-up="redirSemanal" hidden onclick="rsPublicarTudo()" title="Envia agora a planilha, as bases e as justificativas deste aparelho para todos os usuários"><i class="ti ti-cloud-upload"></i> Publicar para todos</button>
             <button type="button" class="rs-btn rs-btn-del" id="rs-planta-del" data-up="redirSemanal" hidden onclick="rsLimparBaseInd('IRT',()=>{rsDrawPlanta();rsDrawJust();},true)" title="Remove a Planta Média anexada (contadores de clientes e IRT por unidade)."><i class="ti ti-trash"></i> Limpar Planta Média</button>
           </span>
         </div>
@@ -14832,6 +14834,15 @@ async function _syncUnzip(z){
   const bin=atob(z);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
   return JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
 }
+/* _syncEnviado[k] = at do pacote que já está no arquivo do GitHub (lido do servidor ou enviado com sucesso) */
+var _syncEnviado={};
+function _syncMarcarEnviado(st){
+  if(!st||typeof st!=='object')return;let mud=false;
+  for(const k of['rsBaseSync','rsIndSync','mxSync']){const p=st[k];if(p&&p.at&&String(p.at)>String(_syncEnviado[k]||'')){_syncEnviado[k]=p.at;mud=true;}}
+  if(st.rsDraftsSync&&typeof st.rsDraftsSync==='object'){const m=_syncEnviado.drafts||(_syncEnviado.drafts={});
+    for(const[id,d]of Object.entries(st.rsDraftsSync))if(d&&d.at&&String(d.at)>String(m[id]||'')){m[id]=d.at;mud=true;}}
+  if(mud)_syncAvisa('status');
+}
 function _syncMaisNovo(a,b){return !!(a&&a.at&&(!b||!b.at||String(a.at)>String(b.at)));}
 function _syncAvisa(k){try{window.dispatchEvent(new CustomEvent('jarvis-sync-pacote',{detail:k}));}catch(e){}}
 function _syncAdotar(st){
@@ -15327,7 +15338,8 @@ async function fetchGhRawState(){
     const r=await fetch(GH_SYNC_RAW_URL+'?t='+Date.now(),{cache:'no-store'});
     if(r.ok){
       const decoded=JSON.parse(await r.text());
-      return await _ghDecodeWrapper(decoded);
+      const st=await _ghDecodeWrapper(decoded);try{_syncMarcarEnviado(st);}catch(_){}
+      return st;
     }
   }catch(e){console.warn('Falha ao ler sync-state via raw.githubusercontent.com, tentando api.github.com:',e);}
   try{
@@ -15350,7 +15362,7 @@ function _mergeGhRemoteIntoLocal(remoteSt){
   /* quem atualizou o Atrix: o mais recente vence, antes do gate de savedAt abaixo */
   try{if(remoteSt.atrixLastTrigger)_atrixTrigAdopt(remoteSt.atrixLastTrigger);}catch(_){}
   /* Redir/MAX: o pacote mais novo vence, independente do gate de savedAt abaixo */
-  try{_syncAdotar(remoteSt);}catch(e){console.warn('sync: falha nas bases do Redir/MAX:',e);}
+  try{_syncAdotar(remoteSt);_syncMarcarEnviado(remoteSt);}catch(e){console.warn('sync: falha nas bases do Redir/MAX:',e);}
   const lastKnown=_getLastKnownRemoteSavedAt();
   if(!(!lastKnown||remoteSt.savedAt>lastKnown))return;
   {
@@ -15847,6 +15859,7 @@ async function saveGhState(manual=false){
       try{
         await _syncPutViaWorker(sha,content);
         _setLastKnownRemoteSavedAt(builtState.savedAt);
+        try{_syncMarcarEnviado(builtState);}catch(_){}
         const msg='Sincronizado com GitHub em '+now2();
         if(el){el.textContent=msg;el.style.color='var(--green-dk)'}
         _ghToast('Sync GitHub ✓ '+now2(),'var(--green-dk)');
@@ -17116,6 +17129,7 @@ function iniciarSincronizacaoAutomatica(){
   _ghAutoSyncTimer=setInterval(()=>{
     if(document.visibilityState!=='visible')return;
     restoreGhState();
+    setTimeout(()=>{try{if(window.rsSyncReconciliar)rsSyncReconciliar().catch(()=>{});if(window.mxSyncReconciliar)mxSyncReconciliar().catch(()=>{});}catch(e){}},8000);
   },5*60*1000);
 }
 function iniciarAtualizacaoAutomaticaSla(){
@@ -36558,10 +36572,11 @@ updateCentralStatus();
 
   function renderSrc(){
     const msg=$('mx-src-msg');msg.className='mx-src-msg';
-    if(!MXI){msg.textContent='Nenhuma base anexada neste dispositivo.';$('mx-src-del').hidden=true;return;}
+    const pb=$('mx-pub-btn');if(pb)pb.hidden=true;
+    if(!MXI){msg.textContent='Nenhuma base anexada.';$('mx-src-del').hidden=true;return;}
     msg.classList.add('ok');
     msg.textContent=`Base: ${MXI.arquivo}`+(MXI.sheet&&MXI.sheet!=='JSON'&&MXI.sheet!=='CSV'?` (aba ${MXI.sheet})`:'')+` · ${int(MXI.linhas)} reparos de ${dmy(MXI.inicio)} a ${dmy(MXI.fim)}`+
-      (MXI.derivedDriver?` · driver calculado pela regra em ${int(MXI.derivedDriver)} MAX`:'')+(MXI.at?` · anexada em ${new Date(MXI.at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}`:'')+'. Só neste dispositivo.';
+      (MXI.derivedDriver?` · driver calculado pela regra em ${int(MXI.derivedDriver)} MAX`:'')+(MXI.at?` · anexada em ${new Date(MXI.at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}`:'')+mxStatusSync();
     $('mx-src-del').hidden=false;
   }
 
@@ -37225,10 +37240,23 @@ updateCentralStatus();
   /* ── sincronização (pedido 2026-10-24): a base anexada pelo Admin/Sr aparece para todos.
      MXD.tecnicos (nomes) nunca vai no pacote — continua só no aparelho de quem anexou. ── */
   const mxAtIso=()=>MXI&&MXI.at?new Date(MXI.at).toISOString():'';
-  async function mxPublicar(){
+  function mxStatusSync(){
+    const ok=String((_syncEnviado||{}).mxSync||'')>=mxAtIso(),ed=canEdit('max');
+    const pb=$('mx-pub-btn');if(pb)pb.hidden=!(ed&&!ok);
+    return ok?'. ✓ Visível para todos os usuários.':ed?'. ⚠ Ainda não enviada para os outros usuários.':'. Aguardando sincronização.';
+  }
+  $('mx-pub-btn').addEventListener('click',async()=>{
+    if(!canEdit('max')){alert('Seu usuário não tem liberação para publicar neste painel. Peça ao Admin.');return;}
+    if(!MXD)return;await mxPublicar(false);clearTimeout(remoteSaveTimer);
+    _ghToast('Publicando a base MAX para todos os usuários…','var(--blue)',3500);
+    const ok=await saveGhState(false);renderSrc();
+    if(ok)_ghToast('Base MAX publicada para todos os usuários ✓','var(--green-dk)',4000);
+    else _ghToast('Não foi possível publicar agora (veja o aviso no topo). Tente de novo em instantes.','var(--red)',7000);
+  });
+  async function mxPublicar(enviar=true){
     if(!MXD||!MXI||!canEdit('max'))return;
     try{const data={...MXD};delete data.tecnicos;
-      mxSync={at:mxAtIso(),arquivo:MXI.arquivo||'',z:await _syncZip({data,info:MXI})};autoSyncAfterBaseUpload('MAX');}
+      mxSync={at:mxAtIso(),arquivo:MXI.arquivo||'',z:await _syncZip({data,info:MXI})};if(enviar)autoSyncAfterBaseUpload('MAX');}
     catch(e){console.warn('[MAX] não publicou a base',e);}
   }
   async function mxAplicarSync(){
@@ -37242,7 +37270,7 @@ updateCentralStatus();
     try{await idbSet(MX_IDB_KEY,MXD?{data:MXD,info:MXI}:null);}catch(e){}
     mxRenderAll();
   }
-  window.addEventListener('jarvis-sync-pacote',e=>{if(e.detail==='mxSync')mxAplicarSync();});
+  window.addEventListener('jarvis-sync-pacote',e=>{if(e.detail==='mxSync')mxAplicarSync();else if(e.detail==='status')try{renderSrc();}catch(_){}});
   let mxRestaurado=false;
   async function mxReconciliar(){
     if(!mxRestaurado)return;
@@ -37397,7 +37425,7 @@ function rsMsg(){
   const el=document.getElementById('rs-msg');if(!el)return;
   if(!RS_BASE){el.textContent='';return;}
   const r=RS_BASE.resumo||{};
-  el.textContent=RS_BASE.name+' · '+rsSemanasTxt(r.semanas)+' · '+(RS_BASE.origem==='pasta'?'lido da pasta '+(rsDir?rsDir.name+' ':'')+'em ':'anexado em ')+new Date(RS_BASE.at).toLocaleString('pt-BR')+' · visível para todos os usuários'+(rsAviso?' · '+rsAviso:'');
+  el.textContent=RS_BASE.name+' · '+rsSemanasTxt(r.semanas)+' · '+(RS_BASE.origem==='pasta'?'lido da pasta '+(rsDir?rsDir.name+' ':'')+'em ':'anexado em ')+new Date(RS_BASE.at).toLocaleString('pt-BR')+rsStatusSync()+(rsAviso?' · '+rsAviso:'');
 }
 /* pasta vinculada: planilha mais recente (ignora o ~$ temporário do Excel aberto) */
 async function rsArquivoMaisRecente(dir){
@@ -37460,18 +37488,21 @@ async function rsOnFile(inp){
 }
 
 /* ── sincronização (pedido 2026-10-24): planilha, bases dos indicadores e justificativas para todos ── */
-async function rsPublicarBase(){
+async function rsPublicarBase(enviar=true){
   if(!RS_BASE||!canEdit('redirSemanal'))return;
-  try{rsBaseSync={at:RS_BASE.at,name:RS_BASE.name,z:await _syncZip(RS_BASE)};autoSyncAfterBaseUpload('Redir (Semanal)');}catch(e){console.warn('Redir: não publicou a planilha',e);}
+  try{rsBaseSync={at:RS_BASE.at,name:RS_BASE.name,z:await _syncZip(RS_BASE)};if(enviar)autoSyncAfterBaseUpload('Redir (Semanal)');rsMsgDepois();}catch(e){console.warn('Redir: não publicou a planilha',e);}
 }
-async function rsPublicarInd(){
+async function rsPublicarInd(enviar=true){
   if(!canEdit('redirSemanal'))return;
-  try{const n=Object.keys(RS_IND||{}).length;rsIndSync={at:rsIndAt||new Date().toISOString(),n,z:n?await _syncZip(RS_IND):null};autoSyncAfterBaseUpload('Redir (Semanal) — bases');}catch(e){console.warn('Redir: não publicou as bases',e);}
+  try{const n=Object.keys(RS_IND||{}).length;rsIndSync={at:rsIndAt||new Date().toISOString(),n,z:n?await _syncZip(RS_IND):null};if(enviar)autoSyncAfterBaseUpload('Redir (Semanal) — bases');rsMsgDepois();}catch(e){console.warn('Redir: não publicou as bases',e);}
 }
 function rsDraftTocou(id,d){
   if(!canEdit('redirSemanal'))return;
-  d.at=new Date().toISOString();(rsDraftsSync||(rsDraftsSync={}))[id]={...d};saveState();
+  d.at=new Date().toISOString();(rsDraftsSync||(rsDraftsSync={}))[id]={...d};saveState();rsMsgDepois();
 }
+/* a linha Base é revista alguns segundos depois de uma mudança: com o envio normal já aparece "✓";
+   se o envio falhar, aparece o aviso e o botão Publicar para todos */
+let _rsMsgT=null;function rsMsgDepois(){clearTimeout(_rsMsgT);_rsMsgT=setTimeout(()=>{try{rsMsg();}catch(_){}},9000);}
 async function rsAplicarBase(){
   const s=rsBaseSync;if(!s||!s.at)return;await rsLoad();
   if(RS_BASE&&String(RS_BASE.at)>=String(s.at))return;if(!RS_BASE&&!s.z)return;
@@ -37508,11 +37539,43 @@ async function rsSyncReconciliar(){
   if(_syncMaisNovo(rsIndSync,rsIndAt?{at:rsIndAt}:null))await rsAplicarInd();
   else if(rsIndAt&&Object.keys(RS_IND||{}).length&&(!rsIndSync||String(rsIndAt)>String(rsIndSync.at)))await rsPublicarInd();
   if(rsDraftsSync)rsAplicarDrafts();
-  if(canEdit('redirSemanal')){let pub=false;const R=rsDraftsSync||(rsDraftsSync={});
-    for(const[id,d]of rsDraftsMap())if(d&&d.at&&(!R[id]||String(d.at)>String(R[id].at))){R[id]={...d};pub=true;}
-    if(pub)saveState();}
+  if(canEdit('redirSemanal')){let pub=false,mud=false;const R=rsDraftsSync||(rsDraftsSync={});const agora=new Date().toISOString();
+    for(const[id,d]of rsDraftsMap()){if(!d)continue;if(!d.at&&rsTemTexto(id)){d.at=agora;mud=true;}if(d.at&&(!R[id]||String(d.at)>String(R[id].at))){R[id]={...d};pub=true;}}
+    if(mud)rsSaveDrafts();if(pub)saveState();}
+  try{rsMsg();}catch(_){}
+}
+/* situação do envio para os outros usuários (linha Base) */
+function rsPendencias(){
+  const p=[];const E=_syncEnviado||{};
+  if(RS_BASE&&String(E.rsBaseSync||'')<String(RS_BASE.at))p.push('planilha');
+  if(rsIndAt&&(Object.keys(RS_IND||{}).length||rsIndSync)&&String(E.rsIndSync||'')<String(rsIndAt))p.push('bases dos indicadores');
+  const ed=E.drafts||{};let nd=0;for(const[id,d]of rsDraftsMap())if(d&&d.at&&String(ed[id]||'')<String(d.at))nd++;
+  if(nd)p.push(nd+' justificativa'+(nd>1?'s':''));
+  return p;
+}
+function rsStatusSync(){
+  const p=rsPendencias(),ed=canEdit('redirSemanal');
+  const b=document.getElementById('rs-pub-btn');if(b)b.hidden=!(ed&&p.length);
+  if(!p.length)return' · ✓ visível para todos os usuários';
+  return ed?' · ⚠ ainda não enviado para os outros usuários: '+p.join(', '):' · aguardando sincronização';
+}
+async function rsPublicarTudo(){
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para publicar neste painel. Peça ao Admin.');return;}
+  await rsLoad();await rsIndLoad();
+  if(RS_BASE)await rsPublicarBase(false);
+  if(rsIndAt||Object.keys(RS_IND||{}).length){if(!rsIndAt)rsIndAt=new Date().toISOString();await rsPublicarInd(false);}
+  const R=rsDraftsSync||(rsDraftsSync={});const agora=new Date().toISOString();let mud=false;
+  for(const[id,d]of rsDraftsMap()){if(!d)continue;if(!d.at&&rsTemTexto(id)){d.at=agora;mud=true;}if(d.at&&(!R[id]||String(d.at)>String(R[id].at)))R[id]={...d};}
+  if(mud)rsSaveDrafts();
+  clearTimeout(remoteSaveTimer);
+  _ghToast('Publicando o Redir para todos os usuários…','var(--blue)',3500);
+  const ok=await saveGhState(false);
+  rsMsg();
+  if(ok)_ghToast('Redir publicado para todos os usuários ✓','var(--green-dk)',4000);
+  else _ghToast('Não foi possível publicar agora (veja o aviso no topo). Tente de novo em instantes.','var(--red)',7000);
 }
 window.addEventListener('jarvis-sync-pacote',e=>{const k=e.detail;
+  if(k==='status'||k==='rsBaseSync'||k==='rsIndSync'||k==='rsDraftsSync')try{rsMsg();}catch(_){}
   if(k==='rsBaseSync')rsAplicarBase();else if(k==='rsIndSync')rsAplicarInd();else if(k==='rsDraftsSync')rsAplicarDrafts();});
 setTimeout(()=>{rsSyncReconciliar().catch(e=>console.warn('Redir: sync ao abrir',e));},0);
 window.rsSyncReconciliar=rsSyncReconciliar;
