@@ -13768,7 +13768,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="rs-base">
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar planilha</button>
-            <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Vale enquanto o painel estiver aberto."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
+            <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Fica salva neste dispositivo até você limpar."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
             <button type="button" class="rs-btn rs-btn-del" id="rs-planta-del" data-up="redirSemanal" hidden onclick="rsLimparBaseInd('IRT',()=>{rsDrawPlanta();rsDrawJust();},true)" title="Remove a Planta Média anexada (contadores de clientes e IRT por unidade)."><i class="ti ti-trash"></i> Limpar Planta Média</button>
           </span>
         </div>
@@ -37536,7 +37536,7 @@ function rsJustCard(r,pr,sem,prev,D){
     const nota=t=>{const sp=document.createElement('span');sp.className='rs-note';sp.textContent=t;abar.appendChild(sp);};
     if(!(m&&(m.painel==='enc'||m.painel==='rede'||m.painel==='max'))){
       const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(f.tipo==='anexo'?'Trocar base':'Inserir base');
-      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Vale enquanto o painel estiver aberto e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Vale enquanto o painel estiver aberto.';
+      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Fica salva neste dispositivo (volta ao atualizar o navegador) e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Fica salva neste dispositivo até você limpar.';
       ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
       /* Limpar base (pedido 2026-10-24): só existe para base anexada aqui no Redir */
       if(f.tipo==='anexo'){const lb=document.createElement('button');lb.type='button';lb.className='rs-btn rs-btn-del';lb.innerHTML='<i class="ti ti-trash"></i> Limpar base';
@@ -37778,11 +37778,18 @@ const RS_PLANTA={modelo:'Planta Média',pasta:'Planta Média',arquivo:'Planta Me
 function rsModeloDe(ind){const n=RS_NK(ind);return RS_MODELOS.find(m=>m.re.test(n))||null;}
 function rsModeloTxt(m){return m&&m.arquivo?(m.pasta?'Modelos\\'+m.pasta+'\\':'')+m.arquivo:'';}
 let RS_MX=null,RS_B2C_CACHE={};
+/* Bases anexadas no Redir (indicadores e Planta Média) ficam salvas NESTE dispositivo (IndexedDB) e
+   voltam ao atualizar o navegador — pedido 2026-10-24 (antes valiam só com o painel aberto). Não entram
+   na sincronização (LGPD). "Limpar base" / "Limpar bases e análises" apagam também do IndexedDB.
+   As análises abertas também voltam (localStorage). */
+const RS_ANA_LS='rs_ana_abertas_v1';
+async function rsIndSalvar(){try{await idbSet(RS_IND_KEY,RS_IND||{});}catch(e){console.warn('Redir: não salvou as bases',e);}}
+function rsAnaSalvar(){try{localStorage.setItem(RS_ANA_LS,JSON.stringify([...rsAnaAbertas]));}catch(e){}}
+window.addEventListener('pagehide',rsAnaSalvar);
 async function rsIndLoad(){
-  /* Pedido 2026-10-24: as planilhas da pasta Modelos são só o modelo a inserir — a base anexada
-     NÃO fica guardada (vale enquanto o painel está aberto). Bases salvas por versões anteriores
-     são apagadas do IndexedDB na primeira carga. */
-  if(!RS_IND){RS_IND={};try{await idbSet(RS_IND_KEY,{});}catch(e){}}
+  if(!RS_IND){let s=null;try{s=await idbGet(RS_IND_KEY);}catch(e){}
+    RS_IND=(s&&typeof s==='object'&&!Array.isArray(s))?s:{};
+    try{(JSON.parse(localStorage.getItem(RS_ANA_LS)||'[]')||[]).forEach(id=>rsAnaAbertas.add(id));}catch(e){}}
   try{const mx=await idbGet('mx_base_v1');RS_MX=mx&&mx.data&&mx.data.unidades?mx:null;}catch(e){RS_MX=null;}
   return RS_IND;
 }
@@ -38145,7 +38152,7 @@ async function rsLimparBaseInd(ind,cb,planta){
     :'Limpar a base "'+alvo.name+'"?\n\nEla é usada '+quem+' em todos os clusters. Serão apagados a base, as análises e os textos das justificativas desses indicadores.';
   if(!confirm(msg))return;
   linhas.forEach(x=>rsAnaAbertas.delete(x.id));
-  chaves.forEach(k=>{delete RS_IND[k];});
+  chaves.forEach(k=>{delete RS_IND[k];});await rsIndSalvar();rsAnaSalvar();
   const n=planta?0:rsApagarTextos(linhas.map(x=>x.id));
   _ghToast((planta?'Planta Média':'Base')+' "'+alvo.name+'" removida'+(n?' e '+n+' justificativa(s) limpa(s)':'')+' ✓','var(--green-dk)',4000);
   if(cb)cb();
@@ -38160,7 +38167,7 @@ async function rsLimparTodasBases(){
   const comTexto=ids.filter(rsTemTexto).length;
   if(!nomes.length&&!comTexto){rsDrawJust();return;}
   if(!confirm('Limpar as bases, as análises e os textos das justificativas?\n\n'+(nomes.length?'Bases: '+nomes.join(', ')+'\n':'')+(comTexto?'Justificativas preenchidas: '+comTexto+'\n':'')+'\nAs bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.'))return;
-  RS_IND={};rsAnaAbertas.clear();const n=rsApagarTextos(ids);rsDrawPlanta();
+  RS_IND={};rsAnaAbertas.clear();await rsIndSalvar();rsAnaSalvar();const n=rsApagarTextos(ids);rsDrawPlanta();
   _ghToast('Redir limpo: '+nomes.length+' base(s) e '+n+' justificativa(s) ✓','var(--green-dk)',4000);
   rsDrawJust();
 }
@@ -38177,8 +38184,8 @@ async function rsOnIndFile(inp){
     const err=rsConfereModelo(m,objs);if(err)throw new Error(err);
     const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name);b.at=new Date().toISOString();
     const chave=m?m.modelo:ind;
-    await rsIndLoad();RS_IND[chave]=b;
-    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — vale enquanto o painel estiver aberto','var(--green-dk)',4500);
+    await rsIndLoad();RS_IND[chave]=b;await rsIndSalvar();
+    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — fica salva neste dispositivo até você limpar','var(--green-dk)',4500);
     if(rsIndCb)rsIndCb();
     if(planta)rsDrawPlanta();
   }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
