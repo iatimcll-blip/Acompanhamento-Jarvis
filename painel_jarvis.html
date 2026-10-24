@@ -2150,6 +2150,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem i.s-ok{background:var(--green)}#panel-redir-sem i.s-warn{background:var(--orange)}#panel-redir-sem i.s-bad{background:var(--red)}
 @media (max-width:640px){#panel-redir-sem .rs-base{margin-left:0}#panel-redir-sem .rs-form{grid-template-columns:1fr}#panel-redir-sem .card-hd .rs-note{display:none}}
 #panel-redir-sem .rs-ana-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#panel-redir-sem .rs-btn.rs-btn-del{color:var(--red);border-color:var(--red-bg)}
+#panel-redir-sem .rs-btn.rs-btn-del:hover{background:var(--red-bg)}
 #panel-redir-sem .rs-ana-bar .rs-btn i{font-size:12px;vertical-align:-1px}
 #panel-redir-sem .rs-ana[hidden]{display:none}
 #panel-redir-sem .rs-ana{border:.5px solid var(--blue);background:var(--blue-bg);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:11px;color:var(--tx2)}
@@ -37498,11 +37500,20 @@ function rsJustCard(r,pr,sem,prev,D){
       const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(f.tipo==='anexo'?'Trocar base':'Inserir base');
       ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Fica só neste dispositivo e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Fica só neste dispositivo.';
       ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
+      /* Limpar base (pedido 2026-10-24): só existe para base anexada aqui no Redir */
+      if(f.tipo==='anexo'){const lb=document.createElement('button');lb.type='button';lb.className='rs-btn rs-btn-del';lb.innerHTML='<i class="ti ti-trash"></i> Limpar base';
+        lb.title='Remove a base anexada ('+f.base.name+') deste dispositivo. Bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.';
+        lb.onclick=()=>rsLimparBaseInd(r.indicador,()=>{rsAnaAbertas.delete(r.id);rsDrawJust();});abar.appendChild(lb);}
     }
     if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&!rsPlantaFonte()){
       const pb=document.createElement('button');pb.type='button';pb.className='rs-btn';pb.innerHTML='<i class="ti ti-building-community"></i> Inserir Planta Média';
       pb.title='Planta Média para calcular o IRT por unidade: '+rsModeloTxt(RS_PLANTA)+' (ou carregue-a no Painel B2C).';
       pb.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();},true);abar.appendChild(pb);
+    }
+    if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&RS_IND&&RS_IND[RS_PLANTA.modelo]){
+      const lp=document.createElement('button');lp.type='button';lp.className='rs-btn rs-btn-del';lp.innerHTML='<i class="ti ti-trash"></i> Limpar Planta Média';
+      lp.title='Remove a Planta Média anexada ('+RS_IND[RS_PLANTA.modelo].name+') deste dispositivo. A do Painel B2C não é afetada.';
+      lp.onclick=()=>rsLimparBaseInd(r.indicador,()=>rsDrawJust(),true);abar.appendChild(lp);
     }
     if(f.tipo!=='nenhuma'){
       const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
@@ -37890,6 +37901,23 @@ function rsConfereModelo(m,objs){
   return falta.length?'este arquivo não segue o modelo '+m.modelo+' (faltam as colunas: '+falta.join(', ')+'). Use a planilha '+rsModeloTxt(m)+'.':'';
 }
 let rsIndCb=null,rsIndAlvo='',rsIndPlanta=false;
+/* Limpa a base anexada no Redir para o indicador (chave do modelo + chaves antigas que apontam
+   para a mesma base). Avisa quais indicadores usam a mesma base antes de apagar. */
+async function rsLimparBaseInd(ind,cb,planta){
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para limpar base neste painel. Peça ao Admin.');return;}
+  await rsIndLoad();
+  const alvo=planta?RS_IND[RS_PLANTA.modelo]:rsIndBaseFor(ind);
+  if(!alvo){if(cb)cb();return;}
+  const chaves=Object.keys(RS_IND).filter(k=>RS_IND[k]===alvo);
+  let usam=[];
+  if(!planta){const D=rsDados();const inds=D?[...new Set(D.fca.map(x=>x.indicador))]:[ind];usam=inds.filter(i=>rsIndBaseFor(i)===alvo);}
+  const quem=planta?'como Planta Média do IRT':(usam.length>1?'pelos indicadores '+usam.join(', '):'pelo indicador '+ind);
+  if(!confirm('Limpar a base "'+alvo.name+'" deste dispositivo?\n\nEla é usada '+quem+' em todos os clusters. Depois disso, a análise volta a usar os painéis B2C, MAX ou B2B Encerrados, quando houver dados lá.'))return;
+  chaves.forEach(k=>{delete RS_IND[k];});
+  try{await idbSet(RS_IND_KEY,RS_IND);}catch(e){alert('Não foi possível limpar: '+(e&&e.message||e));return;}
+  _ghToast((planta?'Planta Média':'Base')+' "'+alvo.name+'" removida deste dispositivo ✓','var(--green-dk)',4000);
+  if(cb)cb();
+}
 function rsPedirBaseInd(ind,cb,planta){
   if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para anexar base neste painel. Peça ao Admin.');return;}
   rsIndAlvo=ind;rsIndCb=cb;rsIndPlanta=!!planta;document.getElementById('rs-ind-file').click();
