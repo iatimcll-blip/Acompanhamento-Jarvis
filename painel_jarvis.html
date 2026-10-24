@@ -13747,7 +13747,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="fbar" id="rs-jbar">
           <label class="rs-chk"><input type="checkbox" id="rs-jpend" onchange="rsDrawJust()"> Só pendentes</label>
           <span class="rs-note" id="rs-jcount"></span>
-          <button type="button" class="rs-btn rs-btn-del" id="rs-limpar-bases" data-up="redirSemanal" hidden onclick="rsLimparTodasBases()" title="Remove todas as bases anexadas no Redir (inclusive a Planta Média) e fecha as análises. Os textos das justificativas não são apagados."><i class="ti ti-trash"></i> Limpar bases e análises</button>
+          <button type="button" class="rs-btn rs-btn-del" id="rs-limpar-bases" data-up="redirSemanal" hidden onclick="rsLimparTodasBases()" title="Remove todas as bases anexadas no Redir (inclusive a Planta Média), fecha as análises e apaga os textos das justificativas deste gerente."><i class="ti ti-trash"></i> Limpar bases e análises</button>
           <span class="card-action" style="margin-left:auto" onclick="rsExportCsv()"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar justificativas (CSV)</span>
         </div>
         <div class="rs-jbody" id="rs-jlist"></div>
@@ -37463,7 +37463,7 @@ function rsDrawJust(){
   const byId=new Map(D.fca.map(r=>[r.id,r])),ord={'Não enviado':0,'Incompleto':1,'Completo':2};
   let rs=D.fca.filter(r=>r.semana===sem&&(!clu||r.cluster===clu)&&r.situacao==='Exigido');const total=rs.length;
   if(document.getElementById('rs-jpend').checked)rs=rs.filter(r=>r.entrega!=='Completo');
-  {const lb=document.getElementById('rs-limpar-bases');if(lb)lb.hidden=!(RS_IND&&Object.keys(RS_IND).length);}
+  {const lb=document.getElementById('rs-limpar-bases');if(lb)lb.hidden=!((RS_IND&&Object.keys(RS_IND).length)||D.fca.some(x=>rsTemTexto(x.id)));}
   document.getElementById('rs-jcount').textContent=rs.length+' de '+total+' indicadores com FCA exigido na '+sem+' · preencha Causa, Ação, Resp, Prazo e Status (salvo neste navegador)';
   if(!rs.length){list.innerHTML='<div class="rs-vazio">'+(total?'Todos os FCAs estão completos.':'Nenhum FCA exigido na semana.')+'</div>';return;}
   const grp=new Map();for(const r of rs){if(!grp.has(r.cluster))grp.set(r.cluster,[]);grp.get(r.cluster).push(r);}
@@ -37501,11 +37501,11 @@ function rsJustCard(r,pr,sem,prev,D){
     const nota=t=>{const sp=document.createElement('span');sp.className='rs-note';sp.textContent=t;abar.appendChild(sp);};
     if(!(m&&m.painel==='enc')){
       const ins=document.createElement('button');ins.type='button';ins.className='rs-btn';ins.innerHTML='<i class="ti ti-file-plus"></i> '+(f.tipo==='anexo'?'Trocar base':'Inserir base');
-      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Fica só neste dispositivo e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Fica só neste dispositivo.';
+      ins.title=m&&m.arquivo?'Anexe a base de '+r.indicador+' no modelo '+rsModeloTxt(m)+'. Vale enquanto o painel estiver aberto e serve para todos os clusters.':'Anexe a base do indicador '+r.indicador+' (.xlsx ou .csv). Vale enquanto o painel estiver aberto.';
       ins.onclick=()=>rsPedirBaseInd(r.indicador,()=>{rsAnaAbertas.add(r.id);rsDrawJust();});abar.appendChild(ins);
       /* Limpar base (pedido 2026-10-24): só existe para base anexada aqui no Redir */
       if(f.tipo==='anexo'){const lb=document.createElement('button');lb.type='button';lb.className='rs-btn rs-btn-del';lb.innerHTML='<i class="ti ti-trash"></i> Limpar base';
-        lb.title='Remove a base anexada ('+f.base.name+') deste dispositivo. Bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.';
+        lb.title='Remove a base anexada ('+f.base.name+'), as análises e os textos das justificativas dos indicadores que usam essa base.';
         lb.onclick=()=>rsLimparBaseInd(r.indicador,()=>rsDrawJust());abar.appendChild(lb);}
     }
     if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&!rsPlantaFonte()){
@@ -37515,7 +37515,7 @@ function rsJustCard(r,pr,sem,prev,D){
     }
     if(m&&m.planta&&RS_NK(r.indicador)==='IRT'&&RS_IND&&RS_IND[RS_PLANTA.modelo]){
       const lp=document.createElement('button');lp.type='button';lp.className='rs-btn rs-btn-del';lp.innerHTML='<i class="ti ti-trash"></i> Limpar Planta Média';
-      lp.title='Remove a Planta Média anexada ('+RS_IND[RS_PLANTA.modelo].name+') deste dispositivo. A do Painel B2C não é afetada.';
+      lp.title='Remove a Planta Média anexada ('+RS_IND[RS_PLANTA.modelo].name+'). A do Painel B2C não é afetada.';
       lp.onclick=()=>rsLimparBaseInd(r.indicador,()=>rsDrawJust(),true);abar.appendChild(lp);
     }
     if(f.tipo!=='nenhuma'){
@@ -37524,7 +37524,7 @@ function rsJustCard(r,pr,sem,prev,D){
       nota('Fonte: '+f.lbl+(f.tipo==='anexo'?' · '+rsNf0.format(f.base.total)+' linhas':''));
     }else if(m&&m.painel==='enc')nota('sem dados: anexe a base no Painel B2B Encerrados');
     else if(m&&m.painel==='max')nota('sem base: anexe o '+rsModeloTxt(m)+' aqui ou a base do Painel MAX');
-    else if(m)nota('sem base: anexe o '+rsModeloTxt(m)+(m.b2c?' (ou carregue-o no Painel B2C)':''));
+    else if(m)nota('sem base: anexe o '+rsModeloTxt(m));
     else nota('sem modelo de base para este indicador — se tiver uma base, use "Inserir base"');
   };
   const mostra=()=>{
@@ -37744,7 +37744,10 @@ function rsModeloDe(ind){const n=RS_NK(ind);return RS_MODELOS.find(m=>m.re.test(
 function rsModeloTxt(m){return m&&m.arquivo?(m.pasta?'Modelos\\'+m.pasta+'\\':'')+m.arquivo:'';}
 let RS_MX=null,RS_B2C_CACHE={};
 async function rsIndLoad(){
-  if(!RS_IND){try{RS_IND=(await idbGet(RS_IND_KEY))||{};}catch(e){RS_IND={};}}
+  /* Pedido 2026-10-24: as planilhas da pasta Modelos são só o modelo a inserir — a base anexada
+     NÃO fica guardada (vale enquanto o painel está aberto). Bases salvas por versões anteriores
+     são apagadas do IndexedDB na primeira carga. */
+  if(!RS_IND){RS_IND={};try{await idbSet(RS_IND_KEY,{});}catch(e){}}
   try{const mx=await idbGet('mx_base_v1');RS_MX=mx&&mx.data&&mx.data.unidades?mx:null;}catch(e){RS_MX=null;}
   return RS_IND;
 }
@@ -37784,7 +37787,7 @@ function rsFonteDe(r){
   const m=rsModeloDe(r.indicador);
   const anex=rsIndBaseFor(r.indicador);
   if(anex)return{tipo:'anexo',m,base:anex,lbl:'base anexada ('+anex.name+')'};
-  if(m&&m.b2c&&_rsB2cLinhas(m.b2c).length)return{tipo:'b2c',m,lbl:'Painel B2C ('+(_rsB2cArquivo(m.b2c)||m.arquivo)+')'};
+  /* 2026-10-24: a base do Painel B2C não é mais fonte do indicador — do B2C só a Planta Média (IRT) */
   if(m&&m.painel==='max'&&RS_MX)return{tipo:'max',m,lbl:'Painel MAX ('+((RS_MX.info&&RS_MX.info.arquivo)||'base do painel')+')'};
   if(m&&m.painel==='enc'&&typeof dEnc!=='undefined'&&dEnc.length)return{tipo:'enc',m,lbl:'Painel B2B Encerrados ('+dEnc.length+' chamados)'};
   return{tipo:'nenhuma',m};
@@ -37906,35 +37909,41 @@ function rsConfereModelo(m,objs){
 let rsIndCb=null,rsIndAlvo='',rsIndPlanta=false;
 /* Limpa a base anexada no Redir para o indicador (chave do modelo + chaves antigas que apontam
    para a mesma base). Avisa quais indicadores usam a mesma base antes de apagar. */
+/* Apaga os rascunhos (textos de Causa/Ação/Resp/Prazo/Status) das linhas — voltam ao que veio da planilha */
+function rsTemTexto(id){const d=rsDraftsMap().get(id);return!!d&&RS_FIELDS.some(([f])=>String(d[f]||'').trim());}
+function rsApagarTextos(ids){const m=rsDraftsMap();let n=0,mud=false;ids.forEach(id=>{if(rsTemTexto(id))n++;if(m.delete(id))mud=true;});if(mud)rsSaveDrafts();return n;}
+/* Limpa a base anexada do indicador (e das linhas que usam a mesma base): base, análises e textos */
 async function rsLimparBaseInd(ind,cb,planta){
   if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para limpar base neste painel. Peça ao Admin.');return;}
   await rsIndLoad();
   const alvo=planta?RS_IND[RS_PLANTA.modelo]:rsIndBaseFor(ind);
   if(!alvo){if(cb)cb();return;}
   const chaves=Object.keys(RS_IND).filter(k=>RS_IND[k]===alvo);
-  let usam=[];
-  if(!planta){const D=rsDados();const inds=D?[...new Set(D.fca.map(x=>x.indicador))]:[ind];usam=inds.filter(i=>rsIndBaseFor(i)===alvo);}
-  const quem=planta?'como Planta Média do IRT':(usam.length>1?'pelos indicadores '+usam.join(', '):'pelo indicador '+ind);
-  if(!confirm('Limpar a base "'+alvo.name+'" deste dispositivo?\n\nEla é usada '+quem+' em todos os clusters. Depois disso, a análise volta a usar os painéis B2C, MAX ou B2B Encerrados, quando houver dados lá.'))return;
-  /* fecha as análises abertas de todas as linhas que usavam esta base (ex.: IRT e IRT (DU)) */
-  {const D=rsDados();if(D)D.fca.forEach(x=>{if(rsAnaAbertas.has(x.id)&&(planta?RS_NK(x.indicador)==='IRT':rsIndBaseFor(x.indicador)===alvo))rsAnaAbertas.delete(x.id);});}
+  const D=rsDados();
+  const linhas=D?D.fca.filter(x=>planta?RS_NK(x.indicador)==='IRT':rsIndBaseFor(x.indicador)===alvo):[];
+  const usam=[...new Set(linhas.map(x=>x.indicador))];
+  const quem=planta?'como Planta Média do IRT':(usam.length>1?'pelos indicadores '+usam.join(', '):'pelo indicador '+(usam[0]||ind));
+  const msg=planta?'Limpar a Planta Média "'+alvo.name+'"?\n\nEla é usada '+quem+'. A análise do IRT deixa de mostrar o IRT por unidade.'
+    :'Limpar a base "'+alvo.name+'"?\n\nEla é usada '+quem+' em todos os clusters. Serão apagados a base, as análises e os textos das justificativas desses indicadores.';
+  if(!confirm(msg))return;
+  linhas.forEach(x=>rsAnaAbertas.delete(x.id));
   chaves.forEach(k=>{delete RS_IND[k];});
-  try{await idbSet(RS_IND_KEY,RS_IND);}catch(e){alert('Não foi possível limpar: '+(e&&e.message||e));return;}
-  _ghToast((planta?'Planta Média':'Base')+' "'+alvo.name+'" removida deste dispositivo ✓','var(--green-dk)',4000);
+  const n=planta?0:rsApagarTextos(linhas.map(x=>x.id));
+  _ghToast((planta?'Planta Média':'Base')+' "'+alvo.name+'" removida'+(n?' e '+n+' justificativa(s) limpa(s)':'')+' ✓','var(--green-dk)',4000);
   if(cb)cb();
 }
-/* Limpa TODAS as bases anexadas no Redir (inclusive a Planta Média) e fecha as análises abertas
-   (pedido 2026-10-24: "um botão limpar, onde será retirada a base em anexo e as análises").
-   Os textos já escritos nas justificativas (rascunhos) ficam. */
+/* Limpa TODAS as bases anexadas no Redir (inclusive a Planta Média), fecha as análises e apaga os
+   textos das justificativas do gerente (pedido 2026-10-24). */
 async function rsLimparTodasBases(){
   if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para limpar base neste painel. Peça ao Admin.');return;}
   await rsIndLoad();
+  const D=rsDados();const ids=D?D.fca.map(x=>x.id):[];
   const nomes=[...new Set(Object.values(RS_IND||{}).map(b=>b&&b.name).filter(Boolean))];
-  if(!nomes.length){rsDrawJust();return;}
-  if(!confirm('Limpar todas as bases anexadas no Redir e fechar as análises?\n\nBases: '+nomes.join(', ')+'\n\nOs textos já escritos nas justificativas não são apagados. As bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.'))return;
-  RS_IND={};rsAnaAbertas.clear();
-  try{await idbSet(RS_IND_KEY,RS_IND);}catch(e){alert('Não foi possível limpar: '+(e&&e.message||e));return;}
-  _ghToast('Bases do Redir removidas deste dispositivo ('+nomes.length+') e análises fechadas ✓','var(--green-dk)',4000);
+  const comTexto=ids.filter(rsTemTexto).length;
+  if(!nomes.length&&!comTexto){rsDrawJust();return;}
+  if(!confirm('Limpar as bases, as análises e os textos das justificativas?\n\n'+(nomes.length?'Bases: '+nomes.join(', ')+'\n':'')+(comTexto?'Justificativas preenchidas: '+comTexto+'\n':'')+'\nAs bases dos painéis B2C, MAX e B2B Encerrados não são afetadas.'))return;
+  RS_IND={};rsAnaAbertas.clear();const n=rsApagarTextos(ids);
+  _ghToast('Redir limpo: '+nomes.length+' base(s) e '+n+' justificativa(s) ✓','var(--green-dk)',4000);
   rsDrawJust();
 }
 function rsPedirBaseInd(ind,cb,planta){
@@ -37950,8 +37959,8 @@ async function rsOnIndFile(inp){
     const err=rsConfereModelo(m,objs);if(err)throw new Error(err);
     const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name);b.at=new Date().toISOString();
     const chave=m?m.modelo:ind;
-    await rsIndLoad();RS_IND[chave]=b;await idbSet(RS_IND_KEY,RS_IND);
-    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — só neste dispositivo','var(--green-dk)',4500);
+    await rsIndLoad();RS_IND[chave]=b;
+    _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — vale enquanto o painel estiver aberto','var(--green-dk)',4500);
     if(rsIndCb)rsIndCb();
   }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
 }
