@@ -281,9 +281,21 @@ async function ensureLoggedIn(page) {
     await page.fill(userSel, ATRIX_USER);
     await page.fill('input[type="password"]', ATRIX_PASS);
     await page.click('input[type="submit"],button[type="submit"]');
-    await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
-    await page.waitForTimeout(1500);
-    if (!(await page.$('input[type="password"]'))) {
+    /* Bug real (2026-10-24): o login entrava, mas o "Painel da Administração" do Atrix
+       levou mais de 15 s para terminar de carregar. O waitForLoadState estourava o tempo e
+       a rodada inteira era dada como falha ("provável mudança no layout"), embora o
+       screenshot mostrasse o usuário já logado. Agora o critério é o formulário de login
+       sumir (até 45 s); a lentidão do painel só gera aviso. */
+    const saiuDoLogin = await page.waitForFunction(() => !document.querySelector('input[type="password"]'), null, { timeout: 45000, polling: 500 })
+      .then(() => true).catch(() => false);
+    await page.waitForLoadState('domcontentloaded', { timeout: 30000 })
+      .catch(e => warn('Pagina apos o login demorou a carregar (' + e.name + ') — seguindo, o login ja foi conferido.'));
+    /* reconfere: numa senha recusada o Atrix recarrega a tela e o formulário volta */
+    let voltouLogin = false;
+    if (saiuDoLogin) {
+      try { await page.waitForSelector('input[type="password"]', { timeout: 4000 }); voltouLogin = true; } catch { voltouLogin = false; }
+    }
+    if (saiuDoLogin && !voltouLogin) {
       info('Login realizado com sucesso.');
       return { ok: true, reason: '' };
     }
