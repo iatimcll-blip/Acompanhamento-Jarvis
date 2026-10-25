@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-25T02:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-25T03:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -37844,6 +37844,7 @@ const RS_COLS={
   prodNum:['Prod.'],
   diasTrab:['Dias Trab.'],
   idCaso:['OS','codigo_os','Chamado'],
+  dataAbertura:['Data Abertura Chamado','Data Abertura'],
 };
 const RS_DIM_LBL={cidade:'Cidade',bairro:'Bairro',motivo:'Motivo',motivoAnt:'Motivo da OS anterior',tecnico:'Técnico',tecnicoAnt:'Técnico da OS anterior',parceira:'Parceira/EPS',unidade:'Unidade',olt:'OLT',
   conclusao:'Conclusão',fila:'Fila',faixaPrazo:'Faixa de prazo',responsavel:'Responsável pela ação',status:'Status',tipoCanc:'Tipo de cancelamento',ultMotivo:'Último motivo da OS',submotivo:'Submotivo',
@@ -38609,10 +38610,66 @@ function rsAnalisarFca(r,D){
   if(f.tipo==='max')a=rsAnalisarMax(RS_MX,r,D.meta);
   else if(f.tipo==='enc'){a=rsAnalisarEnc(r,D,f.lbl);if(!a)return null;}
   else if(f.tipo==='rede'){a=rsAnalisarRede(r,D,f.lbl);if(!a)return null;}
-  else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{fonte:f.lbl,metaTxt:rsMetaTxt(r,D)});}
+  else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;
+    a=RS_NK(r.indicador)==='IRTDU'?rsAnalisarIrtDu(b,r,D,f.lbl):rsAnalisarBase(b,r,D.meta,{fonte:f.lbl,metaTxt:rsMetaTxt(r,D)});if(!a)return null;}
   if(f.m&&f.m.planta&&RS_NK(r.indicador)==='IRT'&&a._escopo)rsIrtComPlanta(a,r);
   try{rsTaxaCruzada(a,r,D);}catch(e){console.warn('Redir: taxa cruzada',e);}
   delete a._escopo;delete a._base;a.fonteTipo=f.tipo;return a;
+}
+/* ── IRT (DU): medido só em dias úteis (pedido 2026-10-25) ──
+   Conferido com a planilha Redir: reparos ABERTOS (Data Abertura Chamado) de segunda a sexta, sem
+   feriados nacionais e do estado do cluster, ÷ dias úteis da semana já cobertos pela base
+   (Maranhão W43 = 260 ÷ 4 = 65,0, igual à planilha; no Piauí a W43 tem 3 dias úteis: 19/10 é o Dia do Piauí). */
+const RS_FERIADOS_UF={MA:['07-28'],PI:['03-13','10-19']};
+const _rsFerCache={};
+function rsFeriados(y,uf){
+  const k=y+'|'+(uf||'');if(_rsFerCache[k])return _rsFerCache[k];
+  /* Páscoa (algoritmo de Meeus) → Carnaval (seg/ter), Sexta-feira Santa e Corpus Christi */
+  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),kk=c%4,l=(32+2*e+2*i-h-kk)%7,m=Math.floor((a+11*h+22*l)/451);
+  const mes=Math.floor((h+l-7*m+114)/31),dia=((h+l-7*m+114)%31)+1;const pas=Date.UTC(y,mes-1,dia);
+  const iso=ms=>new Date(ms).toISOString().slice(0,10);
+  const s=new Set(['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25',...(RS_FERIADOS_UF[uf]||[])].map(x=>y+'-'+x));
+  [-48,-47,-2,60].forEach(n=>s.add(iso(pas+n*864e5)));
+  return(_rsFerCache[k]=s);
+}
+function rsDiaUtil(dt,uf){if(!dt)return false;const w=dt.getUTCDay();if(w===0||w===6)return false;return!rsFeriados(dt.getUTCFullYear(),uf).has(dt.toISOString().slice(0,10));}
+function rsSegundaIso(y,w){const j4=new Date(Date.UTC(y,0,4));const seg=new Date(j4.getTime()-((j4.getUTCDay()+6)%7)*864e5);return new Date(seg.getTime()+(w-1)*7*864e5);}
+const RS_DIAS_SEM=['dom','seg','ter','qua','qui','sex','sáb'];
+function rsAnalisarIrtDu(base,r,D,fonte){
+  const uf=_rsUfDoCluster(r.cluster);const avisos=[];
+  const abCol=base.pick.dataAbertura||null;
+  if(!abCol)avisos.push('esta base do IRT foi anexada antes da contagem por dia útil e não guardou a data de abertura — usei a '+(base.pick.data||'data do evento')+'. Reanexe a base do IRT para a conta igual à da planilha');
+  const col=abCol||base.pick.data;const ci=base.cols.indexOf(col);if(ci<0)return null;
+  const linhas=base.rows.filter(x=>rsDiaUtil(rsToDate(x[ci]),uf));
+  let ult=null;for(const x of base.rows){const d=rsToDate(x[ci]);if(d&&(!ult||d>ult))ult=d;}
+  const view={...base,pick:{...base.pick,data:col},rows:linhas};
+  const mt=rsMetaTxt(r,D);
+  const a=rsAnalisarBase(view,r,D.meta,{fonte,foco:()=>({lbl:'reparos abertos em dias úteis (seg a sex, sem feriados nacionais e '+(uf?'do '+uf:'estaduais')+')',f:()=>true,trivial:true})});
+  a.avisos=avisos.concat(a.avisos);a.volLbl='reparos em dias úteis';
+  if(!a.semLbl||a.avisos.some(x=>/não cobre/.test(x)))return a;
+  const wN=+a.semLbl.replace(/\D/g,''),wA=+String(a.antLbl).replace(/\D/g,'');
+  const mmA=String(D.meta&&D.meta.mes||'').match(/\/(\d{2})$/),ano=mmA?2000+ +mmA[1]:(ult?ult.getUTCFullYear():new Date().getFullYear());
+  const anoA=wA>wN?ano-1:ano;
+  /* dias úteis da semana até a última data da base; feriados da semana para mostrar */
+  const diasUteis=(y,w)=>{const s=rsSegundaIso(y,w);const du=[],fer=[];for(let i=0;i<5;i++){const d=new Date(s.getTime()+i*864e5);if(ult&&d>ult)break;if(rsDiaUtil(d,uf))du.push(d);else fer.push(d);}return{du,fer};};
+  const dm=d=>String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0');
+  const s1=diasUteis(ano,wN),s0=diasUteis(anoA,wA);
+  const n1=a.sem,n0=a.ant;const m1=s1.du.length?n1/s1.du.length:null,m0=s0.du.length?n0/s0.du.length:null;
+  const f1=v=>v==null?'—':rsNf1.format(v);
+  const ferTxt=s=>s.fer.length?' ('+s.fer.map(d=>dm(d)+' feriado').join(', ')+')':'';
+  const pl=r.valor_semana!=null?' · planilha: '+f1(r.valor_semana):'';
+  a.kpis=['IRT (DU) na '+a.semLbl+': '+f1(m1)+' reparos por dia útil'+(mt?' (meta '+mt+')':'')+' · '+n1+' reparos em '+s1.du.length+' dia'+(s1.du.length===1?'':'s')+' úteis'+ferTxt(s1)+pl];
+  if(m0!=null)a.kpis.push('Semana anterior ('+a.antLbl+'): '+f1(m0)+' reparos por dia útil · '+n0+' em '+s0.du.length+' dias úteis'+ferTxt(s0)+(m1!=null?' · variação: '+(m1-m0>0?'+':m1-m0<0?'−':'')+f1(Math.abs(m1-m0)):''));
+  if(ult&&s1.du.length<5-s1.fer.length)a.kpis.push('A base vai até '+dm(ult)+': a '+a.semLbl+' ainda não está completa');
+  /* reparos por dia útil da semana (como a lista de maiores tempos do MTTR) */
+  const por=new Map();(a._escopo||[]).forEach(x=>{const d=rsToDate(x[ci]);if(!d)return;const kk=d.toISOString().slice(0,10);por.set(kk,(por.get(kk)||0)+1);});
+  const lista=s1.du.map(d=>{const kk=d.toISOString().slice(0,10);return{v:RS_DIAS_SEM[d.getUTCDay()]+' '+dm(d),c:por.get(kk)||0,txt:(por.get(kk)||0)+' reparos'};}).sort((x,y)=>y.c-x.c);
+  a.dims=a.dims.filter(d=>d.k!=='ofensores');
+  if(lista.length)a.dims.unshift({k:'ofensores',lbl:'Reparos por dia útil na semana',tot:lista.length,distintos:lista.length,p80:lista.length,top:lista,lista:true,alta:null});
+  if(m1!=null){rsSugPrepend(a.sug,'IRT (DU) de '+f1(m1)+' reparos por dia útil na '+a.semLbl+(mt?' (meta '+mt+')':'')+': '+n1+' reparos em '+s1.du.length+' dias úteis'+(m0!=null?', contra '+f1(m0)+' na '+a.antLbl:''),
+      'Plano de redução de reparos nas unidades e cidades com mais reparos por dia útil, com acompanhamento diário do volume');rsSugPrazo(a.sug);}
+  a.irtDu={m1,m0,n1,n0,du1:s1.du.length,du0:s0.du.length};
+  return a;
 }
 function rsMetaTxt(r,D){const m=(D&&D.matriz||[]).find(x=>x.cluster===r.cluster&&x.indicador===r.indicador);
   return m?(m.meta!=null?rsFmt(r.indicador,m.meta):(m.meta_texto||'')):'';}
