@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-25T00:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-25T02:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -37843,6 +37843,7 @@ const RS_COLS={
   agingNum:['Aging em dias (base)','Aging em horas (base)'],
   prodNum:['Prod.'],
   diasTrab:['Dias Trab.'],
+  idCaso:['OS','codigo_os','Chamado'],
 };
 const RS_DIM_LBL={cidade:'Cidade',bairro:'Bairro',motivo:'Motivo',motivoAnt:'Motivo da OS anterior',tecnico:'Técnico',tecnicoAnt:'Técnico da OS anterior',parceira:'Parceira/EPS',unidade:'Unidade',olt:'OLT',
   conclusao:'Conclusão',fila:'Fila',faixaPrazo:'Faixa de prazo',responsavel:'Responsável pela ação',status:'Status',tipoCanc:'Tipo de cancelamento',ultMotivo:'Último motivo da OS',submotivo:'Submotivo',
@@ -37908,17 +37909,17 @@ const RS_MESES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov
 function rsFoco(ind,base){
   const p=base.pick,ix=c=>base.cols.indexOf(c),fc=n=>(p.foco||[]).find(c=>RS_NK(c)===RS_NK(n));
   const I=RS_NK(ind);
-  if(/^EFICIENCIAVENDAS|^EFICIENCIA$/.test(I)&&fc('Contrato Habilitado?')){const i=ix(fc('Contrato Habilitado?'));return{lbl:'vendas não ativadas (Contrato Habilitado? = Não Ativado)',ok:'ativadas',f:r=>/^N[ÃA]O/i.test(String(r[i]||''))};}
-  if(/^EFICIENCIAME/.test(I)&&fc('Realizada')){const i=ix(fc('Realizada'));return{lbl:'mudanças de endereço não realizadas (Realizada = 0)',ok:'realizadas',f:r=>r[i]!==null&&r[i]!==''&&Number(r[i])!==1};}
-  if(/^EFICIENCIALIMPA/.test(I)&&fc('Total Vendas Expurgadas')){const i=ix(fc('Total Vendas Expurgadas'));return{lbl:'vendas expurgadas (Total Vendas Expurgadas ≥ 1)',ok:'sem expurgo',f:r=>Number(r[i])>=1};}
+  if(/^EFICIENCIAVENDAS|^EFICIENCIA$/.test(I)&&fc('Contrato Habilitado?')){const i=ix(fc('Contrato Habilitado?'));return{lbl:'vendas não ativadas (Contrato Habilitado? = Não Ativado)',ok:'ativadas',curto:'não ativadas',f:r=>/^N[ÃA]O/i.test(String(r[i]||''))};}
+  if(/^EFICIENCIAME/.test(I)&&fc('Realizada')){const i=ix(fc('Realizada'));return{lbl:'mudanças de endereço não realizadas (Realizada = 0)',ok:'realizadas',curto:'não realizadas',f:r=>r[i]!==null&&r[i]!==''&&Number(r[i])!==1};}
+  if(/^EFICIENCIALIMPA/.test(I)&&fc('Total Vendas Expurgadas')){const i=ix(fc('Total Vendas Expurgadas'));return{lbl:'vendas expurgadas (Total Vendas Expurgadas ≥ 1)',ok:'sem expurgo',curto:'expurgadas',f:r=>Number(r[i])>=1};}
   /* Presença MOP: dias trabalhados na semana (pedido 2026-10-25) — sem registro de dias conta como ausência */
-  if(/PRESENCAMOP/.test(I)&&fc('Dias Trab.')){const i=ix(fc('Dias Trab.'));return{lbl:'técnicos com menos de 4 dias trabalhados na semana',ok:'com 4 dias ou mais',f:r=>!(Number(r[i])>=4)};}
-  if(/PRESENCAMOP|PRODUTIVIDADEMOP/.test(I)&&fc('Quartil Prod.')){const i=ix(fc('Quartil Prod.'));return{lbl:'técnicos no quartil Q4 ou sem produção (NP)',ok:'fora do Q4/NP',f:r=>/^(Q4|NP)$/i.test(String(r[i]||'').trim())};}
-  if(/PRAZO24|PRAZODEREPAROS|REPAROSPRAZO/.test(I)&&fc('Reparo')){const i=ix(fc('Reparo'));return{lbl:'reparos fora de 24h (coluna Reparo ≠ "Até 24 hrs")',ok:'até 24h',f:r=>String(r[i]||'')!=='Até 24 hrs'};}
-  if(/AGINGALTAS/.test(I)&&fc('Data Criação Contrato')&&p.data){const a=ix(p.data),c=ix(fc('Data Criação Contrato'));return{lbl:'ativações acima de 48h (Data Ativação − Criação do Contrato > 2 dias)',ok:'até 48h',f:r=>{const x=rsToDate(r[a]),y=rsToDate(r[c]);return x&&y?(x-y)/864e5>2:false;}};}
-  if(/AGINGME/.test(I)&&fc('Aging')){const i=ix(fc('Aging'));return{lbl:'mudanças acima de 2 dias (Aging > 2)',ok:'até 2 dias',f:r=>Number(r[i])>2};}
-  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'))){const i=ix(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',ok:'realizadas',f:r=>String(r[i]||'')!=='Realizado'};}
-  if(/^MAX/.test(I)&&fc('MAX3')){const i=ix(fc('MAX3'));return{lbl:'chamados com reincidência (MAX3 ≥ 1)',ok:'sem reincidência',f:r=>Number(r[i])>=1};}
+  if(/PRESENCAMOP/.test(I)&&fc('Dias Trab.')){const i=ix(fc('Dias Trab.'));return{lbl:'técnicos com menos de 4 dias trabalhados na semana',ok:'com 4 dias ou mais',curto:'com menos de 4 dias',f:r=>!(Number(r[i])>=4)};}
+  if(/PRESENCAMOP|PRODUTIVIDADEMOP/.test(I)&&fc('Quartil Prod.')){const i=ix(fc('Quartil Prod.'));return{lbl:'técnicos no quartil Q4 ou sem produção (NP)',ok:'fora do Q4/NP',curto:'no Q4/sem produção',f:r=>/^(Q4|NP)$/i.test(String(r[i]||'').trim())};}
+  if(/PRAZO24|PRAZODEREPAROS|REPAROSPRAZO/.test(I)&&fc('Reparo')){const i=ix(fc('Reparo'));return{lbl:'reparos fora de 24h (coluna Reparo ≠ "Até 24 hrs")',ok:'até 24h',curto:'fora de 24h',f:r=>String(r[i]||'')!=='Até 24 hrs'};}
+  if(/AGINGALTAS/.test(I)&&fc('Data Criação Contrato')&&p.data){const a=ix(p.data),c=ix(fc('Data Criação Contrato'));return{lbl:'ativações acima de 48h (Data Ativação − Criação do Contrato > 2 dias)',ok:'até 48h',curto:'acima de 48h',f:r=>{const x=rsToDate(r[a]),y=rsToDate(r[c]);return x&&y?(x-y)/864e5>2:false;}};}
+  if(/AGINGME/.test(I)&&fc('Aging')){const i=ix(fc('Aging'));return{lbl:'mudanças acima de 2 dias (Aging > 2)',ok:'até 2 dias',curto:'acima de 2 dias',f:r=>Number(r[i])>2};}
+  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'))){const i=ix(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',ok:'realizadas',curto:'não realizadas',f:r=>String(r[i]||'')!=='Realizado'};}
+  if(/^MAX/.test(I)&&fc('MAX3')){const i=ix(fc('MAX3'));return{lbl:'chamados com reincidência (MAX3 ≥ 1)',ok:'sem reincidência',curto:'com reincidência',f:r=>Number(r[i])>=1};}
   return{lbl:'todas as linhas da base (cada linha é um evento do indicador)',f:()=>true,trivial:true};
 }
 function rsLimpa(v){return String(v).replace(/_EVENTO_PRODUTIVO|_EVENTO_IMPRODUTIVO/gi,'').replace(/_/g,' ').replace(/\s+/g,' ').trim();}
@@ -37946,7 +37947,8 @@ function rsAnalisarBase(base,fca,meta,opts){
   /* 3) período: SEMANA selecionada no filtro (pedido 2026-10-24: "as análises de todos os indicadores
      deverão ser realizadas de acordo com a semana selecionada") e a anterior, para comparar. Se a base
      não tiver casos nessa semana, a análise NÃO troca de semana: avisa qual é a última semana da base. */
-  const di=ix(p.data),si=ix(p.semana);let semRows=[],antRows=[],semLbl='',antLbl='';
+  const di=ix(p.data),si=ix(p.semana);let semRows=[],antRows=[],semLbl='',antLbl='',todosSem=[],todosAnt=[],resumo=null;
+  const metaTxt=opts&&opts.metaTxt||'';
   if(di>=0||si>=0){
     /* semana pela data ou, sem data, pela coluna "Semana Ano" (S43/2026) das bases de produtividade */
     /* semana de TODAS as linhas do cluster (não só das fora do padrão): assim "nenhum caso fora do padrão"
@@ -37958,16 +37960,20 @@ function rsAnalisarBase(base,fca,meta,opts){
     const ano=mmA?2000+ +mmA[1]:(ult?ult.y:new Date().getFullYear());
     const alvo={y:ano,w:wNum},ant=alvo.w>1?{y:alvo.y,w:alvo.w-1}:{y:alvo.y-1,w:52};
     const em=(i,s)=>wk[i]&&wk[i].y===s.y&&wk[i].w===s.w;
-    let totSem=0,totAnt=0;rows.forEach((r,i)=>{if(em(i,alvo)){totSem++;if(isOff[i])semRows.push(r);}else if(em(i,ant)){totAnt++;if(isOff[i])antRows.push(r);}});
+    let totSem=0,totAnt=0;rows.forEach((r,i)=>{if(em(i,alvo)){totSem++;todosSem.push(r);if(isOff[i])semRows.push(r);}else if(em(i,ant)){totAnt++;todosAnt.push(r);if(isOff[i])antRows.push(r);}});
     semLbl='W'+alvo.w;antLbl='W'+ant.w;
     const ultTxt=ult?'W'+ult.w+'/'+ult.y:'';
     if(!totSem)avisos.push('a base não cobre a '+semLbl+'/'+alvo.y+(ult?' — os dados vão só até a '+ultTxt:'')+'. Anexe a base atualizada que cobre a semana selecionada');
     else if(!semRows.length&&!foco.trivial)kpis.push('✓ Nenhum caso fora do padrão na '+semLbl+': os '+rsNf0.format(totSem)+' registros da semana estão '+(foco.ok||'dentro do padrão'));
     /* 2) o próprio indicador da semana, quando a base traz os casos bons e os ruins */
     if(foco.ok&&!foco.trivial&&totSem&&isOff.some(x=>!x)){
-      const tx=(ok,tot)=>rsPctTxt(tot?ok/tot:0)+' '+foco.ok+' ('+rsNf0.format(ok)+' de '+rsNf0.format(tot)+')';
-      kpis.push('Resultado da '+semLbl+' pela base: '+tx(totSem-semRows.length,totSem)+(totAnt?' · '+antLbl+': '+tx(totAnt-antRows.length,totAnt):'')+
+      /* mesmo formato do MTTR 6H (pedido 2026-10-25: "todos os indicadores com o mesmo utilizado no MTTR 6H") */
+      const cu=foco.curto||'fora do padrão',r1=(totSem-semRows.length)/totSem,r0=totAnt?(totAnt-antRows.length)/totAnt:null;
+      const pp=v=>(v>0?'+':v<0?'−':'')+rsNf1.format(Math.abs(v*100))+' p.p.';
+      resumo={r1,r0,fora:semRows.length,tot:totSem,cu};
+      kpis.push(fca.indicador+' na '+semLbl+': '+rsPctTxt(r1)+' '+foco.ok+(metaTxt?' (meta '+metaTxt+')':'')+' · '+cu+': '+rsNf0.format(semRows.length)+' de '+rsNf0.format(totSem)+' ('+rsPctTxt(semRows.length/totSem)+')'+
         (fca.valor_semana!=null?' · planilha: '+rsFmt(fca.indicador,fca.valor_semana):''));
+      if(totAnt)kpis.push('Semana anterior ('+antLbl+'): '+rsPctTxt(r0)+' '+foco.ok+' · '+rsNf0.format(antRows.length)+' de '+rsNf0.format(totAnt)+' '+cu+' ('+rsPctTxt(antRows.length/totAnt)+') · variação: '+pp(r1-r0));
     }
     /* produtividade/presença: médias da semana (todos os técnicos do cluster) */
     const pi=ix(p.prodNum),dti=ix(p.diasTrab),qi=ix(p.quartil);
@@ -37988,8 +37994,22 @@ function rsAnalisarBase(base,fca,meta,opts){
   const escopo=semRows;
   /* 4) Pareto por dimensão (na semana) + o que mais cresceu contra a semana anterior */  /* 4) Pareto por dimensão (no mês) + o que mais cresceu na semana */
   const dims=[];
+  const fracMode=!foco.trivial&&semRows.length>0&&todosSem.length>semRows.length;const offSet=new Set(semRows);
   for(const k of RS_DIMS){
-    const i=ix(p[k]);if(i<0)continue;const lp=/^motivo|^ultMotivo/.test(k);const t=rsTop(escopo,i,5,lp);if(!t.tot||t.distintos<(RS_DIMS_NOVAS.has(k)?2:1))continue;
+    const i=ix(p[k]);if(i<0)continue;const lp=/^motivo|^ultMotivo/.test(k);
+    if(fracMode){
+      const val=r=>{let v=r[i]==null?'':String(r[i]).trim();if(lp)v=rsLimpa(v).toUpperCase();return v==='-'?'':v;};
+      const tot=new Map(),fo=new Map(),foA=new Map();
+      todosSem.forEach(r=>{const v=val(r);if(!v)return;tot.set(v,(tot.get(v)||0)+1);if(offSet.has(r))fo.set(v,(fo.get(v)||0)+1);});
+      antRows.forEach(r=>{const v=val(r);if(v)foA.set(v,(foA.get(v)||0)+1);});
+      if(RS_DIMS_NOVAS.has(k)&&tot.size<2)continue;
+      const arr=[...tot.entries()].map(([v,tt])=>({v,c:fo.get(v)||0,t:tt,pct:tt?(fo.get(v)||0)/tt:0})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c||b.pct-a.pct);
+      if(!arr.length)continue;const tf=arr.reduce((s,x)=>s+x.c,0);let ac=0,p80=0;for(const x of arr){ac+=x.c;p80++;if(ac>=tf*.8)break;}
+      let alta=null;for(const x of arr){const d=x.c-(foA.get(x.v)||0);if(d>0&&(!alta||d>alta.d))alta={v:x.v,d,c:x.c,ant:foA.get(x.v)||0};}
+      dims.push({k,lbl:RS_DIM_LBL[k],tot:tf,distintos:arr.length,p80,top:arr.slice(0,5),frac:true,fracLbl:foco.curto||'fora do padrão',alta});
+      continue;
+    }
+    const t=rsTop(escopo,i,5,lp);if(!t.tot||t.distintos<(RS_DIMS_NOVAS.has(k)?2:1))continue;
     let alta=null;
     if(semRows.length&&antRows.length){const a=rsTop(semRows,i,99,lp).top,b=new Map(rsTop(antRows,i,999,lp).top.map(x=>[x.v,x.c]));
       for(const x of a){const d=x.c-(b.get(x.v)||0);if(d>0&&(!alta||d>alta.d))alta={v:x.v,d,c:x.c,ant:b.get(x.v)||0};}}
@@ -37999,10 +38019,26 @@ function rsAnalisarBase(base,fca,meta,opts){
   let reinc=null;const ci=ix(p.contrato);
   if(ci>=0){const m=new Map();for(const r of escopo){const c=r[ci];if(c==null||c==='')continue;m.set(c,(m.get(c)||0)+1);}
     const rep=[...m.values()].filter(v=>v>1);reinc={contratos:m.size,reincidentes:rep.length,eventos:rep.reduce((s,v)=>s+v,0)};}
-  /* 6) rascunho de FCA */
-  const sug=rsSugerirFca({dims,reinc,fca,mesLbl:semLbl,semLbl,antLbl,sem:semRows.length,ant:antRows.length,n:escopo.length});
+  /* 5b) ofensores da semana: maiores agings; nas bases de produtividade, os técnicos fora do padrão */
+  {const gi=ix(p.agingNum),idi=ix(p.idCaso),cdi=ix(p.cidade),mti=ix(p.motivo),tei=ix(p.tecnico),pri=ix(p.prodNum),dti=ix(p.diasTrab),gai=ix(p.ga);
+    const hrs=/horas/.test(p.agingNum||''),n1=v=>Number.isInteger(v)?String(v):rsNf1.format(v);
+    const fmt=d=>hrs?n1(Math.round(d*10)/10)+'h':d<1?'mesmo dia':d===1?'1 dia':n1(d)+' dias';
+    const idL=idi>=0?(/CHAMADO/i.test(p.idCaso)?'Chamado ':'OS '):'';
+    let ofs=[],lbl='';
+    if(gi>=0&&semRows.length){lbl='Maiores tempos na semana';
+      ofs=semRows.filter(r=>r[gi]!==''&&r[gi]!=null&&isFinite(Number(r[gi]))).sort((a,b)=>Number(b[gi])-Number(a[gi])).slice(0,5)
+        .map(r=>({v:[idi>=0&&r[idi]?idL+r[idi]:'',cdi>=0&&r[cdi]?r[cdi]:'',mti>=0&&r[mti]?rsLimpa(r[mti]):''].filter(Boolean).join(' · ')||'—',c:1,txt:fmt(Number(r[gi]))}));}
+    else if(pri>=0&&tei>=0&&semRows.length&&!foco.trivial){lbl='Técnicos fora do padrão na semana';
+      ofs=semRows.slice().sort((a,b)=>(Number(a[pri])||0)-(Number(b[pri])||0)||(Number(a[dti])||0)-(Number(b[dti])||0)).slice(0,5)
+        .map(r=>({v:String(r[tei]||'—')+(gai>=0&&r[gai]?' · GA '+String(r[gai]).split(' ')[0]:''),c:1,txt:'prod. '+(r[pri]==null||r[pri]===''?'—':n1(Number(r[pri])))+' · '+(r[dti]==null||r[dti]===''?'0':r[dti])+' dias'}));}
+    if(ofs.length)dims.push({k:'ofensores',lbl,tot:ofs.length,distintos:ofs.length,p80:ofs.length,top:ofs,lista:true,alta:null});}
+  /* 6) rascunho de FCA (a sugestão usa a participação de cada item no total de casos fora, como no MTTR) */
+  const dimsSug=dims.filter(d=>!d.lista).map(d=>d.frac?{...d,top:d.top.map(x=>({v:x.v,c:x.c,pct:d.tot?x.c/d.tot:0}))}:d);
+  const sug=rsSugerirFca({dims:dimsSug,reinc,fca,mesLbl:semLbl,semLbl,antLbl,sem:semRows.length,ant:antRows.length,n:escopo.length});
+  if(resumo&&resumo.fora){rsSugPrepend(sug,fca.indicador+' de '+rsPctTxt(resumo.r1)+' '+foco.ok+' na '+semLbl+(metaTxt?' (meta '+metaTxt+')':'')+': '+resumo.fora+' de '+resumo.tot+' '+resumo.cu+' ('+rsPctTxt(resumo.fora/resumo.tot)+')'+(resumo.r0!=null?', contra '+rsPctTxt(resumo.r0)+' na '+antLbl:''),
+      rsAcaoIndicador(fca.indicador));rsSugPrazo(sug);}
   return{arquivo:(opts&&opts.fonte)||base.name,cluster:clusterOk?fca.cluster:null,linhasCluster:rows.length,foco:foco.lbl,fora:off.length,
-    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl:'',mes:0,mesAlvo:'',n:escopo.length,dims,reinc,avisos,sug,kpis,semanaFixa:true,volLbl:'casos',
+    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl:'',mes:0,mesAlvo:'',n:escopo.length,dims,reinc,avisos,sug,kpis,semanaFixa:true,volLbl:foco.trivial?'casos':(foco.curto||'casos'),
     _escopo:escopo,_base:base};
 }
 const RS_ACAO_MOTIVO=[
@@ -38462,7 +38498,8 @@ function rsAnalisarEnc(fca,D,fonte){
   const pct=(a,b)=>b?a/b:0;
   const pS=pct(fS.length,semRows.length),pA=pct(fA.length,antRows.length);
   const pp=v=>(v>0?'+':v<0?'−':'')+(Math.round(Math.abs(v)*1000)/10).toString().replace('.',',')+' p.p.';
-  const kpis=['Fora do prazo (8h) na '+kSem+': '+fS.length+' de '+semRows.length+' chamados ('+rsPctTxt(pS)+') · no prazo: '+(semRows.length-fS.length)+' ('+rsPctTxt(1-pS)+')'];
+  const mtB=rsMetaTxt(fca,D);
+  const kpis=['Fora do prazo (8h) na '+kSem+': '+fS.length+' de '+semRows.length+' chamados ('+rsPctTxt(pS)+') · no prazo: '+(semRows.length-fS.length)+' ('+rsPctTxt(1-pS)+')'+(mtB?' (meta '+mtB+')':'')];
   if(antRows.length)kpis.push('Semana anterior ('+kAnt+'): '+fA.length+' de '+antRows.length+' fora do prazo ('+rsPctTxt(pA)+') · variação: '+pp(pS-pA));
   /* por dimensão: fora / total (% fora), ordenado pelos que mais têm chamados fora */
   const dim=(k,lbl,camp,limpa)=>{const tot=new Map(),fo=new Map(),foA=new Map();
@@ -38476,11 +38513,31 @@ function rsAnalisarEnc(fca,D,fonte){
   const dims=[dim('cidade','Cidade',x=>x.cidade),dim('motivo','Causa raiz',x=>x.causaRaiz,true),dim('unidade','Cluster',x=>x.clusterNome||x.cluster),dim('parceira','EPS',x=>x.mop)].filter(Boolean);
   /* a sugestão usa a participação de cada item no total de chamados fora (como nos outros indicadores) */
   const dimsSug=dims.map(d=>({...d,top:d.top.map(x=>({v:x.v,c:x.c,pct:d.tot?x.c/d.tot:0}))}));
+  const ofsB=fS.filter(x=>isFinite(Number(x.tempoTotal))).sort((a,b)=>Number(b.tempoTotal)-Number(a.tempoTotal)).slice(0,5)
+    .map(x=>({v:[x.os?'OS '+x.os:'',x.cidade||'',x.causaRaiz||''].filter(Boolean).join(' · ')||'—',c:1,h:Number(x.tempoTotal)}));
+  if(ofsB.length)dims.push({k:'ofensores',lbl:'Maiores tempos na semana',tot:ofsB.length,distintos:ofsB.length,p80:ofsB.length,top:ofsB,lista:true,alta:null});
   const sug=rsSugerirFca({dims:dimsSug,reinc:null,fca,mesLbl:kSem,semLbl:kSem,antLbl:kAnt,sem:fS.length,ant:fA.length,n:fS.length});
+  if(fS.length){rsSugPrepend(sug,'Prazo de reparos B2B na '+kSem+': '+rsPctTxt(1-pS)+' no prazo'+(mtB?' (meta '+mtB+')':'')+' — '+fS.length+' de '+semRows.length+' chamados ('+rsPctTxt(pS)+') passaram de 8h'+(antRows.length?', contra '+rsPctTxt(1-pA)+' no prazo na '+kAnt:''),
+    'Acompanhamento diário dos chamados B2B abertos com escalonamento a partir de 6h e priorização dos maiores tempos (ofensores)');rsSugPrazo(sug);}
   return{arquivo:fonte,cluster:fca.cluster,linhasCluster:semRows.length,foco:'chamados B2B fora do prazo de 8h na semana '+kSem+' (Painel B2B Encerrados, UF '+uf+')',
     fora:fS.length,semLbl:kSem,antLbl:antRows.length?kAnt:'',sem:fS.length,ant:fA.length,mesLbl:'',mes:0,mesAlvo:'',n:fS.length,dims,reinc:null,avisos,sug,kpis,semanaFixa:true};
 }
 /* põe uma causa/ação no topo da sugestão e renumera (1., 2.… / 1.1, 2.1…) */
+/* ação de abertura do FCA por tipo de indicador (equivalente ao "acompanhamento diário" do MTTR) */
+const RS_ACAO_IND=[
+  [/MTTR|PRAZO|AGING/,'Acompanhamento diário dos casos em aberto com priorização dos mais antigos (lista de maiores tempos) e escalonamento antes de estourar o prazo'],
+  [/EFETIVIDADE|EFICIENCIAME/,'Revisão diária das OS não realizadas com o time responsável (triagem, agenda e cancelamentos) e tratativa dos motivos'],
+  [/EFICIENCIALIMPA/,'Revisão semanal dos expurgos com o Comercial e ajuste do processo de venda'],
+  [/EFICIENCIA/,'Acompanhamento diário das vendas não ativadas com Comercial e Rede (viabilidade, agenda e endereço)'],
+  [/PRESENCA/,'Acompanhamento diário da escala e da presença com os GAs (ausências, folgas e apoio)'],
+  [/PRODUTIVIDADE/,'Plano de produtividade com os técnicos do Q4/sem produção, acompanhado diariamente pelo GA'],
+  [/^IRR/,'Auditoria das OS anteriores dos casos reincidentes e reciclagem dos técnicos com mais reincidência'],
+  [/^IFIME/,'Auditoria das mudanças de endereço com falha nos primeiros dias e checklist de qualidade na mudança'],
+  [/^IFI/,'Auditoria das instalações com falha nos primeiros dias e checklist de qualidade na ativação'],
+];
+function rsAcaoIndicador(ind){const n=RS_NK(ind);return(RS_ACAO_IND.find(([re])=>re.test(n))||[null,'Acompanhamento diário dos casos fora do padrão com o time responsável'])[1];}
+function rsSugPrazo(sug){if(sug.prazo||!sug.acao)return;const p=new Date(Date.now()+7*864e5),pz=String(p.getDate()).padStart(2,'0')+'/'+RS_MESES[p.getMonth()];
+  const n=sug.acao.split('\n').length;sug.prazo=Array.from({length:n},(_,i)=>(i+1)+'.1 '+pz).join('\n');sug.status=Array.from({length:n},(_,i)=>(i+1)+'.1 Em andamento').join('\n');}
 function rsSugPrepend(sug,c,a){
   const cs=[c].concat(sug.causa?sug.causa.split('\n').map(l=>l.replace(/^\d+\.\s/,'')):[]);
   const as=[a].concat(sug.acao?sug.acao.split('\n').map(l=>l.replace(/^\d+\.1\s/,'')):[]);
@@ -38552,11 +38609,13 @@ function rsAnalisarFca(r,D){
   if(f.tipo==='max')a=rsAnalisarMax(RS_MX,r,D.meta);
   else if(f.tipo==='enc'){a=rsAnalisarEnc(r,D,f.lbl);if(!a)return null;}
   else if(f.tipo==='rede'){a=rsAnalisarRede(r,D,f.lbl);if(!a)return null;}
-  else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{fonte:f.lbl});}
+  else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{fonte:f.lbl,metaTxt:rsMetaTxt(r,D)});}
   if(f.m&&f.m.planta&&RS_NK(r.indicador)==='IRT'&&a._escopo)rsIrtComPlanta(a,r);
   try{rsTaxaCruzada(a,r,D);}catch(e){console.warn('Redir: taxa cruzada',e);}
   delete a._escopo;delete a._base;a.fonteTipo=f.tipo;return a;
 }
+function rsMetaTxt(r,D){const m=(D&&D.matriz||[]).find(x=>x.cluster===r.cluster&&x.indicador===r.indicador);
+  return m?(m.meta!=null?rsFmt(r.indicador,m.meta):(m.meta_texto||'')):'';}
 const RS_TAXA_CRUZ=[
   {re:/^IRR$/,den:'IRT',lbl:'reparos',base:'base do IRT'},
   {re:/^IFIALTAS$|^IFI$/,den:'Aging Altas 48h',lbl:'ativações',base:'base Aging Altas'},
@@ -38573,7 +38632,7 @@ function rsBaseAte(base){
 }
 function rsContaSemana(base,fca,meta){
   const a=rsAnalisarBase(base,fca,meta,{foco:()=>({lbl:'',f:()=>true,trivial:true})});
-  return a.avisos.some(x=>/não cobre/.test(x))?null:{sem:a.sem,ant:a.ant,semLbl:a.semLbl,antLbl:a.antLbl};
+  return a.avisos.some(x=>/não cobre/.test(x))?null:{sem:a.sem,ant:a.ant,semLbl:a.semLbl,antLbl:a.antLbl,rows:a._escopo,base};
 }
 function rsTaxaCruzada(a,r,D){
   const c=RS_TAXA_CRUZ.find(x=>x.re.test(RS_NK(r.indicador)));if(!c||a.fonteTipo&&a.fonteTipo!=='anexo'&&a.fonteTipo!==undefined)return;
@@ -38582,8 +38641,23 @@ function rsTaxaCruzada(a,r,D){
   if(!den){a.kpis.push('Para calcular a taxa ('+RS_NK(r.indicador).replace('ALTAS',' Altas')+' ÷ '+c.lbl+'), anexe também a '+c.base);return;}
   const n=rsContaSemana(den,r,D.meta);
   if(!n){a.kpis.push('A '+c.base+' não cobre a '+a.semLbl+' — sem taxa da semana');return;}
-  const tx=(x,y)=>y?rsPctTxt(x/y)+' ('+x+' ÷ '+rsNf0.format(y)+' '+c.lbl+')':'—';
-  a.kpis.unshift('Taxa na '+a.semLbl+': '+tx(a.sem,n.sem)+(n.ant?' · '+a.antLbl+': '+tx(a.ant,n.ant):'')+' — '+c.lbl+' da '+c.base+(r.valor_semana!=null?' · planilha: '+rsFmt(r.indicador,r.valor_semana):''));
+  const mt=rsMetaTxt(r,D),pp=v=>(v>0?'+':v<0?'−':'')+rsNf1.format(Math.abs(v*100))+' p.p.';
+  const t1=n.sem?a.sem/n.sem:null,t0=n.ant?a.ant/n.ant:null;
+  const k2=t0!=null?'Semana anterior ('+a.antLbl+'): '+rsPctTxt(t0)+' · '+a.ant+' de '+rsNf0.format(n.ant)+' '+c.lbl+(t1!=null?' · variação: '+pp(t1-t0):''):null;
+  a.kpis.unshift(r.indicador+' na '+a.semLbl+': '+(t1!=null?rsPctTxt(t1):'—')+(mt?' (meta '+mt+')':'')+' · '+a.sem+' de '+rsNf0.format(n.sem)+' '+c.lbl+' da '+c.base+(r.valor_semana!=null?' · planilha: '+rsFmt(r.indicador,r.valor_semana):''));
+  if(k2)a.kpis.splice(1,0,k2);
+  /* por unidade e cidade: casos ÷ denominador do mesmo grupo */
+  const kNorm=v=>RS_NK(String(v==null?'':v).replace(/\/[A-Za-z]{2}\s*$/,'').replace(/\s+ATEX$/i,''));
+  if(a._escopo&&a._base&&n.rows)for(const k of ['unidade','cidade']){
+    const ia=a._base.cols.indexOf(a._base.pick[k]),idd=n.base.cols.indexOf(n.base.pick[k]);if(ia<0||idd<0)continue;
+    const den=new Map(),num=new Map(),nome=new Map();
+    n.rows.forEach(x=>{const kk=kNorm(x[idd]);if(kk)den.set(kk,(den.get(kk)||0)+1);});
+    a._escopo.forEach(x=>{const kk=kNorm(x[ia]);if(!kk)return;num.set(kk,(num.get(kk)||0)+1);if(!nome.has(kk))nome.set(kk,String(x[ia]).replace(/\/[A-Za-z]{2}\s*$/,''));});
+    const arr=[...num.entries()].map(([kk,cc])=>({v:nome.get(kk),c:cc,t:den.get(kk)||0,pct:den.get(kk)?cc/den.get(kk):0})).filter(x=>x.t>0).sort((x,y)=>y.c-x.c||y.pct-x.pct);
+    if(!arr.length)continue;const tf=arr.reduce((s,x)=>s+x.c,0);let ac=0,p80=0;for(const x of arr){ac+=x.c;p80++;if(ac>=tf*.8)break;}
+    const d={k,lbl:RS_DIM_LBL[k],tot:tf,distintos:arr.length,p80,top:arr.slice(0,5),frac:true,fracLbl:c.lbl+' com '+r.indicador,alta:null};
+    const j=a.dims.findIndex(x=>x.k===k);if(j>=0)a.dims[j]=d;else a.dims.push(d);}
+  if(a.sem&&t1!=null){rsSugPrepend(a.sug,r.indicador+' de '+rsPctTxt(t1)+' na '+a.semLbl+(mt?' (meta '+mt+')':'')+': '+a.sem+' casos em '+rsNf0.format(n.sem)+' '+c.lbl+(t0!=null?', contra '+rsPctTxt(t0)+' na '+a.antLbl:''),rsAcaoIndicador(r.indicador));rsSugPrazo(a.sug);}
 }
 async function rsLerPlanilhaObjs(file){
   const buf=await file.arrayBuffer();
@@ -38662,7 +38736,7 @@ async function rsOnIndFile(inp){
   }catch(e){alert('Não foi possível usar este arquivo para '+(planta?'a Planta Média':ind)+': '+(e&&e.message||e));}
 }
 function rsPintaAnalise(box,a,aplicar){
-  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+(d.lista?rsFmt('MTTR 6H',x.h):d.frac?x.c+' de '+x.t+' '+(d.fracLbl||'fora')+' ('+rsPctTxt(x.pct)+')'+(x.h!=null?' · MTTR '+rsFmt('MTTR 6H',x.h):''):d.rel?(Math.round(x.pct*10)/10).toString().replace('.',',')+'× · '+x.c+' reparos':d.taxa?rsPctTxt(x.pct)+' · '+x.c+' casos':x.c+' · '+rsPctTxt(x.pct))+'</em></span>').join('')+
+  const li=d=>'<div class="rs-ana-dim"><b>'+eh(d.lbl)+'</b>'+d.top.slice(0,3).map(x=>'<span>'+eh(x.v)+' <em>'+(d.lista?(x.txt!=null?eh(x.txt):rsFmt('MTTR 6H',x.h)):d.frac?x.c+' de '+x.t+' '+(d.fracLbl||'fora')+' ('+rsPctTxt(x.pct)+')'+(x.h!=null?' · MTTR '+rsFmt('MTTR 6H',x.h):''):d.rel?(Math.round(x.pct*10)/10).toString().replace('.',',')+'× · '+x.c+' reparos':d.taxa?rsPctTxt(x.pct)+' · '+x.c+' casos':x.c+' · '+rsPctTxt(x.pct))+'</em></span>').join('')+
     (d.distintos>3?'<small>'+d.p80+' de '+d.distintos+' concentram 80%</small>':'')+(d.alta?'<small class="up">▲ maior alta na '+eh(a.semLbl)+': '+eh(d.alta.v)+' (+'+d.alta.d+')</small>':'')+'</div>';
   const vol=(a.semLbl?'<span><b>'+a.sem+'</b>'+(a.semanaFixa?' '+(a.volLbl||'fora do prazo'):'')+' na '+eh(a.semLbl)+(a.antLbl?' · '+a.ant+' na '+eh(a.antLbl):'')+'</span>':'')+(a.mesLbl?'<span><b>'+a.mes+'</b> em '+eh(a.mesLbl)+'</span>':'')+(a.semanaFixa?'':'<span><b>'+a.fora+'</b> no período da base</span>');
   box.innerHTML='<div class="rs-ana-hd"><i class="ti ti-chart-dots"></i> Análise da base <small>Fonte: '+eh(a.arquivo)+' · '+(a.cluster?'cluster '+eh(a.cluster)+' ('+rsNf0.format(a.linhasCluster)+' linhas)':'base inteira')+' · foco: '+eh(a.foco)+'</small></div>'+
