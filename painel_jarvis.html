@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-24T22:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-25T00:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -2183,6 +2183,7 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem i.s-ok{background:var(--green)}#panel-redir-sem i.s-warn{background:var(--orange)}#panel-redir-sem i.s-bad{background:var(--red)}
 @media (max-width:640px){#panel-redir-sem .rs-base{margin-left:0}#panel-redir-sem .rs-form{grid-template-columns:1fr}#panel-redir-sem .card-hd .rs-note{display:none}}
 #panel-redir-sem .rs-ana-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#panel-redir-sem .rs-desat{color:var(--orange)!important;font-weight:700}
 #panel-redir-sem .rs-btn.rs-btn-del{color:var(--red);border-color:var(--red-bg)}
 #panel-redir-sem .rs-btn.rs-btn-del:hover{background:var(--red-bg)}
 #panel-redir-sem #rs-limpar-bases[hidden]{display:none}
@@ -37759,7 +37760,9 @@ function rsJustCard(r,pr,sem,prev,D){
     if(f.tipo!=='nenhuma'){
       const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
       an.onclick=()=>{if(ana.hidden)mostra();else{ana.hidden=true;rsAnaAbertas.delete(r.id);pintaBar();}};abar.appendChild(an);
-      nota('Fonte: '+f.lbl+(f.tipo==='anexo'?' · '+rsNf0.format(f.base.total)+' linhas':''));
+      const cob=f.tipo==='anexo'?rsBaseAte(f.base):null;const wSel=+String(sem||'').replace(/\D/g,'');
+      nota('Fonte: '+f.lbl+(f.tipo==='anexo'?' · '+rsNf0.format(f.base.total)+' linhas':'')+(cob?' · dados até a W'+cob.w+'/'+cob.y:''));
+      if(cob&&wSel&&cob.w<wSel){const w=document.createElement('span');w.className='rs-note rs-desat';w.textContent='⚠ a base não cobre a '+sem+' — anexe a base atualizada';abar.appendChild(w);}
     }else if(m&&m.painel==='enc')nota('sem dados: anexe a base no Painel B2B Encerrados');
     else if(m&&m.painel==='rede')nota('sem dados: anexe a base no Painel Rede');
     else if(m&&m.painel==='max')nota('sem dados: anexe a base no Painel MAX');
@@ -37819,12 +37822,58 @@ const RS_COLS={
   unidade:['Unidade'],
   olt:['OLT'],
   contrato:['Contrato','codigo_contrato'],
-  foco:['Reparo','conclusao','conclusao_os','Conclusão OS','MAX3','Aging','Data Criação Contrato','Reparo8h','Contrato Habilitado?','Realizada','Total Vendas Expurgadas','Quartil Prod.'],
+  foco:['Reparo','conclusao','conclusao_os','Conclusão OS','MAX3','Aging','Data Criação Contrato','Reparo8h','Contrato Habilitado?','Realizada','Total Vendas Expurgadas','Quartil Prod.','Dias Trab.'],
+  /* 2026-10-25 (análise das bases da pasta Modelos): dimensões e números próprios de cada base */
+  conclusao:['conclusao','conclusao_os','Conclusão OS'],
+  fila:['FILA'],
+  faixaPrazo:['Reparo'],
+  responsavel:['Responsavel Ação','Responsável Ação','Responsavel Acao'],
+  status:['Status'],
+  tipoCanc:['Tipo Cancelamento'],
+  ultMotivo:['Ultimo Motivo OS','Último Motivo OS'],
+  submotivo:['1º Submotivo','Ultimo Submotivo OS'],
+  canal:['Canal de Venda'],
+  equipe:['Equipe'],
+  expurgo:['Tipo Expurgo','Tipo de expurgo (base)'],
+  condominio:['Tipo Condomínio'],
+  ga:["GA's",'GA'],
+  tempoCasa:['Faixa Tempo de Casa'],
+  quartil:['Quartil Prod.'],
+  faixaAging:['Faixa de aging (base)'],
+  agingNum:['Aging em dias (base)','Aging em horas (base)'],
+  prodNum:['Prod.'],
+  diasTrab:['Dias Trab.'],
 };
-const RS_DIM_LBL={cidade:'Cidade',bairro:'Bairro',motivo:'Motivo',motivoAnt:'Motivo da OS anterior',tecnico:'Técnico',tecnicoAnt:'Técnico da OS anterior',parceira:'Parceira/EPS',unidade:'Unidade',olt:'OLT'};
+const RS_DIM_LBL={cidade:'Cidade',bairro:'Bairro',motivo:'Motivo',motivoAnt:'Motivo da OS anterior',tecnico:'Técnico',tecnicoAnt:'Técnico da OS anterior',parceira:'Parceira/EPS',unidade:'Unidade',olt:'OLT',
+  conclusao:'Conclusão',fila:'Fila',faixaPrazo:'Faixa de prazo',responsavel:'Responsável pela ação',status:'Status',tipoCanc:'Tipo de cancelamento',ultMotivo:'Último motivo da OS',submotivo:'Submotivo',
+  canal:'Canal de venda',equipe:'Equipe de venda',expurgo:'Tipo de expurgo',condominio:'Condomínio',ga:'Supervisor (GA)',tempoCasa:'Tempo de casa',quartil:'Quartil de produtividade',faixaAging:'Faixa de aging'};
+/* dimensões novas só aparecem com 2+ valores distintos (evita coluna constante, ex.: Status = Cancelados) */
+const RS_DIMS=['cidade','bairro','motivo','motivoAnt','tecnico','tecnicoAnt','parceira','unidade','olt','faixaPrazo','faixaAging','conclusao','fila','responsavel','status','tipoCanc','ultMotivo','submotivo','canal','equipe','expurgo','condominio','ga','tempoCasa','quartil'];
+const RS_DIMS_NOVAS=new Set(RS_DIMS.slice(9));
+/* colunas derivadas na leitura: aging em dias + faixa (de Aging/Aging IRR/IFME/IRT, Aging (Minutos) ou Ativação − Criação)
+   e tipo de expurgo (Eficiência Limpa traz um 1 em cada coluna de expurgo) */
+const RS_EXPURGOS=['Vendas Marketing','Vendas End. Ajustado','Vendas Abertura Ind.','Vendas Desist. 1º Baixa','Vendas Manual Sydle'];
+function rsDerivar(objs){
+  const h=new Set(Object.keys(objs[0]||{}));const tem=c=>h.has(c);
+  const exp=RS_EXPURGOS.filter(tem);
+  const agD=['Aging IRR','Aging IFME','Aging IRT','Aging (Dias)','Aging'].find(tem),agM=tem('Aging (Minutos)')?'Aging (Minutos)':null;
+  const datas=!agD&&!agM&&tem('Data Ativação')&&tem('Data Criação Contrato');
+  if(!exp.length&&!agD&&!agM&&!datas)return;
+  for(const o of objs){
+    if(exp.length>=2)o['Tipo de expurgo (base)']='';if(agD||agM||datas){o[agM?'Aging em horas (base)':'Aging em dias (base)']='';o['Faixa de aging (base)']='';}
+    if(exp.length>=2){const t=exp.filter(c=>Number(o[c])===1);if(t.length)o['Tipo de expurgo (base)']=t.map(c=>c.replace(/^Vendas\s+/,'')).join(' + ');}
+    let d=null;
+    if(agM){const v=Number(o[agM]);if(o[agM]!==''&&isFinite(v))d=v/1440;}
+    else if(agD){const v=Number(o[agD]);if(o[agD]!==''&&isFinite(v))d=v;}
+    else if(datas){const x=rsToDate(o['Data Ativação']),y=rsToDate(o['Data Criação Contrato']);if(x&&y)d=Math.round((x-y)/864e5);}
+    if(d==null)continue;if(agM)o['Aging em horas (base)']=Math.round(d*2400)/100;else o['Aging em dias (base)']=Math.round(d*100)/100;
+    o['Faixa de aging (base)']=agM?(d<=1?'até 24h':d<=2?'24h a 48h':'acima de 48h'):(d<1?'mesmo dia':d<2?'1 dia':d<3?'2 dias':d<=5?'3 a 5 dias':'6 dias ou mais');
+  }
+}
 /* reduz as linhas lidas (objetos por cabeçalho) às colunas usadas na análise */
-function rsReduzBase(objs,name){
+function rsReduzBase(objs,name,m){
   if(!objs.length)throw new Error('a planilha está vazia');
+  rsDerivar(objs);
   const hdr=Object.keys(objs[0]);const nh=new Map(hdr.map(h=>[RS_NK(h),h]));
   const pick={};
   for(const[k,cands]of Object.entries(RS_COLS)){
@@ -37836,6 +37885,11 @@ function rsReduzBase(objs,name){
   pick.cluster=RS_COLS.cluster.map(c=>nh.get(RS_NK(c))).filter(Boolean).find(temCod)||null;
   const cols=[...new Set(Object.values(pick).flat().filter(Boolean))];
   if(pick.cluster&&pick.clusterNome===pick.cluster)delete pick.clusterNome;
+  /* coluna de data própria do modelo (Eficiência Vendas: semana pela data do cancelamento) */
+  if(m&&m.data){const h=nh.get(RS_NK(m.data));if(h&&objs.some(o=>o[h]!==''&&o[h]!=null)){pick.data=h;if(!cols.includes(h))cols.push(h);}}
+  if(pick.ultMotivo&&pick.ultMotivo===pick.motivo)delete pick.ultMotivo;
+  if(pick.faixaPrazo)delete pick.faixaAging;
+  if(pick.faixaPrazo&&!/24|48/.test(String((objs.find(o=>o[pick.faixaPrazo])||{})[pick.faixaPrazo]||'')))delete pick.faixaPrazo;
   if(!pick.data&&!pick.cidade&&!pick.motivo&&!pick.semana&&!pick.tecnico)throw new Error('não encontrei colunas de data, cidade, motivo ou técnico — confira se é a base do indicador');
   return{name,cols,pick,rows:objs.map(o=>cols.map(c=>o[c]===''?null:o[c])),total:objs.length};
 }
@@ -37854,19 +37908,21 @@ const RS_MESES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov
 function rsFoco(ind,base){
   const p=base.pick,ix=c=>base.cols.indexOf(c),fc=n=>(p.foco||[]).find(c=>RS_NK(c)===RS_NK(n));
   const I=RS_NK(ind);
-  if(/^EFICIENCIAVENDAS|^EFICIENCIA$/.test(I)&&fc('Contrato Habilitado?')){const i=ix(fc('Contrato Habilitado?'));return{lbl:'vendas não ativadas (Contrato Habilitado? = Não Ativado)',f:r=>/^N[ÃA]O/i.test(String(r[i]||''))};}
-  if(/^EFICIENCIAME/.test(I)&&fc('Realizada')){const i=ix(fc('Realizada'));return{lbl:'mudanças de endereço não realizadas (Realizada = 0)',f:r=>r[i]!==null&&r[i]!==''&&Number(r[i])!==1};}
-  if(/^EFICIENCIALIMPA/.test(I)&&fc('Total Vendas Expurgadas')){const i=ix(fc('Total Vendas Expurgadas'));return{lbl:'vendas expurgadas (Total Vendas Expurgadas ≥ 1)',f:r=>Number(r[i])>=1};}
-  if(/PRESENCAMOP|PRODUTIVIDADEMOP/.test(I)&&fc('Quartil Prod.')){const i=ix(fc('Quartil Prod.'));return{lbl:'técnicos no quartil Q4 ou sem produção (NP)',f:r=>/^(Q4|NP)$/i.test(String(r[i]||'').trim())};}
-  if(/PRAZO24|PRAZODEREPAROS|REPAROSPRAZO/.test(I)&&fc('Reparo')){const i=ix(fc('Reparo'));return{lbl:'reparos fora de 24h (coluna Reparo ≠ "Até 24 hrs")',f:r=>String(r[i]||'')!=='Até 24 hrs'};}
-  if(/AGINGALTAS/.test(I)&&fc('Data Criação Contrato')&&p.data){const a=ix(p.data),c=ix(fc('Data Criação Contrato'));return{lbl:'ativações acima de 48h (Data Ativação − Criação do Contrato > 2 dias)',f:r=>{const x=rsToDate(r[a]),y=rsToDate(r[c]);return x&&y?(x-y)/864e5>2:false;}};}
-  if(/AGINGME/.test(I)&&fc('Aging')){const i=ix(fc('Aging'));return{lbl:'mudanças acima de 2 dias (Aging > 2)',f:r=>Number(r[i])>2};}
-  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'))){const i=ix(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',f:r=>String(r[i]||'')!=='Realizado'};}
-  if(/^MAX/.test(I)&&fc('MAX3')){const i=ix(fc('MAX3'));return{lbl:'chamados com reincidência (MAX3 ≥ 1)',f:r=>Number(r[i])>=1};}
-  return{lbl:'todas as linhas da base (cada linha é um evento do indicador)',f:()=>true};
+  if(/^EFICIENCIAVENDAS|^EFICIENCIA$/.test(I)&&fc('Contrato Habilitado?')){const i=ix(fc('Contrato Habilitado?'));return{lbl:'vendas não ativadas (Contrato Habilitado? = Não Ativado)',ok:'ativadas',f:r=>/^N[ÃA]O/i.test(String(r[i]||''))};}
+  if(/^EFICIENCIAME/.test(I)&&fc('Realizada')){const i=ix(fc('Realizada'));return{lbl:'mudanças de endereço não realizadas (Realizada = 0)',ok:'realizadas',f:r=>r[i]!==null&&r[i]!==''&&Number(r[i])!==1};}
+  if(/^EFICIENCIALIMPA/.test(I)&&fc('Total Vendas Expurgadas')){const i=ix(fc('Total Vendas Expurgadas'));return{lbl:'vendas expurgadas (Total Vendas Expurgadas ≥ 1)',ok:'sem expurgo',f:r=>Number(r[i])>=1};}
+  /* Presença MOP: dias trabalhados na semana (pedido 2026-10-25) — sem registro de dias conta como ausência */
+  if(/PRESENCAMOP/.test(I)&&fc('Dias Trab.')){const i=ix(fc('Dias Trab.'));return{lbl:'técnicos com menos de 4 dias trabalhados na semana',ok:'com 4 dias ou mais',f:r=>!(Number(r[i])>=4)};}
+  if(/PRESENCAMOP|PRODUTIVIDADEMOP/.test(I)&&fc('Quartil Prod.')){const i=ix(fc('Quartil Prod.'));return{lbl:'técnicos no quartil Q4 ou sem produção (NP)',ok:'fora do Q4/NP',f:r=>/^(Q4|NP)$/i.test(String(r[i]||'').trim())};}
+  if(/PRAZO24|PRAZODEREPAROS|REPAROSPRAZO/.test(I)&&fc('Reparo')){const i=ix(fc('Reparo'));return{lbl:'reparos fora de 24h (coluna Reparo ≠ "Até 24 hrs")',ok:'até 24h',f:r=>String(r[i]||'')!=='Até 24 hrs'};}
+  if(/AGINGALTAS/.test(I)&&fc('Data Criação Contrato')&&p.data){const a=ix(p.data),c=ix(fc('Data Criação Contrato'));return{lbl:'ativações acima de 48h (Data Ativação − Criação do Contrato > 2 dias)',ok:'até 48h',f:r=>{const x=rsToDate(r[a]),y=rsToDate(r[c]);return x&&y?(x-y)/864e5>2:false;}};}
+  if(/AGINGME/.test(I)&&fc('Aging')){const i=ix(fc('Aging'));return{lbl:'mudanças acima de 2 dias (Aging > 2)',ok:'até 2 dias',f:r=>Number(r[i])>2};}
+  if(/EFICIENCIA|EFETIVIDADE/.test(I)&&(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'))){const i=ix(fc('conclusao')||fc('conclusao_os')||fc('Conclusão OS'));return{lbl:'OS não realizadas (conclusão ≠ Realizado)',ok:'realizadas',f:r=>String(r[i]||'')!=='Realizado'};}
+  if(/^MAX/.test(I)&&fc('MAX3')){const i=ix(fc('MAX3'));return{lbl:'chamados com reincidência (MAX3 ≥ 1)',ok:'sem reincidência',f:r=>Number(r[i])>=1};}
+  return{lbl:'todas as linhas da base (cada linha é um evento do indicador)',f:()=>true,trivial:true};
 }
 function rsLimpa(v){return String(v).replace(/_EVENTO_PRODUTIVO|_EVENTO_IMPRODUTIVO/gi,'').replace(/_/g,' ').replace(/\s+/g,' ').trim();}
-function rsTop(rows,i,n,limpa){const m=new Map();for(const r of rows){let v=r[i]==null?'':String(r[i]).trim();if(limpa)v=rsLimpa(v).toUpperCase();if(!v)continue;m.set(v,(m.get(v)||0)+1);}
+function rsTop(rows,i,n,limpa){const m=new Map();for(const r of rows){let v=r[i]==null?'':String(r[i]).trim();if(limpa)v=rsLimpa(v).toUpperCase();if(!v||v==='-')continue;m.set(v,(m.get(v)||0)+1);}
   const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]);const tot=arr.reduce((s,x)=>s+x[1],0);
   let ac=0,p80=0;for(const x of arr){ac+=x[1];p80++;if(ac>=tot*.8)break;}
   return{tot,distintos:arr.length,p80,top:arr.slice(0,n||5).map(([v,c])=>({v,c,pct:tot?c/tot:0}))};}
@@ -37884,29 +37940,56 @@ function rsAnalisarBase(base,fca,meta,opts){
   if(!clusterOk)avisos.push(p.cluster||p.clusterNome?'a base não tem linhas do cluster '+fca.cluster+' — analisei a base inteira':'a base não tem coluna de cluster — analisei a base inteira');
   /* 2) foco: linhas fora do padrão */
   const foco=opts&&opts.foco?opts.foco(base):rsFoco(fca.indicador,base);
-  const off=rows.filter(foco.f);
+  const isOff=rows.map(r=>!!foco.f(r));
+  const off=rows.filter((r,i)=>isOff[i]);
+  const kpis=[];
   /* 3) período: SEMANA selecionada no filtro (pedido 2026-10-24: "as análises de todos os indicadores
      deverão ser realizadas de acordo com a semana selecionada") e a anterior, para comparar. Se a base
      não tiver casos nessa semana, a análise NÃO troca de semana: avisa qual é a última semana da base. */
   const di=ix(p.data),si=ix(p.semana);let semRows=[],antRows=[],semLbl='',antLbl='';
   if(di>=0||si>=0){
     /* semana pela data ou, sem data, pela coluna "Semana Ano" (S43/2026) das bases de produtividade */
-    const wk=off.map(r=>{if(di>=0){const d=rsToDate(r[di]);if(d)return rsIsoWeek(d);}if(si>=0){const m=String(r[si]||'').match(/(\d{1,2})\D+(\d{4})/);if(m)return{y:+m[2],w:+m[1]};}return null;});
+    /* semana de TODAS as linhas do cluster (não só das fora do padrão): assim "nenhum caso fora do padrão"
+       não é confundido com "a base não cobre a semana" (bug achado na análise das bases, 2026-10-25) */
+    const wk=rows.map(r=>{if(di>=0){const d=rsToDate(r[di]);if(d)return rsIsoWeek(d);}if(si>=0){const m=String(r[si]||'').match(/(\d{1,2})\D+(\d{4})/);if(m)return{y:+m[2],w:+m[1]};}return null;});
     const wNum=+String(fca.semana).replace(/\D/g,'');
     const mmA=String(meta&&meta.mes||'').match(/\/(\d{2})$/);
-    const todas=wk.filter(Boolean).sort((a,b)=>a.y-b.y||a.w-b.w),ult=todas[todas.length-1];
+    let ult=null;for(const x of wk)if(x&&(!ult||x.y>ult.y||(x.y===ult.y&&x.w>ult.w)))ult=x;
     const ano=mmA?2000+ +mmA[1]:(ult?ult.y:new Date().getFullYear());
     const alvo={y:ano,w:wNum},ant=alvo.w>1?{y:alvo.y,w:alvo.w-1}:{y:alvo.y-1,w:52};
-    semRows=off.filter((r,i)=>wk[i]&&wk[i].y===alvo.y&&wk[i].w===alvo.w);
-    antRows=off.filter((r,i)=>wk[i]&&wk[i].y===ant.y&&wk[i].w===ant.w);
+    const em=(i,s)=>wk[i]&&wk[i].y===s.y&&wk[i].w===s.w;
+    let totSem=0,totAnt=0;rows.forEach((r,i)=>{if(em(i,alvo)){totSem++;if(isOff[i])semRows.push(r);}else if(em(i,ant)){totAnt++;if(isOff[i])antRows.push(r);}});
     semLbl='W'+alvo.w;antLbl='W'+ant.w;
-    if(!semRows.length)avisos.push('a base não tem casos na '+semLbl+'/'+alvo.y+(ult?' (última semana da base: W'+ult.w+'/'+ult.y+')':'')+' — anexe a base que cobre a semana selecionada');
+    const ultTxt=ult?'W'+ult.w+'/'+ult.y:'';
+    if(!totSem)avisos.push('a base não cobre a '+semLbl+'/'+alvo.y+(ult?' — os dados vão só até a '+ultTxt:'')+'. Anexe a base atualizada que cobre a semana selecionada');
+    else if(!semRows.length&&!foco.trivial)kpis.push('✓ Nenhum caso fora do padrão na '+semLbl+': os '+rsNf0.format(totSem)+' registros da semana estão '+(foco.ok||'dentro do padrão'));
+    /* 2) o próprio indicador da semana, quando a base traz os casos bons e os ruins */
+    if(foco.ok&&!foco.trivial&&totSem&&isOff.some(x=>!x)){
+      const tx=(ok,tot)=>rsPctTxt(tot?ok/tot:0)+' '+foco.ok+' ('+rsNf0.format(ok)+' de '+rsNf0.format(tot)+')';
+      kpis.push('Resultado da '+semLbl+' pela base: '+tx(totSem-semRows.length,totSem)+(totAnt?' · '+antLbl+': '+tx(totAnt-antRows.length,totAnt):'')+
+        (fca.valor_semana!=null?' · planilha: '+rsFmt(fca.indicador,fca.valor_semana):''));
+    }
+    /* produtividade/presença: médias da semana (todos os técnicos do cluster) */
+    const pi=ix(p.prodNum),dti=ix(p.diasTrab),qi=ix(p.quartil);
+    if(pi>=0&&dti>=0){const res=s=>{const rs=rows.filter((r,i)=>em(i,s));const v=rs.filter(r=>r[pi]!=null&&r[pi]!==''&&isFinite(Number(r[pi])));
+        const md=c=>v.length?rsNf1.format(v.reduce((a,r)=>a+(Number(r[c])||0),0)/v.length):'—';
+        return{n:rs.length,prod:md(pi),dias:md(dti),q4:qi>=0?rs.filter(r=>/^(Q4|NP)$/i.test(String(r[qi]||'').trim())).length:null,men4:rs.filter(r=>!(Number(r[dti])>=4)).length};};
+      const a1=res(alvo),a0=res(ant);
+      if(a1.n)kpis.push('Na '+semLbl+': '+a1.n+' técnicos · produtividade média '+a1.prod+(a0.n?' ('+antLbl+': '+a0.prod+')':'')+' · dias trabalhados em média '+a1.dias+(a0.n?' ('+antLbl+': '+a0.dias+')':'')+
+        (a1.q4!=null?' · '+a1.q4+' no Q4/sem produção':'')+' · '+a1.men4+' com menos de 4 dias');}
+    /* aging da semana (mediana) */
+    const gi=ix(p.agingNum);
+    if(gi>=0&&totSem){const med=a=>{const v=a.map(r=>Number(r[gi])).filter(x=>isFinite(x)&&x>=0).sort((x,y)=>x-y);return v.length?v[Math.floor((v.length-1)/2)]:null;};
+      const hrs=/horas/.test(p.agingNum),n1=v=>Number.isInteger(v)?String(v):rsNf1.format(v);
+      const fmt=d=>d==null?'—':hrs?n1(Math.round(d*10)/10)+'h':d<1?'mesmo dia':d===1?'1 dia':n1(d)+' dias';
+      const todosSem=rows.filter((r,i)=>em(i,alvo));const m1=med(todosSem),m2=med(semRows);
+      if(m1!=null)kpis.push('Aging mediano na '+semLbl+': '+fmt(m1)+(semRows.length&&!foco.trivial&&m2!=null?' (fora do padrão: '+fmt(m2)+')':''));}
   }else{semRows=off;avisos.push('a base não tem coluna de data — analisei a base inteira (não dá para separar a semana)');}
   const escopo=semRows;
   /* 4) Pareto por dimensão (na semana) + o que mais cresceu contra a semana anterior */  /* 4) Pareto por dimensão (no mês) + o que mais cresceu na semana */
   const dims=[];
-  for(const k of ['cidade','bairro','motivo','motivoAnt','tecnico','tecnicoAnt','parceira','unidade','olt']){
-    const i=ix(p[k]);if(i<0)continue;const lp=/^motivo/.test(k);const t=rsTop(escopo,i,5,lp);if(!t.tot||t.distintos<1)continue;
+  for(const k of RS_DIMS){
+    const i=ix(p[k]);if(i<0)continue;const lp=/^motivo|^ultMotivo/.test(k);const t=rsTop(escopo,i,5,lp);if(!t.tot||t.distintos<(RS_DIMS_NOVAS.has(k)?2:1))continue;
     let alta=null;
     if(semRows.length&&antRows.length){const a=rsTop(semRows,i,99,lp).top,b=new Map(rsTop(antRows,i,999,lp).top.map(x=>[x.v,x.c]));
       for(const x of a){const d=x.c-(b.get(x.v)||0);if(d>0&&(!alta||d>alta.d))alta={v:x.v,d,c:x.c,ant:b.get(x.v)||0};}}
@@ -37919,7 +38002,7 @@ function rsAnalisarBase(base,fca,meta,opts){
   /* 6) rascunho de FCA */
   const sug=rsSugerirFca({dims,reinc,fca,mesLbl:semLbl,semLbl,antLbl,sem:semRows.length,ant:antRows.length,n:escopo.length});
   return{arquivo:(opts&&opts.fonte)||base.name,cluster:clusterOk?fca.cluster:null,linhasCluster:rows.length,foco:foco.lbl,fora:off.length,
-    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl:'',mes:0,mesAlvo:'',n:escopo.length,dims,reinc,avisos,sug,kpis:[],semanaFixa:true,volLbl:'casos',
+    semLbl,antLbl,sem:semRows.length,ant:antRows.length,mesLbl:'',mes:0,mesAlvo:'',n:escopo.length,dims,reinc,avisos,sug,kpis,semanaFixa:true,volLbl:'casos',
     _escopo:escopo,_base:base};
 }
 const RS_ACAO_MOTIVO=[
@@ -37954,6 +38037,27 @@ function rsSugerirFca(a){
       'Acompanhamento e reciclagem dos técnicos '+t.map(x=>x.v.split(' ')[0]).join(', ')+' com auditoria das OS executadas');}
   const par=by('parceira');
   if(par&&par.distintos>1&&par.top[0].pct>=.4&&!/GIGA/i.test(par.top[0].v))add('Parceira '+par.top[0].v+' responde por '+rsPctTxt(par.top[0].pct)+' dos casos','Alinhar plano de ação e meta com a parceira '+par.top[0].v+' (reunião semanal de acompanhamento)');
+  const resp=by('responsavel');
+  const respTop=resp&&resp.top.find(x=>!/BACKLOG|SEM MARCA/i.test(x.v));
+  if(respTop&&respTop.pct>=.35){const v=respTop.v,V=RS_NK(v);
+    add('Responsável pela ação predominante: '+v+' ('+rsPctTxt(respTop.pct)+')',
+      /COMERCIAL/.test(V)?'Alinhar com o time Comercial a qualidade da venda (endereço, viabilidade e agendamento) e acompanhar semanalmente':
+      /REDE/.test(V)?'Levar ao time de Rede/Infra os casos de viabilidade (sem rede, drop acima da metragem) com plano de expansão e prazo':
+      /CLIENTE/.test(V)?'Confirmação ativa com o cliente antes do agendamento e no dia da visita':'Tratar com o responsável ('+v+') os casos da semana e acompanhar semanalmente');}
+  const can=by('canal');
+  if(can&&can.top[0]&&can.top[0].pct>=.35)add('Canal de venda com mais casos: '+can.top[0].v+' ('+rsPctTxt(can.top[0].pct)+')','Revisar o processo de venda do canal '+can.top[0].v+' (checagem de viabilidade e dados do cliente antes de enviar)');
+  const exg=by('expurgo');
+  if(exg&&exg.top[0]){const v=exg.top[0].v,V=RS_NK(v);
+    add('Tipo de expurgo predominante: '+v+' ('+rsPctTxt(exg.top[0].pct)+')',
+      /ABERTURA/.test(V)?'Reforçar a triagem para evitar aberturas indevidas de venda':/DESIST/.test(V)?'Contato ativo com o cliente antes da 1ª baixa para evitar desistência':
+      /MANUAL|SYDLE/.test(V)?'Revisar os critérios de aprovação manual no Sydle':/ENDERE/.test(V)?'Validar o endereço na venda (CEP/geolocalização) antes do agendamento':'Tratar o expurgo "'+v+'" com o time Comercial');}
+  const fp=by('faixaPrazo')||by('faixaAging');
+  if(fp&&fp.top[0]){const g=fp.top.filter(x=>/ACIMA|MAIS|6 DIAS|3 A 5/i.test(x.v));const s=g.reduce((q,x)=>q+x.c,0);
+    if(s&&s/fp.tot>=.3)add(s+' de '+fp.tot+' casos fora do padrão passaram de '+(/48/.test(g[0].v)?'48h':'3 dias')+' ('+rsPctTxt(s/fp.tot)+')','Priorizar o backlog mais antigo com acompanhamento diário e escalonamento a partir do limite do indicador');}
+  const gaD=by('ga');
+  if(gaD&&gaD.top[0]&&gaD.top[0].c>=2)add('Supervisor (GA) com mais técnicos fora do padrão: '+gaD.top[0].v+' ('+gaD.top[0].c+')','Acompanhamento diário com o GA '+gaD.top[0].v.split(' ')[0]+' da presença e produtividade da equipe');
+  const cc=by('conclusao');
+  if(cc&&cc.top[0]&&/CANCEL/i.test(cc.top[0].v)&&cc.top[0].pct>=.4)add('Cancelamentos respondem por '+rsPctTxt(cc.top[0].pct)+' das OS não realizadas','Revisar com a triagem/CST os cancelamentos (visita evitada x cancelamento indevido)');
   if(a.reinc&&a.reinc.reincidentes>=2)add(a.reinc.reincidentes+' contratos com mais de um evento'+per+' ('+a.reinc.eventos+' eventos)','Tratar os '+a.reinc.reincidentes+' contratos reincidentes com visita técnica qualificada e contato pós-atendimento');
   const tend=a.semLbl&&a.antLbl?(a.sem>a.ant?'alta de '+(a.sem-a.ant)+' casos na '+a.semLbl+' ('+a.sem+') vs '+a.antLbl+' ('+a.ant+')':a.sem<a.ant?'queda de '+(a.ant-a.sem)+' casos na '+a.semLbl+' ('+a.sem+') vs '+a.antLbl+' ('+a.ant+')':'mesmo volume na '+a.semLbl+' e na '+a.antLbl+' ('+a.sem+')'):'';
   const hoje=new Date();const prazo=new Date(hoje.getTime()+7*864e5);const pz=String(prazo.getDate()).padStart(2,'0')+'/'+RS_MESES[prazo.getMonth()];
@@ -37984,7 +38088,8 @@ const RS_MODELOS=[
   {re:/^IFIALTAS$|^IFI$/,modelo:'IFI',pasta:'IFI',arquivo:'IFI.xlsx',b2c:'ifi'},
   {re:/^IFIME$/,modelo:'IFI ME',pasta:'IFI ME',arquivo:'IFME.xlsx',b2c:'ifme'},
   {re:/^EFETIVIDADEDEREPAROS|^EFETIVIDADEREPAROS/,modelo:'Efetividade de Reparo',pasta:'Efetividade de Reparo',arquivo:'Efetividade Reparos.xlsx',b2c:'efetividadeReparos'},
-  {re:/^EFICIENCIAVENDAS/,modelo:'Eficiência Vendas',pasta:'Eficiencia',arquivo:'Eficiencia.xlsx'},
+  /* data:'Data Cancelamento' — a base só traz vendas canceladas; a semana do problema é a do cancelamento (as vendas vão só até a W41) */
+  {re:/^EFICIENCIAVENDAS/,modelo:'Eficiência Vendas',pasta:'Eficiencia',arquivo:'Eficiencia.xlsx',data:'Data Cancelamento'},
   {re:/^EFICIENCIALIMPA/,modelo:'Eficiência Limpa',pasta:'Eficiencia Limpa',arquivo:'Analítico Vendas vs. Expurgos das Vendas Validadas.xlsx'},
   {re:/^EFICIENCIAME/,modelo:'Eficiência ME',pasta:'Eficiencia ME',arquivo:'Eficiencia ME.xlsx'},
   {re:/^AGINGME/,modelo:'Aging ME',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
@@ -38449,7 +38554,36 @@ function rsAnalisarFca(r,D){
   else if(f.tipo==='rede'){a=rsAnalisarRede(r,D,f.lbl);if(!a)return null;}
   else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;a=rsAnalisarBase(b,r,D.meta,{fonte:f.lbl});}
   if(f.m&&f.m.planta&&RS_NK(r.indicador)==='IRT'&&a._escopo)rsIrtComPlanta(a,r);
+  try{rsTaxaCruzada(a,r,D);}catch(e){console.warn('Redir: taxa cruzada',e);}
   delete a._escopo;delete a._base;a.fonteTipo=f.tipo;return a;
+}
+const RS_TAXA_CRUZ=[
+  {re:/^IRR$/,den:'IRT',lbl:'reparos',base:'base do IRT'},
+  {re:/^IFIALTAS$|^IFI$/,den:'Aging Altas 48h',lbl:'ativações',base:'base Aging Altas'},
+  {re:/^IFIME$/,den:'Aging ME 2D',lbl:'mudanças de endereço',base:'base Mud Endereço (Aging ME)'},
+];
+/* conta as linhas de uma base no cluster e na semana do FCA (mesmas regras da análise) */
+/* última semana com dados da base (cacheada no objeto) */
+function rsBaseAte(base){
+  if(!base||!base.rows||!base.pick)return null;if(base._ate!==undefined)return base._ate;
+  const di=base.cols.indexOf(base.pick.data),si=base.cols.indexOf(base.pick.semana);let ult=null;
+  for(const r of base.rows){let x=null;if(di>=0){const d=rsToDate(r[di]);if(d)x=rsIsoWeek(d);}if(!x&&si>=0){const m=String(r[si]||'').match(/(\d{1,2})\D+(\d{4})/);if(m)x={y:+m[2],w:+m[1]};}
+    if(x&&(!ult||x.y>ult.y||(x.y===ult.y&&x.w>ult.w)))ult=x;}
+  Object.defineProperty(base,'_ate',{value:ult,enumerable:false,writable:true});return ult;
+}
+function rsContaSemana(base,fca,meta){
+  const a=rsAnalisarBase(base,fca,meta,{foco:()=>({lbl:'',f:()=>true,trivial:true})});
+  return a.avisos.some(x=>/não cobre/.test(x))?null:{sem:a.sem,ant:a.ant,semLbl:a.semLbl,antLbl:a.antLbl};
+}
+function rsTaxaCruzada(a,r,D){
+  const c=RS_TAXA_CRUZ.find(x=>x.re.test(RS_NK(r.indicador)));if(!c||a.fonteTipo&&a.fonteTipo!=='anexo'&&a.fonteTipo!==undefined)return;
+  if(!a.semLbl)return;
+  const den=rsIndBaseFor(c.den);
+  if(!den){a.kpis.push('Para calcular a taxa ('+RS_NK(r.indicador).replace('ALTAS',' Altas')+' ÷ '+c.lbl+'), anexe também a '+c.base);return;}
+  const n=rsContaSemana(den,r,D.meta);
+  if(!n){a.kpis.push('A '+c.base+' não cobre a '+a.semLbl+' — sem taxa da semana');return;}
+  const tx=(x,y)=>y?rsPctTxt(x/y)+' ('+x+' ÷ '+rsNf0.format(y)+' '+c.lbl+')':'—';
+  a.kpis.unshift('Taxa na '+a.semLbl+': '+tx(a.sem,n.sem)+(n.ant?' · '+a.antLbl+': '+tx(a.ant,n.ant):'')+' — '+c.lbl+' da '+c.base+(r.valor_semana!=null?' · planilha: '+rsFmt(r.indicador,r.valor_semana):''));
 }
 async function rsLerPlanilhaObjs(file){
   const buf=await file.arrayBuffer();
@@ -38519,7 +38653,7 @@ async function rsOnIndFile(inp){
     const objs=await rsLerPlanilhaObjs(file);
     const aviso=await rsVerificarBase(ind,m,planta,file,objs);
     if(aviso&&!confirm(aviso)){_ghToast('Anexo cancelado — escolha a base correta.','var(--orange)',3500);return;}
-    const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name);b.at=new Date().toISOString();
+    const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name,m);b.at=new Date().toISOString();
     const chave=m?m.modelo:ind;
     await rsIndLoad();RS_IND[chave]=b;await rsIndSalvar();
     _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — visível para todos os usuários até alguém limpar','var(--green-dk)',4500);
