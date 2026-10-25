@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-25T03:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-25T04:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -523,6 +523,11 @@ body {
 .atrix-who{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;margin-left:6px;flex-shrink:0;
   background:linear-gradient(135deg,var(--teal) 0%,var(--blue) 100%);color:#fff;font-size:8px;font-weight:700;letter-spacing:.02em;vertical-align:middle}
 .atrix-who[hidden]{display:none}
+.atrix-log-resumo{margin-bottom:10px;line-height:1.9}
+.atrix-log-chip{display:inline-block;padding:1px 8px;margin:0 4px 2px 0;border-radius:10px;background:var(--bg2);border:1px solid var(--bd);white-space:nowrap}
+.atrix-log-tb{width:100%;border-collapse:collapse}
+.atrix-log-tb th,.atrix-log-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd)}
+.atrix-log-tb th{font-size:11px;text-transform:uppercase;color:var(--tx3);position:sticky;top:0;background:var(--bg)}
 .avatar-btn {
   width: 28px; height: 28px; border-radius: 50%;
   background: linear-gradient(135deg, var(--teal) 0%, var(--blue) 100%);
@@ -11518,6 +11523,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <label data-up="abertos" class="mop-ref-btn admin-only" style="cursor:pointer" title="Base nacional sem filtro prévio (aba Export) — separa automaticamente os chamados de PI/MA/PA/AM/AP, inferindo a cidade pelo Título quando a UF não vier preenchida. Vale para Abertos e SWAP juntos."><i class="ti ti-world-upload"></i> Anexar base geral<input type="file" id="file-ab-geral" accept=".xlsx,.xls" style="display:none"></label>
           <button data-up="atrix" class="mop-ref-btn admin-only" onclick="triggerAtrixUpdateNow(this)" title="Busca o substatus real de cada chamado no Atrix e atualiza aqui — Abertos e SWAP juntos. Funciona de qualquer dispositivo com acesso ao painel."><i class="ti ti-refresh"></i> Atualizar</button>
           <span data-up="atrix" class="ab-upd-badge admin-only" id="atrix-timer-badge" title="Tempo desde a última sincronização de substatus via Atrix"><i class="ti ti-hourglass-low"></i><span id="atrix-timer-txt">—</span><span class="atrix-who" id="atrix-who" hidden></span></span>
+          <button data-up="atrix" class="mop-ref-btn admin-only" onclick="abrirAtrixLog()" title="Quem clicou em Atualizar: todos os registros por usuário, data e horário"><i class="ti ti-list-details"></i> Log</button>
           <span class="ab-upd-badge admin-only" id="atrix-running-timer" title="Tempo decorrido desde o clique em Atualizar — o ciclo completo leva ~15 min"><i class="ti ti-loader-2"></i><span id="atrix-running-timer-txt">Rodando há 00:00</span></span>
           <span class="atrix-progress-wrap" id="atrix-progress-wrap" title="% de chamados já verificados no ciclo do Agente Atrix em andamento">
             <span class="atrix-progress-bar"><span class="atrix-progress-fill" id="atrix-progress-fill" style="width:0%"></span></span>
@@ -14326,6 +14332,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-atrix-log" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-hd">
+      <span class="modal-title"><i class="ti ti-list-details"></i> Log de atualizações (Atualizar)</span>
+      <button class="modal-close" onclick="document.getElementById('modal-atrix-log').style.display='none'"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" style="font-size:12.5px;color:var(--tx2)">
+      <div style="margin-bottom:10px"><select id="atrix-log-user" onchange="renderAtrixLog()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--bd);background:var(--bg2);color:var(--tx)"></select></div>
+      <div id="atrix-log-body" style="max-height:60vh;overflow:auto"></div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-sla-regras" style="display:none" onclick="if(event.target===this)document.getElementById('modal-sla-regras').style.display='none'">
   <div class="modal-box" style="max-width:620px">
     <div class="modal-hd">
@@ -15372,7 +15390,7 @@ async function fetchGhRawState(){
 function _mergeGhRemoteIntoLocal(remoteSt){
   if(!(remoteSt&&remoteSt.savedAt))return;
   /* quem atualizou o Atrix: o mais recente vence, antes do gate de savedAt abaixo */
-  try{if(remoteSt.atrixLastTrigger)_atrixTrigAdopt(remoteSt.atrixLastTrigger);}catch(_){}
+  try{if(remoteSt.atrixLastTrigger)_atrixTrigAdopt(remoteSt.atrixLastTrigger);_atrixLogAdopt(remoteSt.atrixTriggerLog);}catch(_){}
   /* Redir/MAX: o pacote mais novo vence, independente do gate de savedAt abaixo */
   try{_syncAdotar(remoteSt);_syncMarcarEnviado(remoteSt);}catch(e){console.warn('sync: falha nas bases do Redir/MAX:',e);}
   const lastKnown=_getLastKnownRemoteSavedAt();
@@ -17327,7 +17345,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,atrixLastTrigger,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,atrixLastTrigger,atrixTriggerLog,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -17364,7 +17382,7 @@ function asArr(v){return Array.isArray(v)?v:(v?[v]:[]);}
 let _lastApplyRenderedTabs = new Set();
 function applyState(st,label){
   if(!st||typeof st!=='object')return false;
-  try{if(st.atrixLastTrigger)_atrixTrigAdopt(st.atrixLastTrigger);}catch(_){}
+  try{if(st.atrixLastTrigger)_atrixTrigAdopt(st.atrixLastTrigger);_atrixLogAdopt(st.atrixTriggerLog);}catch(_){}
   try{_syncAdotar(st);}catch(e){console.warn('applyState: falha nas bases do Redir/MAX:',e);}
   _lastApplyRenderedTabs = new Set();
   let changed=false;
@@ -20291,7 +20309,36 @@ let atrixLastSyncAt='';
    então aparece em todos os dispositivos; o mais recente (at ISO) sempre vence. */
 let atrixLastTrigger={user:'',at:''};
 function _atrixTrigNorm(t){return{user:String(t&&t.user||''),at:String(t&&t.at||'')};}
-function _atrixTrigAdopt(t){t=_atrixTrigNorm(t);if(t.user&&t.at&&t.at>(atrixLastTrigger.at||'')){atrixLastTrigger=t;if(typeof _atrixRenderTimerBadge==='function')_atrixRenderTimerBadge();}}
+function _atrixTrigAdopt(t){t=_atrixTrigNorm(t);if(t.user&&t.at&&t.at>(atrixLastTrigger.at||'')){atrixLastTrigger=t;if(typeof _atrixRenderTimerBadge==='function')_atrixRenderTimerBadge();}_atrixLogAdopt([t]);}
+/* Log de TODOS os cliques em "Atualizar" (pedido 2026-10-25: "manter o log de quem clicou em
+   atualizar, todos por usuário e horário"). Sincronizado: une por user|at (nunca perde um
+   clique feito em outro dispositivo), mais recentes primeiro, guarda os últimos 2000. */
+let atrixTriggerLog=[];
+const ATRIX_LOG_MAX=2000;
+function _atrixLogAdopt(arr){
+  if(!Array.isArray(arr)||!arr.length)return false;
+  const m=new Map(atrixTriggerLog.map(x=>[x.user+'|'+x.at,x]));let novo=false;
+  for(const r of arr){const x={user:String(r&&r.user||''),nome:String(r&&r.nome||''),at:String(r&&r.at||'')};if(!x.user||!x.at)continue;const k=x.user+'|'+x.at;if(!m.has(k)){m.set(k,x);novo=true;}else if(x.nome&&!m.get(k).nome)m.get(k).nome=x.nome;}
+  if(!novo)return false;
+  atrixTriggerLog=[...m.values()].sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:0).slice(0,ATRIX_LOG_MAX);
+  if(document.getElementById('modal-atrix-log')&&document.getElementById('modal-atrix-log').style.display==='flex')renderAtrixLog();
+  return true;
+}
+function abrirAtrixLog(){document.getElementById('modal-atrix-log').style.display='flex';renderAtrixLog();}
+function renderAtrixLog(){
+  const body=document.getElementById('atrix-log-body'),fu=document.getElementById('atrix-log-user');if(!body||!fu)return;
+  const nomeDe=u=>{const x=atrixTriggerLog.find(r=>r.user===u&&r.nome);return x?x.nome:u;};
+  const users=[...new Set(atrixTriggerLog.map(r=>r.user))].sort((a,b)=>nomeDe(a).localeCompare(nomeDe(b),'pt-BR'));
+  const sel=fu.value;fu.innerHTML='<option value="">Todos os usuários</option>'+users.map(u=>'<option value="'+eh(u)+'"'+(u===sel?' selected':'')+'>'+eh(nomeDe(u))+'</option>').join('');
+  const lista=atrixTriggerLog.filter(r=>!fu.value||r.user===fu.value);
+  const cont=new Map();atrixTriggerLog.forEach(r=>cont.set(r.user,(cont.get(r.user)||0)+1));
+  const resumo=users.map(u=>'<span class="atrix-log-chip"><b>'+eh(nomeDe(u))+'</b> '+cont.get(u)+'</span>').join('');
+  const dt=iso=>{const d=new Date(iso);return isNaN(d)?eh(iso):d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR');};
+  body.innerHTML=!atrixTriggerLog.length?'<div style="padding:18px;text-align:center;color:var(--tx3)">Nenhuma atualização registrada ainda.</div>':
+    '<div class="atrix-log-resumo">'+atrixTriggerLog.length+' atualizaç'+(atrixTriggerLog.length===1?'ão':'ões')+' registradas · por usuário: '+resumo+'</div>'+
+    '<table class="atrix-log-tb"><thead><tr><th>#</th><th>Usuário</th><th>Data e horário</th></tr></thead><tbody>'+
+    lista.map((r,i)=>'<tr><td>'+(i+1)+'</td><td><span class="atrix-who" style="margin:0 6px 0 0">'+eh(initials(r.user))+'</span>'+eh(r.nome||r.user)+(r.nome&&r.nome!==r.user?' <span style="color:var(--tx3)">('+eh(r.user)+')</span>':'')+'</td><td>'+dt(r.at)+'</td></tr>').join('')+'</tbody></table>';
+}
 
 /* Timer ao lado do botão (pedido do usuário): mostra ao vivo há quanto tempo foi a
    última sincronização real de substatus via Atrix, atualizando a cada 30s. */
@@ -20600,7 +20647,7 @@ async function triggerAtrixUpdateNow(btn){
     const r=await _atrixTriggerViaWorker(false);
     if(r.cancelled){btn.disabled=false;btn.innerHTML=orig;return;}
     try{localStorage.setItem('jarvis:atrix:lastTriggerAt',String(Date.now()));}catch(_){}
-    if(currentUser&&currentUser.username){atrixLastTrigger={user:currentUser.username,at:new Date().toISOString()};_atrixRenderTimerBadge();saveState(true);}
+    if(currentUser&&currentUser.username){atrixLastTrigger={user:currentUser.username,at:new Date().toISOString()};_atrixLogAdopt([{...atrixLastTrigger,nome:currentUser.name||currentUser.nome||''}]);_atrixRenderTimerBadge();saveState(true);}
     done('atrix-start-ok','<i class="ti ti-check"></i> Iniciado!');
     _ghToast('Atualização de substatus via Atrix iniciada — rodando agora no agente remoto ✓','var(--green-dk)',6000);
     _atrixStartMonitoring(new Date().toISOString(),0);
