@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-26T16:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-26T18:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1727,6 +1727,10 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #fap-view-geral #fap-placaTable{min-width:860px}
 @media(max-width:900px){.fap-grid-eq{grid-template-columns:1fr}}
 @media(max-width:600px){.fap-cards-sec{grid-template-columns:1fr 1fr}}
+.fap-conc-farol{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;white-space:nowrap;padding:1px 8px;border-radius:10px}
+.fap-conc-verde{color:var(--green-dk);background:var(--green-bg,rgba(22,163,74,.1))}
+.fap-conc-amarelo{color:var(--orange);background:var(--orange-bg,rgba(234,88,12,.1))}
+.fap-conc-cinza{color:var(--tx3);background:var(--bg2)}
 .fap-farol-dif{margin-top:4px;font-size:11.5px;font-weight:600;color:var(--orange);white-space:nowrap}
 .fap-farol-dif i{font-size:10px;vertical-align:0}
 .fap-comp-det>td{background:var(--surface2);padding:8px 10px 10px 28px}
@@ -10808,12 +10812,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
     <div class="fap-panel">
       <div class="fap-hist-head">
-        <div><h3 style="margin-bottom:2px">Histórico de aportes</h3><p class="fap-desc" style="margin:0">Data, hora e valor de cada lançamento.</p></div>
+        <div><h3 style="margin-bottom:2px">Histórico de aportes</h3><p class="fap-desc" style="margin:0">Data, hora e valor de cada lançamento. Ao anexar a base de Transações, cada aporte é conciliado com as compras aprovadas da placa feitas depois dele: <b style="color:var(--green-dk)">✓ OK</b> = aporte todo usado; <b style="color:var(--orange)">Saldo disponível</b> = compras menores que o aportado (o resto fica na placa).</p></div>
         <button class="fap-export-btn" onclick="fapExportCsv()">Exportar CSV</button>
       </div>
       <div class="fap-hist-wrap">
         <table class="fap-table" style="min-width:640px">
-          <thead><tr><th>Data</th><th>Hora</th><th>Placa</th><th>UF</th><th>Valor</th><th>Observação</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Hora</th><th>Placa</th><th>UF</th><th>Valor</th><th>Observação</th><th title="Conciliação com as compras aprovadas da base de Transações (do aporte mais antigo para o mais novo)">Conciliação</th><th></th></tr></thead>
           <tbody id="fap-histBody"></tbody>
         </table>
       </div>
@@ -27314,6 +27318,58 @@ function fapComprasPorPlaca(de,ate){
   out.forEach(l=>l.sort((a,b)=>b.data.localeCompare(a.data)));
   return out;
 }
+/* Conciliação aporte a aporte (pedido 2026-10-26): ao anexar a base, cada compra aprovada
+   da placa consome o aporte manual mais antigo ainda com saldo, desde que o aporte seja
+   anterior à compra (FIFO por data/hora). Aporte todo consumido = ✓ OK (conciliado);
+   compra menor que o aportado = o resto fica como saldo disponível na placa. Aportes
+   antes do início da base não entram (não há como conferir); aporte depois do fim da base
+   fica "aguardando base". Compras sem aporte anterior (saldo de antes) não são alocadas.
+   Calculado na hora, nada é gravado — anexar uma base nova reconcilia tudo de novo. */
+let _fapConcCache={b:null,k:'',v:null};
+function fapConciliarAportes(){
+  const res={ap:new Map(),placa:new Map()};
+  if(!FAP_AUDIT||!FAP_AUDIT.rows)return res;
+  const k=(FAP_AUDIT.rows.length)+'|'+FAP_APORTES.length+'|'+FAP_APORTES.reduce((x,a)=>x+a.valor,0)+'|'+FAP_PLACAS.length+'|'+fapAt;
+  if(_fapConcCache.b===FAP_AUDIT&&_fapConcCache.k===k)return _fapConcCache.v;
+  const norm=x=>String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const de=FAP_AUDIT.de||'',ate=FAP_AUDIT.ate||'';
+  const comp=fapComprasPorPlaca('','');const compN=new Map();comp.forEach((l,pl)=>compN.set(norm(pl),l));
+  const porPlaca=new Map();
+  FAP_APORTES.forEach(a=>{const p=fapPlacaById(a.placaId);if(!p)return;const pn=norm(p.placa);let l=porPlaca.get(pn);if(!l){l=[];porPlaca.set(pn,l);}l.push(a);});
+  porPlaca.forEach((aps,pn)=>{
+    const lst=aps.map(a=>({a,ts:a.data+' '+(a.hora||'00:00'),restC:Math.round(a.valor*100),usadoC:0,compras:[]})).sort((x,y)=>x.ts.localeCompare(y.ts));
+    const elig=lst.filter(x=>!de||x.a.data>=de);
+    const compras=(compN.get(pn)||[]).map(c=>({...c,ts:String(c.data).replace('T',' ')})).sort((x,y)=>x.ts.localeCompare(y.ts));
+    for(const c of compras){
+      let falta=Math.round(c.valor*100);
+      for(const x of elig){if(falta<=0)break;if(x.restC<=0||x.ts.slice(0,16)>c.ts.slice(0,16))continue;const u=Math.min(falta,x.restC);x.restC-=u;x.usadoC+=u;falta-=u;x.compras.push({data:c.ts,valor:u/100});}
+    }
+    let dispC=0,aguardC=0;
+    lst.forEach(x=>{
+      let st;
+      if(de&&x.a.data<de)st='fora';
+      else if(x.restC<=0)st='ok';
+      else if(ate&&x.a.data>ate)st='aguardando';
+      else st=x.usadoC>0?'parcial':'sem';
+      if(st==='parcial'||st==='sem')dispC+=x.restC;
+      if(st==='aguardando')aguardC+=x.restC;
+      res.ap.set(x.a.id,{st,usado:x.usadoC/100,restante:x.restC/100,compras:x.compras});
+    });
+    res.placa.set(pn,{disponivel:dispC/100,aguardando:aguardC/100,ok:lst.filter(x=>res.ap.get(x.a.id).st==='ok').length,total:elig.length});
+  });
+  _fapConcCache={b:FAP_AUDIT,k,v:res};return res;
+}
+function fapConcFarolAporte(id){
+  const c=fapConciliarAportes().ap.get(id);
+  if(!FAP_AUDIT)return'<span class="fap-conc-farol fap-conc-cinza" title="Anexe a base de Transações no painel Auditoria e Conciliação para conciliar">● sem base</span>';
+  if(!c)return'—';
+  const det=c.compras.length?' · compras: '+c.compras.map(x=>fapAudFmtDataHora(x.data)+' '+fapFmtMoney(x.valor)).join(', '):'';
+  if(c.st==='ok')return'<span class="fap-conc-farol fap-conc-verde" title="Conciliado: compras aprovadas consumiram todo o aporte'+eh(det)+'"><i class="ti ti-circle-check-filled"></i> OK</span>';
+  if(c.st==='parcial')return'<span class="fap-conc-farol fap-conc-amarelo" title="Compras aprovadas de '+eh(fapFmtMoney(c.usado))+' — menores que o aportado'+eh(det)+'"><i class="ti ti-circle-half-2"></i> Saldo disponível '+eh(fapFmtMoney(c.restante))+'</span>';
+  if(c.st==='sem')return'<span class="fap-conc-farol fap-conc-amarelo" title="Nenhuma compra aprovada depois deste aporte na base (até '+eh(fapFmtDate(FAP_AUDIT.ate||''))+')"><i class="ti ti-circle-filled"></i> Sem compra · saldo '+eh(fapFmtMoney(c.restante))+'</span>';
+  if(c.st==='aguardando')return'<span class="fap-conc-farol fap-conc-cinza" title="Aporte depois do fim da base ('+eh(fapFmtDate(FAP_AUDIT.ate||''))+') — concilia quando a próxima base for anexada"><i class="ti ti-clock"></i> Aguardando base</span>'+(c.usado?'':'');
+  return'<span class="fap-conc-farol fap-conc-cinza" title="Aporte anterior ao início da base anexada ('+eh(fapFmtDate(FAP_AUDIT.de||''))+')">● fora da base</span>';
+}
 /* Placas com a lista de compras aberta — só estado de tela (não sincroniza). */
 const _fapPlacaCompAbertas=new Set();
 function fapPlacaCompToggle(placa){
@@ -27360,10 +27416,12 @@ function fapRenderPlacaTable(){
        manualmente, mostra a diferença. Compara só os aportes até a última data da base:
        aporte posterior ainda não poderia ter compra na base. */
     let farol='';
-    if(!semBase){
-      const apBaseC=_ap.filter(a=>!FAP_AUDIT.ate||a.data<=FAP_AUDIT.ate).reduce((x,a)=>x+Math.round(a.valor*100),0);
-      const difC=apBaseC-Math.round(cTot*100);
-      if(apBaseC>0&&difC>0)farol=`<div class="fap-farol-dif" title="Aportado manualmente${FAP_AUDIT.ate?' até '+fapFmtDate(FAP_AUDIT.ate)+' (fim da base)':''}: ${eh(fapFmtMoney(apBaseC/100))} · Utilizado (compras aprovadas da base): ${eh(fapFmtMoney(cTot))}"><i class="ti ti-circle-filled"></i> Diferença ${eh(fapFmtMoney(difC/100))}${FAP_AUDIT.dic.placa.includes(p.placa)?'':'<div class="fap-sub" style="font-weight:400;font-size:11px" title="A base só guarda as placas cadastradas no momento em que foi anexada — reanexe a base para incluir esta placa">placa fora da base anexada</div>'}</div>`;
+    const _cp=semBase?null:fapConciliarAportes().placa.get(String(p.placa||'').toUpperCase().replace(/[^A-Z0-9]/g,''));
+    if(_cp&&_cp.total){
+      farol=_cp.disponivel>0.004
+        ?`<div class="fap-conc-farol fap-conc-amarelo" style="margin-top:4px" title="Aportes conciliados com as compras aprovadas da base, do mais antigo para o mais novo: ${_cp.ok} de ${_cp.total} totalmente usados"><i class="ti ti-circle-half-2"></i> Saldo disponível ${eh(fapFmtMoney(_cp.disponivel))}</div>`
+        :`<div class="fap-conc-farol fap-conc-verde" style="margin-top:4px" title="Todos os aportes até o fim da base foram usados em compras aprovadas"><i class="ti ti-circle-check-filled"></i> OK · conciliado</div>`;
+      if(_cp.aguardando>0.004)farol+=`<div class="fap-conc-farol fap-conc-cinza" title="Aportes depois do fim da base"><i class="ti ti-clock"></i> ${eh(fapFmtMoney(_cp.aguardando))} aguardando base</div>`;
     }
     const det=aberta?`<tr class="fap-comp-det"><td colspan="9"><table><thead><tr><th>Data da transação</th><th>Motorista</th><th>Cidade</th><th>Tipo</th><th>Status</th><th style="text-align:right">Valor</th></tr></thead><tbody>${
       cl.map(c=>`<tr><td>${eh(fapAudFmtDataHora(c.data))}</td><td>${eh(c.motorista||'—')}</td><td>${eh(c.cidade||'—')}</td><td>Compra</td><td>Aprovada</td><td style="text-align:right">${eh(fapFmtMoney(c.valor))}</td></tr>`).join('')
@@ -27385,7 +27443,7 @@ function fapRenderPlacaTable(){
 function fapRenderHist(){
   const body=document.getElementById('fap-histBody');
   const list=fapAportesFiltrados();
-  if(!list.length){body.innerHTML=`<tr><td colspan="7"><div class="fap-empty">Nenhum aporte no período/filtro selecionado.</div></td></tr>`;return;}
+  if(!list.length){body.innerHTML=`<tr><td colspan="8"><div class="fap-empty">Nenhum aporte no período/filtro selecionado.</div></td></tr>`;return;}
   /* Possíveis duplicados (item 3): mesma placa + data + valor em mais de um aporte —
      só sinaliza (pode ser legítimo), quem confere decide e exclui se for o caso. */
   const cont=new Map();
@@ -27400,6 +27458,7 @@ function fapRenderHist(){
       <td><span class="fap-uf-chip">${p?eh(p.uf):'—'}</span></td>
       <td class="fap-val">+ ${eh(fapFmtMoney(a.valor))}</td>
       <td>${dup?'<span class="fap-dup-tag">possível duplicado</span> ':''}${eh(a.obs||'—')}</td>
+      <td>${fapConcFarolAporte(a.id)}</td>
       <td><button class="fap-del-icon" onclick="fapDelAporte('${eh(a.id)}')" title="Excluir" aria-label="Excluir aporte de ${p?eh(p.placa):''} em ${eh(fapFmtDate(a.data))}">✕</button></td>
     </tr>`;
   }).join('');
