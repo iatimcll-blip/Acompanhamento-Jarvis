@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-26T19:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-26T21:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1703,6 +1703,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-card .fap-foot{font-size:13px;color:var(--tx3);margin-top:5px}
 .fap-card.fap-accent-green .fap-value{color:var(--green-dk)}
 .fap-card.fap-accent-blue .fap-value{color:var(--blue)}
+.fap-card.fap-accent-orange .fap-value{color:var(--orange)}
+.fap-card.fap-accent-red .fap-value{color:var(--red)}
 .fap-panel{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);padding:18px 20px;margin-bottom:16px}
 .fap-panel h3{margin:0 0 4px;font-size:15px;font-weight:700;color:var(--tx)}
 .fap-panel .fap-desc{font-size:14px;color:var(--tx3);margin:0 0 14px}
@@ -10861,6 +10863,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="fap-reset-btn" onclick="fapFiltroLimpar('consumo')">Limpar filtros</button>
     </div>
     <p class="fap-desc fap-subfiltros-nota" id="fap-coFiltroNota" style="display:none"></p>
+    <div class="fap-panel" id="fap-semPanel">
+      <div class="fap-hist-head">
+        <div><h3 style="margin-bottom:2px">Consumo semanal e projeção</h3><p class="fap-desc" style="margin:0" id="fap-semDesc">Compras aprovadas da base de Transações (placas cadastradas), por semana de segunda a domingo, com projeção para a próxima semana e até o fim do ciclo.</p></div>
+      </div>
+      <div id="fap-semEmpty" class="fap-empty" style="display:none"></div>
+      <div id="fap-semWrap">
+        <div class="fap-cards" id="fap-semCards" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))"></div>
+        <div class="fap-chart-box" style="height:280px;margin-top:12px"><canvas id="fap-chart-semanal"></canvas></div>
+        <div class="fap-grid-2 fap-grid-eq fap-lanc-par" style="margin-top:14px">
+          <div class="fap-panel" style="margin:0"><h4 style="margin:0 0 6px;font-size:15px">Por semana</h4><div class="fap-comp-scroll"><table class="fap-table"><thead><tr><th>Semana</th><th>Período</th><th>Compras</th><th>Placas</th><th>Consumo</th><th>vs anterior</th></tr></thead><tbody id="fap-semBody"></tbody></table></div></div>
+          <div class="fap-panel" style="margin:0"><h4 style="margin:0 0 6px;font-size:15px">Projeção por placa</h4><div class="fap-comp-scroll"><table class="fap-table"><thead><tr><th>Placa</th><th>Última sem.</th><th>Média sem.</th><th>Próx. semana</th><th>Até fim do ciclo</th></tr></thead><tbody id="fap-semPlacaBody"></tbody></table></div></div>
+        </div>
+      </div>
+    </div>
     <div class="fap-panel">
       <div class="fap-hist-head">
         <div><h3 style="margin-bottom:2px">Consumo por Condutor</h3><p class="fap-desc" style="margin:0">Análise gerada a partir da base anexada (Portal Alelo) — não afeta placas, aportes nem o Saldo do Mês.</p></div>
@@ -26770,7 +26786,7 @@ let FAP_HIER_EDIT={map:{},ts:{map:{}}};
 let FAP_AUDIT_JUST={just:{},cota:{},ts:{just:{},cota:{}}};
 /* fapLimparBaseMesCorrente() — mesma trava de fapConsumoCleared acima. */
 let fapConsumoMcCleared=false,fapConsumoMcClearedAt='';
-let fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null,fapChVeicList=[];
+let fapChSemanal=null,fapChDiario=null,fapChUf=null,fapChCondutor=null,fapChTipo=null,fapChMesCorrente=null,fapChVeicList=[];
 
 function fapUid(){return Math.random().toString(36).slice(2,10);}
 /* Data de HOJE no fuso local (análise 12/10/2026, item 1): era toISOString() = UTC,
@@ -29740,6 +29756,106 @@ function fapSetCondutorCiclo(v){
   fapCondutorCicloSel=v||'';
   fapRenderConsumoCondutor();
 }
+/* ─── Consumo semanal e projeção (pedido 2026-10-26) ───
+   Fonte: compras aprovadas (Compra · Aprovada) da base de Transações — a mesma que já é
+   descontada do Saldo do Cartão em Lançamentos —, só placas cadastradas, com os filtros
+   GA/GO/Condutor/Placa da sub-aba (De/Até não entram: a projeção precisa de janela fixa).
+   Semana = segunda a domingo. Referência = último dia da base (D-1).
+   Ritmo = média diária dos últimos 28 dias até a referência. Projeções:
+   - próxima semana = ritmo × 7 (a semana seguinte à da referência; se a semana da
+     referência estiver incompleta, o resto dela também é projetado);
+   - até o fim do ciclo = consumido no ciclo até a referência + ritmo × dias restantes. */
+const FAP_SEM_JANELA=28,FAP_SEM_HIST=8;
+const _fapD=s=>Date.UTC(+s.slice(0,4),+s.slice(5,7)-1,+s.slice(8,10));
+const _fapIso=ms=>new Date(ms).toISOString().slice(0,10);
+const _fapAdd=(s,n)=>_fapIso(_fapD(s)+n*864e5);
+const _fapSeg=s=>{const d=new Date(_fapD(s));return _fapIso(_fapD(s)-((d.getUTCDay()+6)%7)*864e5);};
+function _fapSemIso(s){const d=new Date(_fapD(s));const th=new Date(d.getTime()+(3-((d.getUTCDay()+6)%7))*864e5);const j=new Date(Date.UTC(th.getUTCFullYear(),0,4));return 1+Math.round(((th-j)/864e5-3+((j.getUTCDay()+6)%7))/7);}
+function fapConsumoSemanalDados(){
+  if(!FAP_AUDIT||!FAP_AUDIT.rows||!FAP_AUDIT.ate)return null;
+  const{dic,rows}=FAP_AUDIT,ref=FAP_AUDIT.ate,cad=fapPlacasCadSet(),fh=fapFiltroPrep('consumo');
+  const okT=new Set(),okS=new Set();
+  dic.tipo.forEach((x,i)=>{if(fapAudNorm(x)==='compra')okT.add(i);});
+  dic.status.forEach((x,i)=>{if(fapAudNorm(x).startsWith('aprovad'))okS.add(i);});
+  const compras=[];
+  for(const r of rows){
+    if(!okT.has(r[1])||!okS.has(r[4]))continue;
+    const placa=dic.placa[r[0]],d=String(r[3]||'').slice(0,10);
+    if(!d||d>ref||!cad.has(_fapPlacaNorm(placa)))continue;
+    if(!fapRegOk(fh,dic.motorista[r[5]],placa))continue;
+    compras.push({d,placa,c:Math.round(r[2]*100),mot:dic.motorista[r[5]]||''});
+  }
+  const cic=fapCicloAtualIso();
+  const segRef=_fapSeg(ref),fimSemRef=_fapAdd(segRef,6),refCompleta=ref>=fimSemRef;
+  /* semanas históricas: as FAP_SEM_HIST últimas até a da referência */
+  const semanas=[];for(let i=FAP_SEM_HIST-1;i>=0;i--){const s=_fapAdd(segRef,-7*i);if(FAP_AUDIT.de&&_fapAdd(s,6)<FAP_AUDIT.de)continue;semanas.push({ini:s,fim:_fapAdd(s,6),w:_fapSemIso(s),c:0,n:0,placas:new Set(),parcial:false});}
+  const semMap=new Map(semanas.map(s=>[s.ini,s]));
+  const iniJan=_fapAdd(ref,-(FAP_SEM_JANELA-1));
+  const pl=new Map();const P=p=>{let x=pl.get(p);if(!x){x={placa:p,ult:0,jan:0,ciclo:0,mot:new Map()};pl.set(p,x);}return x;};
+  let janC=0,cicloC=0;
+  for(const c of compras){
+    const s=semMap.get(_fapSeg(c.d));if(s){s.c+=c.c;s.n++;s.placas.add(c.placa);}
+    const x=P(c.placa);x.mot.set(c.mot,(x.mot.get(c.mot)||0)+1);
+    if(c.d>=segRef)x.ult+=c.c;
+    if(c.d>=iniJan){janC+=c.c;x.jan+=c.c;}
+    if(c.d>=cic.start&&c.d<=cic.end){cicloC+=c.c;x.ciclo+=c.c;}
+  }
+  if(semanas.length){const u=semanas[semanas.length-1];u.parcial=!refCompleta;u.diasBase=Math.min(7,(_fapD(ref)-_fapD(u.ini))/864e5+1);}
+  /* dias da janela efetivamente cobertos pela base */
+  const diasJan=Math.min(FAP_SEM_JANELA,(_fapD(ref)-_fapD(FAP_AUDIT.de||iniJan))/864e5+1);
+  const ritmo=diasJan>0?janC/diasJan:0; /* centavos/dia */
+  const proxIni=_fapAdd(segRef,7),proxFim=_fapAdd(proxIni,6);
+  const restoSemRef=refCompleta?0:(_fapD(fimSemRef)-_fapD(ref))/864e5;
+  const diasRestCiclo=ref>=cic.end?0:Math.max(0,(_fapD(cic.end)-_fapD(ref<cic.start?_fapAdd(cic.start,-1):ref))/864e5);
+  const projProx=ritmo*7,projResto=ritmo*diasRestCiclo;
+  /* semanas projetadas (próxima até a do fim do ciclo) */
+  const proj=[];
+  if(!refCompleta)proj.push({ini:segRef,fim:fimSemRef,w:_fapSemIso(segRef),c:ritmo*restoSemRef,resto:true});
+  for(let s=proxIni;s<=cic.end;s=_fapAdd(s,7)){const fim=_fapAdd(s,6),ate=fim<cic.end?fim:cic.end;const dias=(_fapD(ate)-_fapD(s))/864e5+1;proj.push({ini:s,fim:ate,w:_fapSemIso(s),c:ritmo*dias,dias});}
+  if(!proj.some(p=>p.ini===proxIni))proj.push({ini:proxIni,fim:proxFim,w:_fapSemIso(proxIni),c:projProx,dias:7,foraCiclo:true});
+  const nSem=Math.max(1,diasJan/7);
+  const placas=[...pl.values()].map(x=>{const r=diasJan>0?x.jan/diasJan:0;let mot='',mn=0;x.mot.forEach((n,m)=>{if(n>mn){mn=n;mot=m;}});
+    return{placa:x.placa,mot,ult:x.ult/100,media:x.jan/nSem/100,prox:r*7/100,resto:r*diasRestCiclo/100,ciclo:x.ciclo/100,fimCiclo:(x.ciclo+r*diasRestCiclo)/100};}).sort((a,b)=>b.prox-a.prox||b.ult-a.ult);
+  return{ref,refCompleta,semanas,proj,ritmo:ritmo/100,diasJan,mediaSem:janC/nSem/100,projProx:projProx/100,proxIni,proxFim,diasRestCiclo,projResto:projResto/100,ciclo:cic,cicloReal:cicloC/100,cicloPrev:(cicloC+projResto)/100,placas,filtrado:fh.hier||fh.placa.length>0};
+}
+function fapRenderConsumoSemanal(){
+  const wrap=document.getElementById('fap-semWrap'),vazio=document.getElementById('fap-semEmpty');if(!wrap)return;
+  const D=fapConsumoSemanalDados();
+  if(!D){wrap.style.display='none';vazio.style.display='';vazio.textContent='Anexe a base de Transações no painel Auditoria e Conciliação para ver o consumo semanal e as projeções.';if(fapChSemanal){try{fapChSemanal.destroy();}catch(e){}fapChSemanal=null;}return;}
+  wrap.style.display='';vazio.style.display='none';
+  const M=v=>fapFmtMoney(v),dm=s=>s.slice(8,10)+'/'+s.slice(5,7);
+  const sem=D.semanas,ult=sem[sem.length-1]||null,ant=sem[sem.length-2]||null;
+  /* semana de comparação: a última COMPLETA */
+  const ultC=ult&&ult.parcial?ant:ult,antC=ult&&ult.parcial?sem[sem.length-3]:ant;
+  const varTxt=(a,b)=>{if(!b||!b.c)return'sem semana anterior';const v=(a.c-b.c)/b.c*100;return(v>0?'+':v<0?'−':'')+Math.abs(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% vs W'+b.w;};
+  const cota=fapCotaMesEf(),saldo=fapSaldoCartaoAtual(),saldoProj=saldo-D.projResto;
+  const pctCota=cota>0?D.cicloPrev/cota*100:null;
+  const card=(cls,lbl,v,foot)=>'<div class="fap-card '+cls+'"><div class="fap-label">'+lbl+'</div><div class="fap-value">'+v+'</div><div class="fap-foot">'+foot+'</div></div>';
+  document.getElementById('fap-semCards').innerHTML=
+    (ultC?card('fap-accent-blue','Consumo W'+ultC.w+' ('+dm(ultC.ini)+'–'+dm(ultC.fim)+')',eh(M(ultC.c/100)),ultC.n+' compra(s) · '+eh(varTxt(ultC,antC))):'')+
+    (ult&&ult.parcial?card('','W'+ult.w+' em andamento',eh(M(ult.c/100)),'até '+eh(fapFmtDate(D.ref))+' ('+ult.diasBase+' de 7 dias)'):'')+
+    card('','Média semanal',eh(M(D.mediaSem)),'últimos '+D.diasJan+' dias · '+eh(M(D.ritmo))+' por dia')+
+    card('fap-accent-orange','Projeção próxima semana',eh(M(D.projProx)),'W'+_fapSemIso(D.proxIni)+' · '+dm(D.proxIni)+' a '+dm(D.proxFim))+
+    card(pctCota!=null&&pctCota>100?'fap-accent-red':'','Projeção até o fim do ciclo',eh(M(D.cicloPrev)),'consumido '+eh(M(D.cicloReal))+' + '+eh(M(D.projResto))+' em '+D.diasRestCiclo+' dia(s) até '+eh(fapFmtDate(D.ciclo.end))+(pctCota!=null?' · '+pctCota.toLocaleString('pt-BR',{maximumFractionDigits:0})+'% da Cota ('+eh(M(cota))+')':''))+
+    (D.filtrado?'':card(saldoProj<0?'fap-accent-red':'fap-accent-green','Saldo do Cartão projetado',eh(M(saldoProj)),'no fim do ciclo: saldo atual '+eh(M(saldo))+' − consumo projetado '+eh(M(D.projResto))));
+  document.getElementById('fap-semDesc').textContent='Compras aprovadas da base de Transações (placas cadastradas'+(D.filtrado?', com os filtros acima':'')+'), por semana de segunda a domingo. Base até '+fapFmtDate(D.ref)+' (D-1). Projeção = média diária dos últimos '+D.diasJan+' dias × dias à frente. De/Até não se aplicam a este bloco.';
+  /* tabela por semana */
+  let prev=null;
+  document.getElementById('fap-semBody').innerHTML=sem.slice().reverse().map((s,i,arr)=>{const a=arr[i+1];const v=a&&a.c&&!s.parcial?(s.c-a.c)/a.c*100:null;
+    return'<tr><td><b>W'+s.w+'</b>'+(s.parcial?' <span class="fap-sub">parcial</span>':'')+'</td><td>'+dm(s.ini)+'–'+dm(s.fim)+'</td><td>'+s.n+'</td><td>'+s.placas.size+'</td><td class="fap-val">'+eh(M(s.c/100))+'</td><td'+(v==null?'':' style="color:'+(v>0?'var(--red)':'var(--green-dk)')+'"')+'>'+(v==null?'—':(v>0?'+':v<0?'−':'')+Math.abs(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%')+'</td></tr>';}).join('')||'<tr><td colspan="6"><div class="fap-empty">Sem compras aprovadas no período da base.</div></td></tr>';
+  document.getElementById('fap-semPlacaBody').innerHTML=D.placas.length?D.placas.map(p=>'<tr><td title="'+eh(p.mot)+'"><b>'+eh(p.placa)+'</b><div class="fap-sub" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">'+eh(p.mot||'—')+'</div></td><td>'+eh(M(p.ult))+'</td><td>'+eh(M(p.media))+'</td><td class="fap-val">'+eh(M(p.prox))+'</td><td title="Consumido no ciclo '+eh(M(p.ciclo))+' + projeção '+eh(M(p.resto))+'">'+eh(M(p.fimCiclo))+'</td></tr>').join(''):'<tr><td colspan="5"><div class="fap-empty">Nenhuma placa com compra.</div></td></tr>';
+  /* gráfico */
+  const cv=document.getElementById('fap-chart-semanal');if(!cv||typeof Chart==='undefined')return;
+  if(fapChSemanal){try{fapChSemanal.destroy();}catch(e){}}
+  const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
+  const labs=[],real=[],prj=[];
+  sem.forEach(s=>{labs.push('W'+s.w+' '+dm(s.ini));real.push(s.c/100);prj.push(null);});
+  D.proj.forEach(p=>{const lb='W'+p.w+' '+dm(p.ini);const i=labs.indexOf(lb);if(i>=0){prj[i]=Math.round(p.c)/100;}else{labs.push(lb);real.push(null);prj.push(Math.round(p.c)/100);}});
+  fapChSemanal=new Chart(cv,{type:'bar',data:{labels:labs,datasets:[
+    {label:'Realizado (compras aprovadas)',data:real,backgroundColor:'#007aff',borderRadius:4,stack:'s'},
+    {label:'Projeção',data:prj,backgroundColor:'rgba(255,149,0,.55)',borderColor:'#ff9500',borderWidth:1,borderDash:[4,3],borderRadius:4,stack:'s'}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fapFmtMoney(c.parsed.y||0)}}},scales:{x:{stacked:true,ticks:{color:txC}},y:{stacked:true,beginAtZero:true,ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
+}
 function fapRenderConsumoCondutor(){
   const _nota=document.getElementById('fap-coFiltroNota');
   if(_nota){const p=fapFiltroResumoTxt('consumo');const de=(document.getElementById('fap-coDe')||{}).value,ate=(document.getElementById('fap-coAte')||{}).value;if(de||ate)p.push('Período: '+(de?fapFmtDate(de):'…')+' a '+(ate?fapFmtDate(ate):'…'));_nota.style.display=p.length?'':'none';_nota.textContent=p.length?'Filtro aplicado: '+p.join(' · '):'';}
@@ -30304,7 +30420,7 @@ function fapRenderAll(){
   fapRenderCicloTopo();
   fapPopulateSelects();
   fapRenderFiltroBar(fapSubAtiva);
-  if(fapSubAtiva==='consumo'){fapRenderConsumoCondutor();fapRenderHierarquia();return;}
+  if(fapSubAtiva==='consumo'){fapRenderConsumoSemanal();fapRenderConsumoCondutor();fapRenderHierarquia();return;}
   if(fapSubAtiva==='auditoria'){fapRenderAuditoria();fapRenderConciliacao();return;}
   fapRenderPlacaTable();
   fapRenderHist();
