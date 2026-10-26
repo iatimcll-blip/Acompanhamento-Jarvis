@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-25T04:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-26T13:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -10743,6 +10743,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </form>
       </div>
     </div>
+    <div class="fap-panel" id="fap-comprasLanc"></div>
     <div class="fap-grid-2 fap-grid-eq">
       <div class="fap-panel">
         <div class="fap-novo-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
@@ -26900,7 +26901,7 @@ function fapAddLancamento(ev){
   /* Saldo do Mês negativo (item 8): só pra aporte dentro do ciclo atual (é o que
      debita o saldo) e quando há saldo definido. */
   const cic=fapCicloAtualIso();
-  if((fapSaldoMes>0||fapCartaoAtivo())&&data>=cic.start&&data<=cic.end){
+  if((fapCotaMesEf()>0||fapCartaoAtivo())&&data>=cic.start&&data<=cic.end){
     const restante=fapSaldoCartaoAtual();
     if(valor>restante+0.004&&!confirm('Este aporte deixa o Saldo do Cartão (Saldo do Mês) negativo.\n\nSaldo restante: '+fapFmtMoney(restante)+'\nAporte: '+fapFmtMoney(valor)+'\nFicaria: '+fapFmtMoney(restante-valor)+'\n\nRegistrar mesmo assim?'))return false;
   }
@@ -27048,9 +27049,9 @@ function fapRenderSaldoMesCard(){
         <div class="fap-saldo-big ${state}">${eh(fapFmtMoney(restante))}</div>
         <div class="fap-saldo-label">Saldo do Cartão · restante no período</div>
         <div class="fap-progress-bar"><div class="fap-progress-fill ${state}" style="width:${pct}%"></div></div>
-        <div class="fap-saldo-sub">${fapCartaoAtivo()?`Saldo do Cartão editado: ${eh(fapFmtMoney(fapCartao.valor))} em ${eh(new Date(fapCartao.at).toLocaleString('pt-BR'))} · Cota (referência): ${eh(fapFmtMoney(fapSaldoMes))}`:`Cota: ${eh(fapFmtMoney(fapSaldoMes))}`} · Aportado neste período: ${eh(fapFmtMoney(aportado))}</div>
+        <div class="fap-saldo-sub">${fapCartaoAtivo()?`Saldo do Cartão editado: ${eh(fapFmtMoney(fapCartao.valor))} em ${eh(new Date(fapCartao.at).toLocaleString('pt-BR'))} · Cota (referência): ${eh(fapFmtMoney(fapSaldoMes))}`:`Cota: ${eh(fapFmtMoney(fapCotaMesEf()))}`} · Aportado neste período: ${eh(fapFmtMoney(aportado))}${fapCotaAutoOk()?` · Compras aprovadas: ${eh(fapFmtMoney(fapComprasCicloAtual().valor))}`:''}</div>
       </div>
-      <div class="fap-mini-form" style="align-self:center">
+      <div class="fap-mini-form" style="align-self:center${fapCotaAutoOk()?';display:none':''}">
         <h4>Definir/editar saldo do período</h4>
         <form onsubmit="return fapSetSaldoMes(event)">
           <div class="fap-mini-row">
@@ -27068,20 +27069,64 @@ function fapRenderSaldoMesCard(){
     </div>`;
 }
 
+/* Cota do mês e Saldo do Cartão pela base de Transações (pedido 2026-10-26):
+   - Cota do mês = soma dos Créditos Emergenciais de Limite a partir de R$ 1.000 COM cota
+     informada (mesmo critério do contador do bloco Transações), no ciclo atual (15→14),
+     todas as placas da base — sem os filtros de tela da Auditoria.
+   - Saldo do Cartão = Cota − aportes do ciclo (Novo aporte) − compras aprovadas do ciclo
+     (Tipo Compra · Status Aprovada da base anexada, as "conciliadas").
+   Vale sempre que há base de Transações anexada; sem base, segue o modo manual antigo
+   (Cota digitada / Saldo do Cartão editado). */
+function fapCotaAutoOk(){return!!(FAP_AUDIT&&FAP_AUDIT.rows&&FAP_AUDIT.rows.length);}
+function fapCotaMesAuto(){
+  const res={valor:0,n:0,semCota:0,semCotaValor:0};if(!fapCotaAutoOk())return res;
+  const{dic,rows}=FAP_AUDIT,cic=fapCicloAtualIso(),keys=fapAudChaves(),cota=FAP_AUDIT_JUST&&FAP_AUDIT_JUST.cota||{};
+  let c=0,sc=0;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    if(String(dic.tipo[r[1]]||'').trim().toLowerCase()!==FAP_AUD_CRED_TIPO||!(r[2]>=FAP_AUD_CRED_LIMITE))continue;
+    if(fapAudStatusInvalido(dic.status[r[4]]))continue;
+    const d=String(r[3]||'').slice(0,10);if(!d||d<cic.start||d>cic.end)continue;
+    const n=Number(cota[keys[i]]);
+    if(n>=1&&n<=FAP_AUD_COTA_MAX){c+=Math.round(r[2]*100);res.n++;}else{sc+=Math.round(r[2]*100);res.semCota++;}
+  }
+  res.valor=c/100;res.semCotaValor=sc/100;return res;
+}
+function fapCotaMesEf(){return fapCotaAutoOk()?fapCotaMesAuto().valor:fapSaldoMes;}
+/* Compras aprovadas do ciclo atual (lista + total), todas as placas da base. */
+function fapComprasCicloAtual(){
+  const cic=fapCicloAtualIso(),m=fapComprasPorPlaca(cic.start,cic.end),list=[];
+  m.forEach((l,placa)=>l.forEach(x=>list.push({...x,placa})));
+  list.sort((a,b)=>b.data.localeCompare(a.data));
+  return{list,valor:list.reduce((x,c)=>x+Math.round(c.valor*100),0)/100};
+}
+function fapRenderComprasLanc(){
+  const box=document.getElementById('fap-comprasLanc');if(!box)return;
+  if(!fapCotaAutoOk()){box.innerHTML='<h3 style="margin:0 0 4px">Compras aprovadas no ciclo</h3><p class="fap-desc" style="margin:0">Anexe a base de Transações no painel Auditoria e Conciliação: as compras aprovadas do ciclo aparecem aqui e são descontadas do Saldo do Cartão.</p>';return;}
+  const{list,valor}=fapComprasCicloAtual(),cic=fapCicloAtualIso();
+  const pl=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Compras aprovadas no ciclo</h3><span><b>'+list.length+'</b> compra(s) · <b>'+eh(fapFmtMoney(valor))+'</b></span></div>'+
+    '<p class="fap-desc" style="margin:4px 0 8px">Conciliadas da base de Transações (Tipo Compra · Status Aprovada), de '+eh(fapFmtDate(cic.start)+' a '+fapFmtDate(cic.end))+(FAP_AUDIT.ate?' · base até '+eh(fapFmtDate(FAP_AUDIT.ate)):'')+'. Cada compra é descontada do Saldo do Cartão; anexar uma base nova atualiza a lista.</p>'+
+    (list.length?'<div style="max-height:320px;overflow:auto"><table class="fap-table"><thead><tr><th>Data/hora</th><th>Placa</th><th>Condutor</th><th>Cidade</th><th>Valor da compra</th></tr></thead><tbody>'+
+      list.map(c=>'<tr><td>'+eh(c.data.length>10?fapFmtDate(c.data.slice(0,10))+' '+c.data.slice(11,16):fapFmtDate(c.data))+'</td><td>'+eh(c.placa)+'</td><td>'+eh(c.motorista||(pl.get(c.placa)||{}).tecnico||'—')+'</td><td>'+eh(c.cidade||'—')+'</td><td class="fap-val">'+eh(fapFmtMoney(c.valor))+'</td></tr>').join('')+
+      '</tbody></table></div>':'<p class="fap-desc" style="margin:0">Nenhuma compra aprovada no ciclo atual na base anexada.</p>');
+}
 function _fapCartaoNorm(c){return{valor:Number(c&&c.valor)||0,at:String(c&&c.at||'')};}
 /* Edição vale no ciclo em que foi feita (data local da edição dentro do ciclo atual). */
-function fapCartaoAtivo(){if(!fapCartao.at)return false;const d=fapIsoLocal(new Date(fapCartao.at));const c=fapCicloAtualIso();return d>=c.start&&d<=c.end;}
+function fapCartaoAtivo(){if(fapCotaAutoOk()||!fapCartao.at)return false;const d=fapIsoLocal(new Date(fapCartao.at));const c=fapCicloAtualIso();return d>=c.start&&d<=c.end;}
 function fapAportesDoCartao(){return fapCartaoAtivo()?FAP_APORTES.filter(a=>a.criadoEm&&a.criadoEm>=fapCartao.at):[];}
 /* Saldo de trabalho (= Saldo do Cartão = Saldo do Mês restante em toda a tela). */
 function fapSaldoCartaoAtual(){
+  if(fapCotaAutoOk())return Math.round(fapCotaMesAuto().valor*100-Math.round(fapAportadoMesAtual()*100)-Math.round(fapComprasCicloAtual().valor*100))/100;
   if(fapCartaoAtivo())return Math.round(fapCartao.valor*100-fapAportesDoCartao().reduce((x,a)=>x+Math.round(a.valor*100),0))/100;
   return Math.round((fapSaldoMes-fapAportadoMesAtual())*100)/100;
 }
 /* Referência da barra de progresso: o valor editado (se houver) ou a cota. */
-function fapSaldoReferencia(){return fapCartaoAtivo()?fapCartao.valor:fapSaldoMes;}
+function fapSaldoReferencia(){return fapCartaoAtivo()?fapCartao.valor:fapCotaMesEf();}
 function fapSalvarSaldoCartao(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
+  if(fapCotaAutoOk()){alert('O Saldo do Cartão é calculado pela base de Transações: Cota do mês − aportes − compras aprovadas do ciclo.');return false;}
   const v=fapParseValor(document.getElementById('fap-cartaoInput').value);
   if(isNaN(v)){alert('Valor inválido.');return false;}
   fapCartao={valor:Math.round(v*100)/100,at:new Date().toISOString()};
@@ -27094,6 +27139,7 @@ function fapSalvarSaldoCartao(ev){
 function fapSalvarCotaMes(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
+  if(fapCotaAutoOk()){alert('A Cota do mês vem da base de Transações: soma dos Créditos Emergenciais de Limite a partir de R$ 1.000 com cota informada no ciclo.');return false;}
   const v=fapParseValor(document.getElementById('fap-cotaMesInput').value);
   if(isNaN(v)||v<0){alert('Valor inválido.');return false;}
   fapSaldoMes=Math.round(v*100)/100;
@@ -27109,6 +27155,16 @@ function fapSalvarCotaMes(ev){
 function fapRenderCartaoPanel(forcar){
   const ci=document.getElementById('fap-cotaMesInput'),si=document.getElementById('fap-cartaoInput');if(!ci||!si)return;
   const num=v=>(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const auto=fapCotaAutoOk();ci.readOnly=si.readOnly=auto;
+  ci.closest('form').querySelector('button').style.display=si.closest('form').querySelector('button').style.display=auto?'none':'';
+  fapRenderComprasLanc();
+  if(auto){
+    const ca=fapCotaMesAuto(),apt=fapAportadoMesAtual(),cp=fapComprasCicloAtual(),sc=fapSaldoCartaoAtual();
+    ci.value=num(ca.valor);si.value=num(sc);si.classList.toggle('fap-cartao-neg',sc<0);
+    document.getElementById('fap-cotaMesInfo').textContent='Créditos Emergenciais de Limite a partir de R$ 1.000 com cota informada no ciclo (dia 15 ao 14): '+ca.n+' transação(ões).'+(ca.semCota?' Fora da cota: '+ca.semCota+' sem cota informada ('+fapFmtMoney(ca.semCotaValor)+') — informe a cota no bloco Transações para entrar.':'');
+    document.getElementById('fap-cartaoInfo').textContent='Cota '+fapFmtMoney(ca.valor)+' − aportes do ciclo '+fapFmtMoney(apt)+' − compras aprovadas '+fapFmtMoney(cp.valor)+' ('+cp.list.length+'). Atualiza a cada Novo aporte e a cada base de Transações anexada.';
+    return;
+  }
   if(forcar||document.activeElement!==ci)ci.value=fapSaldoMes?num(fapSaldoMes):'';
   const sc=fapSaldoCartaoAtual(),apt=fapAportadoMesAtual();
   if(forcar||document.activeElement!==si)si.value=num(sc);
@@ -27327,7 +27383,7 @@ function fapRenderCardsKpi(list){
     set('fap-cSaldo',typeof def==='number'?fapFmtMoney(def-apt):'—');set('fap-cSaldoFoot','ciclo encerrado · somente consulta');
   }else{
     const apt=fapAportadoMesAtual();
-    set('fap-cSaldo',fapFmtMoney(fapSaldoCartaoAtual()));set('fap-cSaldoFoot',fapCartaoAtivo()?'valor editado '+fapFmtMoney(fapCartao.valor)+' − aportes desde então':'de '+fapFmtMoney(fapSaldoMes)+' de cota no período');
+    set('fap-cSaldo',fapFmtMoney(fapSaldoCartaoAtual()));set('fap-cSaldoFoot',fapCartaoAtivo()?'valor editado '+fapFmtMoney(fapCartao.valor)+' − aportes desde então':(fapCotaAutoOk()?'cota '+fapFmtMoney(fapCotaMesEf())+' − aportes − compras aprovadas':'de '+fapFmtMoney(fapSaldoMes)+' de cota no período'));
   }
   const card=document.getElementById('fap-cDifCard');
   if(!FAP_AUDIT){
@@ -28362,7 +28418,7 @@ function fapSaldoCiclosMerge(remote){
 function fapRegistrarSaldoCiclo(){
   const k=fapCicloAtualIso().start;
   if(!FAP_SALDO_CICLOS.ts.saldo)FAP_SALDO_CICLOS.ts.saldo={};
-  FAP_SALDO_CICLOS.saldo[k]=Math.round(fapSaldoMes*100)/100;
+  FAP_SALDO_CICLOS.saldo[k]=Math.round(fapCotaMesEf()*100)/100;
   FAP_SALDO_CICLOS.ts.saldo[k]=new Date().toISOString();
 }
 function fapRenderSaldoHist(){
@@ -28373,9 +28429,9 @@ function fapRenderSaldoHist(){
   const linhas=[...ciclos].filter(k=>k<=atual).sort().reverse().map(k=>{
     const{start,end}=fapCicloParaData(k);
     const aportado=FAP_APORTES.filter(a=>a.data>=start&&a.data<=end).reduce((x,a)=>x+Math.round(a.valor*100),0)/100;
-    const def=k===atual?fapSaldoMes:(FAP_SALDO_CICLOS.saldo||{})[k];
-    const temDef=typeof def==='number'&&(k!==atual||fapSaldoMes>0);
-    const fim=temDef?def-aportado:null;
+    const def=k===atual?fapCotaMesEf():(FAP_SALDO_CICLOS.saldo||{})[k];
+    const temDef=typeof def==='number'&&(k!==atual||def>0);
+    const fim=temDef?(k===atual?fapSaldoCartaoAtual():def-aportado):null;
     return`<tr><td>${eh(fapFmtDate(start)+' a '+fapFmtDate(end))}</td><td>${k===atual?'<b>Em andamento</b>':'Encerrado'}</td><td>${temDef?eh(fapFmtMoney(def)):'<span style="color:var(--tx3)">não registrado</span>'}</td><td>${eh(fapFmtMoney(aportado))}</td><td class="fap-val"${fim!==null&&fim<0?' style="color:var(--red)"':''}>${fim===null?'—':eh(fapFmtMoney(fim))}</td></tr>`;
   });
   box.innerHTML='<h4 style="margin:0 0 6px;font-size:15px">Histórico por ciclo</h4>'+
@@ -28765,6 +28821,7 @@ function fapAudSalvarCota(idx,el){
   fapAudCotaVer++;el.dataset.ver=String(fapAudCotaVer); // as outras listas da tela se refazem ao abrir
   fapAudRenderCotas();
   fapAudRenderCredAlto(); /* o contador de Crédito >= R$ 1.000 só conta transações com cota */
+  fapRenderCartaoPanel(true);fapRenderSaldoMesCard();fapRenderAporteSaldoMini();fapRenderCards(); /* Cota do mês = créditos com cota */
   fapAudRenderEmail();
 }
 /* Só as cotas ainda LIVRES (pedido 12/10/2026): a numeração é por placa — some da
