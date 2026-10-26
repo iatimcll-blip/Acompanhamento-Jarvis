@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-26T13:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-26T15:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -523,6 +523,13 @@ body {
 .atrix-who{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;margin-left:6px;flex-shrink:0;
   background:linear-gradient(135deg,var(--teal) 0%,var(--blue) 100%);color:#fff;font-size:8px;font-weight:700;letter-spacing:.02em;vertical-align:middle}
 .atrix-who[hidden]{display:none}
+.fap-cartao-comp{margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)}
+.fap-comp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media(max-width:700px){.fap-comp-grid{grid-template-columns:1fr}}
+.fap-comp-it{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg2)}
+.fap-comp-it span{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--tx3);font-weight:700}
+.fap-comp-it b{font-size:20px}
+.fap-comp-it small{font-size:11.5px;color:var(--tx3)}
 .atrix-log-resumo{margin-bottom:10px;line-height:1.9}
 .atrix-log-chip{display:inline-block;padding:1px 8px;margin:0 4px 2px 0;border-radius:10px;background:var(--bg2);border:1px solid var(--bd);white-space:nowrap}
 .atrix-log-tb{width:100%;border-collapse:collapse}
@@ -10738,10 +10745,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </form>
         <form class="fap-cartao-campo" onsubmit="return fapSalvarSaldoCartao(event)">
           <label for="fap-cartaoInput">Saldo do Cartão</label>
-          <div class="fap-cartao-row"><input type="text" inputmode="decimal" id="fap-cartaoInput" placeholder="0,00" autocomplete="off"><button type="submit" class="fap-submit-btn fap-secondary">Salvar</button></div>
+          <div class="fap-cartao-row"><input type="text" inputmode="decimal" id="fap-cartaoInput" placeholder="0,00" autocomplete="off"><button type="submit" class="fap-submit-btn fap-secondary">Salvar</button><button type="button" id="fap-cartaoUsarCalc" class="fap-submit-btn fap-secondary" style="display:none;white-space:nowrap" onclick="fapUsarSaldoCalculado()" title="Descarta a edição e volta ao saldo calculado pela base">Usar calculado</button></div>
           <div class="fap-desc" id="fap-cartaoInfo"></div>
         </form>
       </div>
+      <div class="fap-cartao-comp" id="fap-cartaoComp" style="display:none"></div>
     </div>
     <div class="fap-panel" id="fap-comprasLanc"></div>
     <div class="fap-grid-2 fap-grid-eq">
@@ -27100,6 +27108,26 @@ function fapComprasCicloAtual(){
   list.sort((a,b)=>b.data.localeCompare(a.data));
   return{list,valor:list.reduce((x,c)=>x+Math.round(c.valor*100),0)/100};
 }
+function fapUsarSaldoCalculado(){
+  if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return;}
+  if(!confirm('Descartar o Saldo do Cartão editado e voltar ao calculado pela base (Cota − aportes − compras aprovadas)?'))return;
+  fapCartao={valor:0,at:''};fapAt=new Date().toISOString();saveState();
+  fapRenderCartaoPanel(true);fapRenderSaldoMesCard();fapRenderAporteSaldoMini();fapRenderCards();
+}
+/* Card comparativo: Saldo do Cartão informado × calculado pela base de Transações. */
+function fapRenderCartaoComp(){
+  const box=document.getElementById('fap-cartaoComp');if(!box)return;
+  if(!fapCotaAutoOk()){box.style.display='none';return;}
+  box.style.display='';
+  const calc=fapSaldoCalculado(),man=fapCartaoAtivo(),trab=fapSaldoCartaoAtual(),dif=Math.round((trab-calc)*100)/100;
+  const ate=FAP_AUDIT&&FAP_AUDIT.ate?fapFmtDate(FAP_AUDIT.ate):'—';
+  const it=(lbl,v,sub,cor)=>'<div class="fap-comp-it"><span>'+lbl+'</span><b'+(cor?' style="color:'+cor+'"':'')+'>'+v+'</b><small>'+sub+'</small></div>';
+  box.innerHTML='<h4 style="margin:0 0 8px;font-size:14px"><i class="ti ti-arrows-diff"></i> Comparativo do Saldo do Cartão</h4><div class="fap-comp-grid">'+
+    it('Informado (manual)',man?eh(fapFmtMoney(trab)):'—',man?'editado em '+eh(new Date(fapCartao.at).toLocaleString('pt-BR'))+' ('+eh(fapFmtMoney(fapCartao.valor))+') − aportes e compras depois':'não editado neste ciclo')+
+    it('Calculado pela base',eh(fapFmtMoney(calc)),'Cota − aportes − compras aprovadas · base até '+eh(ate),calc<0?'var(--red)':'')+
+    it('Diferença',man?(dif>0?'+':dif<0?'−':'')+eh(fapFmtMoney(Math.abs(dif))):'—',man?(Math.abs(dif)<0.005?'informado igual ao calculado':dif>0?'informado acima do calculado (ex.: compras ainda não na base D-1, cota não informada)':'informado abaixo do calculado (ex.: compras ainda não na base D-1)'):'edite o Saldo do Cartão para comparar',man&&Math.abs(dif)>=0.005?(dif<0?'var(--red)':'var(--orange,#d97706)'):'var(--green-dk)')+
+    '</div>';
+}
 function fapRenderComprasLanc(){
   const box=document.getElementById('fap-comprasLanc');if(!box)return;
   if(!fapCotaAutoOk()){box.innerHTML='<h3 style="margin:0 0 4px">Compras aprovadas no ciclo</h3><p class="fap-desc" style="margin:0">Anexe a base de Transações no painel Auditoria e Conciliação: as compras aprovadas do ciclo aparecem aqui e são descontadas do Saldo do Cartão.</p>';return;}
@@ -27113,11 +27141,23 @@ function fapRenderComprasLanc(){
 }
 function _fapCartaoNorm(c){return{valor:Number(c&&c.valor)||0,at:String(c&&c.at||'')};}
 /* Edição vale no ciclo em que foi feita (data local da edição dentro do ciclo atual). */
-function fapCartaoAtivo(){if(fapCotaAutoOk()||!fapCartao.at)return false;const d=fapIsoLocal(new Date(fapCartao.at));const c=fapCicloAtualIso();return d>=c.start&&d<=c.end;}
+function fapCartaoAtivo(){if(!fapCartao.at)return false;const d=fapIsoLocal(new Date(fapCartao.at));const c=fapCicloAtualIso();return d>=c.start&&d<=c.end;}
 function fapAportesDoCartao(){return fapCartaoAtivo()?FAP_APORTES.filter(a=>a.criadoEm&&a.criadoEm>=fapCartao.at):[];}
 /* Saldo de trabalho (= Saldo do Cartão = Saldo do Mês restante em toda a tela). */
+/* Saldo do Cartão editado à mão (a base de Transações é D-1, pedido 2026-10-26): vale o
+   valor digitado − aportes registrados depois da edição − compras aprovadas da base com
+   data/hora depois da edição (as anteriores já estavam no saldo real do cartão). */
+function _fapLocalStamp(iso){const d=new Date(iso);if(isNaN(d))return'';const p=n=>String(n).padStart(2,'0');return fapIsoLocal(d)+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+function fapComprasDepoisDoCartao(){
+  if(!fapCartaoAtivo()||!fapCotaAutoOk())return{list:[],valor:0};
+  const ts=_fapLocalStamp(fapCartao.at);const list=fapComprasCicloAtual().list.filter(c=>String(c.data).replace('T',' ')>ts);
+  return{list,valor:list.reduce((x,c)=>x+Math.round(c.valor*100),0)/100};
+}
+/* Saldo calculado pela base: Cota − aportes do ciclo − compras aprovadas do ciclo. */
+function fapSaldoCalculado(){return Math.round(fapCotaMesAuto().valor*100-Math.round(fapAportadoMesAtual()*100)-Math.round(fapComprasCicloAtual().valor*100))/100;}
 function fapSaldoCartaoAtual(){
-  if(fapCotaAutoOk())return Math.round(fapCotaMesAuto().valor*100-Math.round(fapAportadoMesAtual()*100)-Math.round(fapComprasCicloAtual().valor*100))/100;
+  if(fapCartaoAtivo())return Math.round(fapCartao.valor*100-fapAportesDoCartao().reduce((x,a)=>x+Math.round(a.valor*100),0)-Math.round(fapComprasDepoisDoCartao().valor*100))/100;
+  if(fapCotaAutoOk())return fapSaldoCalculado();
   if(fapCartaoAtivo())return Math.round(fapCartao.valor*100-fapAportesDoCartao().reduce((x,a)=>x+Math.round(a.valor*100),0))/100;
   return Math.round((fapSaldoMes-fapAportadoMesAtual())*100)/100;
 }
@@ -27126,7 +27166,6 @@ function fapSaldoReferencia(){return fapCartaoAtivo()?fapCartao.valor:fapCotaMes
 function fapSalvarSaldoCartao(ev){
   ev.preventDefault();
   if(!canEdit()){alert('Seu usuário possui acesso somente para visualização.');return false;}
-  if(fapCotaAutoOk()){alert('O Saldo do Cartão é calculado pela base de Transações: Cota do mês − aportes − compras aprovadas do ciclo.');return false;}
   const v=fapParseValor(document.getElementById('fap-cartaoInput').value);
   if(isNaN(v)){alert('Valor inválido.');return false;}
   fapCartao={valor:Math.round(v*100)/100,at:new Date().toISOString()};
@@ -27155,14 +27194,22 @@ function fapSalvarCotaMes(ev){
 function fapRenderCartaoPanel(forcar){
   const ci=document.getElementById('fap-cotaMesInput'),si=document.getElementById('fap-cartaoInput');if(!ci||!si)return;
   const num=v=>(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const auto=fapCotaAutoOk();ci.readOnly=si.readOnly=auto;
-  ci.closest('form').querySelector('button').style.display=si.closest('form').querySelector('button').style.display=auto?'none':'';
-  fapRenderComprasLanc();
+  const auto=fapCotaAutoOk();ci.readOnly=auto;
+  ci.closest('form').querySelector('button').style.display=auto?'none':'';
+  fapRenderComprasLanc();fapRenderCartaoComp();
+  const bU=document.getElementById('fap-cartaoUsarCalc');if(bU)bU.style.display=auto&&fapCartaoAtivo()?'':'none';
+  if(auto&&fapCartaoAtivo()){
+    const ca=fapCotaMesAuto(),sc=fapSaldoCartaoAtual(),la=fapAportesDoCartao(),lc=fapComprasDepoisDoCartao();
+    ci.value=num(ca.valor);if(forcar||document.activeElement!==si)si.value=num(sc);si.classList.toggle('fap-cartao-neg',sc<0);
+    document.getElementById('fap-cotaMesInfo').textContent='Créditos Emergenciais de Limite a partir de R$ 1.000 com cota informada no ciclo (dia 15 ao 14): '+ca.n+' transação(ões).'+(ca.semCota?' Fora da cota: '+ca.semCota+' sem cota informada ('+fapFmtMoney(ca.semCotaValor)+') — informe a cota no bloco Transações para entrar.':'');
+    document.getElementById('fap-cartaoInfo').textContent='Editado em '+new Date(fapCartao.at).toLocaleString('pt-BR')+': '+fapFmtMoney(fapCartao.valor)+' − '+la.length+' aporte(s) depois ('+fapFmtMoney(la.reduce((x,a)=>x+a.valor,0))+') − '+lc.list.length+' compra(s) aprovada(s) depois ('+fapFmtMoney(lc.valor)+'). Compare com o calculado pela base no card abaixo.';
+    return;
+  }
   if(auto){
     const ca=fapCotaMesAuto(),apt=fapAportadoMesAtual(),cp=fapComprasCicloAtual(),sc=fapSaldoCartaoAtual();
-    ci.value=num(ca.valor);si.value=num(sc);si.classList.toggle('fap-cartao-neg',sc<0);
+    ci.value=num(ca.valor);if(forcar||document.activeElement!==si)si.value=num(sc);si.classList.toggle('fap-cartao-neg',sc<0);
     document.getElementById('fap-cotaMesInfo').textContent='Créditos Emergenciais de Limite a partir de R$ 1.000 com cota informada no ciclo (dia 15 ao 14): '+ca.n+' transação(ões).'+(ca.semCota?' Fora da cota: '+ca.semCota+' sem cota informada ('+fapFmtMoney(ca.semCotaValor)+') — informe a cota no bloco Transações para entrar.':'');
-    document.getElementById('fap-cartaoInfo').textContent='Cota '+fapFmtMoney(ca.valor)+' − aportes do ciclo '+fapFmtMoney(apt)+' − compras aprovadas '+fapFmtMoney(cp.valor)+' ('+cp.list.length+'). Atualiza a cada Novo aporte e a cada base de Transações anexada.';
+    document.getElementById('fap-cartaoInfo').textContent='Cota '+fapFmtMoney(ca.valor)+' − aportes do ciclo '+fapFmtMoney(apt)+' − compras aprovadas '+fapFmtMoney(cp.valor)+' ('+cp.list.length+'). Atualiza a cada Novo aporte e a cada base de Transações anexada. A base é D-1: edite para informar o saldo real do cartão.';
     return;
   }
   if(forcar||document.activeElement!==ci)ci.value=fapSaldoMes?num(fapSaldoMes):'';
@@ -27383,7 +27430,7 @@ function fapRenderCardsKpi(list){
     set('fap-cSaldo',typeof def==='number'?fapFmtMoney(def-apt):'—');set('fap-cSaldoFoot','ciclo encerrado · somente consulta');
   }else{
     const apt=fapAportadoMesAtual();
-    set('fap-cSaldo',fapFmtMoney(fapSaldoCartaoAtual()));set('fap-cSaldoFoot',fapCartaoAtivo()?'valor editado '+fapFmtMoney(fapCartao.valor)+' − aportes desde então':(fapCotaAutoOk()?'cota '+fapFmtMoney(fapCotaMesEf())+' − aportes − compras aprovadas':'de '+fapFmtMoney(fapSaldoMes)+' de cota no período'));
+    set('fap-cSaldo',fapFmtMoney(fapSaldoCartaoAtual()));set('fap-cSaldoFoot',fapCartaoAtivo()?'valor editado '+fapFmtMoney(fapCartao.valor)+' − aportes'+(fapCotaAutoOk()?' e compras':'')+' desde então':(fapCotaAutoOk()?'cota '+fapFmtMoney(fapCotaMesEf())+' − aportes − compras aprovadas':'de '+fapFmtMoney(fapSaldoMes)+' de cota no período'));
   }
   const card=document.getElementById('fap-cDifCard');
   if(!FAP_AUDIT){
