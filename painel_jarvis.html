@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-26T18:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-26T19:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1782,6 +1782,15 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .fap-chart-box{position:relative;height:220px}
 .fap-hist-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .fap-hist-wrap{overflow-x:auto}
+.fap-lanc-par{align-items:stretch}
+.fap-lanc-par>.fap-panel{display:flex;flex-direction:column;min-width:0}
+.fap-lanc-par .fap-hist-wrap,.fap-lanc-par .fap-comp-scroll{flex:1;max-height:560px;overflow:auto;min-height:0}
+.fap-lanc-par .fap-table th,.fap-lanc-par .fap-table td{padding:6px 6px;font-size:12.5px;white-space:nowrap}
+.fap-lanc-par .fap-table th{font-size:10.5px}
+.fap-lanc-par #fap-comprasLanc td:nth-child(3),.fap-lanc-par #fap-comprasLanc td:nth-child(4){max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.fap-lanc-par .fap-table thead th{position:sticky;top:0;z-index:1;background:var(--surface,var(--bg))}
+.fap-lanc-par #fap-histBody td:nth-child(6){max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fap-lanc-par .fap-conc-farol{font-size:11px;padding:1px 6px}
 .fap-val{color:var(--green-dk);font-weight:700}
 .fap-cat-link{color:var(--blue);font-weight:600;text-decoration:none;cursor:pointer}
 .fap-cat-link:hover{text-decoration:underline}
@@ -10755,7 +10764,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
       <div class="fap-cartao-comp" id="fap-cartaoComp" style="display:none"></div>
     </div>
-    <div class="fap-panel" id="fap-comprasLanc"></div>
     <div class="fap-grid-2 fap-grid-eq">
       <div class="fap-panel">
         <div class="fap-novo-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
@@ -10810,17 +10818,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
     </div>
 
+    <div class="fap-grid-2 fap-grid-eq fap-lanc-par">
+    <div class="fap-panel" id="fap-comprasLanc"></div>
     <div class="fap-panel">
       <div class="fap-hist-head">
         <div><h3 style="margin-bottom:2px">Histórico de aportes</h3><p class="fap-desc" style="margin:0">Data, hora e valor de cada lançamento. Ao anexar a base de Transações, cada aporte é conciliado com as compras aprovadas da placa feitas depois dele: <b style="color:var(--green-dk)">✓ OK</b> = aporte todo usado; <b style="color:var(--orange)">Saldo disponível</b> = compras menores que o aportado (o resto fica na placa).</p></div>
         <button class="fap-export-btn" onclick="fapExportCsv()">Exportar CSV</button>
       </div>
       <div class="fap-hist-wrap">
-        <table class="fap-table" style="min-width:640px">
+        <table class="fap-table">
           <thead><tr><th>Data</th><th>Hora</th><th>Placa</th><th>UF</th><th>Valor</th><th>Observação</th><th title="Conciliação com as compras aprovadas da base de Transações (do aporte mais antigo para o mais novo)">Conciliação</th><th></th></tr></thead>
           <tbody id="fap-histBody"></tbody>
         </table>
       </div>
+    </div>
     </div>
     </div>
 
@@ -27144,8 +27155,8 @@ function fapRenderComprasLanc(){
   const pl=new Map(FAP_PLACAS.map(p=>[p.placa,p]));
   box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Compras aprovadas no ciclo</h3><span><b>'+list.length+'</b> compra(s) · <b>'+eh(fapFmtMoney(valor))+'</b></span></div>'+
     '<p class="fap-desc" style="margin:4px 0 8px">Conciliadas da base de Transações (Tipo Compra · Status Aprovada, só placas cadastradas), de '+eh(fapFmtDate(cic.start)+' a '+fapFmtDate(cic.end))+(FAP_AUDIT.ate?' · base até '+eh(fapFmtDate(FAP_AUDIT.ate)):'')+'. Cada compra é descontada do Saldo do Cartão; anexar uma base nova atualiza a lista.</p>'+
-    (list.length?'<div style="max-height:320px;overflow:auto"><table class="fap-table"><thead><tr><th>Data/hora</th><th>Placa</th><th>Condutor</th><th>Cidade</th><th>Valor da compra</th></tr></thead><tbody>'+
-      list.map(c=>'<tr><td>'+eh(c.data.length>10?fapFmtDate(c.data.slice(0,10))+' '+c.data.slice(11,16):fapFmtDate(c.data))+'</td><td>'+eh(c.placa)+'</td><td>'+eh(c.motorista||(pl.get(c.placa)||{}).tecnico||'—')+'</td><td>'+eh(c.cidade||'—')+'</td><td class="fap-val">'+eh(fapFmtMoney(c.valor))+'</td></tr>').join('')+
+    (list.length?'<div class="fap-comp-scroll"><table class="fap-table"><thead><tr><th>Data/hora</th><th>Placa</th><th>Condutor</th><th>Cidade</th><th>Valor da compra</th></tr></thead><tbody>'+
+      list.map(c=>'<tr><td>'+eh(c.data.length>10?fapFmtDate(c.data.slice(0,10))+' '+c.data.slice(11,16):fapFmtDate(c.data))+'</td><td>'+eh(c.placa)+'</td><td title="'+eh(c.motorista||(pl.get(c.placa)||{}).tecnico||'')+'">'+eh(c.motorista||(pl.get(c.placa)||{}).tecnico||'—')+'</td><td title="'+eh(c.cidade||'')+'">'+eh(c.cidade||'—')+'</td><td class="fap-val">'+eh(fapFmtMoney(c.valor))+'</td></tr>').join('')+
       '</tbody></table></div>':'<p class="fap-desc" style="margin:0">Nenhuma compra aprovada no ciclo atual na base anexada.</p>');
 }
 function _fapCartaoNorm(c){return{valor:Number(c&&c.valor)||0,at:String(c&&c.at||'')};}
@@ -27457,7 +27468,7 @@ function fapRenderHist(){
       <td>${p?eh(p.placa):'—'}</td>
       <td><span class="fap-uf-chip">${p?eh(p.uf):'—'}</span></td>
       <td class="fap-val">+ ${eh(fapFmtMoney(a.valor))}</td>
-      <td>${dup?'<span class="fap-dup-tag">possível duplicado</span> ':''}${eh(a.obs||'—')}</td>
+      <td title="${eh(a.obs||'')}">${dup?'<span class="fap-dup-tag">possível duplicado</span> ':''}${eh(a.obs||'—')}</td>
       <td>${fapConcFarolAporte(a.id)}</td>
       <td><button class="fap-del-icon" onclick="fapDelAporte('${eh(a.id)}')" title="Excluir" aria-label="Excluir aporte de ${p?eh(p.placa):''} em ${eh(fapFmtDate(a.data))}">✕</button></td>
     </tr>`;
