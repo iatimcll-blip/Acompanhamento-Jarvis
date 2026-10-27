@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T12:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T14:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7561,6 +7561,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-quickfilters .aof-chk{flex-direction:row!important;align-items:center;gap:4px!important;padding-top:0;color:var(--aof-muted)!important;font-size:13px!important}
   #panel-abertos-ofs .aof-resumo-date{font:600 13px var(--aof-sans);color:var(--aof-muted);margin-left:8px;padding:3px 10px;border-radius:999px;background:var(--aof-soft);border:1px solid var(--aof-line);vertical-align:middle;letter-spacing:0;text-transform:none}
   #panel-abertos-ofs .aof-resumo-date:empty{display:none}
+  #panel-abertos-ofs .aof-tec-link{background:none;border:none;padding:0;font:inherit;color:var(--aof-blue);cursor:pointer;text-align:left}
+  #panel-abertos-ofs .aof-tec-link:hover{text-decoration:underline}
+  #panel-abertos-ofs tr.aof-tec-first td{border-top:2px solid var(--aof-line)}
   #panel-abertos-ofs .aof-farol{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;flex-shrink:0}
   #panel-abertos-ofs .aof-status-select{margin-left:6px;font:500 10px var(--aof-sans);padding:1px 3px;border-radius:5px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);vertical-align:middle}
   #panel-abertos-ofs .aof-obs-input{width:100%;min-width:260px;min-height:52px;font:500 12px var(--aof-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink);resize:vertical;white-space:normal;word-break:break-word;line-height:1.35}
@@ -7703,6 +7706,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="fila">Fila em aberto</button>
             <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="cid">Cidades</button>
             <button type="button" class="aof-tab" role="tab" aria-selected="true" data-tab="tec">Produtividade por técnico</button>
+            <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="ativ">Atividades por técnico</button>
           </div>
           <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="aof-btn" id="aof-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
           <div class="aof-tablewrap"><table id="aof-tbl"></table></div>
@@ -8151,7 +8155,42 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     }
 
     const pill=sg=>`<span class="aof-pill" style="background:var(${ST[sg].c})">${sg}</span>`;
+    /* Aba "Atividades por técnico" (pedido do usuário, 2026-10-27): uma linha por
+       atividade de cada técnico na data da base, com o tempo gasto. Só conta tempo
+       de atividade que foi de fato executada (concluída, não concluída ou suspensa —
+       nessas o Início/Fim/Duração do export são reais). Canceladas ficam fora. Pendente/em rota/cancelada
+       trazem horário PLANEJADO (ex.: 00:00–01:00), então aparecem com "—";
+       "iniciado" mostra o início real e "em andamento". */
+    const AOF_EXEC=['Concluída','Não concluída','Suspensa'];
+    const aofExecutada=r=>AOF_EXEC.includes(r.sg);
+    const aofIniciada=r=>!aofExecutada(r)&&n(r.status).toLowerCase()==='iniciado';
+    function aofAtivRows(D){
+      const list=D.filter(r=>!r.unassigned&&r.sg!=='Cancelada').map(r=>{
+        const ex=aofExecutada(r),inic=aofIniciada(r);
+        return{...r,iniM:(ex||inic)?mins(r.ini):null,fimM:ex?mins(r.fim):null,tempo:ex?(r.dur||0):null,deslM:ex?r.desl:null,emAndamento:inic};
+      });
+      const tot={};
+      list.forEach(r=>{const o=tot[r.rec]||={t:0,n:0,q:0};o.q++;if(r.tempo!=null){o.t+=r.tempo;o.n++;}});
+      list.forEach(r=>{const o=tot[r.rec];r.totTec=o.t;r.totTxt=`${fmtH(o.t)} · ${o.n} de ${o.q} executada${o.q>1?'s':''}`;});
+      return list.sort((a,b)=>a.rec.localeCompare(b.rec,'pt')||((a.iniM??9999)-(b.iniM??9999)));
+    }
     function tableDefs(D){
+      if(tab==='ativ'){
+        return{def:[
+          ['rec','Técnico',r=>esc(r.rec),'aof-wrap'],
+          ['iniM','Início',r=>r.iniM==null?'—':esc(r.ini),'aof-num'],
+          ['fimM','Fim',r=>r.fimM==null?(r.emAndamento?'<small>em andamento</small>':'—'):esc(r.fim),'aof-num'],
+          ['tempo','Tempo em atividade',r=>r.tempo==null?'—':`<b>${fmtH(r.tempo)}</b>`,'aof-num'],
+          ['deslM','Deslocamento',r=>r.deslM==null?'—':fmtH(r.deslM),'aof-num'],
+          ['tipo','Tipo',r=>esc(r.tipo),'aof-wrap'],
+          ['sg','Status',r=>pill(r.sg)+(r.emAndamento?' <small>iniciado</small>':'')],
+          ['os','OS',r=>esc(r.os)||'—'],
+          ['nome','Cliente',r=>esc(r.nome)||'—','aof-wrap'],
+          ['cid','Cidade',r=>esc(r.cid)+(r.uf?` / ${r.uf}`:'')],
+          ['cluster','Cluster',r=>r.cluster],
+          ['totTec','Total do técnico no dia',r=>esc(r.totTxt),'aof-num']
+        ],rows:aofAtivRows(D),def0:['rec',1],label:'atividades de técnicos (canceladas não entram)'};
+      }
       if(tab==='tec'){
         const m={};
         D.filter(r=>!r.unassigned&&r.cat!=='Pausa').forEach(r=>{
@@ -8162,7 +8201,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         });
         const rows=Object.values(m).map(o=>({...o,cluster:Object.keys(o.cl).join(', '),p:pct(o.c,o.t)}));
         return{def:[
-          ['rec','Técnico',r=>esc(r.rec)],['cluster','Cluster',r=>r.cluster],['uf','UF',r=>r.uf],
+          ['rec','Técnico',r=>`<button type="button" class="aof-tec-link" data-rec="${esc(r.rec)}" title="Ver as atividades deste técnico">${esc(r.rec)}</button>`],['cluster','Cluster',r=>r.cluster],['uf','UF',r=>r.uf],
           ['t','Atividades',r=>r.t,'aof-num'],['c','Concluídas',r=>r.c,'aof-num'],
           ['p','Conclusão',r=>`<div style="display:flex;gap:8px;align-items:center"><div class="aof-bar" style="flex:1"><div style="width:${r.p}%;background:${r.p>=80?'var(--aof-green)':r.p>=50?'var(--aof-amber)':'var(--aof-red)'}"></div></div>${r.p}%</div>`],
           ['ab','Em aberto',r=>r.ab,'aof-num'],['su','Susp./não concl.',r=>r.su,'aof-num'],
@@ -8225,15 +8264,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
       R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
         if(x==null)return 1;if(y==null)return-1;
-        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd
+          ||(tab==='ativ'?((a.iniM??9999)-(b.iniM??9999)):0);});
       const t=document.getElementById('aof-tbl');
-      const rowCls=r=>(r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0))?' class="aof-row-overdue"':'';
+      const rowCls=(r,i)=>tab==='fila'?((r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0))?' class="aof-row-overdue"':'')
+        :(tab==='ativ'&&sk==='rec'&&i>0&&R[i-1].rec!==r.rec)?' class="aof-tec-first"':'';
       t.innerHTML=`<thead><tr>${def.map(([k,l,,c])=>`<th tabindex="0" data-k="${k}" class="${c||''}">${l}${k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead>`
-        +`<tbody>${R.length?R.map(r=>`<tr${rowCls(r)}>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
+        +`<tbody>${R.length?R.map((r,i)=>`<tr${rowCls(r,i)}>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
       document.getElementById('aof-tblInfo').textContent=`${R.length} ${label}`+(tab==='fila'&&REF?` · aging calculado até ${String(REF.getHours()).padStart(2,'0')}:${String(REF.getMinutes()).padStart(2,'0')} do dia da base · SLA da abertura da OS até agora`:'');
       t.querySelectorAll('th').forEach(th=>{const go=()=>{const k=th.dataset.k;const cur=sortState[tab]||def0;
         sortState[tab]=[k,cur[0]===k?-cur[1]:(typeof rows[0]?.[k]==='number'?-1:1)];drawTable(filtered());};
         th.onclick=go;th.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};});
+      t.querySelectorAll('.aof-tec-link').forEach(btn=>{
+        btn.onclick=e=>{e.stopPropagation();aofSetTab('ativ');document.getElementById('aof-tblSearch').value=btn.dataset.rec;drawTable(filtered());};
+      });
       t.querySelectorAll('.aof-status-select').forEach(sel=>{
         sel.onclick=e=>e.stopPropagation();
         sel.onchange=()=>{
@@ -8260,6 +8304,16 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     /* Colunas do Excel exportado — mesmos campos plain-value (sem HTML/badge) já
        calculados por tableDefs(), um mapeamento por aba (tec/fila/cid). */
     function aofExportDefs(){
+      if(tab==='ativ')return[
+        ['Técnico',r=>r.rec],
+        ['Início',r=>r.iniM==null?'':r.ini],
+        ['Fim',r=>r.fimM==null?(r.emAndamento?'em andamento':''):r.fim],
+        ['Tempo em atividade',r=>r.tempo==null?'':fmtH(r.tempo)],
+        ['Deslocamento',r=>r.deslM==null?'':fmtH(r.deslM)],
+        ['Tipo',r=>r.tipo],['Status',r=>r.sg],['OS',r=>r.os||''],['Cliente',r=>r.nome||''],
+        ['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],
+        ['Total do técnico no dia',r=>r.totTxt]
+      ];
       if(tab==='tec')return[
         ['Técnico',r=>r.rec],['Cluster',r=>r.cluster],['UF',r=>r.uf],
         ['Atividades',r=>r.t],['Concluídas',r=>r.c],['Conclusão %',r=>r.p],
@@ -8300,7 +8354,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
       R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
         if(x==null)return 1;if(y==null)return-1;
-        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd
+          ||(tab==='ativ'?((a.iniM??9999)-(b.iniM??9999)):0);});
       if(!R.length){alert('Nenhum registro no recorte atual para exportar.');return;}
       const btn=document.getElementById('aof-btnExport');
       const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
@@ -8308,7 +8363,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         try{
           const defs=aofExportDefs();
           const wb=new ExcelJS.Workbook();
-          const sheetName={tec:'Produtividade',fila:'Fila em aberto',cid:'Cidades'}[tab]||'Abertos OFS';
+          const sheetName={tec:'Produtividade',ativ:'Atividades por técnico',fila:'Fila em aberto',cid:'Cidades'}[tab]||'Abertos OFS';
           const ws=wb.addWorksheet(sheetName);
           ws.addRow(defs.map(([label])=>label));
           ws.getRow(1).eachCell(c=>{
@@ -8328,7 +8383,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
           const url=URL.createObjectURL(blob);
           const a=document.createElement('a');
-          const fileTab={tec:'produtividade-tecnico',fila:'fila-aberto',cid:'cidades'}[tab]||'export';
+          const fileTab={tec:'produtividade-tecnico',ativ:'atividades-tecnico',fila:'fila-aberto',cid:'cidades'}[tab]||'export';
           a.href=url;a.download=`abertos-ofs-${fileTab}-${new Date().toISOString().slice(0,10)}.xlsx`;
           document.body.appendChild(a);a.click();a.remove();
           setTimeout(()=>URL.revokeObjectURL(url),4000);
@@ -9034,8 +9089,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       render();
     };
     document.getElementById('aof-tblSearch').addEventListener('input',()=>drawTable(filtered()));
-    document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;
-      document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(x=>x.setAttribute('aria-selected',x===b));document.getElementById('aof-tblSearch').value='';drawTable(filtered());});
+    function aofSetTab(k){tab=k;document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(x=>x.setAttribute('aria-selected',x.dataset.tab===k));}
+    document.querySelectorAll('#panel-abertos-ofs .aof-tab').forEach(b=>b.onclick=()=>{aofSetTab(b.dataset.tab);document.getElementById('aof-tblSearch').value='';drawTable(filtered());});
     document.querySelector('#panel-abertos-ofs label[for=aof-fileIn]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('aof-fileIn').click();}};
     function aofReadOneCsv(file){
       return new Promise((resolve,reject)=>{
