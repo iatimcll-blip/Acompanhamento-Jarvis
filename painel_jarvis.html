@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T16:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T17:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7589,6 +7589,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-modal-hint{margin:0 0 10px;font-size:14px;color:var(--aof-muted)}
   #panel-abertos-ofs .aof-cfg-list{display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;border:1px solid var(--aof-line);border-radius:8px;padding:8px}
   #panel-abertos-ofs .aof-cfg-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 2px}
+  #panel-abertos-ofs .aof-cfg-row select{height:26px;border:1px solid var(--aof-line);border-radius:6px;background:var(--aof-soft);color:var(--aof-ink);font:inherit;padding:0 4px}
+  #panel-abertos-ofs .aof-cfg-row small{color:var(--aof-muted)}
+  #panel-abertos-ofs .aof-cfg-search{width:100%;margin-bottom:8px;font:500 13px var(--aof-sans);padding:6px 9px;border-radius:8px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink)}
   #panel-abertos-ofs .aof-cfg-row input[type=number]{width:56px;height:24px;border:1px solid var(--aof-line);border-radius:6px;background:var(--aof-soft);color:var(--aof-ink);text-align:right;padding:0 6px;font-family:inherit}
   #panel-abertos-ofs .aof-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
   #panel-abertos-ofs .aof-tab{font:600 14px var(--aof-sans);padding:8px 14px;border-radius:9px;border:1px solid var(--aof-line);background:var(--aof-soft);color:var(--aof-ink);cursor:pointer}
@@ -7732,6 +7735,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div id="aof-cfg-tipos-list" class="aof-cfg-list"></div>
         </div>
         <div class="aof-modal-section">
+          <h4>MOP/EPS por técnico</h4>
+          <p class="aof-modal-hint">Regra padrão: SLN MA só para os técnicos da lista fixa; os demais do Maranhão que cairiam em SLN MA pela cidade ficam GIGA+ MA; PI/PA/AM/AP seguem a cidade. Escolha um MOP/EPS para fixar o técnico em todas as atividades dele, ou "Automático" para voltar à regra padrão.</p>
+          <input type="search" id="aof-cfg-mop-search" class="aof-cfg-search" placeholder="Buscar técnico">
+          <div id="aof-cfg-mop-list" class="aof-cfg-list"></div>
+        </div>
+        <div class="aof-modal-section">
           <h4>Status alterados manualmente</h4>
           <p class="aof-modal-hint"><span id="aof-cfg-status-count">0</span> chamado(s) com status alterado manualmente nesta base.</p>
           <button type="button" class="aof-btn" id="aof-cfg-clear-status">Reverter todos para o status original</button>
@@ -7766,14 +7775,19 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     let CFG_TS={};
     try{CFG_TS=JSON.parse(localStorage.getItem(CFG_TS_KEY)||'{}');}catch(e){CFG_TS={};}
     function aofCfgTouch(nm,key){(CFG_TS[nm]||(CFG_TS[nm]={}))[key]=new Date().toISOString();try{localStorage.setItem(CFG_TS_KEY,JSON.stringify(CFG_TS));}catch(e){}}
-    function aofBuildCfg(){return{sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG,ts:CFG_TS};}
+    /* MOP/EPS editado por técnico (chave nk(técnico) → MOP). Ausente = regra padrão. */
+    const MOPTEC_KEY='jarvis_abertos_ofs_moptec_v1';
+    let MOPTEC_CFG={};
+    try{MOPTEC_CFG=JSON.parse(localStorage.getItem(MOPTEC_KEY)||'{}');}catch(e){MOPTEC_CFG={};}
+    function aofMopTecSave(){try{localStorage.setItem(MOPTEC_KEY,JSON.stringify(MOPTEC_CFG));}catch(e){}}
+    function aofBuildCfg(){return{sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG,mopTec:MOPTEC_CFG,ts:CFG_TS};}
     /* Mescla a config vinda de outro dispositivo com a local, chave a chave. Devolve true
        se algo local mudou (pra só recarregar a tela quando necessário). */
     function aofMergeCfg(remoteCfg){
-      const maps={sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG};
-      const changed=_cfgMergePerKey(['sla','tipos','statusOv','obs'],maps,CFG_TS,remoteCfg);
-      SLA_CFG=maps.sla;TIPOS_CFG=maps.tipos;STATUS_OV=maps.statusOv;OBS_CFG=maps.obs;
-      aofSlaSave();aofTiposSave();aofStatusOvSave();aofObsSave();
+      const maps={sla:SLA_CFG,tipos:TIPOS_CFG,statusOv:STATUS_OV,obs:OBS_CFG,mopTec:MOPTEC_CFG};
+      const changed=_cfgMergePerKey(['sla','tipos','statusOv','obs','mopTec'],maps,CFG_TS,remoteCfg);
+      SLA_CFG=maps.sla;TIPOS_CFG=maps.tipos;STATUS_OV=maps.statusOv;OBS_CFG=maps.obs;MOPTEC_CFG=maps.mopTec;
+      aofSlaSave();aofTiposSave();aofStatusOvSave();aofObsSave();aofMopTecSave();
       try{localStorage.setItem(CFG_TS_KEY,JSON.stringify(CFG_TS));}catch(e){}
       return changed;
     }
@@ -7885,6 +7899,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       if(!AOF_MOP_TEC){AOF_MOP_TEC={};Object.entries(AOF_MOP_POR_TECNICO).forEach(([mop,ns])=>ns.forEach(nm=>{AOF_MOP_TEC[nk(nm)]=mop;}));}
       return AOF_MOP_TEC[nk(rec)]||'';
     }
+    /* Regra (pedido do usuário, 2026-10-27): 1) edição manual no Config (MOPTEC_CFG);
+       2) lista fixa AOF_MOP_POR_TECNICO; 3) cidade — mas SLN MA é exclusivo dos
+       técnicos da lista, então quem cairia em SLN MA só pela cidade vira GIGA+ MA. */
+    function aofMopAuto(rec,uf,cid){
+      const fixo=aofMopTec(rec);if(fixo)return fixo;
+      const c=(typeof normMopByCity==='function'?normMopByCity(uf,cid):'')||'';
+      return c==='SLN MA'?'GIGA+ MA':c;
+    }
+    function aofMopFor(rec,uf,cid){return MOPTEC_CFG[nk(rec)]||aofMopAuto(rec,uf,cid);}
     function build(table){
       const h=table[0].map(x=>n(x).replace(/^﻿/,''));
       const f=k=>h.indexOf(k),l=k=>h.lastIndexOf(k);
@@ -7917,9 +7940,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const cm=/CLUSTER_C(\d+)/i.exec(o.rec);
         o.cluster=o.clAr||mode(byRec[o.rec]?.cl)||(cm?'C'+(+cm[1]):'')||'Sem cluster';
         o.uf=o.ufAr||mode(byRec[o.rec]?.uf)||o.ufRaw||'N/I';
-        /* MOP/EPS: técnico com classificação fixa (AOF_MOP_POR_TECNICO) manda em todas
-           as atividades dele; senão, pela UF + cidade — mesma regra do B2B Abertos. */
-        o.mop=aofMopTec(o.rec)||(typeof normMopByCity==='function'?normMopByCity(o.uf,o.cid):'')||'';
+        /* MOP/EPS: ver aofMopFor() (edição manual > lista fixa > cidade). */
+        o.mop=aofMopFor(o.rec,o.uf,o.cid);
       });
       const dc={};out.forEach(o=>{if(o.data)dc[o.data]=(dc[o.data]||0)+1;});
       BASEDATE=mode(dc)||'';
@@ -9302,7 +9324,34 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         });
       }
       document.getElementById('aof-cfg-status-count').textContent=Object.keys(STATUS_OV).length;
+      aofRenderMopTecList();
     }
+    function aofRenderMopTecList(){
+      const list=document.getElementById('aof-cfg-mop-list');if(!list)return;
+      const q=n(document.getElementById('aof-cfg-mop-search').value).toLowerCase();
+      const tecs={};
+      ROWS.forEach(r=>{if(r.unassigned)return;const k=nk(r.rec);if(!tecs[k])tecs[k]={rec:r.rec,uf:r.uf,cid:r.cid};});
+      Object.keys(MOPTEC_CFG).forEach(k=>{if(!tecs[k])tecs[k]={rec:k,uf:'',cid:'',fora:true};});
+      const opts=typeof AB_ORDEM_MOP!=='undefined'?AB_ORDEM_MOP:['SLN MA','GIGA+ MA','GIGA+ PI','SLN PA','ADX'];
+      const L=Object.entries(tecs).filter(([,o])=>!q||o.rec.toLowerCase().includes(q)).sort((a,b)=>a[1].rec.localeCompare(b[1].rec,'pt'));
+      if(!L.length){list.innerHTML=`<div class="aof-cfg-row" style="color:var(--aof-muted)">${ROWS.length?'Nenhum técnico encontrado.':'Nenhum técnico carregado ainda — anexe uma base.'}</div>`;return;}
+      list.innerHTML=L.map(([k,o])=>{
+        const ed=MOPTEC_CFG[k]||'',auto=o.fora?'':aofMopAuto(o.rec,o.uf,o.cid);
+        return`<div class="aof-cfg-row"><span>${esc(o.rec)}${o.fora?' <small>(fora da base atual)</small>':''}${ed?' <small>· editado</small>':''}</span>`
+          +`<select class="aof-cfg-mop-sel" data-k="${esc(k)}"><option value="">Automático${auto?' ('+esc(auto)+')':''}</option>`
+          +opts.map(m=>`<option value="${esc(m)}"${ed===m?' selected':''}>${esc(m)}</option>`).join('')+'</select></div>';
+      }).join('');
+      list.querySelectorAll('.aof-cfg-mop-sel').forEach(sel=>sel.onchange=()=>{
+        if(!canEdit('abertosOfs')){aofRenderMopTecList();return;}
+        const k=sel.dataset.k;
+        if(sel.value)MOPTEC_CFG[k]=sel.value;else delete MOPTEC_CFG[k];
+        aofMopTecSave();aofCfgTouch('mopTec',k);
+        if(ROWS.length){ROWS.forEach(r=>{if(nk(r.rec)===k)r.mop=aofMopFor(r.rec,r.uf,r.cid);});setupFilters();render();}
+        aofRenderMopTecList();
+        aofSyncPublish('Abertos OFS — MOP/EPS do técnico atualizado');
+      });
+    }
+    document.getElementById('aof-cfg-mop-search').addEventListener('input',aofRenderMopTecList);
     document.getElementById('aof-btnCfg').onclick=()=>{if(!canEdit('abertosOfs')){alert('Seu usuário possui acesso somente para visualização.');return;}aofRenderCfgLists();document.getElementById('aof-cfg-overlay').classList.add('aof-open');};
     document.getElementById('aof-cfg-close').onclick=()=>document.getElementById('aof-cfg-overlay').classList.remove('aof-open');
     document.getElementById('aof-cfg-overlay').addEventListener('click',e=>{if(e.target.id==='aof-cfg-overlay')e.currentTarget.classList.remove('aof-open');});
