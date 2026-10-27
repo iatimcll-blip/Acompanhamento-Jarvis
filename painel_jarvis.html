@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T14:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T15:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7863,6 +7863,25 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       return'';
     }
 
+    /* Técnicos com MOP/EPS fixo (pedido do usuário, 2026-10-27), independente da
+       cidade da atividade. Comparação por nk() (sem acento/caixa/espaço). */
+    const AOF_MOP_POR_TECNICO={
+      'SLN MA':[
+        'Anderson Ravelly da Silva Santos',
+        'Balbino Silva Rosa',
+        'Gabriel Rodrigues Silva',
+        'Igor Leonardo Duarte Basola',
+        'Jeandersson dos Santos Campos',
+        'Joardson Foreliza de Assis Castro',
+        'Luiz Filipe Sodre Rodrigues',
+        'Marcos Yuri Bulhao Silva'
+      ]
+    };
+    let AOF_MOP_TEC=null;/* montado no 1º uso: nk() é definida num script posterior */
+    function aofMopTec(rec){
+      if(!AOF_MOP_TEC){AOF_MOP_TEC={};Object.entries(AOF_MOP_POR_TECNICO).forEach(([mop,ns])=>ns.forEach(nm=>{AOF_MOP_TEC[nk(nm)]=mop;}));}
+      return AOF_MOP_TEC[nk(rec)]||'';
+    }
     function build(table){
       const h=table[0].map(x=>n(x).replace(/^﻿/,''));
       const f=k=>h.indexOf(k),l=k=>h.lastIndexOf(k);
@@ -7895,8 +7914,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const cm=/CLUSTER_C(\d+)/i.exec(o.rec);
         o.cluster=o.clAr||mode(byRec[o.rec]?.cl)||(cm?'C'+(+cm[1]):'')||'Sem cluster';
         o.uf=o.ufAr||mode(byRec[o.rec]?.uf)||o.ufRaw||'N/I';
-        /* MOP/EPS pela UF + cidade — mesma regra do B2B Abertos (normMopByCity). */
-        o.mop=(typeof normMopByCity==='function'?normMopByCity(o.uf,o.cid):'')||'';
+        /* MOP/EPS: técnico com classificação fixa (AOF_MOP_POR_TECNICO) manda em todas
+           as atividades dele; senão, pela UF + cidade — mesma regra do B2B Abertos. */
+        o.mop=aofMopTec(o.rec)||(typeof normMopByCity==='function'?normMopByCity(o.uf,o.cid):'')||'';
       });
       const dc={};out.forEach(o=>{if(o.data)dc[o.data]=(dc[o.data]||0)+1;});
       BASEDATE=mode(dc)||'';
