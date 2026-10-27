@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T17:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T18:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7929,7 +7929,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
            o teste é case-insensitive, mas evita qualquer dependência de ordem). */
         const rec=titleCasePT(recRaw);
         return{rec,unassigned:/CLUSTER/i.test(recRaw),data:g(r,'data'),status:g(r,'st'),sg:statusGroup(g(r,'st')),nome:titleCasePT(g(r,'nome')),
-          cid:titleCasePT(g(r,'cid')),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:fmtAbChamado(g(r,'abChamado'),g(r,'data')),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
+          cid:titleCasePT(g(r,'cid')),bairro:g(r,'bairro'),ufRaw:uf,ab:pdt(g(r,'ab')),abChamado:fmtAbChamado(g(r,'abChamado'),g(r,'data')),abChRaw:g(r,'abChamado'),ini:g(r,'ini'),fim:g(r,'fim'),dur:mins(g(r,'dur')),desl:mins(g(r,'desl')),
           tipo,cat:category(tipo),motivo:g(r,'motivo'),os:g(r,'os'),sistema:sistemaOS(g(r,'os')),area,pos:g(r,'pos'),com:g(r,'com'),
           clAr:m?'C'+(+m[1]):'',ufAr:m?m[2].toUpperCase():''};
       });
@@ -8213,14 +8213,47 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     const aofIniciada=r=>!aofExecutada(r)&&n(r.status).toLowerCase()==='iniciado';
     const AOF_ATIV_OPEN=new Set();
     let aofAtivAllOpen=false;
+    /* Prazo vencido (pedido do usuário, 2026-10-27): da ABERTURA DO CHAMADO até a
+       CONCLUSÃO da atividade (Data + Fim; "iniciado" conta até a hora de referência
+       da base) — acima de 8h = Vencida. Formatos reais de "Data Abertura Chamado":
+       "DD/MM hh:mm" (ano = da coluna Data), "DD/MM/AA hh:mm" e "AAAA/MM/DD" SEM hora
+       (B2B/Rede) — nesse caso usa a hora da abertura da OS se for o mesmo dia, senão
+       00:00, marcado como estimado. Vazio = atividade interna, sem prazo. */
+    function aofAbChDate(r){
+      const raw=n(r.abChRaw);if(!raw)return null;
+      let m=/^(\d{4})\/(\d{2})\/(\d{2})(?:\s+(\d{1,2}):(\d{2}))?/.exec(raw);
+      if(m){
+        if(m[4]!=null)return{d:new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]),est:false};
+        const d=new Date(+m[1],+m[2]-1,+m[3]);
+        if(r.ab&&r.ab.getFullYear()===d.getFullYear()&&r.ab.getMonth()===d.getMonth()&&r.ab.getDate()===d.getDate())return{d:r.ab,est:true};
+        return{d,est:true};
+      }
+      m=/^(\d{2})\/(\d{2})(?:\/(\d{2,4}))?(?:\s+(\d{1,2}):(\d{2}))?/.exec(raw);
+      if(!m)return null;
+      const ref=pdt(r.data);
+      const y=m[3]?(m[3].length===2?2000+(+m[3]):+m[3]):(ref?ref.getFullYear():new Date().getFullYear());
+      let d=new Date(y,+m[2]-1,+m[1],m[4]!=null?+m[4]:0,m[5]!=null?+m[5]:0);
+      if(!m[3]&&ref&&d>ref&&d.getMonth()>ref.getMonth())d=new Date(y-1,+m[2]-1,+m[1],d.getHours(),d.getMinutes());
+      return{d,est:m[4]==null};
+    }
+    function aofConclusaoDate(r,ex){
+      if(!ex)return REF||null;
+      const fim=pdt(r.data+' '+r.fim);if(!fim)return null;
+      const ini=pdt(r.data+' '+r.ini);
+      return(ini&&fim<ini)?new Date(fim.getTime()+86400000):fim;/* virou o dia */
+    }
+    const fmtDH=d=>{if(!d)return'';const p2=v=>String(v).padStart(2,'0');return`${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;};
     function aofAtivItems(D){
       return D.filter(r=>!r.unassigned&&(aofExecutada(r)||aofIniciada(r))).map(r=>{
         const ex=aofExecutada(r),inic=!ex;
         let tempo=ex?(r.dur||0):null;
         if(inic&&REF){const d0=pdt(r.data+' '+r.ini);if(d0&&REF>d0)tempo=Math.round((REF-d0)/60000);}
         const dt=pdt(r.data);
+        const ab=aofAbChDate(r),conc=aofConclusaoDate(r,ex);
+        const prazo=ab&&conc&&conc>=ab.d?Math.round((conc-ab.d)/60000):null;
         return{...r,iniM:mins(r.ini),fimM:ex?mins(r.fim):null,tempo,deslM:ex?r.desl:null,emAndamento:inic,
-          dataTs:dt?dt.getTime():0,venc:tempo!=null&&tempo>AOF_ATIV_LIMITE_MIN};
+          dataTs:dt?dt.getTime():0,abChD:ab?ab.d:null,abChEst:!!(ab&&ab.est),concD:conc,prazo,
+          venc:prazo!=null&&prazo>AOF_ATIV_LIMITE_MIN};
       }).sort((a,b)=>a.rec.localeCompare(b.rec,'pt')||(a.dataTs-b.dataTs)||((a.iniM??9999)-(b.iniM??9999)));
     }
     function aofAtivGroups(D,q){
@@ -8243,10 +8276,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
       const G=aofAtivGroups(D,q);
       const[sk,sd]=sortState.ativ||['rec',1];
-      const cols=[['rec','Técnico'],['n','Atividades'],['data','Data'],['ini','Início'],['fim','Fim'],['tempo','Tempo em atividade'],['venc','Farol 8h'],['desl','Deslocamento'],
+      const cols=[['rec','Técnico'],['n','Atividades'],['data','Data'],['ini','Início'],['fim','Fim'],['tempo','Tempo em atividade'],['abch','Abertura do chamado'],['conc','Conclusão'],['prazo','Prazo (abertura → conclusão)'],['venc','Farol 8h'],['desl','Deslocamento'],
         ['tipo','Tipo'],['sg','Status'],['os','OS'],['nome','Cliente'],['cid','Cidade'],['mop','MOP/EPS']];
       const sortable=new Set(['rec','n','tempo','venc','desl']);
-      const num=new Set(['n','ini','fim','tempo','desl']);
+      const num=new Set(['n','ini','fim','tempo','prazo','desl']);
       const th=cols.map(([k,l])=>`<th${sortable.has(k)?` tabindex="0" data-k="${k}"`:' style="cursor:default"'} class="${num.has(k)?'aof-num':''}">${l}${k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('');
       const td=(v,c)=>`<td class="${c||''}">${v}</td>`;
       let html='',nItens=0,nVenc=0;
@@ -8262,6 +8295,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           +td(first&&first.iniM!=null?esc(first.ini):'—','aof-num')
           +td(last&&last.fimM!=null?esc(last.fim):'—','aof-num')
           +td(`<b>${fmtH(o.tempo)}</b>`,'aof-num')
+          +td('')+td('')+td('')
           +td(o.venc?aofFarol8h(true,`${o.venc} vencida${o.venc>1?'s':''}`):aofFarol8h(false,'Nenhuma vencida'))
           +td(fmtH(o.desl),'aof-num')
           +td('')+td('')+td('')+td('')+td('')+td(esc(o.mops)||'—')
@@ -8272,7 +8306,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             +td(r.iniM==null?'—':esc(r.ini),'aof-num')
             +td(r.fimM==null?(r.emAndamento?'<small>em andamento</small>':'—'):esc(r.fim),'aof-num')
             +td(r.tempo==null?'—':`<b>${fmtH(r.tempo)}</b>`,'aof-num')
-            +td(r.tempo==null?'—':aofFarol8h(r.venc))
+            +td(r.abChD?esc(fmtDH(r.abChD))+(r.abChEst?' <small title="O chamado veio sem hora de abertura — hora estimada pela abertura da OS (mesmo dia) ou 00:00">*</small>':''):'<small>sem chamado</small>')
+            +td(r.concD?esc(fmtDH(r.concD))+(r.emAndamento?' <small>(em andamento)</small>':''):'—')
+            +td(r.prazo==null?'—':`<b${r.venc?' style="color:var(--aof-red)"':''}>${fmtSLA(r.prazo/60)}</b>`,'aof-num')
+            +td(r.prazo==null?'—':aofFarol8h(r.venc))
             +td(r.deslM==null?'—':fmtH(r.deslM),'aof-num')
             +td(esc(r.tipo),'aof-wrap')+td(pill(r.sg)+(r.emAndamento?' <small>iniciado</small>':''))
             +td(esc(r.os)||'—')+td(esc(r.nome)||'—','aof-wrap')
@@ -8282,7 +8319,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       });
       const t=document.getElementById('aof-tbl');
       t.innerHTML=`<thead><tr>${th}</tr></thead><tbody>${html||`<tr><td colspan="${cols.length}" class="aof-empty">Nenhuma atividade realizada no recorte atual.</td></tr>`}</tbody>`;
-      document.getElementById('aof-tblInfo').textContent=`${G.length} técnico${G.length===1?"":"s"} · ${nItens} atividade${nItens===1?"":"s"} realizada${nItens===1?"":"s"} · ${nVenc} vencida${nVenc===1?'':'s'} (acima de 8h)`;
+      document.getElementById('aof-tblInfo').textContent=`${G.length} técnico${G.length===1?"":"s"} · ${nItens} atividade${nItens===1?"":"s"} realizada${nItens===1?"":"s"} · ${nVenc} vencida${nVenc===1?'':'s'} (mais de 8h entre a abertura do chamado e a conclusão)`;
       const tg=document.getElementById('aof-btnAtivToggle');
       if(tg)tg.textContent=aofAtivAllOpen?'Recolher todos':'Expandir todos';
       t.querySelectorAll('th[data-k]').forEach(h=>{const go=()=>{const k=h.dataset.k;const cur=sortState.ativ||['rec',1];
@@ -8418,7 +8455,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['Início',r=>r.iniM==null?'':r.ini],
         ['Fim',r=>r.fimM==null?(r.emAndamento?'em andamento':''):r.fim],
         ['Tempo em atividade',r=>r.tempo==null?'':fmtH(r.tempo)],
-        ['Farol 8h',r=>r.tempo==null?'':(r.venc?'Vencida':'No prazo')],
+        ['Abertura do chamado',r=>r.abChD?fmtDH(r.abChD)+(r.abChEst?' (hora estimada)':''):'sem chamado'],
+        ['Conclusão',r=>r.concD?fmtDH(r.concD)+(r.emAndamento?' (em andamento)':''):''],
+        ['Prazo (abertura → conclusão)',r=>r.prazo==null?'':fmtSLA(r.prazo/60)],
+        ['Farol 8h',r=>r.prazo==null?'':(r.venc?'Vencida':'No prazo')],
         ['Deslocamento',r=>r.deslM==null?'':fmtH(r.deslM)],
         ['Tipo',r=>r.tipo],['Status',r=>r.sg+(r.emAndamento?' (iniciado)':'')],['OS',r=>r.os||''],['Cliente',r=>r.nome||''],
         ['Cidade',r=>r.cid],['UF',r=>r.uf],['MOP/EPS',r=>r.mop||''],['Cluster',r=>r.cluster],
