@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T15:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T16:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7563,7 +7563,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-resumo-date:empty{display:none}
   #panel-abertos-ofs .aof-tec-link{background:none;border:none;padding:0;font:inherit;color:var(--aof-blue);cursor:pointer;text-align:left}
   #panel-abertos-ofs .aof-tec-link:hover{text-decoration:underline}
-  #panel-abertos-ofs tr.aof-tec-first td{border-top:2px solid var(--aof-line)}
+  #panel-abertos-ofs tr.aof-ativ-grp{cursor:pointer;background:var(--aof-soft)}
+  #panel-abertos-ofs tr.aof-ativ-grp td{border-top:2px solid var(--aof-line)}
+  #panel-abertos-ofs tr.aof-ativ-grp:hover{background:var(--aof-line)}
+  #panel-abertos-ofs .aof-ativ-caret{display:inline-block;width:12px;color:var(--aof-muted)}
   #panel-abertos-ofs .aof-farol{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;flex-shrink:0}
   #panel-abertos-ofs .aof-status-select{margin-left:6px;font:500 10px var(--aof-sans);padding:1px 3px;border-radius:5px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-muted);vertical-align:middle}
   #panel-abertos-ofs .aof-obs-input{width:100%;min-width:260px;min-height:52px;font:500 12px var(--aof-sans);padding:6px 8px;border-radius:7px;border:1px solid var(--aof-line);background:var(--aof-card);color:var(--aof-ink);resize:vertical;white-space:normal;word-break:break-word;line-height:1.35}
@@ -7708,7 +7711,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button type="button" class="aof-tab" role="tab" aria-selected="true" data-tab="tec">Produtividade por técnico</button>
             <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="ativ">Atividades por técnico</button>
           </div>
-          <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="aof-btn" id="aof-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
+          <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><button type="button" class="aof-btn" id="aof-btnAtivToggle" style="display:none">Expandir todos</button><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="aof-btn" id="aof-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
           <div class="aof-tablewrap"><table id="aof-tbl"></table></div>
         </div>
       </section>
@@ -8175,41 +8178,104 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     }
 
     const pill=sg=>`<span class="aof-pill" style="background:var(${ST[sg].c})">${sg}</span>`;
-    /* Aba "Atividades por técnico" (pedido do usuário, 2026-10-27): uma linha por
-       atividade de cada técnico na data da base, com o tempo gasto. Só conta tempo
-       de atividade que foi de fato executada (concluída, não concluída ou suspensa —
-       nessas o Início/Fim/Duração do export são reais). Canceladas ficam fora. Pendente/em rota/cancelada
-       trazem horário PLANEJADO (ex.: 00:00–01:00), então aparecem com "—";
-       "iniciado" mostra o início real e "em andamento". */
+    /* Aba "Atividades por técnico" (pedido do usuário, 2026-10-27): consolidado por
+       técnico de TODAS as bases anexadas (várias datas somam juntas, com a coluna
+       Data), só com atividades REALIZADAS — concluída, não concluída ou suspensa
+       (nessas o Início/Fim/Duração do export são reais) + "iniciado" (em andamento,
+       tempo contado do início até a hora de referência da base). Pendente/em rota/
+       cancelada ficam fora: o export traz horário PLANEJADO (00:00–01:00) nelas.
+       Farol: atividade com mais de 8h de tempo em atividade = vermelho "Vencida". */
     const AOF_EXEC=['Concluída','Não concluída','Suspensa'];
+    const AOF_ATIV_LIMITE_MIN=8*60;
     const aofExecutada=r=>AOF_EXEC.includes(r.sg);
     const aofIniciada=r=>!aofExecutada(r)&&n(r.status).toLowerCase()==='iniciado';
-    function aofAtivRows(D){
-      const list=D.filter(r=>!r.unassigned&&r.sg!=='Cancelada').map(r=>{
-        const ex=aofExecutada(r),inic=aofIniciada(r);
-        return{...r,iniM:(ex||inic)?mins(r.ini):null,fimM:ex?mins(r.fim):null,tempo:ex?(r.dur||0):null,deslM:ex?r.desl:null,emAndamento:inic};
+    const AOF_ATIV_OPEN=new Set();
+    let aofAtivAllOpen=false;
+    function aofAtivItems(D){
+      return D.filter(r=>!r.unassigned&&(aofExecutada(r)||aofIniciada(r))).map(r=>{
+        const ex=aofExecutada(r),inic=!ex;
+        let tempo=ex?(r.dur||0):null;
+        if(inic&&REF){const d0=pdt(r.data+' '+r.ini);if(d0&&REF>d0)tempo=Math.round((REF-d0)/60000);}
+        const dt=pdt(r.data);
+        return{...r,iniM:mins(r.ini),fimM:ex?mins(r.fim):null,tempo,deslM:ex?r.desl:null,emAndamento:inic,
+          dataTs:dt?dt.getTime():0,venc:tempo!=null&&tempo>AOF_ATIV_LIMITE_MIN};
+      }).sort((a,b)=>a.rec.localeCompare(b.rec,'pt')||(a.dataTs-b.dataTs)||((a.iniM??9999)-(b.iniM??9999)));
+    }
+    function aofAtivGroups(D,q){
+      const g={};
+      aofAtivItems(D).forEach(r=>{const o=g[r.rec]||={rec:r.rec,items:[],cl:{},uf:{},mop:{},datas:new Set(),tempo:0,venc:0,desl:0,ex:0,and:0};
+        o.items.push(r);o.cl[r.cluster]=1;o.uf[r.uf]=1;if(r.mop)o.mop[r.mop]=1;if(r.data)o.datas.add(r.data);
+        if(r.tempo!=null)o.tempo+=r.tempo;if(r.venc)o.venc++;if(r.deslM)o.desl+=r.deslM;if(r.emAndamento)o.and++;else o.ex++;});
+      let G=Object.values(g).map(o=>({...o,n:o.items.length,cluster:Object.keys(o.cl).join(', '),ufs:Object.keys(o.uf).join(', '),mops:Object.keys(o.mop).join(', ')}));
+      if(q){
+        const hit=r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q));
+        G=G.filter(o=>o.rec.toLowerCase().includes(q)||o.items.some(hit))
+          .map(o=>o.rec.toLowerCase().includes(q)?o:{...o,items:o.items.filter(hit)});
+      }
+      const[sk,sd]=sortState.ativ||['rec',1];
+      return G.sort((a,b)=>{const x=a[sk],y=b[sk];
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd||a.rec.localeCompare(b.rec,'pt');});
+    }
+    const aofFarol8h=(venc,txt)=>`<span class="aof-farol" style="background:${venc?'var(--aof-red)':'var(--aof-green)'}"></span>${venc?`<b style="color:var(--aof-red)">${txt||'Vencida'}</b>`:(txt||'No prazo')}`;
+    function drawAtivTable(D){
+      const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
+      const G=aofAtivGroups(D,q);
+      const[sk,sd]=sortState.ativ||['rec',1];
+      const cols=[['rec','Técnico'],['n','Atividades'],['data','Data'],['ini','Início'],['fim','Fim'],['tempo','Tempo em atividade'],['venc','Farol 8h'],['desl','Deslocamento'],
+        ['tipo','Tipo'],['sg','Status'],['os','OS'],['nome','Cliente'],['cid','Cidade'],['mop','MOP/EPS']];
+      const sortable=new Set(['rec','n','tempo','venc','desl']);
+      const num=new Set(['n','ini','fim','tempo','desl']);
+      const th=cols.map(([k,l])=>`<th${sortable.has(k)?` tabindex="0" data-k="${k}"`:' style="cursor:default"'} class="${num.has(k)?'aof-num':''}">${l}${k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('');
+      const td=(v,c)=>`<td class="${c||''}">${v}</td>`;
+      let html='',nItens=0,nVenc=0;
+      G.forEach(o=>{
+        nItens+=o.items.length;nVenc+=o.items.filter(r=>r.venc).length;
+        const open=aofAtivAllOpen||!!q||AOF_ATIV_OPEN.has(o.rec);
+        const first=o.items[0],last=o.items[o.items.length-1];
+        const datas=[...o.datas];
+        html+=`<tr class="aof-ativ-grp" data-rec="${esc(o.rec)}">`
+          +td(`<span class="aof-ativ-caret">${open?'▾':'▸'}</span> <b>${esc(o.rec)}</b><br><small>${esc(o.cluster)} · ${esc(o.ufs)}</small>`,'aof-wrap')
+          +td(`<b>${o.items.length}</b>${o.and?`<br><small>${o.and} em andamento</small>`:''}`,'aof-num')
+          +td(datas.length>1?`${datas.length} datas`:esc(datas[0]||'—'))
+          +td(first&&first.iniM!=null?esc(first.ini):'—','aof-num')
+          +td(last&&last.fimM!=null?esc(last.fim):'—','aof-num')
+          +td(`<b>${fmtH(o.tempo)}</b>`,'aof-num')
+          +td(o.venc?aofFarol8h(true,`${o.venc} vencida${o.venc>1?'s':''}`):aofFarol8h(false,'Nenhuma vencida'))
+          +td(fmtH(o.desl),'aof-num')
+          +td('')+td('')+td('')+td('')+td('')+td(esc(o.mops)||'—')
+          +'</tr>';
+        if(open)o.items.forEach(r=>{
+          html+=`<tr class="aof-ativ-item${r.venc?' aof-row-overdue':''}">`
+            +td('')+td('')+td(esc(r.data)||'—')
+            +td(r.iniM==null?'—':esc(r.ini),'aof-num')
+            +td(r.fimM==null?(r.emAndamento?'<small>em andamento</small>':'—'):esc(r.fim),'aof-num')
+            +td(r.tempo==null?'—':`<b>${fmtH(r.tempo)}</b>`,'aof-num')
+            +td(r.tempo==null?'—':aofFarol8h(r.venc))
+            +td(r.deslM==null?'—':fmtH(r.deslM),'aof-num')
+            +td(esc(r.tipo),'aof-wrap')+td(pill(r.sg)+(r.emAndamento?' <small>iniciado</small>':''))
+            +td(esc(r.os)||'—')+td(esc(r.nome)||'—','aof-wrap')
+            +td(esc(r.cid)+(r.uf?` / ${r.uf}`:''))+td(esc(r.mop)||'—')
+            +'</tr>';
+        });
       });
-      const tot={};
-      list.forEach(r=>{const o=tot[r.rec]||={t:0,n:0,q:0};o.q++;if(r.tempo!=null){o.t+=r.tempo;o.n++;}});
-      list.forEach(r=>{const o=tot[r.rec];r.totTec=o.t;r.totTxt=`${fmtH(o.t)} · ${o.n} de ${o.q} executada${o.q>1?'s':''}`;});
-      return list.sort((a,b)=>a.rec.localeCompare(b.rec,'pt')||((a.iniM??9999)-(b.iniM??9999)));
+      const t=document.getElementById('aof-tbl');
+      t.innerHTML=`<thead><tr>${th}</tr></thead><tbody>${html||`<tr><td colspan="${cols.length}" class="aof-empty">Nenhuma atividade realizada no recorte atual.</td></tr>`}</tbody>`;
+      document.getElementById('aof-tblInfo').textContent=`${G.length} técnico${G.length===1?"":"s"} · ${nItens} atividade${nItens===1?"":"s"} realizada${nItens===1?"":"s"} · ${nVenc} vencida${nVenc===1?'':'s'} (acima de 8h)`;
+      const tg=document.getElementById('aof-btnAtivToggle');
+      if(tg)tg.textContent=aofAtivAllOpen?'Recolher todos':'Expandir todos';
+      t.querySelectorAll('th[data-k]').forEach(h=>{const go=()=>{const k=h.dataset.k;const cur=sortState.ativ||['rec',1];
+        sortState.ativ=[k,cur[0]===k?-cur[1]:(k==='rec'?1:-1)];drawAtivTable(filtered());};
+        h.onclick=go;h.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};});
+      t.querySelectorAll('tr.aof-ativ-grp').forEach(tr=>{tr.onclick=()=>{const k=tr.dataset.rec;
+        if(aofAtivAllOpen){aofAtivAllOpen=false;G.forEach(o=>AOF_ATIV_OPEN.add(o.rec));}
+        if(AOF_ATIV_OPEN.has(k))AOF_ATIV_OPEN.delete(k);else AOF_ATIV_OPEN.add(k);drawAtivTable(filtered());};});
     }
     function tableDefs(D){
       if(tab==='ativ'){
-        return{def:[
-          ['rec','Técnico',r=>esc(r.rec),'aof-wrap'],
-          ['iniM','Início',r=>r.iniM==null?'—':esc(r.ini),'aof-num'],
-          ['fimM','Fim',r=>r.fimM==null?(r.emAndamento?'<small>em andamento</small>':'—'):esc(r.fim),'aof-num'],
-          ['tempo','Tempo em atividade',r=>r.tempo==null?'—':`<b>${fmtH(r.tempo)}</b>`,'aof-num'],
-          ['deslM','Deslocamento',r=>r.deslM==null?'—':fmtH(r.deslM),'aof-num'],
-          ['tipo','Tipo',r=>esc(r.tipo),'aof-wrap'],
-          ['sg','Status',r=>pill(r.sg)+(r.emAndamento?' <small>iniciado</small>':'')],
-          ['os','OS',r=>esc(r.os)||'—'],
-          ['nome','Cliente',r=>esc(r.nome)||'—','aof-wrap'],
-          ['cid','Cidade',r=>esc(r.cid)+(r.uf?` / ${r.uf}`:'')],
-          ['cluster','Cluster',r=>r.cluster],
-          ['totTec','Total do técnico no dia',r=>esc(r.totTxt),'aof-num']
-        ],rows:aofAtivRows(D),def0:['rec',1],label:'atividades de técnicos (canceladas não entram)'};
+        const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
+        const rows=[];
+        aofAtivGroups(D,q).forEach(o=>o.items.forEach(r=>rows.push({...r,totTxt:`${fmtH(o.tempo)} · ${o.n} atividade${o.n>1?'s':''} · ${o.venc} vencida${o.venc===1?'':'s'}`})));
+        return{def:[],rows,def0:null,label:'atividades realizadas'};
       }
       if(tab==='tec'){
         const m={};
@@ -8278,19 +8344,20 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         ['ab','Em aberto',r=>r.ab,'aof-num'],['su','Susp./não concl.',r=>r.su,'aof-num']],rows,def0:['t',-1],label:'cidades'};
     }
     function drawTable(D){
+      const tg=document.getElementById('aof-btnAtivToggle');
+      if(tg)tg.style.display=tab==='ativ'?'':'none';
+      if(tab==='ativ'){drawAtivTable(D);return;}
       const{def,rows,def0,label}=tableDefs(D);
       const[sk,sd]=sortState[tab]||def0;
       const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
       let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
       R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
         if(x==null)return 1;if(y==null)return-1;
-        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd
-          ||(tab==='ativ'?((a.iniM??9999)-(b.iniM??9999)):0);});
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
       const t=document.getElementById('aof-tbl');
-      const rowCls=(r,i)=>tab==='fila'?((r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0))?' class="aof-row-overdue"':'')
-        :(tab==='ativ'&&sk==='rec'&&i>0&&R[i-1].rec!==r.rec)?' class="aof-tec-first"':'';
+      const rowCls=r=>(tab==='fila'&&r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0))?' class="aof-row-overdue"':'';
       t.innerHTML=`<thead><tr>${def.map(([k,l,,c])=>`<th tabindex="0" data-k="${k}" class="${c||''}">${l}${k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead>`
-        +`<tbody>${R.length?R.map((r,i)=>`<tr${rowCls(r,i)}>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
+        +`<tbody>${R.length?R.map(r=>`<tr${rowCls(r)}>${def.map(([,,fn,c])=>`<td class="${c||''}">${fn(r)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${def.length}" class="aof-empty">Nenhum registro no recorte atual.</td></tr>`}</tbody>`;
       document.getElementById('aof-tblInfo').textContent=`${R.length} ${label}`+(tab==='fila'&&REF?` · aging calculado até ${String(REF.getHours()).padStart(2,'0')}:${String(REF.getMinutes()).padStart(2,'0')} do dia da base · SLA da abertura da OS até agora`:'');
       t.querySelectorAll('th').forEach(th=>{const go=()=>{const k=th.dataset.k;const cur=sortState[tab]||def0;
         sortState[tab]=[k,cur[0]===k?-cur[1]:(typeof rows[0]?.[k]==='number'?-1:1)];drawTable(filtered());};
@@ -8325,14 +8392,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
        calculados por tableDefs(), um mapeamento por aba (tec/fila/cid). */
     function aofExportDefs(){
       if(tab==='ativ')return[
-        ['Técnico',r=>r.rec],
+        ['Técnico',r=>r.rec],['Data',r=>r.data||''],
         ['Início',r=>r.iniM==null?'':r.ini],
         ['Fim',r=>r.fimM==null?(r.emAndamento?'em andamento':''):r.fim],
         ['Tempo em atividade',r=>r.tempo==null?'':fmtH(r.tempo)],
+        ['Farol 8h',r=>r.tempo==null?'':(r.venc?'Vencida':'No prazo')],
         ['Deslocamento',r=>r.deslM==null?'':fmtH(r.deslM)],
-        ['Tipo',r=>r.tipo],['Status',r=>r.sg],['OS',r=>r.os||''],['Cliente',r=>r.nome||''],
-        ['Cidade',r=>r.cid],['UF',r=>r.uf],['Cluster',r=>r.cluster],
-        ['Total do técnico no dia',r=>r.totTxt]
+        ['Tipo',r=>r.tipo],['Status',r=>r.sg+(r.emAndamento?' (iniciado)':'')],['OS',r=>r.os||''],['Cliente',r=>r.nome||''],
+        ['Cidade',r=>r.cid],['UF',r=>r.uf],['MOP/EPS',r=>r.mop||''],['Cluster',r=>r.cluster],
+        ['Total do técnico',r=>r.totTxt]
       ];
       if(tab==='tec')return[
         ['Técnico',r=>r.rec],['Cluster',r=>r.cluster],['UF',r=>r.uf],
@@ -8369,13 +8437,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     function aofExportXlsx(){
       const D=filtered();
       const{rows,def0}=tableDefs(D);
-      const[sk,sd]=sortState[tab]||def0;
-      const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
-      let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
-      R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
-        if(x==null)return 1;if(y==null)return-1;
-        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd
-          ||(tab==='ativ'?((a.iniM??9999)-(b.iniM??9999)):0);});
+      let R=rows;
+      if(tab!=='ativ'){/* na aba consolidada, tableDefs já devolve busca + ordem da tela */
+        const[sk,sd]=sortState[tab]||def0;
+        const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
+        R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
+        R=[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
+          if(x==null)return 1;if(y==null)return-1;
+          return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
+      }
       if(!R.length){alert('Nenhum registro no recorte atual para exportar.');return;}
       const btn=document.getElementById('aof-btnExport');
       const origHtml=btn.innerHTML;btn.disabled=true;btn.innerHTML='Gerando…';
@@ -8394,7 +8464,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           ws.columns=defs.map(([label])=>({width:AOF_XLSX_WIDE_COLS.has(label)?36:Math.max(12,label.length+4)}));
           R.forEach(r=>{
             const row=ws.addRow(defs.map(([,fn])=>fn(r)));
-            const overdue=tab==='fila'&&r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0);
+            const overdue=tab==='ativ'?r.venc:(tab==='fila'&&r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0));
             if(overdue)row.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDECEC'}};});
           });
           ws.autoFilter={from:{row:1,column:1},to:{row:1,column:defs.length}};
@@ -9201,6 +9271,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       setTimeout(()=>{restore();mo.disconnect();},8000);
     };
     document.getElementById('aof-btnExport').onclick=()=>aofExportXlsx();
+    document.getElementById('aof-btnAtivToggle').onclick=()=>{aofAtivAllOpen=!aofAtivAllOpen;if(!aofAtivAllOpen)AOF_ATIV_OPEN.clear();drawTable(filtered());};
     document.getElementById('aof-btnMatinal').onclick=()=>aofGerarRelatorioMatinal();
     document.getElementById('aof-btnMatinalNovo').onclick=()=>aofGerarRelatorioMatinalNovo();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>ROWS.length&&render());
