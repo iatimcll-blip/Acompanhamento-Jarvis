@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T18:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T19:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7634,6 +7634,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <button class="aof-btn" id="aof-btnNotif" title="Permitir avisos do navegador para chamados Bdesk próximos de vencer o SLA"><i class="ti ti-bell"></i> Avisos</button>
           <button class="aof-btn" id="aof-btnMatinal" title="Gera o Excel no modelo do Matinal: Warmup completo + chamados de Manutenção Corretiva de Rede/Manutenção de Rede Field já acima do SLA"><i class="ti ti-report"></i> Relatório Matinal</button>
           <button class="aof-btn" id="aof-btnMatinalNovo" title="Gera o Excel no novo modelo (Resumo + base + Parceiros): Warmup completo + Fila OFS respeitando os filtros já aplicados acima, com corte de SLA em 9h"><i class="ti ti-report-analytics"></i> NV Relatório Matinal</button>
+          <button class="aof-btn" id="aof-btnPpt" title="Monta a apresentação no modelo padrão (GIGA+) com o recorte dos filtros atuais — pré-visualização aqui na página, com Baixar PPT"><i class="ti ti-presentation"></i> Apresentação</button>
           <button class="aof-btn panel-edit-only" id="aof-btnClear" title="Remove a base salva neste navegador">Remover base</button>
           <button class="aof-btn panel-edit-only" id="aof-btnCfg" title="Configurar SLA por tipo e tipos de atividade visíveis"><i class="ti ti-settings"></i> Config.</button>
         </div>
@@ -7653,6 +7654,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="aof-err" id="aof-err"></div>
       <div class="aof-bd-alert" id="aof-bd-alert" style="display:none"></div>
     </header>
+    <div id="aof-pv" role="region" aria-label="Pré-visualização da apresentação"></div>
 
     <div class="aof-main aof-empty-state" id="aof-main">
       <section class="aof-hero">
@@ -9332,6 +9334,123 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       mo.observe(btn,{attributes:true,attributeFilter:['disabled']});
       setTimeout(()=>{restore();mo.disconnect();},8000);
     };
+    /* Apresentação do Abertos OFS (pedido do usuário, 2026-10-27): mesmo modelo padrão
+       GIGA+ do Executivo (execTplCapa/execTplConteudo) e mesma pré-visualização na página
+       (execPptPrevAbrir no container #aof-pv). Tudo sai do recorte dos filtros atuais
+       (filtered()), com as mesmas contas da tela: aofKpiCalc, aofAtivGroups (prazo da
+       abertura do chamado à conclusão > 8h = vencida) e o farol de 8h da Fila. */
+    function aofPptFiltrosTxt(){
+      const sel=id=>{const el=document.getElementById(id);if(!el||!el.value)return'';const o=el.options[el.selectedIndex];return o?o.textContent:el.value;};
+      const cut=(v,k)=>v.length>k?v.slice(0,k-1)+'…':v;
+      const f=[['Cluster',sel('aof-fCluster')],['UF',sel('aof-fUF')],['Cidade',cut(selCid.map(aofCidLabel).join(', '),60)],['MOP/EPS',sel('aof-fMop')],['Categoria',sel('aof-fCat')],
+        ['Tipo',cut(selTipo.join(', '),80)],['Status',sel('aof-fStatus')],['Sistema',sel('aof-fSistema')],['Técnico',n(document.getElementById('aof-fTec').value)]].filter(x=>x[1]);
+      return f.length?f.map(([k,v])=>k+': '+v).join(' · '):'Sem filtros (todas as atividades da base)';
+    }
+    function aofGerarApresentacao(){
+      if(typeof PptxGenJS==='undefined'||typeof pptxNewDeck!=='function'||typeof execTplCapa!=='function'){alert('Biblioteca de geração de PPTX não carregada.');return;}
+      if(!ROWS.length){alert('Anexe uma base do OFS antes de gerar a apresentação.');return;}
+      const D=filtered();
+      if(!D.length){alert('Nenhuma atividade no recorte dos filtros atuais.');return;}
+      const T=EXEC_TPL,RED='C0392B',GREEN='1E8E3E',ZEB='F5F7FB',TX=T.tit;
+      const K=aofKpiCalc(D);
+      const G=aofAtivGroups(D,'');
+      const itens=[];G.forEach(o=>o.items.forEach(r=>itens.push(r)));
+      const comCh=itens.filter(r=>r.prazo!=null),venc=itens.filter(r=>r.venc);
+      const[d,mo,y]=(BASEDATE||'').split('/');
+      const dateTxt=BASEDATE?`${d}/${mo}/${y&&y.length===2?'20'+y:y}`:'—';
+      const agora=new Date(),p2=v=>String(v).padStart(2,'0');
+      const geradoTxt=`${p2(agora.getDate())}/${p2(agora.getMonth()+1)}/${agora.getFullYear()} ${p2(agora.getHours())}:${p2(agora.getMinutes())}`;
+      const rodape=`Fonte: OFS Atividades-R3 · ${FILE_NAME||'base anexada'} · Data analisada ${dateTxt} · Gerado automaticamente pelo Jarvis em ${geradoTxt}`;
+      const filtrosTxt=aofPptFiltrosTxt();
+      const pctTxt=(a,b)=>b?Math.round(a*100/b)+'%':'—';
+      const cut=(v,k)=>{v=String(v==null?'':v);return v.length>k?v.slice(0,k-1)+'…':v;};
+      const H=t=>({text:t,options:{bold:true,color:'FFFFFF',fill:{color:T.navy},fontFace:'Segoe UI Semibold',fontSize:10,valign:'middle'}});
+      const C=(t,o)=>({text:String(t==null?'':t),options:Object.assign({color:TX,fontFace:'Segoe UI',fontSize:9.5,valign:'middle'},o||{})});
+      const zebra=(rows)=>rows.map((r,i)=>i%2?r.map(c=>({text:c.text,options:Object.assign({},c.options,c.options.fill?{}:{fill:{color:ZEB}})})):r);
+      const tabela=(sl,head,rows,colW,yy,rowH,xx)=>{
+        sl.addTable([head.map(H),...zebra(rows)],{x:xx==null?0.5:xx,y:yy,w:colW.reduce((a,b)=>a+b,0),colW,rowH:rowH||0.32,border:{type:'solid',pt:0.5,color:T.linha},fontFace:'Segoe UI',fontSize:9.5,margin:[2,5,2,5]});
+      };
+      const farolCell=(vencido,txt)=>C('● '+(txt||(vencido?'Vencida':'No prazo')),{color:vencido?RED:GREEN,bold:true});
+      const pptx=pptxNewDeck();
+      const rec=execPptGravar(pptx);
+
+      // 1) Capa
+      execTplCapa(pptx,'Abertos OFS','Atividades por técnico · prazo da abertura do chamado à conclusão','Data analisada: '+dateTxt);
+
+      // 2) Resumo do recorte
+      {const sl=pptx.addSlide();execTplConteudo(pptx,sl,'Abertos OFS — Resumo do recorte',rodape);
+        sl.addText('Filtros: '+filtrosTxt,{x:0.5,y:1.32,w:12.3,h:0.3,fontFace:'Segoe UI',fontSize:10,color:T.cinza,margin:0,fit:'shrink'});
+        const cards=[['Atividades no recorte',fmtN(K.tot),T.blue],['Concluídas',K.taxa+'%',T.blue],['Em aberto',fmtN(K.cnt['Em aberto']),T.blue],
+          ['Técnicos com atividade',fmtN(G.length),T.blue],['Atividades realizadas',fmtN(itens.length),T.blue],['Vencidas (> 8h)',fmtN(venc.length),RED]];
+        const cw=1.95,gap=0.12;
+        cards.forEach(([lbl,val,cor],i)=>{const x=0.5+i*(cw+gap);
+          sl.addShape(pptx.ShapeType.rect,{x,y:1.75,w:cw,h:1.25,fill:{color:ZEB},line:{color:T.linha,width:0.75}});
+          sl.addShape(pptx.ShapeType.rect,{x,y:1.75,w:0.07,h:1.25,fill:{color:cor},line:{type:'none'}});
+          sl.addText(val,{x:x+0.18,y:1.86,w:cw-0.25,h:0.6,fontFace:'Segoe UI Semibold',fontSize:26,color:cor===RED?RED:T.navy,margin:0});
+          sl.addText(lbl,{x:x+0.18,y:2.5,w:cw-0.25,h:0.4,fontFace:'Segoe UI',fontSize:10.5,color:T.cinza,margin:0});});
+        sl.addText(`Vencida = mais de 8h entre a abertura do chamado e a conclusão da atividade. ${fmtN(comCh.length)} das ${fmtN(itens.length)} atividades realizadas têm chamado (as demais são internas: checklist, apoio, almoço…) — ${pctTxt(venc.length,comCh.length)} delas venceram.`,
+          {x:0.5,y:3.15,w:12.3,h:0.45,fontFace:'Segoe UI',fontSize:11,color:TX,margin:0,fit:'shrink'});
+        const mp={};
+        itens.forEach(r=>{const k=r.mop||'Sem MOP/EPS';const o=mp[k]||={tec:new Set(),n:0,ch:0,v:0,t:0};o.tec.add(r.rec);o.n++;if(r.prazo!=null)o.ch++;if(r.venc)o.v++;if(r.tempo)o.t+=r.tempo;});
+        const ordem=typeof AB_ORDEM_MOP!=='undefined'?AB_ORDEM_MOP:[];
+        const ks=Object.keys(mp).sort((a,b)=>((ordem.indexOf(a)+1||99)-(ordem.indexOf(b)+1||99))||a.localeCompare(b,'pt'));
+        const rows=ks.map(k=>{const o=mp[k];return[C(k,{bold:true}),C(o.tec.size,{align:'right'}),C(fmtN(o.n),{align:'right'}),C(fmtN(o.ch),{align:'right'}),
+          C(fmtN(o.v),{align:'right',color:o.v?RED:TX,bold:!!o.v}),C(pctTxt(o.v,o.ch),{align:'right'}),C(fmtH(o.t),{align:'right'})];});
+        rows.push([C('Total',{bold:true}),C(G.length,{align:'right',bold:true}),C(fmtN(itens.length),{align:'right',bold:true}),C(fmtN(comCh.length),{align:'right',bold:true}),
+          C(fmtN(venc.length),{align:'right',bold:true,color:venc.length?RED:TX}),C(pctTxt(venc.length,comCh.length),{align:'right',bold:true}),C(fmtH(itens.reduce((a,r)=>a+(r.tempo||0),0)),{align:'right',bold:true})]);
+        sl.addText('Por MOP/EPS',{x:0.5,y:3.72,w:6,h:0.3,fontFace:'Segoe UI Semibold',fontSize:13,color:TX,margin:0});
+        tabela(sl,['MOP/EPS','Técnicos','Realizadas','Com chamado','Vencidas','% vencidas','Tempo em atividade'],rows.slice(0,9),[2.4,1.3,1.5,1.7,1.4,1.5,2.0],4.1);
+      }
+
+      // 3) Vencidas por MOP/EPS + técnicos com mais vencidas
+      {const sl=pptx.addSlide();execTplConteudo(pptx,sl,'Prazo vencido — por MOP/EPS e técnicos',rodape);
+        const mp={};venc.forEach(r=>{const k=r.mop||'Sem MOP/EPS';mp[k]=(mp[k]||0)+1;});
+        const ks=Object.keys(mp).sort((a,b)=>mp[b]-mp[a]);
+        sl.addText('Atividades vencidas por MOP/EPS',{x:0.5,y:1.4,w:5.8,h:0.3,fontFace:'Segoe UI Semibold',fontSize:13,color:TX,margin:0});
+        if(ks.length)sl.addChart(pptx.ChartType.bar,[{name:'Vencidas',labels:ks,values:ks.map(k=>mp[k])}],
+          {x:0.5,y:1.8,w:5.8,h:4.6,barDir:'col',showValue:true,chartColors:[RED],showLegend:false,catAxisLabelFontSize:10,valAxisLabelFontSize:9,dataLabelFontSize:10,valGridLine:{style:'none'}});
+        else sl.addText('Nenhuma atividade vencida no recorte.',{x:0.5,y:2,w:5.8,h:0.4,fontFace:'Segoe UI',fontSize:12,color:GREEN,margin:0});
+        const top=[...G].filter(o=>o.venc).sort((a,b)=>b.venc-a.venc||a.rec.localeCompare(b.rec,'pt')).slice(0,14);
+        sl.addText('Técnicos com mais atividades vencidas',{x:6.5,y:1.4,w:6.1,h:0.3,fontFace:'Segoe UI Semibold',fontSize:13,color:TX,margin:0});
+        if(top.length)tabela(sl,['Técnico','MOP/EPS','Vencidas','Realizadas'],top.map(o=>[C(cut(o.rec,30)),C(o.mops||'—'),C(o.venc,{align:'right',color:RED,bold:true}),C(o.n,{align:'right'})]),[3.3,1.2,0.9,0.9],1.8,0.3,6.5);
+        sl.addText(`${fmtN(venc.length)} vencida${venc.length===1?'':'s'} em ${fmtN(G.filter(o=>o.venc).length)} de ${fmtN(G.length)} técnicos.`,{x:0.5,y:6.55,w:12.3,h:0.35,fontFace:'Segoe UI',fontSize:11,color:T.cinza,margin:0});
+      }
+
+      // 4) Consolidado por técnico (paginado)
+      {const ord=[...G].sort((a,b)=>b.venc-a.venc||b.tempo-a.tempo||a.rec.localeCompare(b.rec,'pt'));
+        const POR=15,pags=Math.max(1,Math.ceil(ord.length/POR));
+        for(let pg=0;pg<pags;pg++){
+          const sl=pptx.addSlide();execTplConteudo(pptx,sl,'Atividades por técnico — consolidado'+(pags>1?` (${pg+1}/${pags})`:''),rodape);
+          const rows=ord.slice(pg*POR,(pg+1)*POR).map(o=>{const ch=o.items.filter(r=>r.prazo!=null).length;
+            return[C(cut(o.rec,34)),C(o.mops||'—'),C(cut(o.cluster,14)),C(o.n,{align:'right'}),C(fmtH(o.tempo),{align:'right'}),C(ch,{align:'right'}),
+              C(o.venc,{align:'right',color:o.venc?RED:TX,bold:!!o.venc}),C(pctTxt(o.venc,ch),{align:'right'}),farolCell(o.venc>0,o.venc?`${o.venc} vencida${o.venc>1?'s':''}`:'Nenhuma')];});
+          tabela(sl,['Técnico','MOP/EPS','Cluster','Atividades','Tempo em atividade','Com chamado','Vencidas','% vencidas','Farol 8h'],rows,[3.1,1.15,1.0,0.95,1.45,1.15,0.9,1.0,1.6],1.42,0.34);
+        }
+      }
+
+      // 5) Maiores prazos vencidos
+      if(venc.length){const sl=pptx.addSlide();execTplConteudo(pptx,sl,'Prazo vencido — maiores prazos',rodape);
+        const top=[...venc].sort((a,b)=>b.prazo-a.prazo).slice(0,15);
+        tabela(sl,['Técnico','Tipo','OS','Cliente','Abertura do chamado','Conclusão','Prazo'],top.map(r=>[C(cut(r.rec,24)),C(cut(r.tipo,26)),C(cut(r.os||'—',18)),C(cut(r.nome||'—',24)),
+          C(fmtDH(r.abChD)+(r.abChEst?' *':'')),C(fmtDH(r.concD)),C(fmtSLA(r.prazo/60),{align:'right',color:RED,bold:true})]),[2.2,2.3,1.6,2.3,1.5,1.5,0.9],1.42,0.33);
+        sl.addText('* chamado sem hora de abertura no OFS — hora estimada pela abertura da OS (mesmo dia) ou 00:00.',{x:0.5,y:6.75,w:12.3,h:0.3,fontFace:'Segoe UI',fontSize:9,color:T.cinza,margin:0,italic:true});
+      }
+
+      // 6) Fila em aberto acima de 8h (3 tipos do farol da Fila)
+      {const fila=D.filter(r=>OPEN.includes(r.sg)&&r.cat!=='Pausa'&&TEMPO_ATIV_TIPOS.includes(r.tipo));
+        const over=fila.filter(tempoAtivOver).sort((a,b)=>b.aging-a.aging);
+        if(fila.length){const sl=pptx.addSlide();execTplConteudo(pptx,sl,'Fila em aberto — tempo em atividade acima de 8h',rodape);
+          sl.addText(`${fmtN(over.length)} de ${fmtN(fila.length)} atividades em aberto de ${TEMPO_ATIV_TIPOS.join(', ')} passaram de 8h desde a abertura da OS (até ${REF?p2(REF.getHours())+':'+p2(REF.getMinutes()):'—'} do dia da base).`,
+            {x:0.5,y:1.35,w:12.3,h:0.45,fontFace:'Segoe UI',fontSize:11,color:TX,margin:0,fit:'shrink'});
+          if(over.length)tabela(sl,['OS','Tipo','Cliente','Cidade','MOP/EPS','Recurso','Status','Aberta há'],over.slice(0,14).map(r=>[C(cut(r.os||'—',18)),C(cut(r.tipo,26)),C(cut(r.nome||'—',24)),C(cut(r.cid+(r.uf?' / '+r.uf:''),20)),C(r.mop||'—'),
+            C(r.unassigned?'Sem técnico':cut(r.rec,22),r.unassigned?{color:RED,bold:true}:{}),C(r.sg),C(fmtSLA(r.aging),{align:'right',color:RED,bold:true})]),[1.6,2.0,2.1,1.6,1.0,2.0,1.1,0.9],1.95,0.32);
+          else sl.addText('Nenhuma atividade desses tipos acima de 8h.',{x:0.5,y:2.1,w:12.3,h:0.4,fontFace:'Segoe UI',fontSize:12,color:GREEN,margin:0});
+        }
+      }
+      const fileName=`Apresentacao_Abertos_OFS_${(BASEDATE||'').replace(/\//g,'-')||agora.toISOString().slice(0,10)}.pptx`;
+      execPptPrevAbrir(pptx,fileName,rec,'aof-pv');
+    }
+    document.getElementById('aof-btnPpt').onclick=()=>{try{aofGerarApresentacao();}catch(e){console.error('Apresentação Abertos OFS',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}};
     document.getElementById('aof-btnExport').onclick=()=>aofExportXlsx();
     document.getElementById('aof-btnAtivToggle').onclick=()=>{aofAtivAllOpen=!aofAtivAllOpen;if(!aofAtivAllOpen)AOF_ATIV_OPEN.clear();drawTable(filtered());};
     document.getElementById('aof-btnMatinal').onclick=()=>aofGerarRelatorioMatinal();
@@ -11560,35 +11679,38 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-ppt-acts button{font:inherit;font-size:11.5px;border:.5px solid var(--bd2);background:var(--surface2);color:var(--tx);border-radius:8px;padding:2px 8px;margin-left:4px;cursor:pointer}
   #panel-executivo .exec-ppt-hint{margin:0 0 8px;font-size:11.5px;color:var(--tx3)}
 /* Pré-visualização da apresentação do Executivo (execPptPrevAbrir) */
-#exec-pv{position:relative;display:none;flex-direction:column;background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl,12px);margin:0 0 14px;color:var(--tx);overflow:hidden}
-#exec-pv .pv-hd{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;gap:12px;flex-wrap:wrap;border-bottom:.5px solid var(--bd)}
-#exec-pv .pv-tt{font-weight:700;font-size:14px}
-#exec-pv .pv-tt small{font-weight:500;color:var(--tx3);margin-left:8px;font-size:12.5px}
-#exec-pv .pv-fn{font-size:11.5px;color:var(--tx3);font-weight:400;margin-top:2px}
-#exec-pv .pv-acts{display:flex;gap:6px;flex-wrap:wrap}
-#exec-pv .pv-btn{background:var(--surface2);border:.5px solid var(--bd);color:var(--tx2);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
-#exec-pv .pv-btn:hover{border-color:var(--blue);color:var(--blue)}
-#exec-pv .pv-btn:disabled{opacity:.6;cursor:default}
-#exec-pv .pv-dl{background:#003BD6;border-color:#003BD6;color:#fff}
-#exec-pv .pv-dl:hover{background:#1f55e6;color:#fff}
-#exec-pv .pv-body{display:flex;gap:12px;padding:12px 14px}
-#exec-pv .pv-thumbs{width:196px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px 6px 2px 0;flex:0 0 auto}
-#exec-pv .pv-th{position:relative;background:#fff;border:2px solid var(--bd);border-radius:6px;padding:0;cursor:pointer;width:184px;height:105px;flex:0 0 auto;overflow:hidden;opacity:.8}
-#exec-pv .pv-th:hover{opacity:1}
-#exec-pv .pv-th.on{border-color:var(--blue,#007aff);opacity:1}
-#exec-pv .pv-thbox{width:1280px;height:720px;transform:scale(.140625);transform-origin:0 0;pointer-events:none}
-#exec-pv .pv-thn{position:absolute;left:4px;top:3px;z-index:2;background:rgba(0,0,0,.65);color:#fff;font-size:10px;border-radius:4px;padding:0 5px;line-height:16px}
-#exec-pv .pv-main{flex:1;display:flex;align-items:flex-start;justify-content:center;min-width:0}
-#exec-pv .pv-frame{box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;background:#fff;border-radius:4px;border:.5px solid var(--bd)}
-#exec-pv .pv-stage{transform-origin:0 0;width:1280px;height:720px}
-#exec-pv .pv-ft{font-size:12px;color:var(--tx3);padding:0 14px 12px;text-align:center}
+:is(#exec-pv,#aof-pv){position:relative;display:none;flex-direction:column;background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl,12px);margin:0 0 14px;color:var(--tx);overflow:hidden}
+:is(#exec-pv,#aof-pv) .pv-hd{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;gap:12px;flex-wrap:wrap;border-bottom:.5px solid var(--bd)}
+:is(#exec-pv,#aof-pv) .pv-tt{font-weight:700;font-size:14px}
+:is(#exec-pv,#aof-pv) .pv-tt small{font-weight:500;color:var(--tx3);margin-left:8px;font-size:12.5px}
+:is(#exec-pv,#aof-pv) .pv-fn{font-size:11.5px;color:var(--tx3);font-weight:400;margin-top:2px}
+:is(#exec-pv,#aof-pv) .pv-acts{display:flex;gap:6px;flex-wrap:wrap}
+:is(#exec-pv,#aof-pv) .pv-btn{background:var(--surface2);border:.5px solid var(--bd);color:var(--tx2);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+:is(#exec-pv,#aof-pv) .pv-btn:hover{border-color:var(--blue);color:var(--blue)}
+:is(#exec-pv,#aof-pv) .pv-btn:disabled{opacity:.6;cursor:default}
+:is(#exec-pv,#aof-pv) .pv-dl{background:#003BD6;border-color:#003BD6;color:#fff}
+:is(#exec-pv,#aof-pv) .pv-dl:hover{background:#1f55e6;color:#fff}
+:is(#exec-pv,#aof-pv) .pv-body{display:flex;gap:12px;padding:12px 14px}
+:is(#exec-pv,#aof-pv) .pv-thumbs{width:196px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px 6px 2px 0;flex:0 0 auto}
+:is(#exec-pv,#aof-pv) .pv-th{position:relative;background:#fff;border:2px solid var(--bd);border-radius:6px;padding:0;cursor:pointer;width:184px;height:105px;flex:0 0 auto;overflow:hidden;opacity:.8}
+:is(#exec-pv,#aof-pv) .pv-th:hover{opacity:1}
+:is(#exec-pv,#aof-pv) .pv-th.on{border-color:var(--blue,#007aff);opacity:1}
+:is(#exec-pv,#aof-pv) .pv-thbox{width:1280px;height:720px;transform:scale(.140625);transform-origin:0 0;pointer-events:none}
+:is(#exec-pv,#aof-pv) .pv-thn{position:absolute;left:4px;top:3px;z-index:2;background:rgba(0,0,0,.65);color:#fff;font-size:10px;border-radius:4px;padding:0 5px;line-height:16px}
+:is(#exec-pv,#aof-pv) .pv-main{flex:1;display:flex;align-items:flex-start;justify-content:center;min-width:0}
+:is(#exec-pv,#aof-pv) .pv-frame{box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;background:#fff;border-radius:4px;border:.5px solid var(--bd)}
+:is(#exec-pv,#aof-pv) .pv-stage{transform-origin:0 0;width:1280px;height:720px}
+:is(#exec-pv,#aof-pv) .pv-ft{font-size:12px;color:var(--tx3);padding:0 14px 12px;text-align:center}
 .pv-slide{position:relative;width:1280px;height:720px;overflow:hidden;color:#000;text-align:left;line-height:1.15;font-family:"Segoe UI",system-ui,sans-serif}
 .pv-slide .pv-el{position:absolute;box-sizing:border-box;margin:0}
 .pv-slide .pv-txt{display:flex;flex-direction:column;overflow:hidden}
 .pv-slide .pv-p{white-space:pre-wrap;margin:0}
 .pv-slide .pv-tbl{border-collapse:collapse;table-layout:fixed;line-height:1.15;background:transparent}
 .pv-slide .pv-tbl td{line-height:1.15;letter-spacing:0;text-transform:none}
-@media(max-width:760px){#exec-pv .pv-thumbs{display:none}}
+@media(max-width:760px){:is(#exec-pv,#aof-pv) .pv-thumbs{display:none}}
+#aof-pv{margin:0 0 14px}
+#panel-abertos-ofs .pv-slide td{white-space:normal;cursor:default}
+#panel-abertos-ofs .pv-slide tr:hover{background:transparent}
 
   #panel-executivo .exec-ppt-grp{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px}
   #panel-executivo .exec-ppt-item{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:3px 0;cursor:pointer}
@@ -36227,18 +36349,20 @@ function execPptRenderSlide(r){
   });
   return'<div class="pv-slide" style="background:'+cor+'">'+html+'</div>';
 }
-function execPptPrevAbrir(pptx,fileName,rec){
-  _execPrev={pptx,fileName,rec,html:rec.map(execPptRenderSlide),i:0};
-  const m=document.getElementById('exec-pv');if(!m)return;
+function execPptPrevAbrir(pptx,fileName,rec,boxId){
+  const box=boxId||'exec-pv';
+  if(_execPrev&&_execPrev.box!==box){const old=document.getElementById(_execPrev.box);if(old){old.style.display='none';old.innerHTML='';}}
+  _execPrev={pptx,fileName,rec,html:rec.map(execPptRenderSlide),i:0,box};
+  const m=document.getElementById(box);if(!m)return;
   m.innerHTML='<div class="pv-hd"><div class="pv-tt"><i class="ti ti-presentation"></i> Pré-visualização da apresentação <small id="exec-pv-cnt"></small><div class="pv-fn">'+eh(fileName)+'</div></div>'
     +'<div class="pv-acts"><button type="button" class="pv-btn" onclick="execPptPrevIr(-1)" title="Slide anterior (←)"><i class="ti ti-chevron-left"></i></button><button type="button" class="pv-btn" onclick="execPptPrevIr(1)" title="Próximo slide (→)"><i class="ti ti-chevron-right"></i></button>'
     +'<button type="button" class="pv-btn pv-dl" id="exec-pv-dl" onclick="execPptPrevBaixar()"><i class="ti ti-download"></i> Baixar PPT</button><button type="button" class="pv-btn" onclick="execPptPrevFechar()" title="Fechar (Esc)"><i class="ti ti-x"></i> Fechar</button></div></div>'
     +'<div class="pv-body"><div class="pv-thumbs" id="exec-pv-thumbs">'+_execPrev.html.map((h,i)=>'<button type="button" class="pv-th" data-i="'+i+'" onclick="execPptPrevIr(0,'+i+')" aria-label="Slide '+(i+1)+'"><span class="pv-thn">'+(i+1)+'</span><div class="pv-thbox">'+h+'</div></button>').join('')+'</div>'
     +'<div class="pv-main" id="exec-pv-main"><div class="pv-frame" id="exec-pv-frame"><div class="pv-stage" id="exec-pv-stage"></div></div></div></div>'
-    +'<div class="pv-ft">Mesmo conteúdo e filtros do PPT. Mudou filtros ou o "Conteúdo do PPT"? Clique em "Visualizar apresentação" de novo para atualizar.</div>';
+    +'<div class="pv-ft">'+(box==='exec-pv'?'Mesmo conteúdo e filtros do PPT. Mudou filtros ou o "Conteúdo do PPT"? Clique em "Visualizar apresentação" de novo para atualizar.':'Mesmo conteúdo e filtros do PPT. Mudou os filtros? Clique em "Apresentação" de novo para atualizar.')+'</div>';
   m.style.display='flex';
   setTimeout(()=>m.scrollIntoView({behavior:'smooth',block:'start'}),30);
-  if(!m._kb){m._kb=true;document.addEventListener('keydown',e=>{const pv=document.getElementById('exec-pv');if(!_execPrev||!pv||pv.style.display!=='flex'||pv.offsetParent===null)return;
+  if(!m._kb){m._kb=true;document.addEventListener('keydown',e=>{const pv=_execPrev&&document.getElementById(_execPrev.box);if(!_execPrev||!pv||pv.style.display!=='flex'||pv.offsetParent===null)return;
     if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target&&e.target.tagName)||''))return;
     if(e.key==='Escape')execPptPrevFechar();else if(e.key==='ArrowRight'||e.key==='PageDown')execPptPrevIr(1);else if(e.key==='ArrowLeft'||e.key==='PageUp')execPptPrevIr(-1);});
     window.addEventListener('resize',()=>{if(_execPrev)execPptPrevEscala();});}
@@ -36266,7 +36390,7 @@ async function execPptPrevBaixar(){
   catch(e){console.error('Baixar apresentação',e);alert('Não foi possível baixar a apresentação: '+(e&&e.message?e.message:e));if(b)b.innerHTML=h;}
   finally{if(b){b.disabled=false;setTimeout(()=>{if(b.isConnected)b.innerHTML=h;},2500);}}
 }
-function execPptPrevFechar(){const m=document.getElementById('exec-pv');if(m){m.style.display='none';m.innerHTML='';}_execPrev=null;}
+function execPptPrevFechar(){const m=document.getElementById(_execPrev?_execPrev.box:'exec-pv');if(m){m.style.display='none';m.innerHTML='';}_execPrev=null;}
 /* ================= Apresentação — 10 ajustes do usuário (2026-10-20) =================
    1) só o recorte dos filtros  2) slides em sequência por segmento (Rede inteiro, depois B2B…)
    3) TME/TMR vira MTTR  4) sem o termo "Redir"  5) só o que estiver marcado no Conteúdo do PPT
