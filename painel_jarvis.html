@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T19:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-27T20:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -15347,7 +15347,13 @@ async function _checkAppBuildFreshness(){
     const m=text.match(/APP_BUILD_ID\s*=\s*['"]([^'"]+)['"]/);
     if(!m)return;
     const liveId=m[1];
-    _remoteBuildStale=!!(liveId&&window.APP_BUILD_ID&&liveId!==window.APP_BUILD_ID);
+    /* Bug real (2026-10-27, "outro aparelho não recebe"): o raw.githubusercontent.com
+       serve cópia em cache por até 5 min+ (x-cache HIT, ignora o ?t=). Logo depois de uma
+       publicação, quem recarregava a página ficava com a versão NOVA, mas o CDN ainda
+       devolvia o ID ANTIGO — o "!==" marcava a aba nova como desatualizada e
+       saveGhState() recusava enviar, calado, as bases anexadas nesse intervalo. Os IDs
+       são ISO com o mesmo fuso, então comparar como texto diz quem é mais novo. */
+    _remoteBuildStale=!!(liveId&&window.APP_BUILD_ID&&liveId>window.APP_BUILD_ID);
     _renderStaleBuildBanner();
   }catch(e){/* falha de rede (offline, CORS pontual) não deve travar nada — só não avisa desta vez */}
 }
@@ -15794,6 +15800,24 @@ async function fetchGhRawState(){
      mostrando dado de horas atrás sem nenhum aviso visível. raw.githubusercontent.com
      não compartilha esse limite. api.github.com/contents fica como fallback (só
      deve ser necessário se o CDN atrasar uma publicação muito recente). */
+  /* Bug real (2026-10-27, "outro aparelho não recebe"): o CDN raw.githubusercontent.com
+     devolve cópia em cache (max-age=300, x-cache HIT mesmo com ?t=) — medido: 7+ min
+     atrás do último commit. Somado ao pull de 5 em 5 min, uma base anexada num aparelho
+     demorava 10+ min pra aparecer no outro (e parecia "não sincronizar"). O Worker
+     (mesmo usado no envio) lê direto da API do GitHub com token — sempre o último
+     commit, sem o limite de 60/h por IP. CDN e api.github.com ficam como reserva. */
+  try{
+    const ctl=typeof AbortController!=='undefined'?new AbortController():null;
+    const tm=ctl?setTimeout(()=>ctl.abort(),25000):null;
+    const res=await fetch(ATRIX_WORKER_URL,{method:'POST',signal:ctl?ctl.signal:undefined,
+      headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},body:JSON.stringify({action:'sync_get'})});
+    if(tm)clearTimeout(tm);
+    const body=await res.json().catch(()=>({}));
+    if(res.ok&&body.ok&&body.content){
+      const st=await _ghB64ToState(body.content);try{_syncMarcarEnviado(st);}catch(_){}
+      return st;
+    }
+  }catch(e){console.warn('Falha ao ler sync-state via Worker, tentando o CDN:',e);}
   try{
     const r=await fetch(GH_SYNC_RAW_URL+'?t='+Date.now(),{cache:'no-store'});
     if(r.ok){
@@ -17586,8 +17610,17 @@ function iniciarSincronizacaoAutomatica(){
   /* Redir/MAX: depois do login, publica as bases que só existiam neste aparelho (Admin/Sr) e aplica as do sync */
   setTimeout(()=>{try{if(window.rsSyncReconciliar)rsSyncReconciliar().catch(()=>{});if(window.mxSyncReconciliar)mxSyncReconciliar().catch(()=>{});}catch(e){}},1500);
   clearInterval(_ghAutoSyncTimer);
+  if(!window._ghVisPull){window._ghVisPull=true;
+    /* Quem alterna entre aparelhos/abas esperava até 5 min pelo próximo ciclo: ao voltar
+       a aba pra frente, busca na hora (no máximo 1 vez a cada 90 s). */
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState!=='visible'||!currentUser)return;
+      if(Date.now()-(window._ghLastPull||0)<90000)return;
+      window._ghLastPull=Date.now();restoreGhState();
+    });}
   _ghAutoSyncTimer=setInterval(()=>{
     if(document.visibilityState!=='visible')return;
+    window._ghLastPull=Date.now();
     restoreGhState();
     setTimeout(()=>{try{if(window.rsSyncReconciliar)rsSyncReconciliar().catch(()=>{});if(window.mxSyncReconciliar)mxSyncReconciliar().catch(()=>{});}catch(e){}},8000);
   },5*60*1000);
