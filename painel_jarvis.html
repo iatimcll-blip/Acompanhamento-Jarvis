@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-27T20:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-28T09:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -11277,8 +11277,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
         <p class="fap-desc" id="fap-condutorTruncNote" style="display:none;margin:0 0 6px;color:var(--orange)"></p>
         <div id="fap-condutorCicloVazio" class="fap-empty" style="display:none">Nenhum consumo registrado neste ciclo.</div>
-        <div class="fap-chart-box" id="fap-condutorChartBox" style="height:260px">
-          <canvas id="fap-chart-condutor"></canvas>
+        <div id="fap-condutorChartBox" style="max-height:520px;overflow-y:auto">
+          <div class="fap-chart-box" id="fap-condutorChartInner" style="height:260px"><canvas id="fap-chart-condutor"></canvas></div>
         </div>
         <h4 style="margin:16px 0 6px;font-size:15px">Veículos por categoria (Leve/Médio/Pesado/Gerador)</h4>
         <p class="fap-desc" style="margin:0 0 8px">Quantidade de veículos distintos com transação na base anexada, por categoria — lida direto da coluna "Categoria do veículo" do Portal Alelo (com fallback pelo modelo do veículo). Reflete só a base anexada mais recente — anexar uma base nova substitui esta análise por inteiro. Cota do mês e consumido no mês usam o ciclo de competência atual (dia 15 ao dia 14).</p>
@@ -27221,6 +27221,15 @@ function fapIsoLocal(d){const p2=n=>String(n).padStart(2,'0');return d.getFullYe
 function fapTodayIso(){return fapIsoLocal(new Date());}
 function fapNowHora(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 function fapFmtMoney(v){return'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+/* Valores escritos nos gráficos da aba Consumo (pedido do usuário, 2026-10-28) — formato
+   curto pra não amontoar em barra/ponto; o tooltip segue com o valor cheio. Plugin
+   ChartDataLabels local (plugins:[DL]) como em rChEnc — nunca registrado global. */
+function fapFmtMoneyCurto(v){v=Number(v)||0;const a=Math.abs(v);
+  if(a>=1e6)return'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi';
+  if(a>=1e3)return'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil';
+  return'R$ '+Math.round(v).toLocaleString('pt-BR');}
+const fapDL=()=>typeof ChartDataLabels!=='undefined'?ChartDataLabels:null;
+const fapDLVazio=v=>v==null||!Number(v);
 /* Bug real reportado pelo usuário: os campos de valor eram <input type="number">, que
    segue a regra do HTML de só aceitar "." como separador decimal e REJEITA vírgula —
    digitar "1.000,00" (formato brasileiro comum pra mil reais) fazia o navegador
@@ -29942,10 +29951,11 @@ function fapRenderTipoVeiculo(){
   if(cv){
     if(fapChTipo){try{fapChTipo.destroy();}catch(e){}}
     const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
-    fapChTipo=new Chart(cv,{type:'bar',data:{labels:lista.map(t=>t.tipo),datasets:[
+    const DL=fapDL();
+    fapChTipo=new Chart(cv,{type:'bar',plugins:DL?[DL]:[],data:{labels:lista.map(t=>t.tipo),datasets:[
       {label:'Consumido no mês',data:lista.map(t=>t.noCiclo),backgroundColor:'#007aff',borderRadius:4},
       {label:'Limite mensal',data:lista.map(t=>FAP_COTA_CATEGORIA[t.tipo]?FAP_COTA_CATEGORIA[t.tipo]*t.placas.size:0),backgroundColor:'#8fb3e0',borderRadius:4}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
+    ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{datalabels:DL?{display:c=>!fapDLVazio(c.dataset.data[c.dataIndex]),anchor:'end',align:'top',formatter:v=>fapFmtMoneyCurto(v),font:{size:10,weight:'bold'},color:txC,clip:false}:{display:false},legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
   }
   /* Link pra abrir a lista de veículos daquela categoria (pedido do usuário,
      2026-09-17), com placa escapada dentro do atributo onclick — nomes de
@@ -30274,10 +30284,15 @@ function fapRenderConsumoSemanal(){
   const labs=[],real=[],prj=[];
   sem.forEach(s=>{labs.push('W'+s.w+' '+dm(s.ini));real.push(s.c/100);prj.push(null);});
   D.proj.forEach(p=>{const lb='W'+p.w+' '+dm(p.ini);const i=labs.indexOf(lb);if(i>=0){prj[i]=Math.round(p.c)/100;}else{labs.push(lb);real.push(null);prj.push(Math.round(p.c)/100);}});
-  fapChSemanal=new Chart(cv,{type:'bar',data:{labels:labs,datasets:[
-    {label:'Realizado (compras aprovadas)',data:real,backgroundColor:'#007aff',borderRadius:4,stack:'s'},
-    {label:'Projeção',data:prj,backgroundColor:'rgba(255,149,0,.55)',borderColor:'#ff9500',borderWidth:1,borderDash:[4,3],borderRadius:4,stack:'s'}
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fapFmtMoney(c.parsed.y||0)}}},scales:{x:{stacked:true,ticks:{color:txC}},y:{stacked:true,beginAtZero:true,ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
+  const DL=fapDL();
+  /* semana parcial tem as 2 partes empilhadas: o realizado vai DENTRO da barra azul
+     (branco) e a projeção em cima, pra um rótulo não cobrir o outro */
+  fapChSemanal=new Chart(cv,{type:'bar',plugins:DL?[DL]:[],data:{labels:labs,datasets:[
+    {label:'Realizado (compras aprovadas)',data:real,backgroundColor:'#007aff',borderRadius:4,stack:'s',
+      datalabels:{anchor:'end',align:c=>prj[c.dataIndex]!=null?'start':'top',color:c=>prj[c.dataIndex]!=null?'#fff':txC}},
+    {label:'Projeção',data:prj,backgroundColor:'rgba(255,149,0,.55)',borderColor:'#ff9500',borderWidth:1,borderDash:[4,3],borderRadius:4,stack:'s',
+      datalabels:{anchor:'end',align:'top',color:'#c76a00',formatter:(v,c)=>(real[c.dataIndex]!=null?'+':'')+fapFmtMoneyCurto(v)}}
+  ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{datalabels:DL?{display:c=>!fapDLVazio(c.dataset.data[c.dataIndex]),formatter:v=>fapFmtMoneyCurto(v),font:{size:10,weight:'bold'},clamp:true,clip:false}:{display:false},legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fapFmtMoney(c.parsed.y||0)}}},scales:{x:{stacked:true,ticks:{color:txC}},y:{stacked:true,beginAtZero:true,ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
 }
 function fapRenderConsumoCondutor(){
   const _nota=document.getElementById('fap-coFiltroNota');
@@ -30365,7 +30380,11 @@ function fapRenderConsumoCondutor(){
   if(cv){
     if(fapChCondutor){try{fapChCondutor.destroy();}catch(e){}}
     const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
-    fapChCondutor=new Chart(cv,{type:'bar',data:{labels:lista.map(c=>c.condutor),datasets:[{label:'Total consumido (R$)',data:lista.map(c=>c.total),backgroundColor:'#007aff',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}},y:{ticks:{color:txC}}}}});
+    const DL=fapDL();
+    /* com valor em cada barra, cada condutor precisa de ~18px de altura (eram 100 barras
+       de 2–3px em 260px — os rótulos viravam um borrão); a caixa rola a partir de 520px */
+    const inner=document.getElementById('fap-condutorChartInner');if(inner)inner.style.height=Math.max(260,lista.length*18+40)+'px';
+    fapChCondutor=new Chart(cv,{type:'bar',plugins:DL?[DL]:[],data:{labels:lista.map(c=>c.condutor),datasets:[{label:'Total consumido (R$)',data:lista.map(c=>c.total),backgroundColor:'#007aff',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:96}},plugins:{datalabels:DL?{display:c=>!fapDLVazio(c.dataset.data[c.dataIndex]),anchor:'end',align:'right',formatter:v=>fapFmtMoney(v),font:{size:10,weight:'bold'},color:txC,clip:false}:{display:false},legend:{display:false}},scales:{x:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}},y:{ticks:{color:txC,autoSkip:false}}}}});
   }
   /* "Cota do mês" por condutor (pedido do usuário): soma a cota mensal (Leve/Médio/
      Pesado) de cada placa DISTINTA que o condutor dirigiu, cruzando pela categoria
@@ -30492,10 +30511,14 @@ function fapRenderMesCorrente(){
   if(cv){
     if(fapChMesCorrente){try{fapChMesCorrente.destroy();}catch(e){}}
     const txC=getComputedStyle(document.body).getPropertyValue('--tx').trim()||'#1c1c1e';
-    fapChMesCorrente=new Chart(cv,{type:'line',data:{labels:semanas.map((s,i)=>`Semana ${i+1}`),datasets:[
-      {label:'Aportado (acumulado)',data:realAcumulado,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,.12)',fill:true,tension:.25,spanGaps:false},
-      {label:'Projeção',data:projAcumulado,borderColor:'#ff9500',borderDash:[6,4],pointRadius:3,fill:false,tension:.25,spanGaps:false}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
+    const DL=fapDL();
+    /* a projeção começa no último ponto realizado (mesmo valor) — ali só o azul leva rótulo */
+    fapChMesCorrente=new Chart(cv,{type:'line',plugins:DL?[DL]:[],data:{labels:semanas.map((s,i)=>`Semana ${i+1}`),datasets:[
+      {label:'Aportado (acumulado)',data:realAcumulado,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,.12)',fill:true,tension:.25,spanGaps:false,
+        datalabels:{color:'#007aff'}},
+      {label:'Projeção',data:projAcumulado,borderColor:'#ff9500',borderDash:[6,4],pointRadius:3,fill:false,tension:.25,spanGaps:false,
+        datalabels:{color:'#c76a00',display:c=>{const v=projAcumulado[c.dataIndex];return!fapDLVazio(v)&&realAcumulado[c.dataIndex]!==v;}}}
+    ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20,right:24,left:8}},plugins:{datalabels:DL?{display:c=>!fapDLVazio(c.dataset.data[c.dataIndex]),anchor:'end',align:'top',offset:4,formatter:v=>fapFmtMoneyCurto(v),font:{size:10,weight:'bold'},clip:false}:{display:false},legend:{position:'bottom',labels:{color:txC,boxWidth:10,font:{size:11}}}},scales:{x:{offset:true,ticks:{color:txC}},y:{ticks:{color:txC,callback:v=>fapFmtMoney(v)}}}}});
   }
   fapRenderConsumoVeiculoCiclo();
 }
