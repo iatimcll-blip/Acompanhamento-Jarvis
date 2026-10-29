@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-29T18:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-29T19:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -2200,6 +2200,9 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-ji.p-ok::before{background:var(--green)}
 #panel-redir-sem .rs-ji.p-warn::before{background:var(--orange)}
 #panel-redir-sem .rs-ji.p-bad::before{background:var(--red)}
+/* base anexada (ou dados de outro painel) + análise realizada = card verde (pedido 2026-10-29) */
+#panel-redir-sem .rs-ji.ana-ok{border-color:var(--green-dk);background:color-mix(in srgb,var(--green) 7%,var(--surface));box-shadow:0 0 0 1px var(--green-dk) inset,var(--shadow-sm)}
+#panel-redir-sem .rs-ji.ana-ok::before{background:var(--green-dk)!important}
 #panel-redir-sem .rs-ji header{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
 #panel-redir-sem .rs-ji header b{font-size:12px;color:var(--tx);display:block}
 #panel-redir-sem .rs-ji header small{font-size:10px;color:var(--tx3)}
@@ -38628,7 +38631,7 @@ function rsJustCard(r,pr,sem,prev,D){
     }
     if(f.tipo!=='nenhuma'){
       const an=document.createElement('button');an.type='button';an.className='rs-btn';an.innerHTML='<i class="ti ti-chart-dots"></i> '+(ana.hidden?'Ver análise':'Ocultar análise');
-      an.onclick=()=>{if(ana.hidden)mostra();else{ana.hidden=true;rsAnaAbertas.delete(r.id);pintaBar();}};abar.appendChild(an);
+      an.onclick=()=>{if(ana.hidden)mostra();else{ana.hidden=true;rsAnaAbertas.delete(r.id);c.classList.remove('ana-ok');pintaBar();}};abar.appendChild(an);
       const cob=f.tipo==='anexo'?rsBaseAte(f.base):null;const wSel=+String(sem||'').replace(/\D/g,'');
       nota('Fonte: '+f.lbl+(f.tipo==='anexo'?' · '+rsNf0.format(f.base.total)+' linhas':'')+(cob?' · dados até a W'+cob.w+'/'+cob.y:''));
       if(cob&&wSel&&cob.w<wSel){const w=document.createElement('span');w.className='rs-note rs-desat';w.textContent='⚠ a base não cobre a '+sem+' — anexe a base atualizada';abar.appendChild(w);}
@@ -38641,7 +38644,7 @@ function rsJustCard(r,pr,sem,prev,D){
   const mostra=()=>{
     let a;try{a=rsAnalisarFca(r,D);}catch(e){ana.hidden=false;ana.textContent='Não foi possível analisar: '+(e&&e.message||e);return;}
     if(!a){ana.hidden=false;ana.textContent='Sem dados para analisar este indicador.';return;}
-    rsPintaAnalise(ana,a,aplicar);ana.hidden=false;rsAnaAbertas.add(r.id);pintaBar();};
+    rsPintaAnalise(ana,a,aplicar);ana.hidden=false;rsAnaAbertas.add(r.id);c.classList.add('ana-ok');pintaBar();};
   pintaBar();c.appendChild(abar);c.appendChild(ana);
   if(rsAnaAbertas.has(r.id))setTimeout(mostra,0);
   for(const[f,lab,w,rows]of RS_FIELDS){const lb=document.createElement('label');if(w)lb.className=w;lb.appendChild(document.createTextNode(lab));
@@ -39008,6 +39011,7 @@ const RS_MODELOS=[
   {re:/^PRAZODEREPAROSB2B/,modelo:'Prazo de Reparos B2B',painel:'enc'},
   {re:/^OUTLIERB2B/,modelo:'Outlier B2B',painel:'enc'},/* 2026-10-29: chamados outlier (>12h, encBucket) do B2B Encerrados */
   {re:/^MTTR/,modelo:'MTTR 6H',painel:'rede'},
+  {re:/^OUTLIERRE/,modelo:'Outlier RE',painel:'rede'},/* 2026-10-29: mesma regra do KPI Outlier do Painel Rede (r.o===1) */
 ];
 const RS_PLANTA={modelo:'Planta Média',pasta:'Planta Média',arquivo:'Planta Media.xlsx',b2c:'plantaMedia'};
 /* retrato da pasta Modelos (2026-10-24): arquivos e colunas de cada subpasta */
@@ -39446,6 +39450,59 @@ function rsSugPrepend(sug,c,a){
    C.31 Piauí = PI, Norte = NORTE. */
 function _rsRedeClusters(cl){const cod=(String(cl).match(/C\.?\s*(\d+)/i)||[])[1];const n=RS_NK(cl);
   if(cod==='32'||/MARANH/.test(n))return['C','I'];if(cod==='31'||/PIAU/.test(n))return['P'];if(/NORTE|PARA|AMAZ|AMAP/.test(n))return['N'];return null;}
+/* Outlier RE pelo Painel Rede (pedido 2026-10-29): mesma conta do KPI "Outlier" do painel (rdeAgg2) —
+   chamados marcados como outlier (r.o===1, régua de 24h) ÷ todos os chamados de Acesso + Backbone do
+   cluster, na semana do FCA (r.w) ou no mês (r.m) quando o FCA é do mês. */
+function rsRedeFlatCluster(cluster){
+  if(typeof rdeAD==='undefined')return null;
+  const cls=_rsRedeClusters(cluster);let flat=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];
+  if(cls)flat=flat.filter(r=>cls.includes(r.cl));
+  return{flat,cls};
+}
+function rsRedeOutlierSemana(cluster,sem,D){
+  const x=rsRedeFlatCluster(cluster);if(!x||!x.flat.length)return null;
+  const w=+String(sem).replace(/\D/g,''),mm=String(D.meta&&D.meta.mes||'').match(/\/(\d{2})$/),y=mm?2000+ +mm[1]:new Date().getFullYear();
+  const rows=x.flat.filter(r=>r.w===y+'-W'+String(w).padStart(2,'0'));
+  return rows.length?rows.filter(r=>r.o===1).length/rows.length:null;
+}
+function rsAnalisarRedeOutlier(fca,D,fonte,modo){
+  const x=rsRedeFlatCluster(fca.cluster);if(!x||!x.flat.length)return null;
+  const{flat,cls}=x;const avisos=[];
+  if(!cls)avisos.push('cluster '+fca.cluster+' sem correspondência no Painel Rede — usei todos os clusters');
+  const mmA=String(D.meta&&D.meta.mes||'').match(/\/(\d{2})$/),anoFato=mmA?2000+ +mmA[1]:new Date().getFullYear();
+  const porMes=modo==='mes';let kSem,kAnt,keyOf;
+  if(porMes){const mk=rsMesKeyDe(D);if(!mk)return null;kSem=mk;kAnt=rsMesAntKey(mk);keyOf=r=>r.m;}
+  else{const w=+String(fca.semana).replace(/\D/g,'');const ant=w>1?{y:anoFato,w:w-1}:{y:anoFato-1,w:52};
+    kSem=anoFato+'-W'+String(w).padStart(2,'0');kAnt=ant.y+'-W'+String(ant.w).padStart(2,'0');keyOf=r=>r.w;}
+  const pSem=porMes?rsMesLblKey(kSem):kSem,pAnt=porMes?rsMesLblKey(kAnt):kAnt,antTxt=porMes?'Mês anterior':'Semana anterior',em=porMes?'em ':'na ';
+  const semRows=flat.filter(r=>keyOf(r)===kSem),antRows=flat.filter(r=>keyOf(r)===kAnt);
+  if(!semRows.length){const u=flat.map(keyOf).filter(Boolean).sort().pop();avisos.push('o Painel Rede não tem chamados '+em+pSem+(u?' (último período da base: '+(porMes?rsMesLblKey(u):u)+')':''));}
+  const fS=semRows.filter(r=>r.o===1),fA=antRows.filter(r=>r.o===1);
+  const pct=(a,b)=>b?a/b:0,pS=pct(fS.length,semRows.length),pA=pct(fA.length,antRows.length);
+  const pp=v=>(v>0?'+':v<0?'−':'')+(Math.round(Math.abs(v)*1000)/10).toString().replace('.',',')+' p.p.';
+  const mt=rsMetaTxt(fca,D);
+  const kpis=['Outlier RE '+em+pSem+': '+rsPctTxt(pS)+(mt?' (meta '+mt+')':'')+' · '+fS.length+' de '+semRows.length+' chamados outlier (acima de 24h)'];
+  if(antRows.length)kpis.push(antTxt+' ('+pAnt+'): '+rsPctTxt(pA)+' · '+fA.length+' de '+antRows.length+' outlier · variação: '+pp(pS-pA));
+  const normC=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+  const dim=(k,lbl,camp)=>{const tot=new Map(),fo=new Map(),foA=new Map();
+    semRows.forEach(r=>{const v=String(camp(r)||'').trim();if(!v)return;tot.set(v,(tot.get(v)||0)+1);if(r.o===1)fo.set(v,(fo.get(v)||0)+1);});
+    fA.forEach(r=>{const v=String(camp(r)||'').trim();if(v)foA.set(v,(foA.get(v)||0)+1);});
+    const arr=[...tot.entries()].map(([v,t])=>({v,c:fo.get(v)||0,t,pct:t?(fo.get(v)||0)/t:0})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c||b.pct-a.pct);
+    if(!arr.length)return null;const tf=arr.reduce((s,x)=>s+x.c,0);let ac=0,p80=0;for(const x of arr){ac+=x.c;p80++;if(ac>=tf*.8)break;}
+    let alta=null;for(const x of arr){const d=x.c-(foA.get(x.v)||0);if(d>0&&(!alta||d>alta.d))alta={v:x.v,d,c:x.c,ant:foA.get(x.v)||0};}
+    return{k,lbl,tot:tf,distintos:arr.length,p80,top:arr.slice(0,5),frac:true,fracLbl:'outlier',alta};};
+  const dims=[dim('cidade','Cidade',r=>r.cidade),dim('motivo','Causa',r=>normC(r.c)),dim('tipo','Tipo',r=>r._scope==='ac'?'Acesso':'Backbone'),
+    dim('unidade','Cluster',r=>(typeof RDE_CL_NM!=='undefined'&&RDE_CL_NM[r.cl])||r.cl)].filter(Boolean);
+  const det=r=>{const d=r._raw&&r._raw[r._scope==='ac'?8:7];return d&&typeof d==='object'?d:{};};
+  const ofs=fS.filter(r=>r.t>0).sort((a,b)=>b.t-a.t).slice(0,5).map(r=>{const d=det(r);return{v:(d.os||d.id?'OS '+(d.os||d.id):'sem OS')+' · '+(r.cidade||d.cidade||'—')+' · '+(r.c||'—'),c:1,h:r.t};});
+  if(ofs.length)dims.push({k:'ofensores',lbl:'Maiores tempos '+(porMes?'no mês':'na semana'),tot:ofs.length,distintos:ofs.length,p80:ofs.length,top:ofs,lista:true,alta:null});
+  const dimsSug=dims.filter(d=>!d.lista&&d.k!=='tipo').map(d=>({...d,top:d.top.map(x=>({v:x.v,c:x.c,pct:d.tot?x.c/d.tot:0}))}));
+  const sug=rsSugerirFca({dims:dimsSug,reinc:null,fca,mesLbl:pSem,semLbl:pSem,antLbl:pAnt,sem:fS.length,ant:fA.length,n:fS.length});
+  if(fS.length){rsSugPrepend(sug,'Outlier RE '+em+pSem+': '+rsPctTxt(pS)+(mt?' (meta '+mt+')':'')+' — '+fS.length+' de '+semRows.length+' chamados de rede passaram de 24h'+(antRows.length?', contra '+rsPctTxt(pA)+' '+em+pAnt:''),
+    'Acompanhamento diário dos chamados de rede abertos há mais de 12h, com escalonamento antes de 24h e tratativa dos maiores tempos (ofensores)');rsSugPrazo(sug);}
+  return{arquivo:fonte,cluster:fca.cluster,linhasCluster:semRows.length,foco:'chamados de rede (Acesso + Backbone) outlier '+(porMes?'no mês ':'na semana ')+pSem+(cls?' — '+cls.map(c=>(typeof RDE_CL_NM!=='undefined'&&RDE_CL_NM[c])||c).join(' + '):''),
+    fora:fS.length,semLbl:pSem,antLbl:antRows.length?pAnt:'',sem:fS.length,ant:fA.length,mesLbl:'',mes:0,mesAlvo:'',n:fS.length,dims,reinc:null,avisos,sug,kpis,semanaFixa:true,volLbl:'outlier'};
+}
 function rsAnalisarRede(fca,D,fonte,modo){
   if(typeof rdeAD==='undefined')return null;
   const cls=_rsRedeClusters(fca.cluster);const avisos=[];
@@ -39508,7 +39565,7 @@ function rsAnalisarFca(r,D){
   let a;const modo=rsModoFca(r,D);
   if(f.tipo==='max'){a=rsAnalisarMax(RS_MX,r,D.meta,modo);if(!a)return null;}
   else if(f.tipo==='enc'){a=rsAnalisarEnc(r,D,f.lbl,modo);if(!a)return null;}
-  else if(f.tipo==='rede'){a=rsAnalisarRede(r,D,f.lbl,modo);if(!a)return null;}
+  else if(f.tipo==='rede'){a=RS_NK(r.indicador).startsWith('OUTLIER')?rsAnalisarRedeOutlier(r,D,f.lbl,modo):rsAnalisarRede(r,D,f.lbl,modo);if(!a)return null;}
   else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;
     a=RS_NK(r.indicador)==='IRTDU'?rsAnalisarIrtDu(b,r,D,f.lbl,modo):rsAnalisarBase(b,r,D.meta,{fonte:f.lbl,metaTxt:rsMetaTxt(r,D),periodo:modo});if(!a)return null;}
   {const sv=rsSemanaVsMeta(r,D),mes=D.meta.mes||'';a.periodo=modo;
@@ -39802,7 +39859,7 @@ function rsFcaVirtuais(D,sem){
     const mt=m.meta!=null?rsFmt(m.indicador,m.meta):(m.meta_texto||'');
     out.push({id:sem+'|'+m.cluster+'|'+m.indicador,semana:sem,cluster:m.cluster,regional:ref.regional||'',gerente:D.ger,indicador:m.indicador,
       grupo:'Fora da meta no mês — sem linha de FCA na planilha Redir',situacao:'Exigido',entrega:'Não enviado',
-      valor_mes:m.valor,valor_semana:f.tipo==='enc'?rsEncValorSemana(m.indicador,m.cluster,sem,D):null,vs_sem_ant:null,vs_mom:null,
+      valor_mes:m.valor,valor_semana:f.tipo==='enc'?rsEncValorSemana(m.indicador,m.cluster,sem,D):f.tipo==='rede'&&RS_NK(m.indicador).startsWith('OUTLIER')?rsRedeOutlierSemana(m.cluster,sem,D):null,vs_sem_ant:null,vs_mom:null,
       fato:m.indicador+' ('+rsFmt(m.indicador,m.valor)+'): fora da meta'+(mt?' ('+mt+')':''),
       analise:'Indicador fora da meta na matriz do mês sem FCA na planilha — análise pelo '+f.lbl,virtual:true});
   }
