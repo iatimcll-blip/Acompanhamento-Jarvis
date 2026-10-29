@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-29T14:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-29T16:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -38557,7 +38557,7 @@ function rsDrawJust(){
   const list=document.getElementById('rs-jlist'),bar=document.getElementById('rs-jbar');list.innerHTML='';
   bar.hidden=false;
   const byId=new Map(D.fca.map(r=>[r.id,r])),ord={'Não enviado':0,'Incompleto':1,'Completo':2};
-  let rs=D.fca.filter(r=>r.semana===sem&&(!clu||r.cluster===clu)&&r.situacao==='Exigido');const total=rs.length;
+  let rs=rsFcaComVirtuais(D,sem).filter(r=>r.semana===sem&&(!clu||r.cluster===clu)&&r.situacao==='Exigido');const total=rs.length;
   if(document.getElementById('rs-jpend').checked)rs=rs.filter(r=>r.entrega!=='Completo');
   {const lb=document.getElementById('rs-limpar-bases');if(lb)lb.hidden=!((RS_IND&&Object.keys(RS_IND).length)||D.fca.some(x=>rsTemTexto(x.id)));}
   document.getElementById('rs-jcount').textContent=rs.length+' de '+total+' indicadores com FCA exigido na '+sem+' · preencha Causa, Ação, Resp, Prazo e Status (visível para todos os usuários)';
@@ -39713,7 +39713,7 @@ function rsPintaAnalise(box,a,aplicar){
 }
 function rsExportCsv(){
   const D=rsDados();if(!D)return;const sem=rsF.sem,clu=rsF.clu;
-  const rs=D.fca.filter(r=>r.semana===sem&&r.situacao==='Exigido'&&(!clu||r.cluster===clu));
+  const rs=rsFcaComVirtuais(D,sem).filter(r=>r.semana===sem&&r.situacao==='Exigido'&&(!clu||r.cluster===clu));
   const lines=[['Semana','Gerente','Cluster','Indicador','Fato','Causa','Ação','Resp','Prazo','Status'].join(';')];
   for(const r of rs){const d=rsDraftsMap().get(r.id)||Object.fromEntries(RS_FIELDS.map(([f])=>[f,r[f]||'']));
     lines.push([r.semana,r.gerente,r.cluster,r.indicador,r.fato,d.causa,d.acao,d.resp,d.prazo,d.status_acoes].map(rsQ).join(';'));}
@@ -39774,6 +39774,36 @@ function rsStatusVal(v,meta,dir){
 const RS_ST_TXT={ok:'na meta',warn:'próximo da meta',bad:'fora da meta'};
 /* FCA do MÊS ou da SEMANA (pedido 2026-10-29): mês fora e semana na meta → FCA do mês;
    mês e semana fora (ou semana sem valor) → FCA da semana */
+/* Indicador fora da meta na matriz do mês, SEM linha de FCA na planilha Redir (ex.: Outlier B2B), mas com
+   fonte de dados (pedido 2026-10-29: "Outlier B2B busca a análise do Painel B2B Encerrados") — ganha um card
+   em Justificativas do gerente com a mesma chave de rascunho (semana|cluster|indicador). O valor da semana
+   vem do próprio B2B Encerrados (Prazo / Outlier) para decidir FCA do mês × da semana. */
+function rsEncValorSemana(ind,cluster,sem,D){
+  if(typeof dEnc==='undefined'||!Array.isArray(dEnc)||!dEnc.length)return null;
+  const uf=_rsUfDoCluster(cluster),w=+String(sem).replace(/\D/g,'');if(!w)return null;
+  const mm=String(D.meta&&D.meta.mes||'').match(/\/(\d{2})$/),y=mm?2000+ +mm[1]:new Date().getFullYear();
+  const k=y+'-S'+String(w).padStart(2,'0');
+  const rows=dEnc.filter(x=>(!uf||String(x.uf||'').toUpperCase()===uf)&&x.semana===k);if(!rows.length)return null;
+  const out=RS_NK(ind).startsWith('OUTLIER');
+  return rows.filter(x=>out?encBucket(Number(x.tempoTotal)||0)==='outlier':x.dentro8h).length/rows.length;
+}
+function rsFcaVirtuais(D,sem){
+  const out=[];
+  for(const m of D.matriz||[]){
+    if(m.status!=='Fora da meta')continue;
+    if(D.fca.some(x=>x.semana===sem&&x.cluster===m.cluster&&x.indicador===m.indicador&&x.situacao==='Exigido'))continue;
+    const f=rsFonteDe({indicador:m.indicador});if(f.tipo==='nenhuma')continue;
+    const ref=D.fca.find(x=>x.cluster===m.cluster)||{};
+    const mt=m.meta!=null?rsFmt(m.indicador,m.meta):(m.meta_texto||'');
+    out.push({id:sem+'|'+m.cluster+'|'+m.indicador,semana:sem,cluster:m.cluster,regional:ref.regional||'',gerente:D.ger,indicador:m.indicador,
+      grupo:'Fora da meta no mês — sem linha de FCA na planilha Redir',situacao:'Exigido',entrega:'Não enviado',
+      valor_mes:m.valor,valor_semana:f.tipo==='enc'?rsEncValorSemana(m.indicador,m.cluster,sem,D):null,vs_sem_ant:null,vs_mom:null,
+      fato:m.indicador+' ('+rsFmt(m.indicador,m.valor)+'): fora da meta'+(mt?' ('+mt+')':''),
+      analise:'Indicador fora da meta na matriz do mês sem FCA na planilha — análise pelo '+f.lbl,virtual:true});
+  }
+  return out;
+}
+const rsFcaComVirtuais=(D,sem)=>D.fca.concat(rsFcaVirtuais(D,sem));
 function rsModoFca(r,D){const sv=rsSemanaVsMeta(r,D);return sv&&sv.st==='ok'&&sv.mesSt!=='Na meta'?'mes':'semana';}
 function rsMesKeyDe(D){const mm=String(D&&D.meta&&D.meta.mes||'').match(/([a-zç]{3})\/(\d{2})/i);const i=mm?RS_MESES.indexOf(mm[1].toLowerCase()):-1;return i>=0?(2000+ +mm[2])+'-'+String(i+1).padStart(2,'0'):'';}
 function rsMesAntKey(k){const[y,m]=k.split('-').map(Number);return m>1?y+'-'+String(m-1).padStart(2,'0'):(y-1)+'-12';}
@@ -39788,14 +39818,14 @@ function rsDrawForaMeta(D,clu,M){
   const sem=rsF.sem,fora=M.filter(r=>r.status==='Fora da meta');
   document.getElementById('rs-of-nota').textContent='mês '+(D.meta.mes||'')+' → '+sem+' · clique no indicador para anexar a base (a análise vai para Justificativas do gerente, em todos os clusters) · semana na meta = FCA do mês; mês e semana fora = FCA da semana';
   if(!fora.length){box.innerHTML='<div class="rs-note">Nenhum indicador fora da meta no mês'+(clu?' neste cluster':'')+'.</div>';return;}
-  const pode=canEdit('redirSemanal');
+  const pode=canEdit('redirSemanal'),virt=rsFcaVirtuais(D,sem);
   for(const ind of [...new Set(fora.map(r=>r.indicador))]){
     const f=rsFonteDe({indicador:ind}),m=f.m,dir=rsDirecao(ind,D.matriz);
     const painel=m&&(m.painel==='enc'||m.painel==='rede'||m.painel==='max');
     const linhas=fora.filter(r=>r.indicador===ind).sort((a,b)=>a.ordem-b.ordem);
     let todosOk=true,info='',tip=ind+' — meta '+(linhas[0].meta!=null?rsFmt(ind,linhas[0].meta):(linhas[0].meta_texto||'—'));
     for(const mr of linhas){
-      const fc=D.fca.find(x=>x.semana===sem&&x.cluster===mr.cluster&&x.indicador===ind);
+      const fc=D.fca.find(x=>x.semana===sem&&x.cluster===mr.cluster&&x.indicador===ind)||virt.find(x=>x.cluster===mr.cluster&&x.indicador===ind);
       const vs=fc?fc.valor_semana:null,st=rsStatusVal(vs,mr.meta,dir);if(st!=='ok')todosOk=false;
       const uf=_rsUfDoCluster(mr.cluster)||rsCluCurto(mr.cluster);
       info+='<span class="rs-ofb-l">'+eh(uf)+' <b class="rs-v-bad">'+eh(rsFmt(ind,mr.valor))+'</b>→<b class="'+(st?'rs-v-'+st:'')+'">'+eh(rsFmt(ind,vs))+'</b></span>';
@@ -39817,7 +39847,7 @@ function rsDrawForaMeta(D,clu,M){
    mesmo com o filtro de cluster ligado (os de outro cluster aparecem abertos ao trocar o filtro) */
 function rsEnviarParaJust(ind,focoId){
   const D=rsDados();if(!D)return;const m=rsModeloDe(ind),chave=m?m.modelo:null;
-  const alvo=D.fca.filter(x=>x.semana===rsF.sem&&x.situacao==='Exigido'&&
+  const alvo=rsFcaComVirtuais(D,rsF.sem).filter(x=>x.semana===rsF.sem&&x.situacao==='Exigido'&&
     (x.indicador===ind||(chave&&(rsModeloDe(x.indicador)||{}).modelo===chave)));
   if(!alvo.length){_ghToast('Nenhum FCA exigido de '+ind+' na '+rsF.sem+(rsF.clu?' neste cluster':'')+' — a análise fica disponível quando houver.','var(--orange)',4500);rsDraw();return;}
   alvo.forEach(x=>rsAnaAbertas.add(x.id));
