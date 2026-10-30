@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-30T10:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-30T11:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -2096,6 +2096,8 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-lbl{color:var(--tx2);font-weight:700}
 #panel-redir-sem .rs-dt{width:auto;min-width:128px;padding-right:6px}
 #panel-redir-sem .rs-dt.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+#panel-redir-sem .rs-per-btn.pend{background:var(--blue);color:#fff;border-color:var(--blue)}
+#panel-redir-sem .rs-per-btn.ok{background:color-mix(in srgb,var(--green) 16%,var(--surface));border-color:var(--green-dk);color:var(--green-dk)}
 #panel-redir-sem .rs-lbl i{color:var(--blue)}
 #panel-redir-sem .rs-ctrl .fsel{width:auto;flex:0 0 auto;min-width:150px}
 #panel-redir-sem .rs-ctrl .card-action,#panel-redir-sem .rs-ctrl .week-label{flex:0 0 auto}
@@ -14256,9 +14258,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="week-label"><i class="ti ti-map-pin" style="font-size:13px;vertical-align:-2px"></i> Cluster</span>
           <select class="fsel" id="rs-f-clu" onchange="rsSetF({clu:this.value||null})" aria-label="Cluster"></select>
           <span class="week-label"><i class="ti ti-calendar-event" style="font-size:13px;vertical-align:-2px"></i> Período</span>
-          <input type="date" class="fsel rs-dt" id="rs-f-de" onchange="rsSetF({de:this.value||null})" aria-label="Data inicial" title="Data inicial — com período escolhido, todas as análises são feitas dentro dele">
+          <input type="date" class="fsel rs-dt" id="rs-f-de" oninput="rsPerPend()" onchange="rsPerPend()" aria-label="Data inicial" title="Data inicial do período — clique em Aplicar">
           <span class="rs-note">a</span>
-          <input type="date" class="fsel rs-dt" id="rs-f-ate" onchange="rsSetF({ate:this.value||null})" aria-label="Data final" title="Data final — com período escolhido, todas as análises são feitas dentro dele">
+          <input type="date" class="fsel rs-dt" id="rs-f-ate" oninput="rsPerPend()" onchange="rsPerPend()" aria-label="Data final" title="Data final do período — clique em Aplicar">
+          <button type="button" class="rs-btn rs-per-btn" id="rs-per-aplicar" onclick="rsAplicarPeriodo()" title="Aplica o período: todas as análises das bases passam a trazer os dados de Data inicial a Data final"><i class="ti ti-check"></i> Aplicar</button>
           <span class="card-action" id="rs-limpar" onclick="rsSetF({clu:null,sem:null,q:'',de:null,ate:null})">Limpar filtros</span>
           <button type="button" class="rs-btn rs-vbtn" onclick="rsVideoAbrir()" title="Vídeo de 6 minutos, narrado, mostrando como usar o painel (dados fictícios)"><i class="ti ti-player-play"></i> Vídeo explicativo</button>
         </div>
@@ -38522,8 +38525,30 @@ function rsResumoClu(D){
   for(const r of out){const p=rsPrev(D,r.semana),o=p&&out.find(x=>x.semana===p&&x.cluster===r.cluster);r.vsAnt=o&&o.pct!=null&&r.pct!=null?r.pct-o.pct:null;}
   return D._res=out;
 }
+/* Período (2026-10-30): as datas só valem depois do "Aplicar" */
+function rsPerPend(){
+  const de=document.getElementById('rs-f-de'),at=document.getElementById('rs-f-ate'),b=document.getElementById('rs-per-aplicar');if(!de||!at||!b)return;
+  const vDe=de.value||null,vAt=at.value||null,mudou=vDe!==rsF.de||vAt!==rsF.ate,aplicado=!!(rsF.de||rsF.ate);
+  de.classList.toggle('on',!!rsF.de&&!mudou);at.classList.toggle('on',!!rsF.ate&&!mudou);
+  b.classList.toggle('pend',mudou);b.classList.toggle('ok',!mudou&&aplicado);
+  b.innerHTML=mudou?'<i class="ti ti-check"></i> Aplicar':aplicado?'<i class="ti ti-circle-check"></i> Período aplicado':'<i class="ti ti-check"></i> Aplicar';
+  b.title=mudou?'Clique para aplicar o período escolhido às análises':aplicado?'Análises no período '+rsPer().lbl+' — para voltar à semana/mês, use Limpar filtros':'Escolha a Data inicial e a Data final e clique em Aplicar';
+}
+function rsAplicarPeriodo(){
+  const vDe=(document.getElementById('rs-f-de')||{}).value||null,vAt=(document.getElementById('rs-f-ate')||{}).value||null;
+  if(!vDe&&!vAt){if(rsF.de||rsF.ate)rsSetF({de:null,ate:null});else _ghToast('Escolha a Data inicial e/ou a Data final do período.','var(--orange)',3500);return;}
+  if(vDe&&vAt&&vDe>vAt){_ghToast('A Data inicial é depois da Data final — ajuste o período.','var(--red)',4000);return;}
+  rsF.de=vDe;rsF.ate=vAt;
+  /* todas as análises das bases trazem os dados do período: abre a análise de todo card com fonte */
+  const D=rsDados();let n=0;
+  if(D)for(const r of rsFcaComVirtuais(D,rsF.sem))if(r.semana===rsF.sem&&r.situacao==='Exigido'&&rsFonteDe(r).tipo!=='nenhuma'){rsAnaAbertas.add(r.id);n++;}
+  rsDraw();
+  const P=rsPer();_ghToast('Período '+P.lbl+' aplicado: '+n+' análise'+(n===1?'':'s')+' com os dados do período (comparadas com '+P.antLbl+').','var(--green-dk)',5000);
+}
 function rsSetF(p){
   if('q' in p){const q=document.getElementById('rs-q');if(q)q.value=p.q;}
+  if('de' in p){const e=document.getElementById('rs-f-de');if(e)e.value=p.de||'';}
+  if('ate' in p){const e=document.getElementById('rs-f-ate');if(e)e.value=p.ate||'';}
   Object.assign(rsF,p);rsDraw();
 }
 
@@ -38550,7 +38575,7 @@ function rsDraw(){
   ss.innerHTML=D.meta.semanas.map(w=>'<option value="'+eh(w)+'">'+eh(w)+(D.meta.labels[w]?' ('+eh(D.meta.labels[w])+')':'')+'</option>').join('');ss.value=sem;
   const sc=document.getElementById('rs-f-clu');
   sc.innerHTML='<option value="">Todos os clusters</option>'+clus.map(c=>'<option value="'+eh(c)+'">'+eh(rsCluCurto(c))+'</option>').join('');sc.value=clu||'';
-  {const de=document.getElementById('rs-f-de'),at=document.getElementById('rs-f-ate');if(de){de.value=rsF.de||'';de.classList.toggle('on',!!rsF.de);}if(at){at.value=rsF.ate||'';at.classList.toggle('on',!!rsF.ate);}}
+  rsPerPend();
   document.getElementById('rs-mat-hd').firstChild.textContent='Indicadores do mês por cluster'+(D.meta.mes?' · '+D.meta.mes:'')+' ';
   document.getElementById('rs-fato-n').textContent=D.meta.fato?'Fato = resultado do mês ('+D.meta.fato+') contra a meta.':'';
   /* KPIs */
