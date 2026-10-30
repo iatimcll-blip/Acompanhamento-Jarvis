@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-30T13:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-10-30T15:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -2284,6 +2284,12 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-ana-dim small{font-size:9.5px;color:var(--tx3)}
 #panel-redir-sem .rs-ana-dim small.up{color:var(--red-dk)}
 #panel-redir-sem .rs-ana-sug b{font-size:11px;color:var(--tx)}
+#panel-redir-sem .rs-proj{display:grid;grid-template-columns:minmax(220px,340px) 1fr;gap:12px;align-items:center;background:var(--surface);border-radius:8px;padding:8px 10px;margin:6px 0}
+#panel-redir-sem .rs-proj-cv{position:relative;height:150px}
+#panel-redir-sem .rs-proj-txt b{font-size:11px;color:var(--tx)}#panel-redir-sem .rs-proj-txt b i{color:var(--orange)}
+#panel-redir-sem .rs-proj-txt p{margin:4px 0;font-size:11.5px;color:var(--tx)}
+#panel-redir-sem .rs-proj-txt small{font-size:10px;color:var(--tx3)}
+@media (max-width:700px){#panel-redir-sem .rs-proj{grid-template-columns:1fr}}
 #panel-redir-sem .rs-ana-sug pre{white-space:pre-wrap;font:inherit;background:var(--surface);border-radius:8px;padding:8px;margin:4px 0 0;color:var(--tx)}
 #panel-redir-sem .rs-ana .acts{display:flex;gap:6px;flex-wrap:wrap}
 .panel-dashboard{gap:16px}
@@ -39664,7 +39670,70 @@ function rsAnalisarFca(r,D){
       ?'FCA do MÊS ('+mes+'): na '+r.semana+' o indicador está na meta ('+rsFmt(r.indicador,r.valor_semana)+'); o desvio é do acumulado do mês ('+(sv?rsFmt(r.indicador,sv.mr.valor):'—')+') — análise e sugestão sobre o mês inteiro, comparado com o mês anterior'
       :sv&&sv.st?'FCA da SEMANA ('+r.semana+'): mês e semana fora da meta ('+rsFmt(r.indicador,sv.mr.valor)+' no mês · '+rsFmt(r.indicador,r.valor_semana)+' na '+r.semana+') — análise e sugestão sobre a semana, comparada com a anterior'
       :'FCA da SEMANA ('+r.semana+') — a planilha não traz o valor da semana para comparar com a meta';}
+  try{const pj=rsProjecao(r,D);if(pj){a.proj=pj;if(a.sug)a.sug.causa=(a.sug.causa?a.sug.causa+'\n\n':'')+'PROJEÇÃO: '+pj.texto;}}catch(e){console.warn('Redir: projeção',e);}
   a.fonteTipo=f.tipo;return a;
+}
+/* ── Projeção (pedido 2026-10-30): série semanal do cluster × indicador (planilha Redir; nos cards criados
+   pelo painel, B2B Encerrados / Rede), ritmo = média das 2 últimas semanas com valor. Próxima semana = ritmo;
+   fechamento do mês = acumulado × dias decorridos + ritmo × dias restantes (ponderado por dias, aproximação),
+   e o valor que as semanas restantes precisam ter para o mês bater a meta. ── */
+function rsSerieSemanal(r,D){
+  return (D.meta.semanas||[]).map(w=>{
+    const x=D.fca.find(y=>y.semana===w&&y.cluster===r.cluster&&y.indicador===r.indicador);
+    let v=x&&x.valor_semana!=null?x.valor_semana:null;
+    if(v==null&&r.virtual){const f=rsFonteDe(r);
+      if(f.tipo==='enc')v=rsEncValorSemana(r.indicador,r.cluster,w,D);
+      else if(f.tipo==='rede'&&RS_NK(r.indicador).startsWith('OUTLIER'))v=rsRedeOutlierSemana(r.cluster,w,D);}
+    return{w,v};});
+}
+function rsProjecao(r,D){
+  const serie=rsSerieSemanal(r,D),com=serie.filter(x=>x.v!=null);if(!com.length)return null;
+  const ind=r.indicador,u=RS_UNIT[ind]||'pct',F=v=>rsFmt(ind,v);
+  const mr=(D.matriz||[]).find(x=>x.cluster===r.cluster&&x.indicador===ind)||{};
+  const meta=mr.meta!=null?mr.meta:null,dir=rsDirecao(ind,D.matriz),mes=r.valor_mes!=null?r.valor_mes:mr.valor;
+  const ult2=com.slice(-2),ritmo=ult2.reduce((s,x)=>s+x.v,0)/ult2.length;
+  const clamp=v=>u==='pct'?Math.min(1,Math.max(0,v)):Math.max(0,v);
+  /* dias do mês já cobertos: fim (domingo) da última semana da planilha, limitado ao mês do fato */
+  const mk=rsMesKeyDe(D);let dias=30,el=null;
+  if(mk){const[y,m]=mk.split('-').map(Number);dias=new Date(Date.UTC(y,m,0)).getUTCDate();
+    const ultW=+String((D.meta.semanas||[]).slice(-1)[0]||'').replace(/\D/g,'');
+    if(ultW){const fim=new Date(rsSegundaIso(y,ultW).getTime()+6*864e5);
+      el=fim.getUTCFullYear()>y||(fim.getUTCFullYear()===y&&fim.getUTCMonth()+1>m)?dias:fim.getUTCMonth()+1<m?0:fim.getUTCDate();}
+    /* a planilha cobre até a véspera do anexo (D-1): a semana W44 (26/out–01/nov) anexada em 29/10 cobre só até 28/10 */
+    const at=typeof RS_BASE!=='undefined'&&RS_BASE&&RS_BASE.at?new Date(RS_BASE.at):null;
+    if(at&&el!=null){const d1=new Date(at.getTime()-864e5);if(d1.getFullYear()===y&&d1.getMonth()+1===m)el=Math.min(el,d1.getDate());else if(d1.getFullYear()<y||(d1.getFullYear()===y&&d1.getMonth()+1<m))el=0;}}
+  const rest=el==null?null:Math.max(0,dias-el);
+  const prox='W'+((+String(com[com.length-1].w).replace(/\D/g,''))+1);
+  const stR=rsStatusVal(ritmo,meta,dir),mesLbl=D.meta.mes||'mês',metaTxt=meta!=null?F(meta):(mr.meta_texto||'');
+  const partes=[];let fim=null,need=null;
+  partes.push('ritmo das últimas semanas ('+ult2.map(x=>x.w).join('–')+') de '+F(ritmo)+(stR?', '+RS_ST_TXT[stR]:'')+(metaTxt?' (meta '+metaTxt+')':'')+'; mantido esse ritmo, a '+prox+' tende a fechar em ~'+F(clamp(ritmo)));
+  if(mes!=null&&rest!=null&&rest>0){
+    fim=clamp((mes*el+ritmo*rest)/dias);const stF=rsStatusVal(fim,meta,dir);
+    partes.push(mesLbl+' (acumulado '+F(mes)+' em '+el+' de '+dias+' dias) fecha projetado em ~'+F(fim)+(stF?' — '+RS_ST_TXT[stF]:''));
+    if(meta!=null&&dir&&stF!=='ok'){need=(meta*dias-mes*el)/rest;
+      const imposs=dir>0?(u==='pct'?need>1:false):need<0;
+      partes.push(imposs?(dir>0?'mesmo com 100%':'mesmo zerando o indicador')+' nos '+rest+' dias restantes o mês não atinge a meta — o foco passa a ser o próximo mês':'para fechar o mês na meta, os '+rest+' dias restantes precisam de '+(dir>0?'no mínimo ':'no máximo ')+F(clamp(need)));}
+  }else if(mes!=null){const stM=rsStatusVal(mes,meta,dir);
+    partes.push(mesLbl+' já está fechado em '+F(mes)+(stM?' ('+RS_ST_TXT[stM]+')':'')+'; mantido o ritmo, o próximo mês começa em ~'+F(clamp(ritmo))+(stR?' ('+RS_ST_TXT[stR]+')':''));}
+  const texto=partes.join('; ')+'.';
+  return{serie,ritmo:clamp(ritmo),prox,fim,need,meta,dir,mes,el,dias,rest,texto,ind};
+}
+/* gráfico pequeno da projeção dentro da análise */
+function rsProjChart(box,pj){
+  if(!pj||typeof Chart==='undefined')return;const cv=box.querySelector('.rs-proj canvas');if(!cv)return;
+  if(box._rsProjCh){try{box._rsProjCh.destroy();}catch(e){}}
+  const cs=getComputedStyle(document.body),txC=(cs.getPropertyValue('--tx2')||'#555').trim(),u=RS_UNIT[pj.ind]||'pct';
+  const lbl=pj.serie.map(x=>x.w).concat([pj.prox+' (proj.)']);
+  const real=pj.serie.map(x=>x.v).concat([null]);
+  const iU=pj.serie.map(x=>x.v!=null).lastIndexOf(true);
+  const proj=lbl.map((_,i)=>i===iU?pj.serie[iU].v:i===lbl.length-1?pj.ritmo:null);
+  const ds=[{label:'Semana (realizado)',data:real,borderColor:'#007aff',backgroundColor:'#007aff',tension:.25,spanGaps:true,pointRadius:3},
+    {label:'Projeção',data:proj,borderColor:'#ff9500',backgroundColor:'#ff9500',borderDash:[5,4],spanGaps:true,pointRadius:3}];
+  if(pj.meta!=null)ds.push({label:'Meta',data:lbl.map(()=>pj.meta),borderColor:'#ff3b30',borderDash:[2,3],borderWidth:1.5,pointRadius:0});
+  if(pj.fim!=null)ds.push({label:'Fecho do mês (proj.)',data:lbl.map((_,i)=>i===lbl.length-1?pj.fim:null),borderColor:'#34c759',backgroundColor:'#34c759',pointRadius:5,pointStyle:'rectRot',showLine:false});
+  box._rsProjCh=new Chart(cv,{type:'line',data:{labels:lbl,datasets:ds},options:{responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:8,font:{size:9}}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+rsFmt(pj.ind,c.parsed.y)}}},
+    scales:{x:{ticks:{color:txC,font:{size:9}}},y:{ticks:{color:txC,font:{size:9},callback:v=>u==='pct'?rsNf0.format(v*100)+'%':rsFmt(pj.ind,v)}}}}});
 }
 /* mês e semana fora: uma análise só, com as duas partes (semana primeiro) e o FCA sugerido em seções */
 function rsMesclarAnalise(aS,aM,r,D){
@@ -39873,12 +39942,14 @@ function rsPintaAnalise(box,a,aplicar){
     (a.avisos.length?'<div class="rs-ana-av">'+a.avisos.map(eh).join(' · ')+'</div>':'')+
     '<div class="rs-ana-vol">'+vol+'</div>'+((a.kpis||[]).length?'<div class="rs-ana-kpi">'+a.kpis.map(k=>'<span>'+eh(k)+'</span>').join('')+'</div>':'')+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
     '<div class="rs-ana-dims">'+a.dims.map(li).join('')+(a.reinc?'<div class="rs-ana-dim"><b>Reincidência</b><span>'+a.reinc.reincidentes+' contratos com 2+ eventos <em>'+a.reinc.eventos+' eventos</em></span></div>':'')+'</div>'+
+    (a.proj?'<div class="rs-proj"><div class="rs-proj-cv"><canvas aria-label="Projeção de '+eh(a.proj.ind)+'"></canvas></div><div class="rs-proj-txt"><b><i class="ti ti-trending-up"></i> Projeção</b><p>'+eh(a.proj.texto.charAt(0).toUpperCase()+a.proj.texto.slice(1))+'</p><small>Ritmo = média das 2 últimas semanas com valor; fechamento do mês ponderado pelos dias (aproximação). Este texto já está na sugestão de FCA abaixo.</small></div></div>':'')+
     '<div class="rs-ana-sug"><b>Sugestão para o FCA</b>'+(a.sug.causa?'<pre>CAUSA\n'+eh(a.sug.causa)+'\n\nAÇÃO\n'+eh(a.sug.acao)+'</pre>':'<p class="rs-note">Os dados não mostram concentração clara (cidade, motivo, técnico). Use a análise acima para descrever a causa.</p>')+'</div>';
   const bar=document.createElement('div');bar.className='acts';
   if(a.sug.causa){const u=document.createElement('button');u.type='button';u.className='rs-btn pri';u.textContent='Usar na justificativa';u.onclick=()=>aplicar(a);bar.appendChild(u);}
   const cp=document.createElement('button');cp.type='button';cp.className='rs-btn';cp.textContent='Copiar análise';
   cp.onclick=async()=>{try{await navigator.clipboard.writeText(box.innerText.replace(/Usar na justificativa|Copiar análise/g,'').trim());cp.textContent='Copiado ✔';}catch(e){cp.textContent='Não foi possível copiar';}setTimeout(()=>{cp.textContent='Copiar análise';},2000);};
   bar.appendChild(cp);box.appendChild(bar);
+  if(a.proj)rsProjChart(box,a.proj);
 }
 function rsExportCsv(){
   const D=rsDados();if(!D)return;const sem=rsF.sem,clu=rsF.clu;
