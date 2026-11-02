@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-02T10:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-02T11:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -11717,7 +11717,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:10px 14px;margin-bottom:14px;}
   #panel-executivo .exec-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
   #panel-executivo .exec-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:14px;}
-  #panel-executivo .mtsim{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);margin-bottom:14px}
+  #panel-executivo .mtsim{background:var(--surface);border:1px solid color-mix(in srgb,var(--blue) 45%,var(--bd));border-left:4px solid var(--blue);border-radius:var(--rl);box-shadow:var(--shadow-sm);margin-bottom:14px}
+  #panel-executivo .mtsim>summary{background:color-mix(in srgb,var(--blue) 8%,transparent);border-radius:var(--rl) var(--rl) 0 0}
+  #panel-executivo .mtsim:not([open])>summary{border-radius:var(--rl)}
   #panel-executivo .mtsim>summary{cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--tx);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #panel-executivo .mtsim>summary i{color:var(--blue);font-size:17px}
   #panel-executivo .mtsim>summary small{font-weight:500;font-size:11px;color:var(--tx3)}
@@ -11895,7 +11897,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button type="button" class="exec-summary-card" id="exec-summary-warmup" onclick="execSetTab('warmup')"></button>
     </div>
     <!-- Simulador de MTTR (pedido 2026-11-02): calcula o MTTR com eventos e tempos informados pelo usuário -->
-    <details class="mtsim" id="mtsim" ontoggle="if(this.open)mtsimInit()">
+    <details class="mtsim" id="mtsim" open ontoggle="if(this.open)mtsimInit()">
       <summary><i class="ti ti-calculator"></i> Simulador de MTTR <small>simule o MTTR com o número de eventos e os tempos que quiser</small></summary>
       <div class="mtsim-body">
         <div class="mtsim-sec">
@@ -26306,6 +26308,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   }
   activeTab=tab;
   if(typeof _srEditSync==='function')_srEditSync();
+  if(tab==='executivo'&&typeof mtsimInit==='function')setTimeout(()=>{const d=document.getElementById('mtsim');if(d&&d.open)mtsimInit();},0);
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
   const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap',isMax=tab==='max',isRs=tab==='redirSemanal';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
@@ -31517,7 +31520,8 @@ function mtsimInit(){
     ms.innerHTML='<option value="">Todos os meses</option>'+meses.map(m=>'<option value="'+eh(m)+'">'+eh(fmtMesLabel(m))+'</option>').join('');
     ms.value=meses[0]||'';
     document.getElementById('mtsim-meta').value=mtsimFmt(typeof RDE_MTME!=='undefined'&&RDE_MTME>0?RDE_MTME:6);
-    MTSIM.init=true;mtsimLinhas();mtsimUsarBase();
+    /* só fica iniciado quando o Rede já tem dados (no boot ele pode carregar depois) */
+    MTSIM.init=f.length>0;if(!MTSIM.linhasOk){mtsimLinhas();MTSIM.linhasOk=true;}mtsimUsarBase();
   }
 }
 function mtsimUsarBase(){
