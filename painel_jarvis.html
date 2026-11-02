@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-10-30T15:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-02T10:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -11717,6 +11717,34 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-executivo .exec-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);padding:10px 14px;margin-bottom:14px;}
   #panel-executivo .exec-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
   #panel-executivo .exec-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:14px;}
+  #panel-executivo .mtsim{background:var(--surface);border:.5px solid var(--bd);border-radius:var(--rl);box-shadow:var(--shadow-sm);margin-bottom:14px}
+  #panel-executivo .mtsim>summary{cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--tx);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #panel-executivo .mtsim>summary i{color:var(--blue);font-size:17px}
+  #panel-executivo .mtsim>summary small{font-weight:500;font-size:11px;color:var(--tx3)}
+  #panel-executivo .mtsim-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;padding:4px 16px 16px}
+  #panel-executivo .mtsim-sec{display:flex;flex-direction:column;gap:8px;min-width:0}
+  #panel-executivo .mtsim-ttl{font-size:12px;font-weight:800;color:var(--tx2);display:flex;align-items:center;gap:6px}
+  #panel-executivo .mtsim-n{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--blue);color:#fff;font-size:10px}
+  #panel-executivo .mtsim-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  #panel-executivo .mtsim label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:600;color:var(--tx3)}
+  #panel-executivo .mtsim input.fsel{width:110px}#panel-executivo .mtsim input.mtsim-h{width:90px}
+  #panel-executivo .mtsim-btn{font:inherit;font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;border:.5px solid var(--bd2);background:var(--surface);color:var(--tx);cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+  #panel-executivo .mtsim-btn:hover{border-color:var(--blue)}
+  #panel-executivo .mtsim-note{font-size:10.5px;color:var(--tx3)}
+  #panel-executivo .mtsim-tab{width:100%;border-collapse:collapse;font-size:11.5px}
+  #panel-executivo .mtsim-tab th{font-size:10px!important;text-align:left;color:var(--tx3)!important;padding:3px 4px}
+  #panel-executivo .mtsim-tab td{padding:3px 4px}
+  #panel-executivo .mtsim-tab td input{width:100%!important;min-width:70px}
+  #panel-executivo .mtsim-del{border:none;background:none;color:var(--red);cursor:pointer;font-size:15px}
+  #panel-executivo .mtsim-res{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  #panel-executivo .mtsim-kpi{border:.5px solid var(--bd);border-radius:10px;padding:8px 10px;background:var(--bg2,var(--surface))}
+  #panel-executivo .mtsim-kpi span{display:block;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+  #panel-executivo .mtsim-kpi b{font-size:20px;color:var(--tx)}
+  #panel-executivo .mtsim-kpi em{display:block;font-style:normal;font-size:10.5px;color:var(--tx3)}
+  #panel-executivo .mtsim-kpi.ok b{color:var(--green-dk)}#panel-executivo .mtsim-kpi.bad b{color:var(--red)}
+  #panel-executivo .mtsim-kpi.big{grid-column:1/-1}#panel-executivo .mtsim-kpi.big b{font-size:28px}
+  #panel-executivo .mtsim-txt{font-size:12px;line-height:1.45;color:var(--tx);background:color-mix(in srgb,var(--blue) 7%,transparent);border-radius:8px;padding:8px 10px}
+  #panel-executivo .mtsim-txt p{margin:0 0 4px}
   #panel-executivo .exec-toolbar{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
   #panel-executivo .exec-mirror-note{font-size:12.5px;color:var(--tx3);margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #panel-executivo .exec-mirror-note b{color:var(--tx2)}
@@ -11866,6 +11894,42 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button type="button" class="exec-summary-card" id="exec-summary-ofs" onclick="execSetTab('ofs')"></button>
       <button type="button" class="exec-summary-card" id="exec-summary-warmup" onclick="execSetTab('warmup')"></button>
     </div>
+    <!-- Simulador de MTTR (pedido 2026-11-02): calcula o MTTR com eventos e tempos informados pelo usuário -->
+    <details class="mtsim" id="mtsim" ontoggle="if(this.open)mtsimInit()">
+      <summary><i class="ti ti-calculator"></i> Simulador de MTTR <small>simule o MTTR com o número de eventos e os tempos que quiser</small></summary>
+      <div class="mtsim-body">
+        <div class="mtsim-sec">
+          <div class="mtsim-ttl"><span class="mtsim-n">1</span> Ponto de partida</div>
+          <div class="mtsim-row">
+            <label>Cluster <select class="fsel" id="mtsim-cl" onchange="mtsimUsarBase()"></select></label>
+            <label>Mês <select class="fsel" id="mtsim-mes" onchange="mtsimUsarBase()"></select></label>
+            <button type="button" class="mtsim-btn" onclick="mtsimUsarBase()" title="Recarrega eventos e MTTR reais do Painel Rede"><i class="ti ti-refresh"></i> Usar dados reais</button>
+            <button type="button" class="mtsim-btn" onclick="mtsimZerar()" title="Começa a simulação sem eventos"><i class="ti ti-eraser"></i> Começar do zero</button>
+          </div>
+          <div class="mtsim-row">
+            <label>Eventos atuais <input type="number" min="0" step="1" class="fsel" id="mtsim-n0" oninput="mtsimCalc()"></label>
+            <label>MTTR atual <input type="text" class="fsel mtsim-h" id="mtsim-m0" placeholder="ex.: 8h30" oninput="mtsimCalc()"></label>
+            <label>Meta <input type="text" class="fsel mtsim-h" id="mtsim-meta" placeholder="6h00" oninput="mtsimCalc()"></label>
+            <span class="mtsim-note" id="mtsim-fonte"></span>
+          </div>
+        </div>
+        <div class="mtsim-sec">
+          <div class="mtsim-ttl"><span class="mtsim-n">2</span> Eventos para simular</div>
+          <table class="mtsim-tab"><thead><tr><th>Quantidade de eventos</th><th>Tempo de cada evento</th><th>Horas</th><th></th></tr></thead><tbody id="mtsim-linhas"></tbody></table>
+          <button type="button" class="mtsim-btn" onclick="mtsimAddLinha()"><i class="ti ti-plus"></i> Adicionar eventos</button>
+          <span class="mtsim-note">Tempo aceita 2h30, 2:30, 2,5 (horas) ou 45min.</span>
+        </div>
+        <div class="mtsim-sec">
+          <div class="mtsim-ttl"><span class="mtsim-n">3</span> Resultado</div>
+          <div class="mtsim-res" id="mtsim-res"></div>
+          <div class="mtsim-row">
+            <label>Próximos eventos <input type="number" min="1" step="1" class="fsel" id="mtsim-k" value="10" oninput="mtsimCalc()"></label>
+            <label>Tempo médio dos próximos <input type="text" class="fsel mtsim-h" id="mtsim-t" value="2h00" oninput="mtsimCalc()"></label>
+          </div>
+          <div class="mtsim-txt" id="mtsim-txt"></div>
+        </div>
+      </div>
+    </details>
 
     <div class="exec-subtabs">
       <button class="exec-subtab active" id="exec-subtab-rede" onclick="execSetTab('rede')"><i class="ti ti-router"></i> Rede</button>
@@ -31427,6 +31491,87 @@ function rdeMttrFlat(){
    (diff -0,004h) e Setembro 8,67h (diff +0,03h) — evidência forte de que é essa mesma
    regra que a base oficial usa. */
 const RDE_MTTR_MIN_H=0.25;
+/* ── Simulador de MTTR (Painel Executivo, pedido 2026-11-02) ──
+   MTTR = horas somadas ÷ eventos. Ponto de partida = eventos e MTTR reais do Painel Rede (mesma regra do
+   card MTTR: sem expurgados e acima de RDE_MTTR_MIN_H), por cluster e mês — editável; os eventos simulados
+   (quantidade × tempo) somam horas e eventos. Nada é gravado: é só uma calculadora. */
+const MTSIM={linhas:[{q:'',t:''}],init:false};
+function mtsimHoras(v){
+  const s=String(v==null?'':v).trim().toLowerCase().replace(/\s+/g,'');if(!s)return null;
+  let m=s.match(/^(\d+)(?:h|:)(\d{1,2})?(?:m|min)?$/);if(m)return +m[1]+(m[2]?+m[2]/60:0);
+  m=s.match(/^(\d+(?:[.,]\d+)?)m(?:in)?$/);if(m)return Number(m[1].replace(',','.'))/60;
+  const n=Number(s.replace(',','.'));return isFinite(n)&&n>=0?n:null;
+}
+function mtsimFmt(h){if(h==null||!isFinite(h))return'—';const neg=h<0;h=Math.abs(h);let H=Math.floor(h),M=Math.round((h-H)*60);if(M===60){H++;M=0;}return(neg?'−':'')+H+'h'+String(M).padStart(2,'0');}
+function mtsimFlat(){
+  if(typeof rdeAD==='undefined')return[];
+  let f=[...rdeToFlat(rdeAD,'AC'),...rdeToFlat(rdeBD,'BB')];const uc=userAllowedClusters();if(uc)f=f.filter(r=>uc.includes(r.cl));
+  return f.filter(r=>{const ch=rdeChaveExpurgo(r);return!(ch&&rdeExpurgo[ch]);}).filter(r=>r.elapsedH!=null&&r.elapsedH>RDE_MTTR_MIN_H);
+}
+function mtsimInit(){
+  const f=mtsimFlat(),cl=document.getElementById('mtsim-cl'),ms=document.getElementById('mtsim-mes');if(!cl||!ms)return;
+  if(!MTSIM.init){
+    const cls=[...new Set(f.map(r=>r.cl))].sort();
+    cl.innerHTML='<option value="">Todos os clusters</option>'+cls.map(c=>'<option value="'+eh(c)+'">'+eh(RDE_CL_NM[c]||c)+'</option>').join('');
+    const meses=[...new Set(f.map(r=>r.m).filter(Boolean))].sort().reverse();
+    ms.innerHTML='<option value="">Todos os meses</option>'+meses.map(m=>'<option value="'+eh(m)+'">'+eh(fmtMesLabel(m))+'</option>').join('');
+    ms.value=meses[0]||'';
+    document.getElementById('mtsim-meta').value=mtsimFmt(typeof RDE_MTME!=='undefined'&&RDE_MTME>0?RDE_MTME:6);
+    MTSIM.init=true;mtsimLinhas();mtsimUsarBase();
+  }
+}
+function mtsimUsarBase(){
+  const cl=(document.getElementById('mtsim-cl')||{}).value||'',mes=(document.getElementById('mtsim-mes')||{}).value||'';
+  const f=mtsimFlat().filter(r=>(!cl||r.cl===cl)&&(!mes||r.m===mes));
+  const n=f.length,h=f.reduce((s,r)=>s+r.elapsedH,0);
+  document.getElementById('mtsim-n0').value=n;document.getElementById('mtsim-m0').value=n?mtsimFmt(+(h/n).toFixed(2)):'0h00';
+  document.getElementById('mtsim-fonte').textContent=typeof rdeAD==='undefined'||!(rdeAD.length||rdeBD.length)
+    ?'Sem base no Painel Rede — informe os eventos e o MTTR atuais.'
+    :'Dados reais do Painel Rede: '+(cl?(RDE_CL_NM[cl]||cl):'todos os clusters')+' · '+(mes?fmtMesLabel(mes):'todos os meses')+' (sem expurgados, mesma regra do card MTTR).';
+  mtsimCalc();
+}
+function mtsimZerar(){document.getElementById('mtsim-n0').value=0;document.getElementById('mtsim-m0').value='0h00';document.getElementById('mtsim-fonte').textContent='Simulação a partir do zero.';mtsimCalc();}
+function mtsimLinhas(){
+  const tb=document.getElementById('mtsim-linhas');if(!tb)return;
+  tb.innerHTML=MTSIM.linhas.map((l,i)=>'<tr><td><input type="number" min="0" step="1" class="fsel" value="'+eh(l.q)+'" placeholder="ex.: 5" oninput="MTSIM.linhas['+i+'].q=this.value;mtsimCalc()" aria-label="Quantidade de eventos"></td>'+
+    '<td><input type="text" class="fsel" value="'+eh(l.t)+'" placeholder="ex.: 3h00" oninput="MTSIM.linhas['+i+'].t=this.value;mtsimCalc()" aria-label="Tempo de cada evento"></td>'+
+    '<td id="mtsim-lh-'+i+'">—</td><td><button type="button" class="mtsim-del" title="Remover" onclick="mtsimDelLinha('+i+')"><i class="ti ti-x"></i></button></td></tr>').join('');
+}
+function mtsimAddLinha(){MTSIM.linhas.push({q:'',t:''});mtsimLinhas();mtsimCalc();}
+function mtsimDelLinha(i){MTSIM.linhas.splice(i,1);if(!MTSIM.linhas.length)MTSIM.linhas.push({q:'',t:''});mtsimLinhas();mtsimCalc();}
+function mtsimCalc(){
+  const g=id=>document.getElementById(id);if(!g('mtsim-res'))return;
+  const n0=Math.max(0,Math.floor(Number(g('mtsim-n0').value)||0)),m0=mtsimHoras(g('mtsim-m0').value)||0,meta=mtsimHoras(g('mtsim-meta').value);
+  const h0=n0*m0;let nS=0,hS=0;
+  MTSIM.linhas.forEach((l,i)=>{const q=Math.max(0,Math.floor(Number(l.q)||0)),t=mtsimHoras(l.t);const c=g('mtsim-lh-'+i);
+    if(q&&t!=null){nS+=q;hS+=q*t;if(c)c.textContent=mtsimFmt(q*t);}else if(c)c.textContent='—';});
+  const N=n0+nS,H=h0+hS,mt=N?H/N:null;
+  const st=v=>meta==null||v==null?'':v<=meta?'ok':'bad';
+  const kp=(cls,lbl,val,sub)=>'<div class="mtsim-kpi '+cls+'"><span>'+lbl+'</span><b>'+val+'</b>'+(sub?'<em>'+sub+'</em>':'')+'</div>';
+  const dl=mt!=null&&n0?mt-m0:null;
+  g('mtsim-res').innerHTML=
+    kp('big '+st(mt),'MTTR simulado',mtsimFmt(mt),meta!=null&&mt!=null?(mt<=meta?'✓ dentro da meta de '+mtsimFmt(meta):'✗ '+mtsimFmt(mt-meta)+' acima da meta de '+mtsimFmt(meta)):'')+
+    kp(st(n0?m0:null),'MTTR atual',n0?mtsimFmt(m0):'—',n0+' evento'+(n0===1?'':'s')+' · '+mtsimFmt(h0))+
+    kp('','Variação',dl==null?'—':(dl>0?'+':'')+mtsimFmt(dl),nS?'com '+nS+' evento'+(nS===1?'':'s')+' simulado'+(nS===1?'':'s')+' ('+mtsimFmt(hS)+')':'nenhum evento simulado')+
+    kp('','Eventos totais',String(N),'')+kp('','Horas totais',mtsimFmt(H),'');
+  /* leitura: quanto falta / quanto sobra para a meta */
+  const K=Math.max(1,Math.floor(Number(g('mtsim-k').value)||0)),T=mtsimHoras(g('mtsim-t').value),out=[];
+  if(meta==null||!N)out.push('Informe a meta e pelo menos um evento para ver o que é preciso para atingir a meta.');
+  else if(mt>meta){
+    const exc=H-meta*N;out.push('<b>Faltam '+mtsimFmt(exc)+'</b> acima da meta: hoje são '+mtsimFmt(H)+' em '+N+' eventos; na meta seriam no máximo '+mtsimFmt(meta*N)+'.');
+    const x=(meta*(N+K)-H)/K;
+    out.push(x>0?'Os próximos <b>'+K+'</b> eventos precisam ter, em média, <b>no máximo '+mtsimFmt(x)+'</b> cada para o MTTR chegar à meta.'
+      :'Mesmo com os próximos <b>'+K+'</b> eventos resolvidos na hora, o MTTR não chega à meta — seriam precisos mais eventos rápidos.');
+    if(T!=null&&T<meta){const nn=Math.ceil(exc/(meta-T));out.push('Com eventos de <b>'+mtsimFmt(T)+'</b>, são necessários <b>'+nn+' evento'+(nn===1?'':'s')+'</b> para o MTTR chegar a '+mtsimFmt(meta)+'.');}
+    else if(T!=null)out.push('Eventos de '+mtsimFmt(T)+' não baixam o MTTR para a meta (o tempo precisa ser menor que '+mtsimFmt(meta)+').');
+  }else{
+    const folga=meta*N-H;out.push('<b>Dentro da meta</b>, com folga de <b>'+mtsimFmt(folga)+'</b>.');
+    const x=(meta*(N+K)-H)/K;out.push('Os próximos <b>'+K+'</b> eventos podem ter, em média, até <b>'+mtsimFmt(x)+'</b> cada sem estourar a meta.');
+    if(T!=null&&T>meta){const nn=Math.floor(folga/(T-meta));out.push('Cabem até <b>'+nn+' evento'+(nn===1?'':'s')+' de '+mtsimFmt(T)+'</b> antes de o MTTR passar de '+mtsimFmt(meta)+'.');}
+  }
+  g('mtsim-txt').innerHTML=out.map(x=>'<p>'+x+'</p>').join('');
+}
+Object.assign(window,{mtsimInit,mtsimUsarBase,mtsimZerar,mtsimAddLinha,mtsimDelLinha,mtsimCalc,MTSIM});
 function rdeComputeMttr(){
   const flat=rdeMttrFlat();
   const validos=flat.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch]);});
