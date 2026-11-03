@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-02T13:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-03T11:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -12016,7 +12016,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     </div>
     <div class="rede-report-box" id="exec-global-report"><span style="color:var(--tx3);font-size:13px">Carregue bases em Rede, B2B Encerrados ou B2C para gerar o relatório automático.</span></div>
     <!-- Simulador de MTTR (pedido 2026-11-02; último bloco da página a pedido em 2026-11-02): calcula o MTTR com eventos e tempos informados pelo usuário -->
-    <details class="mtsim" style="margin-top:20px" id="mtsim" open ontoggle="if(this.open)mtsimInit()">
+    <details class="mtsim" style="margin-top:20px" id="mtsim" open ontoggle="if(this.open&&window.mtsimInit)mtsimInit()">
       <summary><i class="ti ti-calculator"></i> Simulador de MTTR <small>simule o MTTR com o número de eventos e os tempos que quiser</small></summary>
       <div class="mtsim-body">
         <div class="mtsim-sec">
@@ -36828,21 +36828,36 @@ async function execGerarApresentacao(modo){
     const periodo=execPeriodoTxt();
     execTplCapa(pptx,'Painel Executivo',segsCapa.join(' · '),periodo+(clTxt?' · '+clTxt:''));
 
-    /* Tabela "chamados que puxam o indicador para baixo", distribuída por cluster. */
-    const tabOfensores=(sl,y,yFim,lista,o)=>{
+    /* Tabela "chamados que puxam o indicador para baixo" (pedido 2026-11-03): TODOS os chamados do número
+       informado, por cluster e do maior para o menor tempo; o que não cabe na lâmina continua em lâminas
+       "(cont.)" (mais()). Texto cortado na largura da coluna para a linha não quebrar e a tabela caber. */
+    const tabOfensores=(sl,y,yFim,lista,o,mais)=>{
       if(!lista.length){sl.addText(o.titulo+' — nenhum chamado fora da meta no recorte.',{x:o.x||0.4,y,w:o.w||12.5,h:0.3,fontSize:10,italic:true,color:GREEN,margin:0});return 0;}
-      const rowH=0.235,maxRows=Math.max(1,Math.floor((yFim-y-0.34-rowH)/rowH));
-      const tp=execPptTopPorCluster(lista,maxRows,o.ordem);
-      sl.addText([{text:o.titulo,options:{bold:true,color:NAVY}},{text:'   fora da meta: '+tp.cont.map(c=>c[0]+' '+c[1]).join(' · ')+(tp.cont.length>1?' (total '+lista.length+')':'')+(tp.rows.length<lista.length&&!o.w?' — maiores tempos de cada cluster':''),options:{color:GREY}}],{x:o.x||0.4,y,w:o.w||12.5,h:0.3,fontSize:o.w?8.5:9.5,margin:0});
-      const cols=[['Cluster',1.1,r=>td(r.clLbl,{bold:true,fontSize:8.5})],['Chamado',1.6,r=>td(r.os,{fontSize:8.5})]];
-      if(o.tipo)cols.push(['Tipo',1.0,r=>td(r.tipo,{fontSize:8.5})]);
-      if(o.ind)cols.unshift(['Indicador',1.1,r=>td(r.ind,{fontSize:8,bold:true})]);
-      cols.push(['Cidade',2.2,r=>td(r.cidade,{fontSize:8.5})],['Causa',3.4,r=>td(r.causa,{fontSize:8.5})],['Fech.',0.9,r=>td(r.data,{fontSize:8.5})],['Tempo',0.9,r=>td(fH(r.h),{fontSize:8.5,bold:true,color:RED})]);
-      if(o.mttr)cols.push(['Acima da meta',1.2,r=>td('+'+fH(r.h-RDE_MTME),{fontSize:8.5,color:RED})]);
-      if(o.colW)cols.forEach(c=>{if(o.colW[c[0]])c[1]=o.colW[c[0]];});
-      const W=o.w||12.5,soma=cols.reduce((t,c)=>t+c[1],0),k=W/soma;
-      sl.addTable([cols.map(c=>th(c[0],8.5)),...tp.rows.map(r=>cols.map(c=>c[2](r)))],{x:o.x||0.4,y:y+0.32,w:W,colW:cols.map(c=>c[1]*k),rowH,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:8.5});
-      return tp.rows.length;
+      const rowH=0.215,oi=c=>{const i=o.ordem.indexOf(c);return i<0?99:i;};
+      const todos=lista.slice().sort((a,b)=>oi(a.cl)-oi(b.cl)||String(a.cl).localeCompare(String(b.cl))||b.h-a.h);
+      const cont=[];todos.forEach(r=>{const c=cont.find(x=>x[0]===r.clLbl);if(c)c[1]++;else cont.push([r.clLbl,1]);});
+      const cut=(t,w)=>{t=String(t==null?'':t).replace(/\s+/g,' ').trim();const n=Math.max(4,Math.floor(w*15.5));return t.length>n?t.slice(0,n-1)+'…':t;};
+      const MAXPAG=12;let i=0,pag=0,s=sl,yy=y,yf=yFim,oo=o;
+      while(i<todos.length){
+        const n=Math.max(1,Math.floor((yf-yy-0.34-rowH)/rowH)),fatia=todos.slice(i,i+n);
+        const cols=[['Cluster',1.1,r=>r.clLbl,{bold:true}],['Chamado',1.6,r=>r.os,{}]];
+        if(oo.tipo)cols.push(['Tipo',1.0,r=>r.tipo,{}]);
+        if(oo.ind)cols.unshift(['Indicador',1.9,r=>r.ind,{bold:true,fontSize:7.5}]);
+        cols.push(['Cidade',2.2,r=>r.cidade,{}],['Causa',3.4,r=>r.causa,{}],['Fech.',0.9,r=>r.data,{}],['Tempo',0.9,r=>fH(r.h),{bold:true,color:RED}]);
+        if(oo.mttr)cols.push(['Acima da meta',1.2,r=>'+'+fH(r.h-RDE_MTME),{color:RED}]);
+        if(oo.colW)cols.forEach(c=>{if(oo.colW[c[0]])c[1]=oo.colW[c[0]];});
+        const W=oo.w||12.5,soma=cols.reduce((t,c)=>t+c[1],0),k=W/soma;
+        const faixa=todos.length>fatia.length||i?' — '+(i+1)+' a '+(i+fatia.length)+' de '+todos.length:'';
+        s.addText([{text:oo.titulo+(pag?' (cont.)':''),options:{bold:true,color:NAVY}},{text:'   fora da meta: '+cont.map(c=>c[0]+' '+c[1]).join(' · ')+(cont.length>1?' (total '+todos.length+')':'')+faixa,options:{color:GREY}}],
+          {x:oo.x||0.4,y:yy,w:W,h:0.3,fontSize:oo.w&&oo.w<10?8.5:9.5,margin:0});
+        s.addTable([cols.map(c=>th(c[0],8)),...fatia.map(r=>cols.map(c=>td(cut(c[2](r),c[1]*k-0.1),{fontSize:8,...c[3]})))],
+          {x:oo.x||0.4,y:yy+0.32,w:W,colW:cols.map(c=>c[1]*k),rowH,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:8,margin:[1,3,1,3]});
+        i+=fatia.length;pag++;
+        if(i>=todos.length||!mais)break;
+        if(pag>=MAXPAG){s.addText('… e mais '+(todos.length-i)+' chamados — lista completa no painel de origem.',{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});break;}
+        s=mais();yy=1.8;yf=6.8;oo={...o,x:0.4,w:12.5,colW:null};
+      }
+      return todos.length;
     };
     /* 9) Efeito no MTTR dos chamados mais longos do recorte. */
     const notaMttr=recs=>{
@@ -36883,9 +36898,10 @@ async function execGerarApresentacao(modo){
       const titOf=it.m==='mttr'?'Chamados que derrubam o MTTR':'Chamados que puxam o indicador para baixo';
       const opt={titulo:titOf,ordem:rede1?ordRede:ordEnc,tipo:rede1,mttr:it.m==='mttr'};
       if(lista){
-        if(6.6-yTab>=1.3)tabOfensores(sl,yTab,6.6,lista,opt);
+        const mais=()=>slide(kick,it.l+' — chamados (cont.)');
+        if(6.6-yTab>=1.3)tabOfensores(sl,yTab,6.6,lista,opt,mais);
         else{sl.addText(nota,{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
-          const s2=slide(kick,it.l+' — chamados');tabOfensores(s2,1.85,6.6,lista,opt);
+          const s2=slide(kick,it.l+' — chamados');tabOfensores(s2,1.85,6.6,lista,opt,mais);
           if(it.m==='mttr')s2.addText(notaMttr(rede1?recsRede:[]),{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
           return;}
       }
@@ -36903,7 +36919,8 @@ async function execGerarApresentacao(modo){
     const NOME_IND=i=>execPptLimpaTxt(i.label).replace(/^No prazo/,'Prazo');
     const slideBaremo=b=>{
       const sn2=b.snap;
-      const sa=slide(b.t.toUpperCase()+' · '+kickRec+' · '+execN(sn2.total)+' registros',b.t+' — '+sn2.indicadores.map(NOME_IND).join(' · '));
+      const kickB=b.t.toUpperCase()+' · '+kickRec+' · '+execN(sn2.total)+' registros';
+      const sa=slide(kickB,b.t+' — '+sn2.indicadores.map(NOME_IND).join(' · '));
       const tr=[[th('Indicador'),th('Resultado'),th('Meta'),th(sn2.semAnteriorLabel||'Sem. ant.'),th(sn2.semAtualLabel||'Sem. atual'),th('Δ'),th('Status')]];
       sn2.indicadores.forEach(i=>tr.push([td(NOME_IND(i)),td(fmtR(i),{bold:true,color:ST[i.status]||NAVY}),td(fmtM(i)),td(fmtS(i.semAnterior,i.unidade)),td(fmtS(i.semAtual,i.unidade)),
         td(i.diffSem==null?'—':(i.diffSem>0?'+':'')+fmtS(i.diffSem,i.unidade==='%'?' p.p.':i.unidade)),td(execStatusLabel(i.status),{bold:true,color:WHITE,fill:{color:ST[i.status]||GREY}})]));
@@ -36925,7 +36942,7 @@ async function execGerarApresentacao(modo){
         // uma linha por chamado (o mesmo chamado pode estourar mais de um indicador)
         const vist=new Map();lista.forEach(o=>{const k=o.os+'|'+o.cidade+'|'+o.data+'|'+o.h;if(vist.has(k))vist.get(k).ind+=' + '+o.ind;else vist.set(k,{...o});});
         tabOfensores(sa,y0,6.65,[...vist.values()],{titulo:'Chamados que puxam os indicadores para baixo',ordem:b.seg==='rede'?ordRede:ordEnc,ind:true,x:0.4,w:8.1,
-          colW:{Indicador:1.75,Cluster:0.8,Chamado:0.9,Cidade:1.4,Causa:1.75,'Fech.':0.55,Tempo:0.65}});
+          colW:{Indicador:1.75,Cluster:0.8,Chamado:0.9,Cidade:1.4,Causa:1.75,'Fech.':0.55,Tempo:0.65}},()=>slide(kickB,b.t+' — chamados que puxam os indicadores (cont.)'));
       }
     };
     const slideFca=b=>{
@@ -36935,44 +36952,79 @@ async function execGerarApresentacao(modo){
       sf.addTable([[th('Prazo'),th('Responsável'),th('Status')],[td(''),td(''),td('')]],{x:0.4,y:6.0,w:12.5,colW:[3,6.5,3],rowH:[0.3,0.4],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false});
       sf.addText('Preencher Prazo, Responsável e Status com o plano definido.',{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});
     };
-    /* 6) Leitura executiva: por segmento e por cluster do recorte, com cores de status. */
+    /* 6) Leitura executiva (2026-11-03: em tabelas): um bloco por segmento — título com a cor do status,
+       tabela por cluster/indicador com cores de status e o destaque em itálico abaixo. */
     const leituraBlocos=()=>{
       const out=[];
       const topo=(lista,campo)=>{const c={};lista.forEach(o=>{const k=o[campo]||'—';c[k]=(c[k]||0)+1;});const e=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];return e?{k:e[0],n:e[1]}:null;};
-      const run=(t,o)=>({text:t,options:o||{}});
+      const cel=(v,cor,bold)=>({v:String(v==null?'—':v),cor,bold});
+      const dpp=(v,m)=>v==null||!isFinite(v)?'—':(v-m>=0?'+':'')+(v-m).toFixed(1).replace('.',',')+' p.p.';
+      const dh=(v,m)=>v==null||!isFinite(v)?'—':(v-m>=0?'+':'')+(v-m).toFixed(1).replace('.',',')+' h';
       if(segOn('rede')&&recsRede.length){
         const cls=ordRede.filter(k=>recsRede.some(r=>r.cl===k));
-        const lin=cls.map(k=>{const rs=recsRede.filter(r=>r.cl===k);
+        const rows=cls.map(k=>{const rs=recsRede.filter(r=>r.cl===k);
           const pz=rdeRedirStatsFor(rs,'prazo').val,ou=rdeRedirStatsFor(rs,'outlier').val,mt=rdeRedirStatsFor(rs,'mttr').val;
           const sp=stInd('higher',pz,RDE_M89,3),so=stInd('lower',ou,RDE_MOUT,1),sm=stInd('lower',mt,RDE_MTME,RDE_MTME*0.1);
-          return[run((RDE_CLUSTER_LABELS[k]||k)+' · '+execN(rs.length)+' chamados:  ',{bold:true,color:NAVY}),
-            run('Prazo '+fP(pz),{bold:true,color:COR_ST[sp]}),run(pz!=null?' ('+(pz-RDE_M89>=0?'+':'')+(pz-RDE_M89).toFixed(1).replace('.',',')+' p.p.)':'',{color:GREY}),
-            run('   Outlier '+fP(ou),{bold:true,color:COR_ST[so]}),run(ou!=null?' ('+(ou-RDE_MOUT>=0?'+':'')+(ou-RDE_MOUT).toFixed(1).replace('.',',')+' p.p.)':'',{color:GREY}),
-            run('   MTTR '+fH(mt),{bold:true,color:COR_ST[sm]}),run(mt!=null?' ('+(mt-RDE_MTME>=0?'+':'')+(mt-RDE_MTME).toFixed(1).replace('.',',')+' h)':'',{color:GREY})];});
+          return[cel(RDE_CLUSTER_LABELS[k]||k,NAVY,true),cel(execN(rs.length)),cel(fP(pz),COR_ST[sp],true),cel(dpp(pz,RDE_M89),GREY),cel(fP(ou),COR_ST[so],true),cel(dpp(ou,RDE_MOUT),GREY),cel(fH(mt),COR_ST[sm],true),cel(dh(mt,RDE_MTME),GREY)];});
         const off=execPptOfRede(recsRede,'prazo'),cid=topo(off,'cidade'),cau=topo(off,'causa');
         const ag=rdeRedirStatsFor(recsRede,'prazo').val;
-        out.push({t:'REDE · '+execN(recsRede.length)+' chamados no recorte',cor:COR_ST[stInd('higher',ag,RDE_M89,3)],lin,
+        out.push({t:'REDE · '+execN(recsRede.length)+' chamados no recorte',cor:COR_ST[stInd('higher',ag,RDE_M89,3)],
+          cols:[['Cluster',1.6],['Chamados',1.1],['Prazo',1.1],['vs meta '+pp(RDE_M89)+'%',1.3],['Outlier',1.1],['vs máx. '+pp(RDE_MOUT)+'%',1.3],['MTTR',1.1],['vs meta '+String(RDE_MTME).replace('.',',')+' h',1.3]],rows,
           dest:off.length?'Atenção: '+off.length+' chamados fora do prazo'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro do prazo.'});
       }
       if(segOn('b2b')&&recsEnc.length){
         const cls=[...new Set(recsEnc.map(x=>x.cluster).filter(Boolean))].sort((a,b)=>{const ia=ordEnc.indexOf(a),ib=ordEnc.indexOf(b);return(ia<0?99:ia)-(ib<0?99:ib);});
-        const lin=cls.map(k=>{const rs=recsEnc.filter(x=>x.cluster===k),stt=encRuleStats(rs);
+        const rows=cls.map(k=>{const rs=recsEnc.filter(x=>x.cluster===k),stt=encRuleStats(rs);
           const sp=stInd('higher',stt.pPrazo,ENC_META_PRAZO,3),so=stInd('lower',stt.pOut,ENC_META_OUTLIER,1);
-          return[run(k+' · '+execN(rs.length)+' chamados:  ',{bold:true,color:NAVY}),
-            run('Prazo ≤ 8h '+fP(stt.pPrazo),{bold:true,color:COR_ST[sp]}),run(' ('+(stt.pPrazo-ENC_META_PRAZO>=0?'+':'')+(stt.pPrazo-ENC_META_PRAZO).toFixed(1).replace('.',',')+' p.p.)',{color:GREY}),
-            run('   Outlier > 12h '+fP(stt.pOut),{bold:true,color:COR_ST[so]}),run(' ('+(stt.pOut-ENC_META_OUTLIER>=0?'+':'')+(stt.pOut-ENC_META_OUTLIER).toFixed(1).replace('.',',')+' p.p.)',{color:GREY})];});
+          return[cel(k,NAVY,true),cel(execN(rs.length)),cel(fP(stt.pPrazo),COR_ST[sp],true),cel(dpp(stt.pPrazo,ENC_META_PRAZO),GREY),cel(fP(stt.pOut),COR_ST[so],true),cel(dpp(stt.pOut,ENC_META_OUTLIER),GREY)];});
         const off=execPptOfEnc(recsEnc,'prazo'),cid=topo(off,'cidade'),cau=topo(off,'causa'),stt=encRuleStats(recsEnc);
-        out.push({t:'B2B ENCERRADOS · '+execN(recsEnc.length)+' chamados no recorte',cor:COR_ST[stInd('higher',stt.pPrazo,ENC_META_PRAZO,3)],lin,
+        out.push({t:'B2B ENCERRADOS · '+execN(recsEnc.length)+' chamados no recorte',cor:COR_ST[stInd('higher',stt.pPrazo,ENC_META_PRAZO,3)],
+          cols:[['Cluster',1.8],['Chamados',1.1],['Prazo ≤ 8h',1.2],['vs meta '+pp(ENC_META_PRAZO)+'%',1.4],['Outlier > 12h',1.3],['vs máx. '+pp(ENC_META_OUTLIER)+'%',1.4]],rows,
           dest:off.length?'Atenção: '+off.length+' chamados acima de 8h'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa raiz mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro de 8h.'});
       }
       if(segOn('b2c')&&b2c.total){
-        const lin=[b2c.indicadores.map((i,ix)=>[run((ix?'   ':'')+NOME_IND(i)+' ',{bold:true,color:NAVY}),run(fmtR(i),{bold:true,color:COR_ST[i.status==='wn'?'wn':i.status]||GREY})]).flat()];
+        const rows=b2c.indicadores.map(i=>[cel(NOME_IND(i),NAVY,true),cel(fmtR(i),COR_ST[i.status==='wn'?'wn':i.status]||GREY,true),cel(fmtM(i)),cel(execStatusLabel(i.status),COR_ST[i.status==='wn'?'wn':i.status]||GREY,true)]);
         const cr=b2c.indicadores.filter(i=>i.status==='bd');
-        out.push({t:'B2C'+(selExecB2cCluster.length?' · '+selExecB2cCluster.join(', '):''),cor:cr.length?RED:GREEN,lin,dest:cr.length?'Fora da meta: '+cr.map(NOME_IND).join(', ')+'.':'Indicadores dentro da meta.'});
+        out.push({t:'B2C'+(selExecB2cCluster.length?' · '+selExecB2cCluster.join(', '):''),cor:cr.length?RED:GREEN,cols:[['Indicador',2.6],['Resultado',1.2],['Meta',1.0],['Status',1.2]],rows,
+          dest:cr.length?'Fora da meta: '+cr.map(NOME_IND).join(', ')+'.':'Indicadores dentro da meta.'});
       }
-      if(segOn('op')&&ofs&&itens.some(i=>i.k==='ofs'))out.push({t:'ABERTOS OFS',cor:ofs.sla.o48?ORANGE:BLUE,lin:[[run(execN(ofs.tot)+' atividades · '+ofs.taxa+'% concluídas · '+execN(ofs.cnt['Em aberto'])+' em aberto ('+ofs.unass+' sem técnico) · '+ofs.sla.o24+' na fila há 24 h ou mais',{color:NAVY})]],dest:''});
-      if(segOn('op')&&wm&&itens.some(i=>i.k==='warmup'))out.push({t:'WARMUP',cor:wm.o24?ORANGE:BLUE,lin:[[run(execN(wm.total)+' chamados ('+wm.backbone+' backbone, '+wm.acesso+' acesso, '+wm.massiva+' massivas) · '+wm.o24+' abertos há 24 h ou mais',{color:NAVY})]],dest:''});
+      if(segOn('op')&&ofs&&itens.some(i=>i.k==='ofs'))out.push({t:'ABERTOS OFS',cor:ofs.sla.o48?ORANGE:BLUE,
+        cols:[['Atividades',1.2],['Concluídas',1.2],['Em aberto',1.2],['Sem técnico',1.2],['Fila ≥ 24 h',1.2]],
+        rows:[[cel(execN(ofs.tot),NAVY,true),cel(ofs.taxa+'%',NAVY,true),cel(execN(ofs.cnt['Em aberto'])),cel(ofs.unass,ofs.unass?ORANGE:NAVY,!!ofs.unass),cel(ofs.sla.o24,ofs.sla.o24?RED:NAVY,!!ofs.sla.o24)]],dest:''});
+      if(segOn('op')&&wm&&itens.some(i=>i.k==='warmup'))out.push({t:'WARMUP',cor:wm.o24?ORANGE:BLUE,
+        cols:[['Chamados',1.2],['Backbone',1.2],['Acesso',1.2],['Massivas',1.2],['Abertos ≥ 24 h',1.3]],
+        rows:[[cel(execN(wm.total),NAVY,true),cel(wm.backbone),cel(wm.acesso),cel(wm.massiva),cel(wm.o24,wm.o24?RED:NAVY,!!wm.o24)]],dest:''});
       return out;
+    };
+    /* desenha os blocos da Leitura executiva: 1 coluna; se não couber, 2 colunas equilibradas */
+    const leituraDesenhar=(s3,bl)=>{
+      const TOP=1.85,BOT=6.85,TIT=0.3,DEST=0.26,GAP=0.14;
+      const linhas=b=>b.rows.length+1,fixo=b=>TIT+(b.dest?DEST:0)+GAP;
+      const caber=(lista,rh)=>lista.reduce((t,b)=>t+fixo(b)+linhas(b)*rh,0)<=BOT-TOP+GAP;
+      let colunas=[bl];
+      if(!caber(bl,0.22)&&bl.length>1){
+        const tot=bl.reduce((t,b)=>t+fixo(b)+linhas(b)*0.22,0);let acc=0,cutIx=bl.length-1;
+        for(let i=0;i<bl.length;i++){acc+=fixo(bl[i])+linhas(bl[i])*0.22;if(acc>=tot/2){cutIx=Math.max(0,Math.min(bl.length-2,i));break;}}
+        colunas=[bl.slice(0,cutIx+1),bl.slice(cutIx+1)];
+      }
+      const W=colunas.length>1?6.15:12.5;
+      colunas.forEach((col,ci)=>{
+        const nl=col.reduce((t,b)=>t+linhas(b),0),fx=col.reduce((t,b)=>t+fixo(b),0)-GAP;
+        const rh=Math.max(0.17,Math.min(0.3,(BOT-TOP-fx)/Math.max(1,nl))),fs=rh>=0.27?10:rh>=0.22?9:8;
+        const x=0.4+ci*(W+0.2);let y=TOP;
+        col.forEach(b=>{
+          s3.addShape('rect',{x,y:y+0.03,w:0.07,h:TIT-0.06,fill:{color:b.cor},line:{type:'none'}});
+          s3.addText(b.t,{x:x+0.14,y,w:W-0.14,h:TIT,fontSize:fs+1,bold:true,color:b.cor,margin:0,valign:'middle'});
+          y+=TIT;
+          const soma=b.cols.reduce((t,c)=>t+c[1],0),k=W/soma;
+          const cut=(t,w)=>{t=String(t);const n=Math.max(4,Math.floor(w*(fs>=10?13:15)));return t.length>n?t.slice(0,n-1)+'…':t;};
+          s3.addTable([b.cols.map(c=>th(cut(c[0],c[1]*k),fs-0.5)),...b.rows.map(r=>r.map((c,ix)=>td(cut(c.v,b.cols[ix][1]*k),{fontSize:fs,bold:!!c.bold,color:c.cor||NAVY})))],
+            {x,y,w:W,colW:b.cols.map(c=>c[1]*k),rowH:rh,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:fs,margin:[1,4,1,4]});
+          y+=linhas(b)*rh;
+          if(b.dest){s3.addText(b.dest,{x,y:y+0.02,w:W,h:DEST,fontSize:fs-0.5,italic:true,color:GREY,margin:0,valign:'top',fit:'shrink'});y+=DEST;}
+          y+=GAP;
+        });
+      });
     };
     const blocosComDado=['rede','enc','b2c'].map(k=>blocoDe[k]).filter(b=>b.snap.total>0&&segOn(b.seg));
     let rrFcaFeito=false,rbFcaFeito=false;
@@ -36992,19 +37044,7 @@ async function execGerarApresentacao(modo){
       }else if(it.k==='leitura'){
         const bl=leituraBlocos();if(!bl.length)return;
         const s3=slide('PAINEL EXECUTIVO · '+kickRec,'Leitura executiva');
-        const nLin=bl.reduce((t,b)=>t+b.lin.length+1+(b.dest?1:0),0),gap=0.12;
-        const lh=Math.min(0.215,(4.85-gap*(bl.length-1)-0.2*bl.length)/Math.max(1,nLin)),fs=lh>=0.2?11:lh>=0.17?10:9;
-        let y=1.85;
-        bl.forEach(b=>{
-          const hh=0.2+lh*(b.lin.length+1+(b.dest?1:0));
-          s3.addShape('rect',{x:0.4,y,w:12.5,h:hh,fill:{color:BGCARD},line:{color:GREYL,width:0.75}});
-          s3.addShape('rect',{x:0.4,y,w:0.07,h:hh,fill:{color:b.cor},line:{type:'none'}});
-          const runs=[{text:b.t,options:{bold:true,color:b.cor,fontSize:fs,breakLine:true}}];
-          b.lin.forEach(l=>{l.forEach((r,ix)=>runs.push({text:r.text,options:{...r.options,fontSize:fs,breakLine:ix===l.length-1}}));});
-          if(b.dest)runs.push({text:b.dest,options:{italic:true,color:GREY,fontSize:fs-0.5,breakLine:true}});
-          s3.addText(runs,{x:0.6,y:y+0.06,w:12.2,h:hh-0.12,valign:'top',margin:0});
-          y+=hh+gap;
-        });
+        leituraDesenhar(s3,bl);
       }else if(it.k==='rede'||it.k==='enc'||it.k==='b2c')slideBaremo(blocoDe[it.k]);
       else if(it.k==='redeFca')slideFca(blocoDe.rede);
       else if(it.k==='encFca')slideFca(blocoDe.enc);
