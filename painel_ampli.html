@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Painel AMPLI</title>
 <style>
   @font-face {
@@ -613,7 +614,8 @@
     <div class="attach-head">
       <div>
         <div class="eyebrow">Anexar PDFs</div>
-        <p class="attach-hint">Adicione varios PDFs de questoes corrigidas de uma vez. O OCR roda aqui no navegador e os novos itens ficam pesquisaveis na hora &mdash; e sao salvos neste navegador, disponiveis em qualquer consulta futura nesta maquina.</p>
+        <p class="attach-hint">Adicione varios PDFs de questoes corrigidas de uma vez. O OCR roda aqui no navegador e os novos itens ficam pesquisaveis na hora &mdash; e sao sincronizados com todos os dispositivos do Jarvis.</p>
+        <p class="attach-hint" id="ampli-sync-status" style="margin-top:4px;font-size:12px"></p>
       </div>
       <button id="download-data-btn" class="btn-outline" title="Salva os dados anexados neste navegador e baixa uma copia em JSON">Atualizar</button>
     </div>
@@ -668,6 +670,118 @@
     }
   }
   loadDynamicFolders();
+
+  /* Sincronização entre dispositivos (bug 2026-11-03: "Painel Ampli não está atualizado
+     para outros dispositivos"). Os PDFs anexados ficavam só no localStorage de quem
+     anexou. Agora vão no mesmo arquivo de sync do Jarvis (data/sync-state.json, via
+     Worker), como pacote compactado ampliSync = {at, n, z: gzip+base64 de {folders}} —
+     mesmo formato dos pacotes do Redir/MAX. Não há exclusão de questão no painel, então
+     a mescla é por UNIÃO (pasta → questão), nada de um aparelho apaga o do outro. O envio
+     lê o estado mais recente, troca só a chave ampliSync e grava com o sha lido (conflito
+     = tenta de novo), preservando todo o resto do estado. */
+  const SYNC_URL = "https://atrix-trigger.acompanhamento-jarvis.workers.dev";
+  const SYNC_SECRET = "VO_zOhXIvnPpkfPXhT5HX9HkmE1-7fsc";
+  const syncStatusEl = document.getElementById("ampli-sync-status");
+  function setSyncStatus(txt, cor) {
+    if (!syncStatusEl) return;
+    syncStatusEl.textContent = txt;
+    syncStatusEl.style.color = cor || "";
+  }
+  function ampliKey(x) {
+    return [x.file || "", x.qnum || "", String(x.preview || "").slice(0, 80)].join("|");
+  }
+  function mergeFolders(a, b) {
+    const out = [], byName = new Map();
+    [a, b].forEach((list) => (list || []).forEach((f) => {
+      if (!f || !f.name) return;
+      let t = byName.get(f.name);
+      if (!t) { t = { name: f.name, files: [], isNew: true }; byName.set(f.name, t); out.push(t); }
+      const ks = new Set(t.files.map(ampliKey));
+      (f.files || []).forEach((x) => { const k = ampliKey(x); if (!ks.has(k)) { ks.add(k); t.files.push(x); } });
+    }));
+    return out;
+  }
+  function countFiles(list) { return (list || []).reduce((s, f) => s + ((f && f.files) || []).length, 0); }
+  async function gunzipB64(b64) {
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).text());
+  }
+  async function gzipB64(obj) {
+    const gz = await new Response(new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream("gzip"))).blob();
+    return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => { const u = String(fr.result); res(u.slice(u.indexOf(",") + 1)); }; fr.onerror = () => rej(fr.error); fr.readAsDataURL(gz); });
+  }
+  async function workerCall(body) {
+    const res = await fetch(SYNC_URL, { method: "POST", headers: { "Content-Type": "application/json", "X-Atrix-Secret": SYNC_SECRET }, body: JSON.stringify(body) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.ok) { const e = new Error(out.error || ("HTTP " + res.status)); e.status = res.status; throw e; }
+    return out;
+  }
+  async function syncGetState() {
+    const r = await workerCall({ action: "sync_get" });
+    let st = null;
+    if (r.content) {
+      const dec = JSON.parse(decodeURIComponent(escape(atob(String(r.content).replace(/\n/g, "")))));
+      if (dec && dec.z === 1 && dec.d) st = await gunzipB64(dec.d);
+      else if (dec && dec.z === 0 && dec.d) st = JSON.parse(decodeURIComponent(escape(atob(dec.d))));
+      else st = dec;
+    }
+    return { sha: r.sha || "", st: st && typeof st === "object" ? st : null };
+  }
+  async function remoteFolders(st) {
+    const p = st && st.ampliSync;
+    if (!p || !p.z) return [];
+    const o = await gunzipB64(p.z);
+    return o && Array.isArray(o.folders) ? o.folders : [];
+  }
+  function adoptLocal(merged) {
+    dynamicFolders.length = 0;
+    merged.forEach((f) => dynamicFolders.push(f));
+    saveDynamicFolders();
+    rebuildEntries();
+    applyFilter();
+  }
+  let syncBusy = null;
+  /* Puxa o que outros aparelhos anexaram e envia o que só existe aqui. */
+  function ampliSync() {
+    if (syncBusy) return syncBusy;
+    syncBusy = (async () => {
+      if (!window.CompressionStream || !window.DecompressionStream) { setSyncStatus("Sincronização indisponível neste navegador (atualize o navegador).", "#b42318"); return false; }
+      setSyncStatus("Sincronizando com os outros dispositivos…");
+      for (let tent = 1; tent <= 4; tent++) {
+        const { sha, st } = await syncGetState();
+        if (!st) throw new Error("estado remoto vazio");
+        const rem = await remoteFolders(st);
+        const merged = mergeFolders(rem, dynamicFolders);
+        const n = countFiles(merged);
+        if (n !== countFiles(dynamicFolders) || merged.length !== dynamicFolders.length) adoptLocal(merged);
+        if (n === countFiles(rem) && merged.length === rem.length) {
+          setSyncStatus("Sincronizado com todos os dispositivos" + (st.ampliSync && st.ampliSync.at ? " · última atualização " + new Date(st.ampliSync.at).toLocaleString("pt-BR") : "") + ".", "#067647");
+          return true;
+        }
+        st.ampliSync = { at: new Date().toISOString(), n, z: await gzipB64({ folders: merged.map((f) => ({ name: f.name, isNew: true, files: f.files })) }) };
+        const content = btoa(JSON.stringify({ z: 1, d: await gzipB64(st) }));
+        try {
+          await workerCall({ action: "sync_put", sha, content });
+          setSyncStatus("Enviado para todos os dispositivos em " + new Date().toLocaleString("pt-BR") + ".", "#067647");
+          return true;
+        } catch (e) {
+          if ((e.status === 409 || /sha|conflict|does not match/i.test(e.message)) && tent < 4) { await new Promise((r) => setTimeout(r, 500 * tent)); continue; }
+          throw e;
+        }
+      }
+      return false;
+    })().catch((e) => {
+      console.warn("[ampli] sync falhou:", e);
+      setSyncStatus("Não foi possível sincronizar agora (" + (e && e.message ? e.message : e) + "). Os anexos continuam salvos neste navegador e serão enviados na próxima tentativa.", "#b42318");
+      return false;
+    }).finally(() => { syncBusy = null; });
+    return syncBusy;
+  }
+  /* ao abrir, a cada 5 min (aba visível) e ao voltar para a aba */
+  setTimeout(() => ampliSync(), 300);
+  setInterval(() => { if (document.visibilityState === "visible") ampliSync(); }, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") ampliSync(); });
 
   function stripAccents(s) {
     return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -1159,11 +1273,13 @@
     }
 
     fileInput.value = "";
+    ampliSync();
   }
 
   downloadBtn.addEventListener("click", () => {
     errorEl.hidden = true;
     const savedOk = saveDynamicFolders();
+    ampliSync();
 
     const merged = {
       folders: allFolders().map((f) => ({

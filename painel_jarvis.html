@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-03T14:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-03T17:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -15416,6 +15416,10 @@ let lastPopBaseAt='';
    uma com seu at ({apagado:true} = texto limpo). Os nomes de técnicos do Painel MAX continuam
    fora (decisão anterior do usuário). Os painéis escutam o evento 'jarvis-sync-pacote'. */
 var rsBaseSync=null,rsIndSync=null,rsDraftsSync=null,mxSync=null;
+/* ampliSync: PDFs anexados no Painel Ampli (página standalone, que lê e grava este pacote
+   sozinha). O Jarvis só precisa preservá-lo — buildState() monta o estado do zero e, sem
+   isso, cada sync do Jarvis apagaria o pacote do Ampli (2026-11-03). */
+var ampliSync=null;
 async function _syncZip(obj){
   const gz=await new Response(new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
   return await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const u=String(fr.result);res(u.slice(u.indexOf(',')+1));};fr.onerror=()=>rej(fr.error);fr.readAsDataURL(gz);});
@@ -15428,7 +15432,7 @@ async function _syncUnzip(z){
 var _syncEnviado={};
 function _syncMarcarEnviado(st){
   if(!st||typeof st!=='object')return;let mud=false;
-  for(const k of['rsBaseSync','rsIndSync','mxSync']){const p=st[k];if(p&&p.at&&String(p.at)>String(_syncEnviado[k]||'')){_syncEnviado[k]=p.at;mud=true;}}
+  for(const k of['rsBaseSync','rsIndSync','mxSync','ampliSync']){const p=st[k];if(p&&p.at&&String(p.at)>String(_syncEnviado[k]||'')){_syncEnviado[k]=p.at;mud=true;}}
   if(st.rsDraftsSync&&typeof st.rsDraftsSync==='object'){const m=_syncEnviado.drafts||(_syncEnviado.drafts={});
     for(const[id,d]of Object.entries(st.rsDraftsSync))if(d&&d.at&&String(d.at)>String(m[id]||'')){m[id]=d.at;mud=true;}}
   if(mud)_syncAvisa('status');
@@ -15440,6 +15444,7 @@ function _syncAdotar(st){
   if(_syncMaisNovo(st.rsBaseSync,rsBaseSync)){rsBaseSync=st.rsBaseSync;_syncAvisa('rsBaseSync');}
   if(_syncMaisNovo(st.rsIndSync,rsIndSync)){rsIndSync=st.rsIndSync;_syncAvisa('rsIndSync');}
   if(_syncMaisNovo(st.mxSync,mxSync)){mxSync=st.mxSync;_syncAvisa('mxSync');}
+  if(_syncMaisNovo(st.ampliSync,ampliSync)){ampliSync=st.ampliSync;}
   if(st.rsDraftsSync&&typeof st.rsDraftsSync==='object'&&st.rsDraftsSync!==rsDraftsSync){
     const m=rsDraftsSync||(rsDraftsSync={});let mud=false;
     for(const[id,d]of Object.entries(st.rsDraftsSync))if(d&&d.at&&(!m[id]||!m[id].at||String(d.at)>String(m[id].at))){m[id]=d;mud=true;}
@@ -17922,6 +17927,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'rsBaseSync.at',keys:['rsBaseSync']},
   {at:'rsIndSync.at',keys:['rsIndSync']},
   {at:'mxSync.at',keys:['mxSync']},
+  {at:'ampliSync.at',keys:['ampliSync']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -17954,7 +17960,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,atrixLastTrigger,atrixTriggerLog,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,atrixLastTrigger,atrixTriggerLog,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,ampliSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
