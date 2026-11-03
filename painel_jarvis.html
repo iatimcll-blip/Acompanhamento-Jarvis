@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-03T11:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-03T14:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -31120,7 +31120,9 @@ function rdeCompactDetail(r,kind,cl,mi,wi,prazo,out,tempo,label,impacto){
   const abDate=rdeParseDateBR(ab);
   const dia=abDate?abDate.getDate():null;
   const mesKey=abDate?`${abDate.getFullYear()}-${String(abDate.getMonth()+1).padStart(2,'0')}`:null;
-  return{id:String(rdeGv(r,['protocolo','ticket_id','ID Ticket','id ticket','id','chamado','numero'])||'').trim(),os:String(rdeGv(r,['OS','os','OS/ID','ID OS','OS ID','Nº OS','Nº OS/ID','Número OS','Numero OS','ult_OS','ult os','ultima OS','última OS','os_agrupada','os concluida agrupada','os_concluida_agrupada','Ordem de Serviço','Ordem de Servico','ordem servico','protocolo','ticket_id','ID Ticket','chamado','numero'])||'').trim(),cliente:String(rdeGv(r,['cliente','CLIENTE','nome cliente','razao social','CLIENTE FINAL'])||'').trim(),cidade:titleCasePT(repairPtBR(String(rdeGv(r,['cidade','CIDADE','CIDADE_SIMPLES','cidadeservico','localidade'])||'').trim())),uf:String(rdeGv(r,['uf','UF','estado'])||'').trim().toUpperCase(),motivo:String(label||rdeGv(r,['motivo','causa','causa raiz','CAUSA_SIMPLES','ORIGEM','FALHA'])||'').trim(),periodoAtendimento:`${rdeFmtDate(ab)} - ${rdeFmtDate(fc)}`,dataFechamento:rdeFmtDate(fc),kind,cluster:cl,mes:mi,semana:wi,prazo,out,tempo,impacto,dia,mesKey};
+  /* 2026-11-03: "NO. DA REQUISIÇÃO" (export do Backbone) como número do chamado e TÍTULO do chamado (PPT do Executivo) */
+  return{id:String(rdeGv(r,['protocolo','ticket_id','ID Ticket','id ticket','id','chamado','numero','NO. DA REQUISIÇÃO','No da Requisicao','Requisição','Requisicao'])||'').trim(),os:String(rdeGv(r,['OS','os','OS/ID','ID OS','OS ID','Nº OS','Nº OS/ID','Número OS','Numero OS','ult_OS','ult os','ultima OS','última OS','os_agrupada','os concluida agrupada','os_concluida_agrupada','Ordem de Serviço','Ordem de Servico','ordem servico','NO. DA REQUISIÇÃO','No da Requisicao','Requisição','Requisicao','protocolo','ticket_id','ID Ticket','chamado','numero'])||'').trim(),
+    titulo:String(rdeGv(r,['TÍTULO','Titulo','Título do chamado','Titulo do chamado','Assunto','Descrição','Descricao','Resumo'])||'').replace(/\s+/g,' ').trim(),cliente:String(rdeGv(r,['cliente','CLIENTE','nome cliente','razao social','CLIENTE FINAL'])||'').trim(),cidade:titleCasePT(repairPtBR(String(rdeGv(r,['cidade','CIDADE','CIDADE_SIMPLES','cidadeservico','localidade'])||'').trim())),uf:String(rdeGv(r,['uf','UF','estado'])||'').trim().toUpperCase(),motivo:String(label||rdeGv(r,['motivo','causa','causa raiz','CAUSA_SIMPLES','ORIGEM','FALHA'])||'').trim(),periodoAtendimento:`${rdeFmtDate(ab)} - ${rdeFmtDate(fc)}`,dataFechamento:rdeFmtDate(fc),kind,cluster:cl,mes:mi,semana:wi,prazo,out,tempo,impacto,dia,mesKey};
 }
 function rdeColVal(r,col){const v=r['__'+col];return(v!==undefined&&v!=='')?v:null;}
 function rdeRowToRede(r,sheet){
@@ -35468,6 +35470,15 @@ function execRedeFca(all,ag){
    compactado (_raw[8] no Acesso, _raw[7] no Backbone), mesma extração já usada em
    rdeChaveExpurgo(). Backbone não tem OS/ID pra praticamente nenhum chamado (bug já
    investigado antes — ver rdeChaveExpurgo) então cai em "—" nesse caso. */
+/* "OS » título" do chamado de Rede para o PPT (pedido 2026-11-03). Sem coluna de título na base (ex.: export
+   de Acesso), descreve com causa · cidade · clientes afetados. */
+function execRedeChamadoDesc(r){
+  const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:null;
+  const tit=det&&det.titulo?String(det.titulo).trim():'';if(tit)return tit;
+  /* sem título: só o que as colunas Cidade/Causa não mostram */
+  const af=det&&+det.impacto>0?det.impacto+' cliente'+(+det.impacto===1?'':'s')+' afetado'+(+det.impacto===1?'':'s'):'';
+  return[r._scope==='ac'?'Acesso':'Backbone',af].filter(Boolean).join(' · ');
+}
 function execRedeOsChamado(r){
   const raw=r._raw,det=raw&&typeof raw[r._scope==='ac'?8:7]==='object'?raw[r._scope==='ac'?8:7]:null;
   const os=det?String(det.os||det.id||'').trim():'';
@@ -36749,13 +36760,14 @@ function execPptOfRede(recs,metric){
   else if(metric==='outlier'||metric==='volOutlier')off=recs.filter(r=>r.o===1);
   else if(metric==='mttr'||metric==='tme')off=recs.filter(r=>{const ch=rdeChaveExpurgo(r);return !(ch&&rdeExpurgo[ch])&&r.elapsedH!==null&&r.elapsedH!==undefined&&r.elapsedH>RDE_MTME;});
   else return[];
-  return off.map(r=>{const d=rdePrjDataFim(r);return{cl:r.cl,clLbl:RDE_CLUSTER_LABELS[r.cl]||r.cl,os:execRedeOsChamado(r),tipo:r._scope==='ac'?'Acesso':'Backbone',
+  return off.map(r=>{const d=rdePrjDataFim(r);return{cl:r.cl,clLbl:RDE_CLUSTER_LABELS[r.cl]||r.cl,os:execRedeOsChamado(r),desc:execRedeChamadoDesc(r),tipo:r._scope==='ac'?'Acesso':'Backbone',
     cidade:r.cidade||'—',causa:r.c||'—',h:(r.elapsedH!==null&&r.elapsedH!==undefined)?r.elapsedH:(+r.t||0),data:d?String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'):'—'};})
     .sort((a,b)=>b.h-a.h);
 }
 function execPptOfEnc(recs,metric){
   const off=metric==='prazo'?recs.filter(x=>!x.dentro8h):recs.filter(x=>x.outlier24h);
-  return off.map(x=>({cl:x.cluster||'—',clLbl:x.cluster||'—',os:x.os||x.protocolo||'—',tipo:'',cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',
+  /* B2B: Protocolo » Cliente (pedido 2026-11-03), como no Painel B2B Encerrados */
+  return off.map(x=>({cl:x.cluster||'—',clLbl:x.cluster||'—',os:x.protocolo||x.os||'—',desc:x.cliente?(titleCasePT(String(x.cliente))||x.cliente):(x.titulo||''),tipo:'',cidade:x.cidade||'—',causa:fmtCausaRaiz(x.causaRaiz)||'Não informada',
     h:+x.tempoTotal||0,data:String(x.dataFechamento||'').slice(0,5)||'—'})).sort((a,b)=>b.h-a.h);
 }
 /* Distribui as linhas da tabela entre os clusters (rodízio), pra todo cluster aparecer. */
@@ -36833,25 +36845,30 @@ async function execGerarApresentacao(modo){
        "(cont.)" (mais()). Texto cortado na largura da coluna para a linha não quebrar e a tabela caber. */
     const tabOfensores=(sl,y,yFim,lista,o,mais)=>{
       if(!lista.length){sl.addText(o.titulo+' — nenhum chamado fora da meta no recorte.',{x:o.x||0.4,y,w:o.w||12.5,h:0.3,fontSize:10,italic:true,color:GREEN,margin:0});return 0;}
-      const rowH=0.215,oi=c=>{const i=o.ordem.indexOf(c);return i<0?99:i;};
+      const rowH=0.34,oi=c=>{const i=o.ordem.indexOf(c);return i<0?99:i;};/* 2 linhas: "nº » título" */
       const todos=lista.slice().sort((a,b)=>oi(a.cl)-oi(b.cl)||String(a.cl).localeCompare(String(b.cl))||b.h-a.h);
       const cont=[];todos.forEach(r=>{const c=cont.find(x=>x[0]===r.clLbl);if(c)c[1]++;else cont.push([r.clLbl,1]);});
-      const cut=(t,w)=>{t=String(t==null?'':t).replace(/\s+/g,' ').trim();const n=Math.max(4,Math.floor(w*15.5));return t.length>n?t.slice(0,n-1)+'…':t;};
+      const cut=(t,w,lin)=>{t=String(t==null?'':t).replace(/\s+/g,' ').trim();const n=Math.max(4,Math.floor(w*16.5)*(lin||1));return t.length>n?t.slice(0,n-1)+'…':t;};
+      const chamado=r=>{const n=String(r.os||'—'),d=String(r.desc||'').trim();return d&&d!==n?n+' » '+d:n;};
       const MAXPAG=12;let i=0,pag=0,s=sl,yy=y,yf=yFim,oo=o;
       while(i<todos.length){
-        const n=Math.max(1,Math.floor((yf-yy-0.34-rowH)/rowH)),fatia=todos.slice(i,i+n);
-        const cols=[['Cluster',1.1,r=>r.clLbl,{bold:true}],['Chamado',1.6,r=>r.os,{}]];
+        const cols=[['Cluster',1.0,r=>r.clLbl,{bold:true}],['Chamado » título',5.2,chamado,{},2]];
         if(oo.tipo)cols.push(['Tipo',1.0,r=>r.tipo,{}]);
         if(oo.ind)cols.unshift(['Indicador',1.9,r=>r.ind,{bold:true,fontSize:7.5}]);
-        cols.push(['Cidade',2.2,r=>r.cidade,{}],['Causa',3.4,r=>r.causa,{}],['Fech.',0.9,r=>r.data,{}],['Tempo',0.9,r=>fH(r.h),{bold:true,color:RED}]);
+        cols.push(['Cidade',1.6,r=>r.cidade,{}],['Causa',2.2,r=>r.causa,{},2],['Fech.',0.75,r=>r.data,{}],['Tempo',0.8,r=>fH(r.h),{bold:true,color:RED}]);
         if(oo.mttr)cols.push(['Acima da meta',1.2,r=>'+'+fH(r.h-RDE_MTME),{color:RED}]);
         if(oo.colW)cols.forEach(c=>{if(oo.colW[c[0]])c[1]=oo.colW[c[0]];});
         const W=oo.w||12.5,soma=cols.reduce((t,c)=>t+c[1],0),k=W/soma;
+        /* cabe quantas linhas? cada uma tem 1 linha de texto (0,215") ou 2 (0,34") se o título/causa não couber */
+        const wCh=(cols.find(c=>c[0]==='Chamado » título')||[0,0])[1]*k-0.1,wCa=(cols.find(c=>c[0]==='Causa')||[0,0])[1]*k-0.1;
+        const avail=yf-yy-0.32-0.24,hOf=r=>{const t=chamado(r),c=r.causa||'';return t.length>Math.floor(wCh*16.5)||String(c).length>Math.floor(wCa*16.5)?rowH:0.215;};
+        let usado=0,n=0;while(i+n<todos.length){const h=hOf(todos[i+n]);if(usado+h>avail&&n)break;usado+=h;n++;}
+        const fatia=todos.slice(i,i+n);
         const faixa=todos.length>fatia.length||i?' — '+(i+1)+' a '+(i+fatia.length)+' de '+todos.length:'';
         s.addText([{text:oo.titulo+(pag?' (cont.)':''),options:{bold:true,color:NAVY}},{text:'   fora da meta: '+cont.map(c=>c[0]+' '+c[1]).join(' · ')+(cont.length>1?' (total '+todos.length+')':'')+faixa,options:{color:GREY}}],
           {x:oo.x||0.4,y:yy,w:W,h:0.3,fontSize:oo.w&&oo.w<10?8.5:9.5,margin:0});
-        s.addTable([cols.map(c=>th(c[0],8)),...fatia.map(r=>cols.map(c=>td(cut(c[2](r),c[1]*k-0.1),{fontSize:8,...c[3]})))],
-          {x:oo.x||0.4,y:yy+0.32,w:W,colW:cols.map(c=>c[1]*k),rowH,border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:8,margin:[1,3,1,3]});
+        s.addTable([cols.map(c=>th(c[0],8)),...fatia.map(r=>cols.map(c=>td(cut(c[2](r),c[1]*k-0.1,c[4]),{fontSize:7.5,valign:'middle',...c[3]})))],
+          {x:oo.x||0.4,y:yy+0.32,w:W,colW:cols.map(c=>c[1]*k),rowH:[0.24,...fatia.map(hOf)],border:{type:'solid',color:GREYL,pt:0.5},autoPage:false,fontSize:7.5,margin:[1,3,1,3]});
         i+=fatia.length;pag++;
         if(i>=todos.length||!mais)break;
         if(pag>=MAXPAG){s.addText('… e mais '+(todos.length-i)+' chamados — lista completa no painel de origem.',{x:0.4,y:6.72,w:12.5,h:0.3,fontSize:9,italic:true,color:GREY});break;}
@@ -36942,7 +36959,7 @@ async function execGerarApresentacao(modo){
         // uma linha por chamado (o mesmo chamado pode estourar mais de um indicador)
         const vist=new Map();lista.forEach(o=>{const k=o.os+'|'+o.cidade+'|'+o.data+'|'+o.h;if(vist.has(k))vist.get(k).ind+=' + '+o.ind;else vist.set(k,{...o});});
         tabOfensores(sa,y0,6.65,[...vist.values()],{titulo:'Chamados que puxam os indicadores para baixo',ordem:b.seg==='rede'?ordRede:ordEnc,ind:true,x:0.4,w:8.1,
-          colW:{Indicador:1.75,Cluster:0.8,Chamado:0.9,Cidade:1.4,Causa:1.75,'Fech.':0.55,Tempo:0.65}},()=>slide(kickB,b.t+' — chamados que puxam os indicadores (cont.)'));
+          colW:{Indicador:1.2,Cluster:0.75,'Chamado » título':3.2,Cidade:1.1,Causa:1.3,'Fech.':0.55,Tempo:0.65}},()=>slide(kickB,b.t+' — chamados que puxam os indicadores (cont.)'));
       }
     };
     const slideFca=b=>{
