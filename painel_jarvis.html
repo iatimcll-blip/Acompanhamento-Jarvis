@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-03T17:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-09T11:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14344,6 +14344,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="rs-base">
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="rsVincularPasta()"><i class="ti ti-folder"></i> <span class="rs-dir-lbl">Vincular pasta redir</span></button>
             <button type="button" class="rs-btn" data-up="redirSemanal" onclick="document.getElementById('rs-file').click()"><i class="ti ti-paperclip"></i> Anexar planilha</button>
+            <button type="button" class="rs-btn rs-btn-del" id="rs-base-del" data-up="redirSemanal" onclick="rsLimparBase()" title="Apaga a planilha Redir anexada (semana anterior) deste aparelho e de todos os usuários, para anexar a da nova semana. Planta Média, bases dos indicadores e justificativas não são apagadas."><i class="ti ti-trash"></i> Limpar base</button>
             <button type="button" class="rs-btn" id="rs-planta-btn" data-up="redirSemanal" onclick="rsPlantaAnexar()" title="Anexe a Planta Média no modelo Modelos\Planta Média\Planta Media.xlsx: mostra a quantidade de clientes da base por UF e por localidade. Fica salva e aparece para todos os usuários até alguém limpar."><i class="ti ti-building-community"></i> <span id="rs-planta-lbl">Planta Média</span></button>
             <button type="button" class="rs-btn" id="rs-mod-btn" onclick="rsModelosAbrir()" title="Mostra a base esperada para cada indicador; Admin/Sr vinculam a pasta D:\Acompanhamento Jarvis\Modelos para o painel relê-la a cada anexo"><i class="ti ti-folders"></i> Pasta Modelos</button>
             <button type="button" class="rs-btn pri" id="rs-pub-btn" data-up="redirSemanal" hidden onclick="rsPublicarTudo()" title="Envia agora a planilha, as bases e as justificativas deste aparelho para todos os usuários"><i class="ti ti-cloud-upload"></i> Publicar para todos</button>
@@ -38563,7 +38564,11 @@ function rsMsg(){
   document.querySelectorAll('#panel-redir-sem .rs-dir-lbl').forEach(e=>{e.textContent=rsDir?'Atualizar da pasta '+rsDir.name:'Vincular pasta redir';});
   const av=document.getElementById('rs-aviso-empty');if(av)av.textContent=rsAviso;
   const el=document.getElementById('rs-msg');if(!el)return;
-  if(!RS_BASE){el.textContent='';return;}
+  if(!RS_BASE){
+    const lp=rsBaseLimpaEm();
+    el.textContent=lp?'planilha limpa em '+new Date(lp).toLocaleString('pt-BR')+rsStatusSync():'';
+    if(av&&lp&&!rsAviso)av.textContent='A planilha da semana anterior foi limpa em '+new Date(lp).toLocaleString('pt-BR')+'. Anexe a planilha da nova semana.'+rsStatusSync();
+    return;}
   const r=RS_BASE.resumo||{};
   el.textContent=RS_BASE.name+' · '+rsSemanasTxt(r.semanas)+' · '+(RS_BASE.origem==='pasta'?'lido da pasta '+(rsDir?rsDir.name+' ':'')+'em ':'anexado em ')+new Date(RS_BASE.at).toLocaleString('pt-BR')+rsStatusSync()+(rsAviso?' · '+rsAviso:'');
 }
@@ -38589,6 +38594,8 @@ async function rsCheckDir(pedir){
       const f=await rsArquivoMaisRecente(rsDir);
       if(!f){rsAviso='a pasta '+rsDir.name+' não tem planilha .xlsx';return false;}
       rsAviso='';
+      /* base limpa (aqui ou em outro aparelho): a pasta só volta a carregar sozinha uma planilha salva depois da limpeza */
+      if(!pedir&&!RS_BASE&&rsBaseLimpaEm()&&f.lastModified<=Date.parse(rsBaseLimpaEm()))return false;
       /* anexo manual vale até surgir planilha mais nova na pasta (o botão força a pasta) */
       if(!pedir&&RS_BASE&&RS_BASE.origem!=='pasta'&&f.lastModified<=Date.parse(RS_BASE.at))return false;
       if(RS_BASE&&RS_BASE.kind==='xlsx'&&RS_BASE.name===f.name&&RS_BASE.fileMod===f.lastModified){if(pedir)_ghToast('Redir (Semanal): '+f.name+' já é a planilha mais recente da pasta ✓','var(--green-dk)',3500);return false;}
@@ -38625,6 +38632,27 @@ async function rsOnFile(inp){
     await rsRender(true);
     _ghToast('Redir (Semanal): '+file.name+' anexado ✓ ('+(base.resumo.semanas||[]).join(', ')+')','var(--green-dk)',4500);
   }catch(e){alert('Não foi possível anexar: '+(e&&e.message||e));}
+}
+
+/* ── Limpar base (pedido 2026-11-09): apaga a planilha Redir anexada (semana anterior) para todos.
+   O pacote rsBaseSync vai com z:null e at = hora da limpeza: os outros aparelhos apagam a deles.
+   Planta Média, bases dos indicadores e justificativas ficam. ── */
+function rsBaseLimpaEm(){const s=rsBaseSync;return s&&s.at&&!s.z?s.at:null;}
+async function rsLimparBase(){
+  if(!canEdit('redirSemanal')){alert('Seu usuário não tem liberação para limpar base neste painel. Peça ao Admin.');return;}
+  await rsLoad();
+  if(!RS_BASE){_ghToast('Redir (Semanal): não há planilha anexada para limpar.','var(--blue)',3500);return;}
+  const r=RS_BASE.resumo||{},nome=RS_BASE.name;
+  if(!confirm('Limpar a base do Redir (Semanal)?\n\nPlanilha: '+nome+(r.semanas&&r.semanas.length?' ('+rsSemanasTxt(r.semanas)+')':'')+
+    '\n\nEla será apagada deste aparelho e de todos os usuários. Depois, anexe a planilha da nova semana.'+
+    '\n\nNão são apagadas: Planta Média, bases dos indicadores e textos das justificativas.'+(rsDir?'\n\nA pasta '+rsDir.name+' continua vinculada: só uma planilha salva nela depois de agora é carregada sozinha (ou clique em "Atualizar da pasta").':'')))return;
+  const agora=new Date().toISOString();
+  RS_BASE=null;rsData=null;rsDataAt='';rsF.sem=null;rsAviso='';delete rsCh._at;
+  try{await idbSet(RS_IDB_KEY,null);}catch(e){}
+  rsBaseSync={at:agora,name:null,z:null};
+  autoSyncAfterBaseUpload('Redir (Semanal) — base limpa');rsMsgDepois();
+  await rsRender(true);
+  _ghToast('Redir (Semanal): '+nome+' removida ✓ — anexe a planilha da nova semana','var(--green-dk)',4500);
 }
 
 /* ── sincronização (pedido 2026-10-24): planilha, bases dos indicadores e justificativas para todos ── */
@@ -38688,6 +38716,7 @@ async function rsSyncReconciliar(){
 function rsPendencias(){
   const p=[];const E=_syncEnviado||{};
   if(RS_BASE&&String(E.rsBaseSync||'')<String(RS_BASE.at))p.push('planilha');
+  else if(!RS_BASE&&rsBaseLimpaEm()&&String(E.rsBaseSync||'')<String(rsBaseLimpaEm()))p.push('limpeza da planilha');
   if(rsIndAt&&(Object.keys(RS_IND||{}).length||rsIndSync)&&String(E.rsIndSync||'')<String(rsIndAt))p.push('bases dos indicadores');
   const ed=E.drafts||{};let nd=0;for(const[id,d]of rsDraftsMap())if(d&&d.at&&String(ed[id]||'')<String(d.at))nd++;
   if(nd)p.push(nd+' justificativa'+(nd>1?'s':''));
