@@ -210,6 +210,19 @@ export default {
     /* Botão "BI" do B2B Abertos (2026-11-10): dispara o agente que exporta a Base de
        Reparos do Power BI (.github/workflows/pbi-sync.yml). Se já houver uma rodada na fila
        ou rodando, não dispara outra — o painel só passa a acompanhar a que existe. */
+    /* Status do agente do BI lido pela API (sem o cache de ~5 min do raw.githubusercontent),
+       para o botão mostrar o andamento ao vivo. Só este arquivo — não é um leitor genérico. */
+    if (payload.action === 'pbi_status') {
+      try {
+        const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/data/pbi-runner-status.json?ref=${env.GH_BRANCH}`;
+        const r = await fetch(url, { headers: ghHeaders(env, { Accept: 'application/vnd.github.raw+json' }) });
+        if (r.status === 404) return json({ ok: true, status: null }, 200, env);
+        if (!r.ok) return json({ ok: false, error: 'HTTP ' + r.status }, 502, env);
+        return json({ ok: true, status: JSON.parse(await r.text()) }, 200, env);
+      } catch (e) {
+        return json({ ok: false, error: e.message || 'Erro desconhecido.' }, 500, env);
+      }
+    }
     if (payload.action === 'pbi_dispatch') {
       try {
         const wf = env.PBI_WORKFLOW_FILE || 'pbi-sync.yml';
