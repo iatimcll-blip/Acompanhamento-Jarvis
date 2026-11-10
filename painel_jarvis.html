@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T15:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-10T16:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -17986,7 +17986,26 @@ function buildState(){return{version:8,atrixLastTrigger,atrixTriggerLog,rsBaseSy
    na restauração do estado, pra sumir mesmo sem precisar reanexar a base. */
 const AB_CLIENTE_JUNK_RE=/^(coluna\s|inferido\s)/i;
 function normalizeAbState(list){return(Array.isArray(list)?list:[]).map((d,i)=>{const mop=normMopByCity(d.uf,d.cidade)||fmtMop(d.mop);const cliente=AB_CLIENTE_JUNK_RE.test(String(d.cliente||'').trim())?'':d.cliente;return{...d,rowKey:d.rowKey??i,mop,cliente,assunto:d.assunto||'',substatus:fmtSubstatus(d.substatus),openedAt:d.openedAt?new Date(d.openedAt):null,pauseStart:d.pauseStart?new Date(d.pauseStart):null,slaBaseAt:d.slaBaseAt||'',pausedBusinessH:Number(d.pausedBusinessH||0),tempoClienteH:Number(d.tempoClienteH||0),tempoSuporteH:Number(d.tempoSuporteH||0),dynamicSheetSla:!!d.dynamicSheetSla,slaLimitH:d.slaLimitH||0}})}
-function normalizeEncState(list){return(Array.isArray(list)?list:[]).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semanaParsed=parseOpeningDate(d.dataFechamento);const semana=normSemana(d.semana,semanaParsed)||calcSemana(semanaParsed)||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
+/* (2026-11-10, auditoria do B2B Encerrados) Helpers de leitura da base:
+   - encLinhaRodape: a linha "Filtros aplicados: ..." que o export do Excel põe no fim.
+   - encXlData: data serial do Excel é hora "de parede" (horário local da planilha). O
+     parseOpeningDate genérico a lê como UTC, o que no fuso de Brasília atrasava TODAS as
+     datas em 3 h — fechamentos entre 00h e 02h59 caíam no dia anterior (e, numa segunda-
+     feira, na semana anterior). Só o B2B Encerrados usa este helper.
+   - encDataBR: lê "dd/mm/aaaa, hh:mm" (formato gravado no estado) como dia/mês; o
+     new Date() do navegador lia como mês/dia (11/09 virava 9 de novembro). */
+function encLinhaRodape(v){return/^filtros aplicados/i.test(String(v||'').trim());}
+function encXlData(v){
+  if(typeof v!=='number'||!isFinite(v)||v<20000||v>80000)return v;
+  const u=new Date(Math.round((v-25569)*86400000));
+  return new Date(u.getUTCFullYear(),u.getUTCMonth(),u.getUTCDate(),u.getUTCHours(),u.getUTCMinutes(),u.getUTCSeconds());
+}
+function encDataBR(v){
+  const m=String(v||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,?\s+(\d{1,2}):(\d{2}))?/);
+  if(m){const d=new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));return isNaN(d)?null:d;}
+  return parseOpeningDate(v);
+}
+function normalizeEncState(list){return(Array.isArray(list)?list:[]).filter(d=>d&&!encLinhaRodape(d.protocolo)).map(d=>{let mes=d.mes||'';if(!mes&&d.dataFechamento){const m=String(d.dataFechamento).match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)mes=`${m[3]}-${m[2]}`}const cidade=titleCasePT(repairPtBR(d.cidade||d.cidadeRaw||''));const mop=normMopByCity(d.uf,cidade)||d.mop||'';const cluster=d.cluster||normClusterByCity(d.uf,cidade)||'';const faixa=d.faixa&&SLA_ORDER.includes(d.faixa)?d.faixa:cf(d.tempoTotal||0);const semanaParsed=encDataBR(d.dataFechamento);const semana=normSemana(d.semana,semanaParsed)||calcSemana(semanaParsed)||'';const dentro8h=d.dentro8h!==undefined?d.dentro8h:encBucket(d.tempoTotal)==='prazo';const outlier24h=d.outlier24h!==undefined?d.outlier24h:encBucket(d.tempoTotal)==='outlier';return{...d,cidade,mes,mop,cluster,faixa,semana,dentro8h,outlier24h}})}
 function repairPtBR(s){return typeof s==='string'&&s?_memoGet(_memoRepair||(_memoRepair=new Map()),s,_repairPtBRRaw):_repairPtBRRaw(s);}
 function _repairPtBRRaw(s){
   if(!s)return s;
@@ -19350,7 +19369,9 @@ function procEnc(raw,fname){
   const srchEnc0=document.getElementById('f-srch-enc');if(srchEnc0)srchEnc0.value='';
   const srchSi0=document.getElementById('f-srch-si');if(srchSi0)srchSi0.value='';
   const srchPref0=document.getElementById('f-srch-pref');if(srchPref0)srchPref0.value='';
-  dEnc=raw.filter(r=>r['ticket_id']||r['protocolo']).map(r=>{
+  /* (2026-11-10, auditoria) a linha de rodapé "Filtros aplicados: ..." do export do Excel
+     entrava como 1 chamado (sem mês/cluster, tempo 0 = contado em Prazo ≤8h). */
+  dEnc=raw.filter(r=>(r['ticket_id']||r['protocolo'])&&!encLinhaRodape(r['protocolo']||r['ticket_id'])).map(r=>{
     const protocolo=String(r['protocolo']||r['ticket_id']||'').trim();
     const ticketId=String(r['ticket_id']||'').trim();
     const link=atrixTicketLink(ticketId||protocolo);
@@ -19367,8 +19388,8 @@ function procEnc(raw,fname){
     const segmento=repairPtBR(String(r['segmento_cliente']||'').trim());
     const osColB=String(Object.values(r)[1]||'').trim();
     const os=String(gv(r,['ult_OS','ult os','última OS','ultima OS','os_agrupada','os concluida agrupada','os_concluida_agrupada','OS','os'])||osColB||protocolo).trim();
-    const dataAbertura=gv(r,['data_abertura','Data Abertura','Data de Abertura','abertura']);
-    const dataFechamento=gv(r,['data_fechamento','Data Fechamento','Data de Fechamento','fechamento','encerramento','Data_Fechamento','DATA FECHAMENTO','data fechamento'])||String(_vals[13]||'');
+    const dataAbertura=encXlData(gv(r,['data_abertura','Data Abertura','Data de Abertura','abertura']));
+    const dataFechamento=encXlData(gv(r,['data_fechamento','Data Fechamento','Data de Fechamento','fechamento','encerramento','Data_Fechamento','DATA FECHAMENTO','data fechamento'])||_vals[13]||'');
     const dataFechamentoParsed=parseOpeningDate(dataFechamento);
     const semanaBase=normSemana(String(gv(r,['semana','Semana','SEMANA','semana_calc','SEMANA_CALC','semana_ccs'])||'').trim(),dataFechamentoParsed);
     const semana=semanaBase||calcSemana(dataFechamentoParsed)||'';
