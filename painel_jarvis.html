@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T18:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-10T18:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -20976,20 +20976,25 @@ function _atrixTrigAdopt(t){t=_atrixTrigNorm(t);if(t.user&&t.at&&t.at>(atrixLast
    configurável. Só o Admin cadastra/edita (engrenagem ao lado); o link sincroniza entre
    aparelhos pelo sync-state — vence o mais recente (campo at), igual ao atrixLastTrigger. */
 let abBiLink={url:'',by:'',at:''};
+/* Link padrão (pedido do usuário 2026-11-10): relatório "[Reparos] Reparos Abertos - Giga+
+   v2_Databricks" do app "Indicadores B2B - Brasil" (Power BI). Vale enquanto o Admin não
+   cadastrar outro pela engrenagem. */
+const AB_BI_URL_PADRAO='https://app.powerbi.com/groups/me/apps/eafd5bdd-0f37-4837-9ab2-2e50f0f5092f/reports/8a808511-3960-40ac-acf2-c4dbd2a4137f/a246be1db40e048a3595?ctid=7ebaa467-3ace-4a9c-ad91-4e84933a6607&experience=power-bi&clientSideAuth=0';
+function _abBiUrl(){return safeUrl(abBiLink.url)||safeUrl(AB_BI_URL_PADRAO);}
 function _abBiAdopt(x){
   if(!x||typeof x!=='object'||!x.at||x.at<=(abBiLink.at||''))return;
   abBiLink={url:String(x.url||''),by:String(x.by||''),at:String(x.at)};
   _abBiRender();
 }
 function _abBiRender(){
-  const ok=!!safeUrl(abBiLink.url);
+  const ok=!!_abBiUrl();
   document.querySelectorAll('.ab-bi-btn').forEach(b=>{
-    b.title=ok?'Abrir o BI (nova aba)':'Link do BI ainda não configurado';
+    b.title=ok?'Abrir o BI — [Reparos] Reparos Abertos (Power BI), nova aba':'Link do BI ainda não configurado';
     b.style.opacity=ok?'':'.55';
   });
 }
 function abrirBiAb(){
-  const u=safeUrl(abBiLink.url);
+  const u=_abBiUrl();
   if(!u){
     if(currentUser&&currentUser.role==='admin'){configurarBiAb();return;}
     _ghToast('O link do BI ainda não foi configurado pelo Admin.','var(--orange)',4000);return;
@@ -20998,14 +21003,14 @@ function abrirBiAb(){
 }
 function configurarBiAb(){
   if(!(currentUser&&currentUser.role==='admin'))return;
-  const v=prompt('Link do BI (deixe vazio para remover):',abBiLink.url||'');
+  const v=prompt('Link do BI (deixe vazio para voltar ao link padrão do Power BI):',abBiLink.url||AB_BI_URL_PADRAO);
   if(v===null)return;
   const raw=v.trim();
   if(raw&&!/^https?:\/\//i.test(raw)){alert('Informe um link completo começando com https://');return;}
   if(raw&&!safeUrl(raw)){alert('Link inválido.');return;}
   abBiLink={url:raw,by:currentUser.username||'',at:new Date().toISOString()};
   _abBiRender();saveState();
-  _ghToast(raw?'Link do BI salvo — vale para todos os aparelhos ✓':'Link do BI removido.','var(--green-dk)',4000);
+  _ghToast(raw?'Link do BI salvo — vale para todos os aparelhos ✓':'Voltou ao link padrão do Power BI.','var(--green-dk)',4000);
 }
 setTimeout(()=>{try{_abBiRender();}catch(_){}},0);
 let atrixTriggerLog=[];
