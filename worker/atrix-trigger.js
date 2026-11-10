@@ -99,8 +99,8 @@ async function pushTicketsJson(env, tickets) {
   }
 }
 
-async function dispatchWorkflow(env) {
-  const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${env.WORKFLOW_FILE}/dispatches`;
+async function dispatchWorkflow(env, workflowFile) {
+  const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${workflowFile || env.WORKFLOW_FILE}/dispatches`;
   const res = await fetch(url, {
     method: 'POST',
     headers: ghHeaders(env, { 'Content-Type': 'application/json' }),
@@ -203,6 +203,25 @@ export default {
       try {
         const { sha, content } = await getSyncState(env);
         return json({ ok: true, sha, content }, 200, env);
+      } catch (e) {
+        return json({ ok: false, error: e.message || 'Erro desconhecido.' }, 500, env);
+      }
+    }
+    /* Botão "BI" do B2B Abertos (2026-11-10): dispara o agente que exporta a Base de
+       Reparos do Power BI (.github/workflows/pbi-sync.yml). Se já houver uma rodada na fila
+       ou rodando, não dispara outra — o painel só passa a acompanhar a que existe. */
+    if (payload.action === 'pbi_dispatch') {
+      try {
+        const wf = env.PBI_WORKFLOW_FILE || 'pbi-sync.yml';
+        const base = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${wf}/runs?per_page=5`;
+        const r = await fetch(base, { headers: ghHeaders(env) });
+        if (r.ok) {
+          const d = await r.json();
+          const ativa = (d.workflow_runs || []).find(x => x.status === 'queued' || x.status === 'in_progress' || x.status === 'waiting' || x.status === 'pending');
+          if (ativa) return json({ ok: true, alreadyRunning: true, startedAt: ativa.created_at }, 200, env);
+        }
+        await dispatchWorkflow(env, wf);
+        return json({ ok: true }, 200, env);
       } catch (e) {
         return json({ ok: false, error: e.message || 'Erro desconhecido.' }, 500, env);
       }

@@ -1,0 +1,46 @@
+name: BI Abertos Sync
+
+# Botão "BI" do B2B Abertos/Swap/EVE: exporta a Base de Reparos do Power BI e entrega ao
+# painel como "Anexar base geral". Ver scraper/pbi_export.js.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pbi-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: [self-hosted, jarvis]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell -ExecutionPolicy Bypass -Command "& '{0}'"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: scraper
+        run: npx playwright install chromium
+
+      - name: Exportar do Power BI
+        working-directory: scraper
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_BRANCH: main
+          PBI_AUTH_DIR: D:\JarvisRunner\pbi-auth
+        run: node pbi_export.js
