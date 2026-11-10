@@ -2,6 +2,9 @@ name: BI Abertos Sync
 
 # Botão "BI" do B2B Abertos/Swap/EVE: exporta a Base de Reparos do Power BI e entrega ao
 # painel como "Anexar base geral". Ver scraper/pbi_export.js.
+# Roda num servidor do GitHub (não depende do PC do agente ligado — pedido 2026-11-10).
+# O Power BI é acessível pela internet (não precisa da VPN, ao contrário do Atrix).
+# A sessão do Power BI vem só do secret PBI_SESSION (cookies, base64+gzip); nada dela vai pro repositório.
 on:
   workflow_dispatch:
 
@@ -14,11 +17,8 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: [self-hosted, jarvis]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        shell: powershell -ExecutionPolicy Bypass -Command "& '{0}'"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
 
       - name: Install Chromium
         working-directory: scraper
-        run: npx playwright install chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Exportar do Power BI
         working-directory: scraper
@@ -42,5 +42,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_BRANCH: main
-          PBI_AUTH_DIR: D:\JarvisRunner\pbi-auth
+          PBI_SESSION: ${{ secrets.PBI_SESSION }}
+          PBI_AUTH_DIR: ${{ runner.temp }}/pbi-auth
+          TZ: America/Sao_Paulo
         run: node pbi_export.js

@@ -44,6 +44,29 @@ const GH_BRANCH = process.env.GITHUB_BRANCH || 'main';
 const STATUS_FILE = 'data/pbi-runner-status.json';
 const DATA_FILE   = 'data/pbi_abertos.xlsx';
 
+/* ── Sessão vinda do secret do GitHub (rodar na nuvem, sem depender do PC do agente) ──
+   Pedido do usuário 2026-11-10 (opção B): o workflow roda num servidor do GitHub e a sessão do
+   Power BI vem SÓ do secret PBI_SESSION (base64 de gzip do storageState, apenas cookies) —
+   nada da sessão vai para o repositório (que é público). Não há renovação automática: quando
+   a Microsoft expirar a sessão, refaz-se o login (--login) e atualiza-se o secret com o
+   arquivo D:\JarvisRunner\pbi-auth\session.secret.txt que o login gera. */
+const zlib = require('zlib');
+function sessaoDoSecret() {
+  const v = (process.env.PBI_SESSION || '').trim();
+  if (!v || fs.existsSync(STATE_FILE)) return false;
+  fs.mkdirSync(AUTH_DIR, { recursive: true });
+  fs.writeFileSync(STATE_FILE, zlib.gunzipSync(Buffer.from(v, 'base64')));
+  log('Sessão do Power BI carregada do secret.');
+  return true;
+}
+function gerarArquivoSecret() {
+  const st = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  const b64 = zlib.gzipSync(JSON.stringify({ cookies: st.cookies || [], origins: [] })).toString('base64');
+  const out = path.join(AUTH_DIR, 'session.secret.txt');
+  fs.writeFileSync(out, b64);
+  return { out, tamanho: b64.length };
+}
+
 const log = (...a) => console.log(new Date().toLocaleTimeString('pt-BR'), ...a);
 
 /* ── GitHub (mesmo padrão do atrix_agent.js) ─────────────────────────────── */
@@ -131,6 +154,8 @@ async function login() {
   await new Promise(r => setTimeout(r, 3000));
   await ctx.storageState({ path: STATE_FILE });
   log('Sessão gravada em', STATE_FILE);
+  const sec = gerarArquivoSecret();
+  log('Arquivo para o secret PBI_SESSION gerado em', sec.out, '(' + sec.tamanho + ' caracteres) — atualize o secret no GitHub para a nuvem usar o login novo.');
   await ctx.close();
 }
 
@@ -164,7 +189,9 @@ async function localizarBarra(page, nome) {
 }
 
 async function exportar(browser) {
-  if (!fs.existsSync(STATE_FILE)) throw Object.assign(new Error('Sessão do Power BI não configurada — rode "node pbi_export.js --login" no computador do agente.'), { code: 'login_required' });
+  try { sessaoDoSecret(); } catch (e) { throw Object.assign(new Error('O secret PBI_SESSION está inválido (' + e.message + ') — refaça o login do Power BI e atualize o secret.'), { code: 'login_required' }); }
+  if (!fs.existsSync(STATE_FILE) && process.env.GITHUB_ACTIONS) throw Object.assign(new Error('O secret PBI_SESSION não está configurado no GitHub — o agente na nuvem não consegue abrir a sessão do Power BI.'), { code: 'config' });
+  if (!fs.existsSync(STATE_FILE)) throw Object.assign(new Error('Sessão do Power BI não configurada — é preciso refazer o login do Power BI (node pbi_export.js --login).'), { code: 'login_required' });
   const ctx = await browser.newContext({ storageState: STATE_FILE, acceptDownloads: true, viewport: { width: 1600, height: 900 }, locale: 'pt-BR' });
   const page = await ctx.newPage();
   try {
@@ -174,7 +201,7 @@ async function exportar(browser) {
       page.waitForSelector('svg[aria-label^="Total "]', { timeout: 120000 }).then(() => 'ok'),
       page.waitForURL(/login\.microsoftonline\.com|login\.live\.com/, { timeout: 120000 }).then(() => 'login')
     ]).catch(() => 'timeout');
-    if (ok === 'login') throw Object.assign(new Error('A sessão do Power BI expirou — é preciso entrar de novo na conta Microsoft no computador do agente (node pbi_export.js --login).'), { code: 'login_required' });
+    if (ok === 'login') throw Object.assign(new Error('A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.'), { code: 'login_required' });
     if (ok !== 'ok') throw new Error('O relatório não carregou em 2 min (contador Total não apareceu).');
     await page.waitForTimeout(3000);
 
