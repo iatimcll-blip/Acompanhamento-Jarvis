@@ -767,7 +767,9 @@ async function runCycle() {
     state: 'running',
     lastError: '',
     lastRunStartedAt: cycleStart.toISOString(),
-    lastRunConclusion: ''
+    lastRunConclusion: '',
+    lastTicketsState: {},
+    lastTicketsCurrent: ''
   });
 
   const tickets = await loadTickets();
@@ -798,7 +800,13 @@ async function runCycle() {
      chamados (a maioria dos ciclos reais deste app) atualizam a CADA chamado; só lotes
      bem maiores que isso ganham um passo >1, ainda proporcional. */
   const progressStep = Math.max(1, Math.ceil(tickets.length / 200));
-  await publishRunnerStatus({ state: 'running', lastTicketsProgress: 0, lastTicketsTotal: tickets.length, lastPass: 1, lastPassesMax: ATRIX_MAX_PASSES, lastTicketsPending: tickets.length });
+  /* Check por chamado no painel (pedido do usuário 2026-11-10): lastTicketsState guarda o
+     estado de cada chamado na rodada ('ok' lido, 'rev' vai para a revisão, 'falha' ficou sem
+     leitura) e lastTicketsCurrent o chamado que está sendo lido agora. Vai junto das
+     publicações de progresso que já existiam — nenhum commit a mais. */
+  const estadoTk = {};
+  const tidDe = t => (t && (t.id || t.ticketId)) || '';
+  await publishRunnerStatus({ state: 'running', lastTicketsProgress: 0, lastTicketsTotal: tickets.length, lastPass: 1, lastPassesMax: ATRIX_MAX_PASSES, lastTicketsPending: tickets.length, lastTicketsState: {}, lastTicketsCurrent: tidDe(tickets[0]) });
 
   const { updates, sha } = await loadUpdates();
   let changed = 0;
@@ -861,7 +869,7 @@ async function runCycle() {
         /* Limite de tempo: o workflow cai em 30 min — não começa revisão depois de 22 min. */
         if (Date.now() - cycleStart.getTime() > 22 * 60000) { warn(`Revisões interrompidas: rodada passou de 22 min (${fila.length} chamado(s) sem leitura).`); break; }
         info(`── Revisão ${volta - 1}: ${fila.length} chamado(s) sem leitura na volta anterior ──`);
-        await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: fila.length, lastTicketsProgress: feitos, lastTicketsTotal: totalPassos });
+        await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: fila.length, lastTicketsProgress: feitos, lastTicketsTotal: totalPassos, lastTicketsState: estadoTk, lastTicketsCurrent: tidDe(fila[0]) });
         await page.waitForTimeout(10000);
       }
       const pendentes = [];
@@ -900,6 +908,7 @@ async function runCycle() {
           /* `source` ('substatus'|'status'|'fechado') registra QUAL regra encontrou o valor. */
           updates[tid] = { substatus: sub, source, cliente: ticket.cliente || '', uf: loc.uf, cidade: loc.cidade, updatedAt: new Date().toISOString() };
           if (result.verified) updates[tid].verified = true;
+          estadoTk[tid] = 'ok';
           if (normSub(sub) !== normSub(old)) {
             info(`  ✓ "${old}" → "${sub}" (via ${source})`);
             changed++;
@@ -908,11 +917,12 @@ async function runCycle() {
           }
         } else {
           pendentes.push(ticket);
+          estadoTk[tid] = 'rev';
         }
 
         feitos++;
         if (feitos % progressStep === 0 || i === fila.length - 1) {
-          await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: pendentes.length + (fila.length - i - 1), lastTicketsProgress: feitos, lastTicketsTotal: totalPassos });
+          await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: pendentes.length + (fila.length - i - 1), lastTicketsProgress: feitos, lastTicketsTotal: totalPassos, lastTicketsState: estadoTk, lastTicketsCurrent: tidDe(fila[i + 1]) });
         }
 
         if (i < fila.length - 1) await page.waitForTimeout(DELAY_MS);
@@ -928,6 +938,7 @@ async function runCycle() {
     errors = fila.length;
     for (const ticket of fila) {
       const tid = ticket.id || ticket.ticketId || '';
+      estadoTk[tid] = 'falha';
       warn(`[${tid}] Sem leitura apos ${ATRIX_MAX_PASSES} volta(s) — mantendo o valor anterior.`);
       /* O "Fechado" que ficou de rodadas antigas sem confirmação (source 'fechado' sem
          verified) era quase sempre falha de leitura — remove, para o painel voltar a usar
@@ -969,7 +980,9 @@ async function runCycle() {
     lastTicketsChecked: tickets.length,
     lastTicketsChanged: changed,
     lastTicketsErrors: errors,
-    lastTicketsPending: errors
+    lastTicketsPending: errors,
+    lastTicketsState: estadoTk,
+    lastTicketsCurrent: ''
   });
 }
 

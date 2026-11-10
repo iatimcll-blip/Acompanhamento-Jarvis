@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T07:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-10T15:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1089,6 +1089,23 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .sub-manual-lock { display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:#f59e0b;color:#000;font-size:8px;font-weight:900;cursor:pointer;flex-shrink:0;margin-left:2px;line-height:1;user-select:none }
 .sub-manual-lock:hover { background:#d97706; color:#fff }
 .substatus-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; min-width: 0; }
+/* (2026-11-10) Check + barrinha por chamado enquanto o botão Atualizar (Agente Atrix) roda. */
+.atx-tk { display:inline-flex;align-items:center;gap:3px;margin-left:4px;flex-shrink:0;font-size:10px;font-weight:700;line-height:1;white-space:nowrap }
+.atx-tk:empty { display:none }
+.atx-tk .atx-bar { position:relative;display:inline-block;width:34px;height:5px;border-radius:3px;background:var(--bd,#d0d5dd);overflow:hidden }
+.atx-tk .atx-fill { position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--blue) }
+.atx-tk .atx-fill.atx-run { animation:atxFill linear forwards }
+.atx-tk[data-s="ok"] .atx-fill { width:100%;background:var(--green-dk,#15803d) }
+.atx-tk[data-s="ok"] { color:var(--green-dk,#15803d) }
+.atx-tk[data-s="rev"] .atx-fill { width:50%;background:var(--orange,#f59e0b) }
+.atx-tk[data-s="rev"] { color:var(--orange,#f59e0b) }
+.atx-tk[data-s="falha"] .atx-fill { width:100%;background:var(--red,#dc2626) }
+.atx-tk[data-s="falha"] { color:var(--red,#dc2626) }
+.atx-tk[data-s="cur"] { color:var(--blue) }
+.atx-tk[data-s="wait"] { color:var(--tx3,#98a2b3) }
+.atx-tk i { font-size:12px }
+.atx-tk[data-s="cur"] i { animation:wppSpin 1s linear infinite }
+@keyframes atxFill { from { width:0 } to { width:100% } }
 .abc-check-btn { display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;background:var(--blue-bg);color:var(--blue);font-size:12px;cursor:pointer;flex-shrink:0;margin-left:2px;border:none;padding:0 }
 .abc-check-btn:hover { background:var(--blue);color:#fff }
 .atrix-card-ts{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:500;color:var(--tx3);background:rgba(0,0,0,.04);border:1px solid var(--bd);border-radius:5px;padding:1px 5px;margin-left:6px;white-space:nowrap;vertical-align:middle;line-height:1.4;flex-shrink:0}
@@ -21058,6 +21075,59 @@ function _atrixRevisaoTxt(st){
   const pend=Number(st.lastTicketsPending||0);
   return'revisão '+(st.lastPass-1)+(pend?' · '+pend+' pendente'+(pend>1?'s':''):'');
 }
+/* Check + barrinha em CADA chamado durante a rodada (pedido do usuário 2026-11-10: "check
+   com barra de atualização para cada chamado quando clicar em atualizar"). O agente publica
+   em data/atrix-runner-status.json lastTicketsState ({id: 'ok'|'rev'|'falha'}) e
+   lastTicketsCurrent (o chamado em leitura). Cada card tem um <span class="atx-tk"> vazio;
+   _atxTkApply() só reescreve o span cujo estado mudou (não redesenha o painel e não
+   reinicia a animação da barra do chamado em leitura). Funciona em qualquer aparelho com o
+   painel aberto, porque _atrixResumeIfRunning retoma o acompanhamento. */
+const _atxTk={on:false,st:{},cur:'',dur:10,clr:null};
+function _atxTkKey(d){return String((d&&(d.id||d.ticketId))||'');}
+function _atxTkEstado(k){
+  const v=_atxTk.st[k];
+  if(v==='ok'||v==='falha')return v;
+  if(k&&k===_atxTk.cur)return'cur';
+  return v==='rev'?'rev':'wait';
+}
+function _atxTkInner(s){
+  const ic={ok:'ti-check',falha:'ti-x',cur:'ti-loader-2',rev:'ti-refresh',wait:'ti-clock'}[s];
+  const fill=s==='cur'?'<span class="atx-fill atx-run" style="animation-duration:'+_atxTk.dur+'s"></span>':'<span class="atx-fill"></span>';
+  return'<span class="atx-bar">'+fill+'</span><i class="ti '+ic+'"></i>';
+}
+const _ATX_TK_TIT={ok:'Lido no Atrix nesta rodada',falha:'Sem leitura nesta rodada — mantido o substatus anterior',cur:'Lendo agora no Atrix…',rev:'Não carregou a tempo — vai para a revisão',wait:'Na fila do agente'};
+function _atxTkMark(d){
+  if(!d||!safeUrl(d.link))return'';
+  const k=eh(_atxTkKey(d));
+  if(!_atxTk.on)return'<span class="atx-tk" data-atx="'+k+'"></span>';
+  const s=_atxTkEstado(_atxTkKey(d));
+  return'<span class="atx-tk" data-atx="'+k+'" data-s="'+s+'" title="'+_ATX_TK_TIT[s]+'">'+_atxTkInner(s)+'</span>';
+}
+function _atxTkApply(){
+  document.querySelectorAll('.atx-tk[data-atx]').forEach(el=>{
+    if(!_atxTk.on){if(el.dataset.s){delete el.dataset.s;el.removeAttribute('title');el.innerHTML='';}return;}
+    const s=_atxTkEstado(el.dataset.atx);
+    if(el.dataset.s===s)return;
+    el.dataset.s=s;el.title=_ATX_TK_TIT[s];el.innerHTML=_atxTkInner(s);
+  });
+}
+/* st = status do runner DESTA rodada (null enquanto ela ainda não começou: todos "na fila"). */
+function _atxTkSet(st){
+  clearTimeout(_atxTk.clr);_atxTk.clr=null;
+  _atxTk.on=true;
+  _atxTk.st=(st&&st.lastTicketsState&&typeof st.lastTicketsState==='object')?st.lastTicketsState:{};
+  _atxTk.cur=st?String(st.lastTicketsCurrent||''):'';
+  _atxTk.dur=st&&Number(st.lastPass)>1?30:10;
+  _atxTkApply();
+}
+/* Fim da rodada: tira o "lendo" e mantém os checks por 3 min (nenhuma leitura = some já). */
+function _atxTkFim(){
+  _atxTk.cur='';
+  if(!Object.keys(_atxTk.st).length){_atxTk.on=false;_atxTkApply();return;}
+  _atxTkApply();
+  clearTimeout(_atxTk.clr);
+  _atxTk.clr=setTimeout(()=>{_atxTk.on=false;_atxTk.st={};_atxTkApply();},180000);
+}
 /* Bug real corrigido: ao clicar em "Atualizar substatus", a barra pulava direto pra
    ~100% em vez de começar do zero e crescer aos poucos. Causa: data/atrix-runner-
    status.json só zera lastTicketsProgress DEPOIS de carregar a lista de chamados
@@ -21076,8 +21146,10 @@ function _atrixStartProgressPolling(triggeredAtIso){
     const belongsToThisCycle=st&&st.lastTicketsTotal&&st.lastRunStartedAt&&(!triggeredAtIso||st.lastRunStartedAt>=triggeredAtIso);
     if(belongsToThisCycle){
       _atrixRenderProgress((st.lastTicketsProgress||0)/st.lastTicketsTotal*100,true,_atrixRevisaoTxt(st));
+      _atxTkSet(st);
     }else{
       _atrixRenderProgress(0,true);
+      _atxTkSet(null);
     }
   };
   tick();
@@ -21085,6 +21157,7 @@ function _atrixStartProgressPolling(triggeredAtIso){
 }
 function _atrixStopProgressPolling(finished){
   clearInterval(_atrixProgressTimer);_atrixProgressTimer=null;
+  _atxTkFim();
   if(finished){
     _atrixRenderProgress(100,true);
     setTimeout(()=>_atrixRenderProgress(0,false),2500);
@@ -21206,6 +21279,7 @@ function _atrixStartMonitoring(triggeredAtIso,startTries){
     const terminou=!!(comecou&&st.state!=='running'&&st.lastRunCompletedAt&&st.lastRunCompletedAt>=st.lastRunStartedAt);
     if(terminou){
       _atrixAplicarStatus(st);
+      if(st.lastTicketsState)_atxTkSet(st);
       if(st.lastRunConclusion==='failure'||st.state==='error'){
         await loadAtrixUpdates(); /* aplica o que foi lido certo (falha = metade ou mais sem leitura) */
         encerrar(false);
@@ -21446,7 +21520,7 @@ function renderTAb(){
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.assunto)}</span><span class="abc-cliente-final">${eh(d.cliente)}</span>`:eh(d.cliente);
     const profCell=canEdit('abertos')?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit('abertos')?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(String(d.rowKey))}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}${_atrixTsBadge(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(String(d.rowKey))}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}${_atrixTsBadge(d)}${_atxTkMark(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
@@ -21618,7 +21692,7 @@ function renderTSwap(){
       ?`<input class="finput swap-uf-input" style="width:38px;padding:2px 4px;font-size:13px" value="${eh(d.uf)}" maxlength="2" onclick="event.stopPropagation()" onblur="swapEditarLocal(${d.rowKey},'uf',this.value)" title="Editar UF">
          <input class="finput swap-cidade-input" style="width:110px;padding:2px 4px;font-size:13px" value="${eh(d.cidade)}" onclick="event.stopPropagation()" onblur="swapEditarLocal(${d.rowKey},'cidade',this.value)" title="Editar Cidade">`
       :`${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}`;
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idCellHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idCellHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d)}${_atxTkMark(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-swap .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
   renderSwapResumo();
@@ -22090,7 +22164,7 @@ function renderTEve(){
       ?`<input class="finput eve-uf-input" style="width:38px;padding:2px 4px;font-size:13px" value="${eh(d.uf)}" maxlength="2" onclick="event.stopPropagation()" onblur="eveEditarLocal(${d.rowKey},'uf',this.value)" title="Editar UF">
          <input class="finput eve-cidade-input" style="width:110px;padding:2px 4px;font-size:13px" value="${eh(d.cidade)}" onclick="event.stopPropagation()" onblur="eveEditarLocal(${d.rowKey},'cidade',this.value)" title="Editar Cidade">`
       :`${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}`;
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idCellHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(d.rowKey)}"><div class="abc-ticket"><div class="abc-ticket-top"><div class="abc-id">${idCellHtml}${lk}</div>${delBtn}</div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${ufCidadeEdit}</span></div></div><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${_atrixTsBadge(d)}${_atxTkMark(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-eve .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
   renderEveResumo();
