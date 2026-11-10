@@ -397,6 +397,11 @@ async function pageState(page, ticket) {
    volta para a fila de revisão no fim da volta (ver runCycle). ms(max) = tempo restante até
    o prazo, limitado a max, nunca 0 (no Playwright timeout 0 = sem limite). */
 const TICKET_BUDGET_MS = Math.max(3, parseFloat(process.env.TICKET_SECONDS || '10')) * 1000;
+/* Revisões: prazo maior, com a paciência do agente antigo. Bug real do teste de 2026-11-10:
+   com só 10 s o select de Substatus (carregado DEPOIS do Status no Atrix) não aparecia e o
+   agente gravava o Status genérico ("Em espera") em 13 de 23 chamados. Agora a 1ª volta
+   (modo rápido) só aceita Substatus; Status/"Fechado" só saem numa revisão. */
+const TICKET_REVIEW_MS = Math.max(10, parseFloat(process.env.TICKET_REVIEW_SECONDS || '30')) * 1000;
 const ATRIX_MAX_PASSES = Math.max(1, parseInt(process.env.ATRIX_MAX_PASSES || '5', 10));
 function budget(deadline) {
   const dl = deadline || (Date.now() + 1e9);
@@ -412,10 +417,10 @@ async function openTicket(page, ticket, deadline) {
     const txt = document.body ? (document.body.innerText || '') : '';
     return ids.some(id => id && txt.includes(id));
   }, { ids: [String(ticket.ticketId || ''), String(ticket.id || '')] }, { timeout: b.ms(20000), polling: 250 }).catch(() => {});
-  await page.waitForTimeout(b.ms(800));
+  await page.waitForTimeout(b.ms(1500));
 }
 
-async function extractSubstatus(page, ticket, deadline) {
+async function extractSubstatus(page, ticket, deadline, rapido) {
   const tid = ticket.id || ticket.ticketId || '?';
   const b = budget(deadline);
   try {
@@ -497,11 +502,10 @@ async function extractSubstatus(page, ticket, deadline) {
     // Quando o ticket está fechado o SPA pode não ter selects de substatus,
     // mas pode ter selects de navegação — aguardamos e depois filtramos.
     try {
-      /* Página do chamado já aberta (nº do chamado na tela) e sem select = chamado fechado/
-         somente leitura: espera no máximo 4 s em vez de gastar o prazo inteiro. */
-      await page.waitForSelector('select', { timeout: b.ms(estado0 === 'ticket' ? 4000 : 12000) });
+      await page.waitForSelector('select', { timeout: b.ms(12000) });
     } catch {
       // Sem nenhum select: usar o Status encontrado na página, se houver
+      if (rapido) { info(`[${tid}] Substatus ainda nao apareceu — vai para a revisao.`); return null; }
       const st = await extractPageStatus();
       if (st) { info(`[${tid}] Substatus nao encontrado — usando Status: ${st}`); return { value: st, source: 'status' }; }
       // Regra 3 só quando a página aberta é comprovadamente a do chamado. Tela de login,
@@ -534,7 +538,9 @@ async function extractSubstatus(page, ticket, deadline) {
     // pro Status/Fechado — cada `if(!sub)` já é idempotente, então repetir o bloco
     // inteiro só relê a página de novo, sem duplicar nenhum efeito colateral.
     let sub = null;
-    for (let attempt = 1; attempt <= 3 && !sub && (attempt === 1 || b.left() > 1500); attempt++) {
+    /* 1ª volta: até 3 tentativas dentro dos 10 s. Revisão: tenta até faltar ~3 s do prazo
+       (o select de Substatus do Atrix carrega depois do Status). */
+    for (let attempt = 1; !sub && (attempt === 1 || (rapido ? (attempt <= 3 && b.left() > 1500) : b.left() > 3000)); attempt++) {
       if (attempt > 1) {
         dbg(`[${tid}] Substatus não encontrado na tentativa ${attempt - 1} — aguardando e tentando de novo.`);
         await page.waitForTimeout(b.ms(2500));
@@ -649,6 +655,8 @@ async function extractSubstatus(page, ticket, deadline) {
     // Regra 3: o Substatus, quando encontrado, sempre prevalece — nenhuma outra
     // informação (Status incluído) o sobrescreve.
     if (sub) return { value: sub, source: 'substatus' };
+    /* Modo rápido (1ª volta): sem Substatus dentro do prazo = revisão, nunca Status/Fechado. */
+    if (rapido) { info(`[${tid}] Substatus ainda nao apareceu — vai para a revisao.`); return null; }
 
     // Diagnostico temporario (ver ATRIX_DUMP_HTML no topo do arquivo): nenhuma
     // estrategia achou o Substatus — despeja todos os <select> da pagina (name/id/
@@ -810,16 +818,18 @@ async function runCycle() {
      (prazo + 2 s) garante que nenhum chamado prende a rodada — se estourar, a aba é
      descartada (a leitura atrasada não tem como gravar nada) e outra é aberta na mesma
      sessão. Devolve o resultado ou null (= vai para a revisão). */
-  const lerComPrazo = async ticket => {
-    const deadline = Date.now() + TICKET_BUDGET_MS;
+  const lerComPrazo = async (ticket, volta) => {
+    const rapido = volta === 1;
+    const prazo = rapido ? TICKET_BUDGET_MS : TICKET_REVIEW_MS;
+    const deadline = Date.now() + prazo;
     let timer;
-    const leitura = extractSubstatus(page, ticket, deadline);
+    const leitura = extractSubstatus(page, ticket, deadline, rapido);
     leitura.catch(() => {});
-    const estouro = new Promise(res => { timer = setTimeout(() => res('__estouro__'), TICKET_BUDGET_MS + 2000); });
+    const estouro = new Promise(res => { timer = setTimeout(() => res('__estouro__'), prazo + 2000); });
     const r = await Promise.race([leitura, estouro]);
     clearTimeout(timer);
     if (r === '__estouro__') {
-      warn(`[${ticket.id || ticket.ticketId}] Passou de ${TICKET_BUDGET_MS / 1000} s — vai para a revisão.`);
+      warn(`[${ticket.id || ticket.ticketId}] Passou de ${prazo / 1000} s — vai para a revisão.`);
       await page.close().catch(() => {});
       page = await ctx.newPage();
       return null;
@@ -857,6 +867,11 @@ async function runCycle() {
       const pendentes = [];
       let lidosNaVolta = 0;
       for (let i = 0; i < fila.length; i++) {
+        if (volta > 1 && Date.now() - cycleStart.getTime() > 25 * 60000) {
+          warn(`Rodada passou de 25 min — ${fila.length - i} chamado(s) ficam sem leitura.`);
+          pendentes.push(...fila.slice(i));
+          break;
+        }
         const ticket = fila[i];
         const tid    = ticket.id || ticket.ticketId || '';
         info(`[${volta > 1 ? 'rev ' + (volta - 1) + ' · ' : ''}${i + 1}/${fila.length}] ${tid}`);
@@ -865,7 +880,7 @@ async function runCycle() {
            que veio da planilha (2026-11-10: antes era "" e toda 1ª leitura contava como
            "alterado"). */
         const old = (updates[tid] || {}).substatus || ticket.substatus || '';
-        let result = await lerComPrazo(ticket);
+        let result = await lerComPrazo(ticket, volta);
         /* Sessão caiu no meio da rodada (tela de login no lugar do chamado): faz login de
            novo e relê o mesmo chamado, com prazo novo. No máximo 3 novos logins por rodada. */
         if (result && result.sessionLost) {
@@ -873,7 +888,7 @@ async function runCycle() {
             relogins++;
             info(`Sessao perdida — novo login (${relogins}/3) e nova leitura de ${tid}.`);
             const re = await ensureLoggedIn(page);
-            result = re.ok ? await lerComPrazo(ticket) : null;
+            result = re.ok ? await lerComPrazo(ticket, volta) : null;
             if (result && result.sessionLost) result = null;
           } else result = null;
         }
@@ -905,7 +920,7 @@ async function runCycle() {
       fila = pendentes;
       /* Volta inteira sem nenhuma leitura = falha geral (Atrix fora, VPN, sessão) — revisar
          de novo só gastaria tempo; encerra e mantém os valores anteriores. */
-      if (fila.length >= 5 && lidosNaVolta === 0) { warn(`Nenhum chamado lido na volta ${volta} — revisões encerradas (provável falha geral de acesso ao Atrix).`); break; }
+      if (volta > 1 && fila.length >= 5 && lidosNaVolta === 0) { warn(`Nenhum chamado lido na volta ${volta} — revisões encerradas (provável falha geral de acesso ao Atrix).`); break; }
       if (fila.length && volta < ATRIX_MAX_PASSES) totalPassos += fila.length;
     }
 
