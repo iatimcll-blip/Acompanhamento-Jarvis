@@ -198,6 +198,29 @@ async function loadTickets() {
   return withLink;
 }
 
+/* Compara substatus sem diferenciar maiúsculas/acentos/espaços ("PENDENTE VALIDAÇÃO" do
+   Atrix = "Pendente Validação" da planilha). */
+function normSub(v) {
+  return String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/* Leituras de chamados que não estão mais na base e têm mais de 30 dias saem do
+   atrix_updates.json (2026-11-10: 943 registros para 23 chamados ativos — 215 KB baixados
+   pelo painel a cada abertura). Devolve quantos foram removidos. */
+const UPDATES_KEEP_DAYS = 30;
+function pruneUpdates(updates, tickets) {
+  const ativos = new Set();
+  tickets.forEach(t => { if (t.id) ativos.add(String(t.id)); if (t.ticketId) ativos.add(String(t.ticketId)); });
+  const limite = Date.now() - UPDATES_KEEP_DAYS * 864e5;
+  let n = 0;
+  for (const [tid, up] of Object.entries(updates)) {
+    if (ativos.has(tid)) continue;
+    const t = up && up.updatedAt ? new Date(up.updatedAt).getTime() : 0;
+    if (!t || t < limite) { delete updates[tid]; n++; }
+  }
+  return n;
+}
+
 async function loadUpdates() {
   const { content, sha } = await ghGetFile(GH_UPDATES_FILE);
   return { updates: content ? JSON.parse(content) : {}, sha };
@@ -784,8 +807,20 @@ async function runCycle() {
       const tid    = ticket.id || ticket.ticketId || '';
       info(`[${i + 1}/${tickets.length}] ${tid}`);
 
-      const old = (updates[tid] || {}).substatus || '';
+      /* Valor anterior: a última leitura do Atrix; na 1ª leitura do chamado, o substatus
+         que veio da planilha (2026-11-10: antes era "" e toda 1ª leitura contava como
+         "alterado" — rodada de 23 chamados avisava "19 substatus atualizados" quando só 9
+         tinham mudado de fato em relação ao painel). */
+      const old = (updates[tid] || {}).substatus || ticket.substatus || '';
       let result = await extractSubstatus(page, ticket);
+      /* Página do chamado não carregou (SPA lento): uma nova tentativa com recarga
+         completa antes de desistir (2026-11-10: 3 de 23 chamados seguidos ficaram sem
+         leitura só por lentidão momentânea do Atrix). */
+      if (result === null) {
+        info(`[${tid}] Sem leitura — nova tentativa em 5 s.`);
+        await page.waitForTimeout(5000);
+        result = await extractSubstatus(page, ticket);
+      }
       /* Sessão caiu no meio da rodada (tela de login no lugar do chamado): faz login de
          novo e relê o mesmo chamado. No máximo 3 novos logins por rodada. */
       if (result && result.sessionLost) {
@@ -807,7 +842,7 @@ async function runCycle() {
            está batendo com o layout real da página daquele tipo de chamado). */
         updates[tid] = { substatus: sub, source, cliente: ticket.cliente || '', uf: loc.uf, cidade: loc.cidade, updatedAt: new Date().toISOString() };
         if (result.verified) updates[tid].verified = true;
-        if (sub !== old) {
+        if (normSub(sub) !== normSub(old)) {
           info(`  ✓ "${old}" → "${sub}" (via ${source})`);
           changed++;
         } else {
@@ -832,7 +867,12 @@ async function runCycle() {
     await ctx.close();
   }
 
-  if (changed > 0 || !sha) await saveUpdates(updates, sha);
+  /* Salva sempre que houve leitura (não só quando algo mudou): o horário de cada leitura é
+     o que o painel usa para decidir entre a leitura do Atrix e uma edição manual mais nova,
+     e para o "Atualizado em" de cada chamado. */
+  const podados = pruneUpdates(updates, tickets);
+  if (podados) info(`${podados} leitura(s) antigas de chamados fora da base removidas.`);
+  if (changed > 0 || podados > 0 || errors < tickets.length || !sha) await saveUpdates(updates, sha);
 
   // ── Resumo do ciclo ───────────────────────────────────────────────────────
   const cycleEnd  = new Date();
@@ -940,4 +980,4 @@ async function main() {
 
 // Executado direto (runner/CI) roda o agente; importado (testes) só expõe as funções.
 if (require.main === module) main().catch(e => { error('Fatal:', e.message); process.exit(1); });
-else module.exports = { ensureLoggedIn, extractSubstatus, pageState, openTicket };
+else module.exports = { ensureLoggedIn, extractSubstatus, pageState, openTicket, normSub, pruneUpdates };
