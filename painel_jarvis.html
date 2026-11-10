@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T16:05:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-10T21:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1092,6 +1092,9 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 /* (2026-11-10) Check + barrinha por chamado enquanto o botão Atualizar (Agente Atrix) roda. */
 .atx-tk { display:inline-flex;align-items:center;gap:3px;margin-left:4px;flex-shrink:0;font-size:10px;font-weight:700;line-height:1;white-space:nowrap }
 .atx-tk:empty { display:none }
+.fap-aud-cred-top { display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed var(--bd,#d0d5dd) }
+.fap-aud-cred-sel { min-width:220px }
+.fap-aud-fora-tag { display:inline-block;margin-left:5px;padding:0 5px;border-radius:4px;background:var(--orange-bg,#fff4e5);color:var(--orange,#b45309);font-size:9px;font-weight:700;vertical-align:1px }
 .ab-bi-run.ab-bi-rodando { background:var(--blue-bg);color:var(--blue) }
 .ab-bi-run.ab-bi-rodando i { animation:wppSpin 1.2s linear infinite }
 .atx-tk .atx-bar { position:relative;display:inline-block;width:34px;height:5px;border-radius:3px;background:var(--bd,#d0d5dd);overflow:hidden }
@@ -29619,6 +29622,13 @@ function fapAudProcessar(rows,fileName){
   const cadastradas=new Set(FAP_PLACAS.map(p=>nPl(p.placa)).filter(Boolean));
   if(!cadastradas.size){alert('Nenhuma placa cadastrada no painel.\n\nA Auditoria e a Conciliação só reportam as placas cadastradas — cadastre as placas (bloco Placas) e anexe o relatório de novo.\n\nNada foi alterado.');return;}
   const foraCad={};let nForaCad=0;
+  /* (2026-11-10) Créditos Emergenciais de Limite de placas FORA do cadastro: continuam fora
+     da Auditoria/Conciliação (regra de 21/10), mas ficam guardados à parte em credFora para
+     o bloco "Crédito Emergencial", que mostra TODAS as placas (pedido do usuário: "verificar
+     se está aparecendo todos os créditos"). Dicionário próprio para nenhum outro bloco ver
+     essas placas. */
+  const cf={tipo:'',dic:{placa:[],status:[],motorista:[],cidade:[]},rows:[]},cfIdx={placa:new Map(),status:new Map(),motorista:new Map(),cidade:new Map()};
+  const cfPut=(k,v)=>{let i=cfIdx[k].get(v);if(i===undefined){i=cf.dic[k].length;cf.dic[k].push(v);cfIdx[k].set(v,i);}return i;};
   const out=[];let ignoradas=0,de='',ate='';
   const bases={},outras={};const selBase=fapBaseAlelo||'';
   for(let r=1;r<rows.length;r++){
@@ -29631,7 +29641,15 @@ function fapAudProcessar(rows,fileName){
     const rawV=row[FAP_AUD_COL.valor];
     const valor=typeof rawV==='number'?rawV:fapParseValor(rawV);
     if(!placa||!tipo||isNaN(valor)){ignoradas++;continue;}
-    if(!cadastradas.has(placa)){foraCad[placa]=(foraCad[placa]||0)+1;nForaCad++;continue;}
+    if(!cadastradas.has(placa)){
+      foraCad[placa]=(foraCad[placa]||0)+1;nForaCad++;
+      if(tipo.toLowerCase()===FAP_AUD_CRED_TIPO){
+        if(!cf.tipo)cf.tipo=tipo;
+        cf.rows.push([cfPut('placa',placa),Math.round(valor*100)/100,fapAudDataIso(row[FAP_AUD_COL.data]),
+          cfPut('status',String(row[FAP_AUD_COL.status]||'').trim()),cfPut('motorista',fapNomeProprio(row[FAP_AUD_COL.motorista])),cfPut('cidade',String(row[FAP_AUD_COL.cidade]||'').trim())]);
+      }
+      continue;
+    }
     const data=fapAudDataIso(row[FAP_AUD_COL.data]);
     if(data){const d=data.slice(0,10);if(!de||d<de)de=d;if(!ate||d>ate)ate=d;}
     out.push([put('placa',placa),put('tipo',tipo),Math.round(valor*100)/100,data,
@@ -29645,7 +29663,7 @@ function fapAudProcessar(rows,fileName){
     alert('Nenhuma transação válida encontrada (coluna C = Placa, AA = Tipo de transação, G = Valor).');return;
   }
   const now=new Date().toISOString();
-  FAP_AUDIT={v:1,file:String(fileName||''),importedAt:now,de,ate,dic,rows:out,base:selBase,basesNoArquivo:bases,outrasBases:outras,soCadastradas:true,foraCadastro:foraCad};
+  FAP_AUDIT={v:1,file:String(fileName||''),importedAt:now,de,ate,dic,rows:out,base:selBase,basesNoArquivo:bases,outrasBases:outras,soCadastradas:true,foraCadastro:foraCad,credFora:cf};
   fapAuditAt=now;
   saveState();
   fapRenderAuditoria();
@@ -29664,7 +29682,7 @@ function fapAudLimparBase(){
   _ghToast('Base do bloco Auditoria limpa ✓','var(--green-dk)',4000);
 }
 function fapAudLimparFiltros(){
-  fapAudSelPlacas=[];fapAudSelTipos=[];fapAudSoCredAlto=false;fapAudSoCota=false;fapAudSoDebBaixo=false;
+  fapAudSelPlacas=[];fapAudSelTipos=[];fapAudSoCredAlto=false;fapAudSoCredTodos=false;fapAudCredPlacas=[];fapAudSoCota=false;fapAudSoDebBaixo=false;
   {const fa=FAP_FILTRO.auditoria;fa.ga=[];fa.go=[];fa.cond=[];}
   ['fap-audDe','fap-audAte','fap-audPreset'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const chk=document.getElementById('fap-audIgnorarNegadas');if(chk)chk.checked=true;
@@ -29782,7 +29800,20 @@ function fapAudChaves(){
   _fapAudChavesCache={base:FAP_AUDIT,keys};
   return keys;
 }
-function fapAudJustDe(t){const k=fapAudChaves()[t.ri];return k&&FAP_AUDIT_JUST.just[k]||'';}
+let _fapAudChavesForaCache={base:null,keys:null};
+function fapAudChavesFora(){
+  const cf=FAP_AUDIT&&FAP_AUDIT.credFora;if(!cf||!cf.rows)return[];
+  if(_fapAudChavesForaCache.base===FAP_AUDIT)return _fapAudChavesForaCache.keys;
+  const cont=new Map();
+  const keys=cf.rows.map(r=>{
+    const k=cf.dic.placa[r[0]]+'|'+(r[2]||'')+'|'+Math.round(r[1]*100)+'|'+cf.tipo;
+    const n=(cont.get(k)||0)+1;cont.set(k,n);return k+'|'+n;
+  });
+  _fapAudChavesForaCache={base:FAP_AUDIT,keys};return keys;
+}
+/* ri numérico = linha da base (placas cadastradas); 'f<n>' = crédito de placa fora do cadastro */
+function fapAudChaveDe(t){if(!t)return'';return typeof t.ri==='string'?fapAudChavesFora()[+t.ri.slice(1)]:fapAudChaves()[t.ri];}
+function fapAudJustDe(t){const k=fapAudChaveDe(t);return k&&FAP_AUDIT_JUST.just[k]||'';}
 function fapAudMergeJust(remote){
   if(!FAP_AUDIT_JUST||typeof FAP_AUDIT_JUST!=='object')FAP_AUDIT_JUST={just:{},cota:{},ts:{just:{},cota:{}}};
   if(!FAP_AUDIT_JUST.just)FAP_AUDIT_JUST.just={};
@@ -29796,11 +29827,11 @@ function fapAudMergeJust(remote){
 const FAP_AUD_COTA_MAX=200;
 function fapAudCotaLabel(n){return n?n+'ª Cota de Combustível':'';}
 let fapAudSoCota=false;
-function fapAudCotaDe(t){const k=fapAudChaves()[t.ri];const v=k&&FAP_AUDIT_JUST.cota&&FAP_AUDIT_JUST.cota[k];const n=Number(v);return n>=1&&n<=FAP_AUD_COTA_MAX?n:0;}
+function fapAudCotaDe(t){const k=fapAudChaveDe(t);const v=k&&FAP_AUDIT_JUST.cota&&FAP_AUDIT_JUST.cota[k];const n=Number(v);return n>=1&&n<=FAP_AUD_COTA_MAX?n:0;}
 function fapAudSalvarCota(idx,el){
   if(!canEdit('aportes')){alert('Seu usuário possui acesso somente para visualização.');return;}
   const t=fapAudDetShown[idx];if(!t)return;
-  const k=fapAudChaves()[t.ri];if(!k)return;
+  const k=fapAudChaveDe(t);if(!k)return;
   const n=Number(el.value)||0;
   if(n===fapAudCotaDe(t))return;
   if(!FAP_AUDIT_JUST.cota)FAP_AUDIT_JUST.cota={};
@@ -29825,8 +29856,10 @@ function fapAudCotasUsadas(placa,exceptKey){
   const usadas=new Set();
   if(!FAP_AUDIT)return usadas;
   const{dic,rows}=FAP_AUDIT,keys=fapAudChaves(),cotas=FAP_AUDIT_JUST.cota||{};
-  const pi=dic.placa.indexOf(placa);if(pi<0)return usadas;
   const{de,ate}=fapPeriodoEf('fap-audDe','fap-audAte');
+  const cf=FAP_AUDIT.credFora;
+  if(cf&&cf.rows){const fpi=cf.dic.placa.indexOf(placa),fk=fapAudChavesFora();if(fpi>=0)cf.rows.forEach((r,i)=>{if(r[0]!==fpi||fk[i]===exceptKey)return;const n=Number(cotas[fk[i]]);if(!n)return;const d=String(r[2]||'').slice(0,10);if(de&&d<de)return;if(ate&&d>ate)return;usadas.add(n);});}
+  const pi=dic.placa.indexOf(placa);if(pi<0)return usadas;
   for(let i=0;i<rows.length;i++){
     const r=rows[i];if(r[0]!==pi)continue;
     const k=keys[i];if(k===exceptKey)continue;
@@ -29841,7 +29874,7 @@ function fapAudCotaOpcoes(sel,idx){
   if(!sel||sel.dataset.ver===String(fapAudCotaVer))return;
   const t=fapAudDetShown[idx];
   const atual=Number(sel.value)||0;
-  const usadas=t?fapAudCotasUsadas(t.placa,fapAudChaves()[t.ri]):new Set();
+  const usadas=t?fapAudCotasUsadas(t.placa,fapAudChaveDe(t)):new Set();
   let h='<option value="">—</option>';
   for(let n=1;n<=FAP_AUD_COTA_MAX;n++){
     if(usadas.has(n)&&n!==atual)continue;
@@ -29869,7 +29902,7 @@ function fapAudTransLimpar(){
       _ghToast('Cotas limpas ✓ '+lista.length+' transação(ões)','var(--green-dk)',4000);
     }
   }
-  fapAudSoCredAlto=false;fapAudSoCota=false;fapAudSoDebBaixo=false;
+  fapAudSoCredAlto=false;fapAudSoCredTodos=false;fapAudSoCota=false;fapAudSoDebBaixo=false;
   const w=document.getElementById('fap-audEmailWrap');if(w)w.style.display='none';
   fapAudRenderResultados();
 }
@@ -30036,7 +30069,7 @@ function fapAudRenderCotas(){
 function fapAudSalvarJust(idx,el){
   if(!canEdit('aportes')){alert('Seu usuário possui acesso somente para visualização.');return;}
   const t=fapAudDetShown[idx];if(!t)return;
-  const k=fapAudChaves()[t.ri];if(!k)return;
+  const k=fapAudChaveDe(t);if(!k)return;
   const txt=String(el.value||'').trim().slice(0,500);
   const atual=FAP_AUDIT_JUST.just[k]||'';
   if(txt===atual)return;
@@ -30054,20 +30087,69 @@ function fapAudSetSoCredAlto(v){fapAudSoCredAlto=!!v;fapAudRenderResultados();}
    transações com indicação de cota. Sem cota, a transação continua na lista geral e
    destacada, mas fica fora do cálculo. */
 function fapAudCredAltoConta(t){return fapAudEhCredAlto(t)&&!!fapAudCotaDe(t);}
-function fapAudCredAltoLista(){
-  const r=fapAudFiltrar({ignorarTipo:true});
-  return r.erro?[]:r.list.filter(fapAudCredAltoConta);
+/* (2026-11-10) Seletor de placa PRÓPRIO do Crédito Emergencial (pedido do usuário: "colocar um
+   selecionador de placa para filtrar só para este tipo de operação"). O bloco passa a usar
+   só ele + período + "ignorar negadas" — não segue o filtro de placas/GA/GO do topo — e
+   inclui os créditos das placas fora do cadastro (credFora). Vazio = todas as placas. */
+let fapAudCredPlacas=[],fapAudSoCredTodos=false;
+function fapAudCredTodos(){
+  const out=[];if(!FAP_AUDIT)return out;
+  const{de,ate}=fapPeriodoEf('fap-audDe','fap-audAte');
+  if(de&&ate&&de>ate)return out;
+  const chk=document.getElementById('fap-audIgnorarNegadas');const ignorar=chk?chk.checked:true;
+  const pSet=fapAudCredPlacas.length?new Set(fapAudCredPlacas):null;
+  const ok=(placa,data,status)=>{if(pSet&&!pSet.has(placa))return false;const d=String(data||'').slice(0,10);if(de&&(!d||d<de))return false;if(ate&&(!d||d>ate))return false;if(ignorar&&fapAudStatusInvalido(status))return false;return true;};
+  const{dic,rows}=FAP_AUDIT;
+  for(let ri=0;ri<rows.length;ri++){
+    const r=rows[ri],tipo=dic.tipo[r[1]];
+    if(String(tipo||'').trim().toLowerCase()!==FAP_AUD_CRED_TIPO)continue;
+    const placa=dic.placa[r[0]],status=dic.status[r[4]]||'';
+    if(!ok(placa,r[3],status))continue;
+    out.push({placa,tipo,valor:r[2],data:r[3]||'',status,motorista:dic.motorista[r[5]]||'',cidade:dic.cidade[r[6]]||'',dup:false,ri});
+  }
+  const cf=FAP_AUDIT.credFora;
+  if(cf&&cf.rows)cf.rows.forEach((r,i)=>{
+    const placa=cf.dic.placa[r[0]],status=cf.dic.status[r[3]]||'';
+    if(!ok(placa,r[2],status))return;
+    out.push({placa,tipo:cf.tipo,valor:r[1],data:r[2]||'',status,motorista:cf.dic.motorista[r[4]]||'',cidade:cf.dic.cidade[r[5]]||'',dup:false,ri:'f'+i,fora:true});
+  });
+  return out;
 }
+/* Placas com Crédito Emergencial na base (para o seletor), cadastradas primeiro. */
+function fapAudCredPlacasOpcoes(){
+  if(!FAP_AUDIT)return[];
+  const cad=new Set(),fora=new Set();
+  const{dic,rows}=FAP_AUDIT;
+  rows.forEach(r=>{if(String(dic.tipo[r[1]]||'').trim().toLowerCase()===FAP_AUD_CRED_TIPO)cad.add(dic.placa[r[0]]);});
+  const cf=FAP_AUDIT.credFora;if(cf&&cf.rows)cf.rows.forEach(r=>fora.add(cf.dic.placa[r[0]]));
+  return[...[...cad].sort().map(p=>({value:p,label:p})),...[...fora].filter(p=>!cad.has(p)).sort().map(p=>({value:p,label:p+' (fora do cadastro)'}))];
+}
+function fapAudCredAltoLista(){return fapAudCredTodos().filter(fapAudCredAltoConta);}
+function fapAudSetSoCredTodos(v){fapAudSoCredTodos=!!v;fapAudRenderResultados();}
 function fapAudRenderCredAlto(){
   const box=document.getElementById('fap-audCredAlto');if(!box)return;
-  const lista=fapAudCredAltoLista();
+  const todos=fapAudCredTodos();
+  const lista=todos.filter(fapAudCredAltoConta);
+  const opts=fapAudCredPlacasOpcoes(),vals=new Set(opts.map(o=>o.value));
+  fapAudCredPlacas=fapAudCredPlacas.filter(p=>vals.has(p));
+  const tC=todos.reduce((a,t)=>a+Math.round(t.valor*100),0),nFora=todos.filter(t=>t.fora).length;
+  const altos=todos.filter(fapAudEhCredAlto),altoSemCota=altos.filter(t=>!fapAudCotaDe(t)).length;
+  const nPl=new Set(todos.map(t=>t.placa)).size;
+  const semFora=FAP_AUDIT&&!FAP_AUDIT.credFora&&FAP_AUDIT.foraCadastro&&Object.keys(FAP_AUDIT.foraCadastro).length;
+  const topo='<div class="fap-aud-cred-top"><span><b>Crédito Emergencial de Limite — todas as placas</b></span>'+
+    '<span class="fap-aud-cred-sel" title="Filtro só do Crédito Emergencial (não segue o filtro de placas do topo)"><span style="font-size:11px;color:var(--tx3);margin-right:4px">Placa:</span><span class="msel" style="display:inline-block;min-width:200px"><button type="button" class="msel-btn" id="msel-btn-fap-aud-cred-placa" onclick="mselToggleOpen(\'fap-aud-cred-placa\')"><span class="msel-btn-lbl">Todas as placas com crédito</span></button></span></span>'+
+    '<span><b>'+todos.length.toLocaleString('pt-BR')+'</b> crédito(s) · <b>'+eh(fapFmtMoney(tC/100))+'</b> · '+nPl+' placa(s)'+(nFora?' · '+nFora+' de placas fora do cadastro':'')+'</span>'+
+    '<span>A partir de R$ 1.000: <b>'+altos.length+'</b>'+(altoSemCota?' (<span style="color:var(--orange)">'+altoSemCota+' sem cota</span>)':'')+'</span>'+
+    '<label><input type="checkbox"'+(fapAudSoCredTodos?' checked':'')+' onchange="fapAudSetSoCredTodos(this.checked)"> Listar todos os créditos</label></div>'+
+    (semFora?'<div style="font-size:11px;color:var(--orange);margin:2px 0 4px">Esta base foi anexada antes desta versão e não guardou os créditos das placas fora do cadastro — anexe o relatório de transações de novo para vê-los aqui.</div>':'');
   const totC=lista.reduce((a,t)=>a+Math.round(t.valor*100),0);
   const just=lista.filter(t=>fapAudJustDe(t)).length,pend=lista.length-just;
-  box.innerHTML='<span><b>Crédito Emergencial de Limite a partir de R$ 1.000</b> com cota informada (placas e período selecionados):</span>'+
+  box.innerHTML=topo+'<span><b>Crédito Emergencial de Limite a partir de R$ 1.000</b> com cota informada (placas do seletor acima e período):</span>'+
     '<span><b>'+lista.length+'</b> transação(ões)</span><span><b>'+eh(fapFmtMoney(totC/100))+'</b></span>'+
     '<span style="color:var(--green-dk)"><b>'+just+'</b> justificada(s)</span>'+
     '<span style="color:'+(pend?'var(--red)':'var(--tx3)')+'"><b>'+pend+'</b> pendente(s)</span>'+
-    '<label><input type="checkbox" id="fap-audSoCredAlto"'+(fapAudSoCredAlto?' checked':'')+' onchange="fapAudSetSoCredAlto(this.checked)"> Listar só estes (placas selecionadas)</label>';
+    '<label><input type="checkbox" id="fap-audSoCredAlto"'+(fapAudSoCredAlto?' checked':'')+' onchange="fapAudSetSoCredAlto(this.checked)"> Listar só estes</label>';
+  mselRender('fap-aud-cred-placa',opts,fapAudCredPlacas,{allLabel:'Todas as placas com crédito',search:true,onChange:v=>{fapAudCredPlacas=v;fapAudRenderResultados();}});
 }
 /* Agregados compartilhados entre a tela e a exportação (nunca divergem). */
 function fapAudAgregar(list){
@@ -30131,9 +30213,13 @@ function fapAudRenderResultados(){
      filtro de Tipo e se combinam (os dois marcados = interseção). */
   fapAudRenderDebBaixo();
   let credLista=null;
-  if((fapAudSoCredAlto||fapAudSoDebBaixo||fapAudSoCota)&&!erro){
-    credLista=fapAudFiltrar({ignorarTipo:true}).list;
-    if(fapAudSoCredAlto||fapAudSoDebBaixo)credLista=credLista.filter(t=>(fapAudSoCredAlto&&fapAudCredAltoConta(t))||(fapAudSoDebBaixo&&fapAudEhDebBaixo(t)));
+  if((fapAudSoCredAlto||fapAudSoCredTodos||fapAudSoDebBaixo||fapAudSoCota)&&!erro){
+    const base=fapAudFiltrar({ignorarTipo:true}).list;
+    if(fapAudSoCredAlto||fapAudSoCredTodos||fapAudSoDebBaixo){
+      /* créditos vêm do bloco próprio (todas as placas + seletor); débitos, do recorte do topo */
+      const ct=(fapAudSoCredAlto||fapAudSoCredTodos)?fapAudCredTodos():[];
+      credLista=[...(fapAudSoCredTodos?ct:ct.filter(fapAudCredAltoConta)),...(fapAudSoDebBaixo?base.filter(fapAudEhDebBaixo):[])];
+    }else credLista=base;
     if(fapAudSoCota)credLista=credLista.filter(t=>fapAudCotaDe(t));
   }
   const vazio=!list.length&&!(credLista&&credLista.length);
@@ -30178,7 +30264,7 @@ function fapAudRenderResultados(){
     const jCell=podeEditar
       ?`<input type="text" aria-label="Justificativa da transação ${eh(t.placa)} de ${eh(fapAudFmtDataHora(t.data))}" class="fap-aud-just${alto&&!just?' fap-aud-just-pend':''}" maxlength="500" value="${eh(just)}" placeholder="${alto?'Justificativa obrigatória':'Justificativa (opcional)'}" onchange="fapAudSalvarJust(${i},this)">`
       :(just?eh(just):(alto?'<span style="color:var(--red)">Pendente</span>':'—'));
-    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}</td><td>${eh(t.motorista||'—')}</td><td>${fapHierCelulaPlacas(t.motorista,[t.placa])}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
+    return`<tr${st}><td>${eh(fapAudFmtDataHora(t.data))}</td><td>${eh(t.placa)}${t.fora?'<span class="fap-aud-fora-tag" title="Placa não cadastrada no painel — aparece só no bloco Crédito Emergencial">fora do cadastro</span>':''}</td><td>${eh(t.motorista||'—')}</td><td>${fapHierCelulaPlacas(t.motorista,[t.placa])}</td><td>${eh(t.tipo)}${debB?'<span class="fap-aud-deb-tag">&lt; R$ 1.000</span>':''}</td><td>${eh(t.status||'—')}</td><td>${eh(t.cidade||'—')}</td><td class="fap-val">${eh(fapFmtMoney(t.valor))}</td><td>${cCell}</td><td>${jCell}</td></tr>`;
   }).join('');
 }
 /* Seletor "Base Alelo reportada": opções = bases vistas no último relatório + a atual +
