@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T06:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-10T07:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -21041,15 +21041,22 @@ async function loadAtrixRunnerStatus(){
     return await r.json();
   }catch(e){return null;}
 }
-function _atrixRenderProgress(pct,visible){
+function _atrixRenderProgress(pct,visible,extra){
   const wrap=document.getElementById('atrix-progress-wrap'),fill=document.getElementById('atrix-progress-fill'),txt=document.getElementById('atrix-progress-txt');
   if(!wrap||!fill||!txt)return;
   wrap.classList.toggle('on',!!visible);
   if(visible){
     const p=Math.max(0,Math.min(100,Math.round(pct||0)));
     fill.style.width=p+'%';
-    txt.textContent=p+'%';
+    txt.textContent=p+'%'+(extra?' · '+extra:'');
   }
+}
+/* (2026-11-10) O agente lê cada chamado em até 10 s; quem não foi lido volta numa
+   "revisão" no fim da volta, até todos serem lidos. A barra mostra a revisão em curso. */
+function _atrixRevisaoTxt(st){
+  if(!st||!(Number(st.lastPass)>1))return'';
+  const pend=Number(st.lastTicketsPending||0);
+  return'revisão '+(st.lastPass-1)+(pend?' · '+pend+' pendente'+(pend>1?'s':''):'');
 }
 /* Bug real corrigido: ao clicar em "Atualizar substatus", a barra pulava direto pra
    ~100% em vez de começar do zero e crescer aos poucos. Causa: data/atrix-runner-
@@ -21068,7 +21075,7 @@ function _atrixStartProgressPolling(triggeredAtIso){
     const st=await loadAtrixRunnerStatus();
     const belongsToThisCycle=st&&st.lastTicketsTotal&&st.lastRunStartedAt&&(!triggeredAtIso||st.lastRunStartedAt>=triggeredAtIso);
     if(belongsToThisCycle){
-      _atrixRenderProgress((st.lastTicketsProgress||0)/st.lastTicketsTotal*100,true);
+      _atrixRenderProgress((st.lastTicketsProgress||0)/st.lastTicketsTotal*100,true,_atrixRevisaoTxt(st));
     }else{
       _atrixRenderProgress(0,true);
     }
