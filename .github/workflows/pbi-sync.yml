@@ -2,9 +2,11 @@ name: BI Abertos Sync
 
 # Botão "BI" do B2B Abertos/Swap/EVE: exporta a Base de Reparos do Power BI e entrega ao
 # painel como "Anexar base geral". Ver scraper/pbi_export.js.
-# Roda num servidor do GitHub (não depende do PC do agente ligado — pedido 2026-11-10).
-# O Power BI é acessível pela internet (não precisa da VPN, ao contrário do Atrix).
-# A sessão do Power BI vem só do secret PBI_SESSION (cookies, base64+gzip); nada dela vai pro repositório.
+# Não precisa de VPN — só da sessão do Power BI logada.
+# - Com o secret PBI_SESSION (cookies do login, base64+gzip): roda num servidor do GitHub,
+#   sem depender do PC do agente ligado. Nada da sessão vai para o repositório.
+# - Sem o secret: roda no runner do PC do agente, com a sessão gravada em
+#   D:\JarvisRunner\pbi-auth (node pbi_export.js --login).
 on:
   workflow_dispatch:
 
@@ -16,26 +18,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sync:
+  onde:
+    runs-on: ubuntu-latest
+    outputs:
+      nuvem: ${{ steps.v.outputs.nuvem }}
+    steps:
+      - id: v
+        env:
+          S: ${{ secrets.PBI_SESSION }}
+        run: |
+          if [ -n "$S" ]; then echo "nuvem=true" >> "$GITHUB_OUTPUT"; echo "Rodando na nuvem (secret PBI_SESSION presente)."; else echo "nuvem=false" >> "$GITHUB_OUTPUT"; echo "Secret PBI_SESSION ausente: rodando no PC do agente."; fi
+
+  nuvem:
+    needs: onde
+    if: needs.onde.outputs.nuvem == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install dependencies
         working-directory: scraper
         run: npm install
-
       - name: Install Chromium
         working-directory: scraper
         run: npx playwright install --with-deps chromium
-
       - name: Exportar do Power BI
         working-directory: scraper
         env:
@@ -45,4 +54,32 @@ jobs:
           PBI_SESSION: ${{ secrets.PBI_SESSION }}
           PBI_AUTH_DIR: ${{ runner.temp }}/pbi-auth
           TZ: America/Sao_Paulo
+        run: node pbi_export.js
+
+  local:
+    needs: onde
+    if: needs.onde.outputs.nuvem != 'true'
+    runs-on: [self-hosted, jarvis]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell -ExecutionPolicy Bypass -Command "& '{0}'"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: scraper
+        run: npm install
+      - name: Install Chromium
+        working-directory: scraper
+        run: npx playwright install chromium
+      - name: Exportar do Power BI
+        working-directory: scraper
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_BRANCH: main
+          PBI_AUTH_DIR: D:\JarvisRunner\pbi-auth
         run: node pbi_export.js
