@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T21:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-10T23:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -21082,7 +21082,12 @@ function _pbiMonitorar(triggeredIso){
     }
     if(st.state==='running'){_pbiBotoes('BI · '+Math.min(PBI_PASSOS,Number(st.step||0))+'/'+PBI_PASSOS,true,st.stepTxt||_PBI_TIT);return;}
     _pbiParar();
-    if(st.lastRunConclusion==='success'){await _pbiAplicar(st,true);}
+    if(st.lastRunConclusion==='success'&&st.aplicadoNoSync){
+      /* o agente já gravou a base na sincronização (vale para todos os aparelhos): só puxa agora */
+      _pbiAdopt(st.fileAt);
+      try{await restoreGhState();}catch(_){}
+      _ghToast('Base do B2B Abertos atualizada pelo BI e sincronizada para todos os aparelhos: '+(st.chamadosPainel??'—')+' chamados (Total filtrado no Power BI: '+(st.totalFiltrado??'—')+').','var(--green-dk)',8000);
+    }else if(st.lastRunConclusion==='success'){await _pbiAplicar(st,true);}
     else{
       const login=st.errorCode==='login_required';
       _ghToast((login?'O agente do BI precisa de um novo login no Power BI (no computador do agente). ':'O agente do BI falhou: ')+(st.lastError||'erro não informado')+' — a base do B2B Abertos não foi alterada.','var(--red)',10000);
@@ -21093,7 +21098,7 @@ function _pbiMonitorar(triggeredIso){
 }
 /* Aplica o arquivo publicado pelo agente exatamente como "Anexar base geral". */
 async function _pbiAplicar(st,doClique){
-  if(_pbiAplicando||!st||!st.fileAt)return;
+  if(_pbiAplicando||!st||!st.fileAt||st.aplicadoNoSync)return;
   if(st.fileAt<=(abPbiAplicadoAt||'')){if(doClique)_ghToast('Essa base do BI já foi aplicada.','var(--green-dk)',4000);return;}
   if(lastAbBaseAt&&lastAbBaseAt>st.fileAt){if(doClique)_ghToast('Uma base mais nova já foi anexada depois desse export — mantida.','var(--orange)',6000);return;}
   if(!canEdit('abertos')){if(doClique)_ghToast('Base exportada do BI, mas seu usuário não pode anexar base no B2B Abertos.','var(--orange)',6000);return;}

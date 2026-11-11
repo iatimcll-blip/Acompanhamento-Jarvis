@@ -297,6 +297,76 @@ async function filtrarComPainel(browser, xlsxPath) {
   } finally { await ctx.close(); }
 }
 
+/* ── Aplicar a base direto na sincronização (todos os aparelhos) ─────────────
+   Pedido do usuário 2026-11-10: "sempre sincronizar para todos os outros PCs ou dispositivos".
+   Antes, a base exportada só entrava quando um Admin/Sr abria o painel. Agora o agente faz o
+   mesmo que um aparelho faria ao "Anexar base geral": abre o próprio painel_jarvis.html (sem
+   gravar nada por ele), carrega o estado sincronizado atual (applyState), roda
+   procAbBaseGeral() + finishAbUpload() (que reaplica os substatus do Atrix) e grava em
+   data/sync-state.json só os campos da base do B2B Abertos (dAb, lastAb*, abPbiAplicadoAt,
+   savedAt). Cada aparelho adota a base mais nova (lastAbBaseAt) na próxima sincronização
+   (até 5 min, ou na hora para quem clicou). Conflito de escrita = relê e tenta de novo. */
+const SYNC_FILE = 'data/sync-state.json';
+async function lerSyncState() {
+  const r = await ghRequest('GET', `/repos/${GH_REPO}/contents/${SYNC_FILE}?ref=${GH_BRANCH}&t=${Date.now()}`);
+  if (r.notFound) throw new Error('data/sync-state.json não encontrado');
+  let b64 = r.content;
+  if (!b64) { const bl = await ghRequest('GET', `/repos/${GH_REPO}/git/blobs/${r.sha}`); b64 = bl.content; }
+  const raw = JSON.parse(Buffer.from(String(b64).replace(/\n/g, ''), 'base64').toString('utf8'));
+  const st = raw && raw.z === 1 ? JSON.parse(zlib.gunzipSync(Buffer.from(raw.d, 'base64')).toString('utf8')) : raw;
+  return { sha: r.sha, st };
+}
+async function montarBaseNoPainel(browser, estado, xlsxB64, nomeArquivo) {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  /* só o raw do GitHub (atrix_updates.json para reaplicar os substatus do Atrix); o Worker e
+     qualquer gravação ficam bloqueados — quem grava é este script. */
+  await page.route(/^https?:/, r => /raw\.githubusercontent\.com/.test(r.request().url()) ? r.continue() : r.abort());
+  try {
+    await page.goto('file:///' + path.resolve(PANEL_FILE).split(path.sep).join('/'), { waitUntil: 'load', timeout: 60000 });
+    await page.waitForFunction(() => typeof XLSX !== 'undefined' && typeof procAbBaseGeral === 'function' && typeof applyState === 'function', null, { timeout: 30000 });
+    await page.waitForTimeout(1500);
+    return await page.evaluate(async ({ estado, xlsxB64, nomeArquivo }) => {
+      window.saveState = () => {}; window.saveGhState = async () => false; window._ghToast = () => {};
+      applyState(estado, 'agente BI');
+      const bin = Uint8Array.from(atob(xlsxB64), c => c.charCodeAt(0));
+      const wb = XLSX.read(bin, { type: 'array' });
+      const sn = wb.SheetNames.find(n => nk(n) === nk('Export')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sn];
+      procAbBaseGeral(applyTicketLinks(XLSX.utils.sheet_to_json(ws, { defval: '' }), ws), nomeArquivo);
+      /* finishAbUpload chama loadAtrixUpdates (assíncrono): espera ele reaplicar os substatus */
+      for (let i = 0; i < 20; i++) { await new Promise(r => setTimeout(r, 500)); if (typeof _atrixLoading === 'undefined' || !_atrixLoading) { if (i >= 6) break; } }
+      const b = buildState();
+      return { dAb: b.dAb, lastAbAt: b.lastAbAt, lastAbBaseAt: b.lastAbBaseAt, lastAbFile: b.lastAbFile, abLastUpd: b.abLastUpd, n: dAb.length };
+    }, { estado, xlsxB64, nomeArquivo });
+  } finally { await ctx.close(); }
+}
+async function aplicarNoSync(browser, xlsxB64, fileAt) {
+  const d = new Date(fileAt);
+  const nome = 'Power BI (botão BI) ' + d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' ' + d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  const ini = await lerSyncState();
+  if (ini.st.lastAbBaseAt && ini.st.lastAbBaseAt > fileAt) throw new Error('Uma base do B2B Abertos mais nova foi anexada durante a rodada — mantida, nada foi alterado.');
+  const base = await montarBaseNoPainel(browser, ini.st, xlsxB64, nome);
+  if (!Array.isArray(base.dAb) || !base.dAb.length) throw new Error('O painel não gerou nenhum chamado a partir do export — nada foi alterado.');
+  for (let t = 1; t <= 4; t++) {
+    const { sha, st } = await lerSyncState(); /* relê SEMPRE antes de gravar: só os campos do Abertos mudam, o resto fica como outro aparelho deixou */
+    if (st.lastAbBaseAt && st.lastAbBaseAt > base.lastAbBaseAt) throw new Error('Uma base do B2B Abertos mais nova foi anexada durante a rodada — mantida, nada foi alterado.');
+    Object.assign(st, { dAb: base.dAb, dAbCleared: false, dAbClearedAt: '', lastAbAt: base.lastAbAt, lastAbBaseAt: base.lastAbBaseAt,
+      lastAbFile: base.lastAbFile, abLastUpd: base.abLastUpd, abPbiAplicadoAt: fileAt, savedAt: new Date().toISOString() });
+    const conteudo = Buffer.from(JSON.stringify({ z: 1, d: zlib.gzipSync(Buffer.from(JSON.stringify(st), 'utf8')).toString('base64') }), 'utf8');
+    try {
+      if (DRY_RUN) { if (process.env.PBI_OUT_SYNC) fs.writeFileSync(process.env.PBI_OUT_SYNC, conteudo); log('(teste) sync-state montado:', base.n, 'chamados,', conteudo.length, 'bytes'); return base.n; }
+      await ghRequest('PUT', `/repos/${GH_REPO}/contents/${SYNC_FILE}`, { message: 'sync: base B2B Abertos via botão BI (' + base.n + ' chamados)', content: conteudo.toString('base64'), sha, branch: GH_BRANCH });
+      log('Base aplicada na sincronização para todos os aparelhos:', base.n, 'chamados.');
+      return base.n;
+    } catch (e) {
+      if (t === 4 || !/GitHub (409|422)/.test(e.message)) throw e;
+      log('Conflito ao gravar a sincronização (outro aparelho salvou junto) — tentando de novo…');
+      await new Promise(r => setTimeout(r, 1500 * t));
+    }
+  }
+}
+
 /* ── Rodada ──────────────────────────────────────────────────────────────── */
 async function rodada() {
   const startedAt = new Date().toISOString();
@@ -315,14 +385,23 @@ async function rodada() {
 
     await status({ step: 7, stepTxt: 'Enviando a base para o painel' });
     let fileSha = '', commitSha = '';
+    const fileAt = new Date().toISOString();
     if (!DRY_RUN) {
       const r = await ghPut(DATA_FILE, Buffer.from(f.b64, 'base64'), `data: base B2B Abertos via BI (${f.chamadosPainel} chamados)`);
       fileSha = (r && r.content && r.content.sha) || ''; commitSha = (r && r.commit && r.commit.sha) || '';
     }
+    /* grava a base direto na sincronização (todos os aparelhos). Se falhar, o arquivo acima
+       continua valendo: o primeiro Admin/Sr que abrir o painel aplica (caminho antigo). */
+    let aplicadoNoSync = false, erroSync = '';
+    if (GH_TOKEN || DRY_RUN) {
+      await status({ step: 7, stepTxt: 'Sincronizando a base para todos os aparelhos' });
+      try { await aplicarNoSync(browser, f.b64, fileAt); aplicadoNoSync = !DRY_RUN; }
+      catch (e) { erroSync = e.message; log('aviso: base não aplicada na sincronização:', e.message); }
+    }
     await status({
       state: 'online', step: 8, stepTxt: 'Concluído', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'success',
       totalCcs: ex.totalCcs, totalFiltrado: ex.totalFiltrado, linhasExportadas: f.exportadas, chamadosPainel: f.chamadosPainel, porUf: f.porUf,
-      arquivoExportado: ex.nomeArquivo, fileAt: new Date().toISOString(), fileSha, commitSha
+      arquivoExportado: ex.nomeArquivo, fileAt, fileSha, commitSha, aplicadoNoSync, erroSync
     });
     log('Concluído.');
   } catch (e) {
