@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-10T23:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-11T08:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1097,6 +1097,10 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .fap-aud-fora-tag { display:inline-block;margin-left:5px;padding:0 5px;border-radius:4px;background:var(--orange-bg,#fff4e5);color:var(--orange,#b45309);font-size:9px;font-weight:700;vertical-align:1px }
 .ab-bi-run.ab-bi-rodando { background:var(--blue-bg);color:var(--blue) }
 .ab-bi-run.ab-bi-rodando i { animation:wppSpin 1.2s linear infinite }
+/* (2026-11-11) Resultado da última atualização pelo BI: verde = chamados atualizados;
+   laranja intenso = falhou (a base não mudou). */
+.ab-bi-run.ab-bi-ok { background:#16a34a !important;color:#fff !important;border-color:#15803d !important }
+.ab-bi-run.ab-bi-erro { background:#ea580c !important;color:#fff !important;border-color:#c2410c !important }
 .atx-tk .atx-bar { position:relative;display:inline-block;width:34px;height:5px;border-radius:3px;background:var(--bd,#d0d5dd);overflow:hidden }
 .atx-tk .atx-fill { position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--blue) }
 .atx-tk .atx-fill.atx-run { animation:atxFill linear forwards }
@@ -21044,14 +21048,34 @@ async function _pbiLerStatus(){
   try{const r=await fetch('https://raw.githubusercontent.com/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/main/'+PBI_STATUS_FILE+'?t='+Date.now(),{cache:'no-store'});return r.ok?await r.json():null;}catch(_){return null;}
 }
 const _PBI_TIT='Atualiza a base do B2B Abertos direto do Power BI (Base de Reparos da página CCS: CMO - Reparo + CMO - REPARO SWAP), como em "Anexar base geral"';
-function _pbiBotoes(txt,rodando,titulo){
+function _pbiBotoes(txt,rodando,titulo,cor){
   document.querySelectorAll('.ab-bi-run').forEach(b=>{
     const s=b.querySelector('.ab-bi-txt');if(s)s.textContent=txt;
     b.classList.toggle('ab-bi-rodando',!!rodando);
+    b.classList.toggle('ab-bi-ok',cor==='ok');
+    b.classList.toggle('ab-bi-erro',cor==='erro');
     b.title=titulo||_PBI_TIT;
   });
 }
 function _pbiParar(){clearInterval(_pbiTimer);_pbiTimer=null;_pbiBotoes('BI',false);}
+/* Pinta o botão com o resultado da ÚLTIMA rodada (vale em todos os aparelhos):
+   verde se exportou e os chamados foram atualizados/sincronizados; laranja intenso se
+   falhou ou se exportou mas não conseguiu atualizar os chamados. Neutro se a última
+   rodada tem mais de 24 h. */
+function _pbiFmtHora(iso){try{const d=new Date(iso);return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}catch(_){return'';}}
+function _pbiPintarResultado(st){
+  if(_pbiTimer||!st||st.state==='running'||!st.lastRunCompletedAt){if(!_pbiTimer)_pbiBotoes('BI',false);return;}
+  if(Date.now()-new Date(st.lastRunCompletedAt).getTime()>24*3600000){_pbiBotoes('BI',false);return;}
+  const quando=_pbiFmtHora(st.lastRunCompletedAt);
+  const atualizou=st.lastRunConclusion==='success'&&(st.aplicadoNoSync||(st.fileAt&&abPbiAplicadoAt&&abPbiAplicadoAt>=st.fileAt));
+  if(atualizou){
+    _pbiBotoes('BI ✓',false,'Última atualização pelo BI deu certo ('+quando+'): '+(st.chamadosPainel??'—')+' chamados atualizados no B2B Abertos (Total filtrado no Power BI: '+(st.totalFiltrado??'—')+'). Clique para atualizar de novo.','ok');
+  }else if(st.lastRunConclusion==='success'){
+    _pbiBotoes('BI !',false,'Última atualização pelo BI ('+quando+'): exportou do Power BI, mas os chamados ainda não foram atualizados'+(st.erroSync?' ('+st.erroSync+')':'')+'. Clique para tentar de novo.','erro');
+  }else{
+    _pbiBotoes('BI !',false,'Última atualização pelo BI falhou ('+quando+'): '+(st.lastError||'erro não informado')+' — a base do B2B Abertos não foi alterada. Clique para tentar de novo.','erro');
+  }
+}
 async function biAtualizarAb(btn){
   if(!canAtrixAtualizar())return;
   if(_pbiTimer){_ghToast('O agente do BI já está rodando — acompanhe no botão.','var(--blue)',4000);return;}
@@ -21065,7 +21089,8 @@ async function biAtualizarAb(btn){
     _pbiMonitorar(ref);
   }catch(e){
     _pbiParar();
-    _ghToast('Erro ao iniciar o agente do BI: '+e.message,'var(--red)',7000);
+    _pbiBotoes('BI !',false,'Não foi possível iniciar a atualização pelo BI: '+e.message+'. Clique para tentar de novo.','erro');
+    _ghToast('Erro ao iniciar o agente do BI: '+e.message,'#ea580c',7000);
   }
 }
 function _pbiMonitorar(triggeredIso){
@@ -21090,8 +21115,9 @@ function _pbiMonitorar(triggeredIso){
     }else if(st.lastRunConclusion==='success'){await _pbiAplicar(st,true);}
     else{
       const login=st.errorCode==='login_required';
-      _ghToast((login?'O agente do BI precisa de um novo login no Power BI (no computador do agente). ':'O agente do BI falhou: ')+(st.lastError||'erro não informado')+' — a base do B2B Abertos não foi alterada.','var(--red)',10000);
+      _ghToast((login?'O agente do BI precisa de um novo login no Power BI. ':'O agente do BI falhou: ')+(st.lastError||'erro não informado')+' — a base do B2B Abertos não foi alterada.','#ea580c',10000);
     }
+    _pbiPintarResultado(st);
   };
   tick();
   _pbiTimer=setInterval(tick,5000);
@@ -21129,7 +21155,17 @@ async function _pbiRetomar(){
   const min=(Date.now()-new Date(st.lastRunStartedAt).getTime())/60000;
   if(st.state==='running'&&min<30){_pbiMonitorar(st.lastRunStartedAt);return;}
   if(st.lastRunConclusion==='success'&&min<24*60)await _pbiAplicar(st,false);
+  _pbiPintarResultado(st);
 }
+/* outro aparelho pode ter clicado: atualiza a cor (ou passa a acompanhar) a cada 2 min */
+setInterval(async()=>{
+  try{
+    if(_pbiTimer||!canAtrixAtualizar()||document.hidden)return;
+    const st=await _pbiLerStatus();if(!st)return;
+    if(st.state==='running'&&st.lastRunStartedAt&&(Date.now()-new Date(st.lastRunStartedAt).getTime())<30*60000){_pbiMonitorar(st.lastRunStartedAt);return;}
+    _pbiPintarResultado(st);
+  }catch(_){}
+},120000);
 setTimeout(()=>{try{_pbiBotoes('BI',false);_pbiRetomar();}catch(_){}},4500);
 
 let atrixTriggerLog=[];
