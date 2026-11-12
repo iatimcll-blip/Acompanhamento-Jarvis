@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-12T10:45:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-12T11:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -39492,7 +39492,7 @@ const RS_COLS={
   unidade:['Unidade'],
   olt:['OLT'],
   contrato:['Contrato','codigo_contrato'],
-  foco:['Reparo','conclusao','conclusao_os','Conclusão OS','MAX3','Aging','Data Criação Contrato','Reparo8h','Contrato Habilitado?','Realizada','Total Vendas Expurgadas','AUX Expurgo','Quartil Prod.','Dias Trab.'],
+  foco:['Reparo','conclusao','conclusao_os','Conclusão OS','MAX3','Aging','Data Criação Contrato','Reparo8h','Contrato Habilitado?','Realizada','Total Vendas Expurgadas','AUX Expurgo','Cumprimento','Quartil Prod.','Dias Trab.'],
   /* 2026-10-25 (análise das bases da pasta Modelos): dimensões e números próprios de cada base */
   conclusao:['conclusao','conclusao_os','Conclusão OS'],
   fila:['FILA'],
@@ -39592,6 +39592,7 @@ function rsFoco(ind,base){
   const I=RS_NK(ind);
   if(/^EFICIENCIAVENDAS|^EFICIENCIA$/.test(I)&&fc('Contrato Habilitado?')){const i=ix(fc('Contrato Habilitado?'));return{lbl:'vendas não ativadas (Contrato Habilitado? = Não Ativado)',ok:'ativadas',curto:'não ativadas',f:r=>/^N[ÃA]O/i.test(String(r[i]||''))};}
   if(/^EFICIENCIAME/.test(I)&&fc('Realizada')){const i=ix(fc('Realizada'));return{lbl:'mudanças de endereço não realizadas (Realizada = 0)',ok:'realizadas',curto:'não realizadas',f:r=>r[i]!==null&&r[i]!==''&&Number(r[i])!==1};}
+  if(/^CUMPRIMENTO(DE|DA)?AGENDA/.test(I)&&fc('Cumprimento')){const i=ix(fc('Cumprimento'));return{lbl:'visitas fora da agenda (não cumpridas no horário agendado)',ok:'dentro da agenda',curto:'fora da agenda',f:r=>String(r[i]||'')==='Fora'};}
   if(/^EFICIENCIALIMPA/.test(I)&&fc('Contrato Habilitado?')){const i=ix(fc('Contrato Habilitado?')),x=fc('AUX Expurgo')?ix(fc('AUX Expurgo')):-1;
     return{lbl:'vendas não ativadas (Contrato Habilitado? = Não Ativado), sem as vendas expurgadas (AUX Expurgo = 1)',ok:'ativadas',curto:'não ativadas',f:r=>/^N[ÃA]O/i.test(String(r[i]||'')),
       excl:x>=0?r=>Number(r[x])===1:null,exclTxt:'vendas expurgadas (AUX Expurgo = 1) fora da conta'};}
@@ -39820,6 +39821,8 @@ const RS_MODELOS=[
      com AUX Expurgo/Tipo Expurgo). Semana = coluna "Semana Desc" (S45 (02/11 - 08/11)), igual ao relatório; as vendas
      expurgadas (AUX Expurgo = 1) ficam fora da conta. O modelo antigo (Analítico Vendas vs. Expurgos) continua aceito. */
   {re:/^EFICIENCIALIMPA/,modelo:'Eficiência Limpa',pasta:'Eficiencia Limpa',arquivo:'Eficiencia Limpa.xlsx',semanaDesc:'Semana Desc'},
+  /* 2026-11-12: Cumprimento de Agenda — planilha consolidada Dia a Dia (ver rsAgendaLinhas) */
+  {re:/^CUMPRIMENTO(DE|DA)?AGENDA/,modelo:'Cumprimento de Agenda',pasta:'Cumprimento de Agenda',arquivo:'cumprimento-agenda-dia-a-dia.xlsx',alt:[{pasta:'Cumprimento Agenda'}],pivotAgenda:true},
   {re:/^EFICIENCIAME/,modelo:'Eficiência ME',pasta:'Eficiencia ME',arquivo:'Eficiencia ME.xlsx'},
   {re:/^AGINGME/,modelo:'Aging ME',pasta:'Mudança de Endereço',arquivo:'Mud Endereco.xlsx',b2c:'mudEndereco'},
   {re:/^AGINGALTAS/,modelo:'Aging Altas',pasta:'Aging de Altas',arquivo:'Aging Altas.xlsx',b2c:'agingAltas'},
@@ -39833,7 +39836,7 @@ const RS_MODELOS=[
 ];
 const RS_PLANTA={modelo:'Planta Média',pasta:'Planta Média',arquivo:'Planta Media.xlsx',b2c:'plantaMedia'};
 /* retrato da pasta Modelos (2026-10-24): arquivos e colunas de cada subpasta */
-const RS_MODELOS_FOTO={"Aging de Altas":{"arquivos":["Aging Altas.xlsx"],"cols":["Data Ativação","Data Criação Contrato","Contrato","Tecnico","Parceira","Marca","Território","Unidade","Cluster","Qtd. Ativações","Cidade_UF","Bairro","NovaRegional","Novo Cluster"]},"Altas":{"arquivos":["ALTAS.xlsx"],"cols":["ALTAS","Marca","Chamado","OS","Contrato","Logradouro","Bairro","Cidade","UF","Cluster","Regional","Gerente","Diretor","IN/OUT","Empresa","Técnico","Data Criação","Data Ativação","Conclusão","Motivo Conclusão","Aging (Dias)"]},"Efetividade":{"arquivos":["Efetividade.xlsx"],"cols":[]},"Efetividade de Altas":{"arquivos":["Efetividade Altas.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging","Chamado","OS","Contrato","Motivo OS","conclusao_os","Conclusão OS","Marca","Empresa","Unidade","Regional","Cluster","Tecnico","Qtd. Total","Bairro","Bucket","NovaRegional","Novo Cluster"]},"Efetividade de Reparo":{"arquivos":["Efetividade Reparos.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging","data_conclusao","Chamado","codigo_contrato","OS","conclusao","Motivo Conclusão OS","Marca","Empresa","Cidade_UF","Unidade","Cluster","Técnico","FILA","Bucket","NovaRegional","Novo Cluster"]},"Eficiencia":{"arquivos":["Eficiencia.xlsx"],"cols":["Contrato","Cliente","Área","Território","UF","Cidade","Bairro","Logradouro","CEP","Canal de Venda","Equipe","Aprov. Sydle","Data Venda","AUX Venda","Data Ativacao","AUX Alta","Contrato Habilitado?","Data Cancelamento","AUX Cancelamento","1º Motivo","1º Submotivo","2º Motivo","2º Submotivo","3º Motivo","3º Submotivo","4º Motivo","4º Submotivo","5º Motivo","5º Submotivo","Ultima OS","Ultimo Motivo OS","Ultimo Submotivo OS","Tipo Motivo","Responsavel Ação","Status","Semana Desc","Latitude","Longitude","AUX Expurgo","Tipo Expurgo","Flag FTTA","Tipo Condomínio"]},"Eficiencia Limpa":{"arquivos":["Eficiencia Limpa.xlsx"],"cols":["Contrato","Cliente","Área","Território","UF","Cidade","Bairro","Logradouro","CEP","Canal de Venda","Equipe","Aprov. Sydle","Data Venda","AUX Venda","Data Ativacao","AUX Alta","Contrato Habilitado?","Data Cancelamento","AUX Cancelamento","1º Motivo","1º Submotivo","2º Motivo","2º Submotivo","3º Motivo","3º Submotivo","4º Motivo","4º Submotivo","5º Motivo","5º Submotivo","Ultima OS","Ultimo Motivo OS","Ultimo Submotivo OS","Tipo Motivo","Responsavel Ação","Status","Semana Desc","Latitude","Longitude","AUX Expurgo","Tipo Expurgo","Flag FTTA","Tipo Condomínio"]},"Eficiencia ME":{"arquivos":["Eficiencia ME.xlsx"],"cols":["Contrato","Chamado","OS","Cluster","UF","Data Abertura","ME","Data ME","Realizada","Data Cancelamento","Cancelamento","Tipo Cancelamento","1º Motivo","1º Submotivo","2º Motivo","2º Submotivo","3º Motivo","3º Submotivo","4º Motivo","4º Submotivo","5º Motivo","5º Submotivo","Ultimo Motivo OS","Ultimo Submotivo OS","Tipo Motivo","Responsavel Ação","Status"]},"IFI":{"arquivos":["IFI.xlsx"],"cols":["Data Reparo","Data Ativação","Data Abertura Chamado","Aging","Chamado","Contrato","Motivo","OS","Unidade","Cidade_UF","Marca","Empresa","Qtd IFI","Técnico","Cluster","bairro","Território","NovaRegional","Novo Cluster"]},"IFI ME":{"arquivos":["IFME.xlsx"],"cols":["Data Abertura Chamado","Data Evento","Aging IFME","Chamado","Contrato","Motivo","OS","Qtd. IFME","Unidade","Cidade/UF","Marca","Empresa","Data Reparo","Técnico","Cluster","Bairro","Territorio","Bucket","NovaRegional","Novo Cluster"]},"IRR":{"arquivos":["IRR.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging IRR","Chamado","Contrato","OS","Motivo OS","Empresa","OS Anterior","Motivo OS Anterior","Tecnico Anterior","Tecnico OS Anterior","Empresa Anterior","Data Conclusao OS Anterior","Marca","Unidade","Regional","Cidade_UF","Cluster","Qtd. IRR","Bairro","Bucket","NovaRegional","Novo Cluster"]},"IRT":{"arquivos":["IRT.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging IRT","Chamado","Contrato","OS","Conclusão OS","Motivo OS","Marca","Empresa","Unidade","Cidade_UF","Regional","IDTecnico","Tecnico","Bairro","Cidade","qtd_Reparos_totais","Bucket","NovaRegional","Novo Cluster"]},"MAX":{"arquivos":[],"cols":[]},"Mudança de Endereço":{"arquivos":["Mud Endereco.xlsx"],"cols":["Data Conclusão","Data Abertura Chamado","Aging","Chamado","Contrato","OS","Conclusão OS","Motivo OS","Marca","Empresa","Unidade","Cidade_UF","Cluster","Regional","Tecnico","Bairro","Cidade","qtd_Mud_Endereco","Bucket","NovaRegional","Novo Cluster"]},"Planta Média":{"arquivos":["Planta Media.xlsx"],"cols":["Unidade","Cidade_UF","Bairro","Regional","Empresa","Cluster","NovaRegional","Novo Cluster","Media Base Media","Empresa","bucket"]},"Prod. B2C":{"arquivos":["Analítico Nominal por Quartil de Produtividade 11 OK dos Técnicos  Período Filtrado  B2C.xlsx"],"cols":["Periodo Filtrado","Semana Ano","Regional","Cluster","Técnico","Cargo","GG's","GO's","GA's","FUNCID","ID_OFS","Admissao","Faixa Tempo de Casa","Vol. Prod. 1:1","Dias Trab.","Prod.","Quartil Prod.","Vol. Improd.","Prod. OK e NOK","Vol. Altas","Vol. ME","Vol. MC","Vol. Reparo","Vol. Prev","Vol. Cleanup","Vol. em Apoio","Vol. em Preset","Vol. em O&M","Vol. em B2B","Vol. em Infra"]},"Prod.Infra e Rede":{"arquivos":["Analítico Nominal por Quartil de Produtividade 11 OK dos Técnicos  Período Filtrado  Rede + Infra.xlsx"],"cols":["Periodo Filtrado","Semana Ano","Regional","Cluster","Técnico","Cargo","GG's","GO's","GA's","FUNCID","ID_OFS","Admissao","Faixa Tempo de Casa","Vol. Prod. 1:1","Dias Trab.","Prod.","Quartil Prod.","Vol. Improd.","Prod. OK e NOK","Vol. Altas","Vol. ME","Vol. MC","Vol. Reparo","Vol. Prev","Vol. Cleanup","Vol. em Apoio","Vol. em Preset","Vol. em O&M","Vol. em B2B","Vol. em Infra"]},"Reparos 24h":{"arquivos":["Reparos Prazo.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging (Minutos)","Chamado","Contrato","codigo_os","Reparo","Motivo OS","Tecnico","Cidade_UF","Unidade","Marca","Empresa","Regional","Cluster","Qtd.","Bairro","Bucket","NovaRegional","Novo Cluster"]}};
+const RS_MODELOS_FOTO={"Aging de Altas":{"arquivos":["Aging Altas.xlsx"],"cols":["Data Ativação","Data Criação Contrato","Contrato","Tecnico","Parceira","Marca","Território","Unidade","Cluster","Qtd. Ativações","Cidade_UF","Bairro","NovaRegional","Novo Cluster"]},"Altas":{"arquivos":["ALTAS.xlsx"],"cols":["ALTAS","Marca","Chamado","OS","Contrato","Logradouro","Bairro","Cidade","UF","Cluster","Regional","Gerente","Diretor","IN/OUT","Empresa","Técnico","Data Criação","Data Ativação","Conclusão","Motivo Conclusão","Aging (Dias)"]},"Efetividade":{"arquivos":["Efetividade.xlsx"],"cols":[]},"Efetividade de Altas":{"arquivos":["Efetividade Altas.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging","Chamado","OS","Contrato","Motivo OS","conclusao_os","Conclusão OS","Marca","Empresa","Unidade","Regional","Cluster","Tecnico","Qtd. Total","Bairro","Bucket","NovaRegional","Novo Cluster"]},"Efetividade de Reparo":{"arquivos":["Efetividade Reparos.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging","data_conclusao","Chamado","codigo_contrato","OS","conclusao","Motivo Conclusão OS","Marca","Empresa","Cidade_UF","Unidade","Cluster","Técnico","FILA","Bucket","NovaRegional","Novo Cluster"]},"Eficiencia":{"arquivos":["Eficiencia.xlsx"],"cols":["Contrato","Cliente","Área","Território","UF","Cidade","Bairro","Logradouro","CEP","Canal de Venda","Equipe","Aprov. Sydle","Data Venda","AUX Venda","Data Ativacao","AUX Alta","Contrato Habilitado?","Data Cancelamento","AUX Cancelamento","1º Motivo","1º Submotivo","2º Motivo","2º Submotivo","3º Motivo","3º Submotivo","4º Motivo","4º Submotivo","5º Motivo","5º Submotivo","Ultima OS","Ultimo Motivo OS","Ultimo Submotivo OS","Tipo Motivo","Responsavel Ação","Status","Semana Desc","Latitude","Longitude","AUX Expurgo","Tipo Expurgo","Flag FTTA","Tipo Condomínio"]},"Cumprimento de Agenda":{"arquivos":["cumprimento-agenda-dia-a-dia.xlsx"],"cols":["Cluster","Gerente","Data","Motivo","Cumprimento"]},"Eficiencia Limpa":{"arquivos":["Eficiencia Limpa.xlsx"],"cols":["Contrato","Cliente","Área","Território","UF","Cidade","Bairro","Logradouro","CEP","Canal de Venda","Equipe","Aprov. Sydle","Data Venda","AUX Venda","Data Ativacao","AUX Alta","Contrato Habilitado?","Data Cancelamento","AUX Cancelamento","1º Motivo","1º Submotivo","2º Motivo","2º Submotivo","3º Motivo","3º Submotivo","4º Motivo","4º Submotivo","5º Motivo","5º Submotivo","Ultima OS","Ultimo Motivo OS","Ultimo Submotivo OS","Tipo Motivo","Responsavel Ação","Status","Semana Desc","Latitude","Longitude","AUX Expurgo","Tipo Expurgo","Flag FTTA","Tipo Condomínio"]},"Eficiencia ME":{"arquivos":["Eficiencia ME.xlsx"],"cols":["Contrato","Chamado","OS","Cluster","UF","Data Abertura","ME","Data ME","Realizada","Data Cancelamento","Cancelamento","Tipo Cancelamento","1º Motivo","1º Submotivo","2º Motivo","2º Submotivo","3º Motivo","3º Submotivo","4º Motivo","4º Submotivo","5º Motivo","5º Submotivo","Ultimo Motivo OS","Ultimo Submotivo OS","Tipo Motivo","Responsavel Ação","Status"]},"IFI":{"arquivos":["IFI.xlsx"],"cols":["Data Reparo","Data Ativação","Data Abertura Chamado","Aging","Chamado","Contrato","Motivo","OS","Unidade","Cidade_UF","Marca","Empresa","Qtd IFI","Técnico","Cluster","bairro","Território","NovaRegional","Novo Cluster"]},"IFI ME":{"arquivos":["IFME.xlsx"],"cols":["Data Abertura Chamado","Data Evento","Aging IFME","Chamado","Contrato","Motivo","OS","Qtd. IFME","Unidade","Cidade/UF","Marca","Empresa","Data Reparo","Técnico","Cluster","Bairro","Territorio","Bucket","NovaRegional","Novo Cluster"]},"IRR":{"arquivos":["IRR.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging IRR","Chamado","Contrato","OS","Motivo OS","Empresa","OS Anterior","Motivo OS Anterior","Tecnico Anterior","Tecnico OS Anterior","Empresa Anterior","Data Conclusao OS Anterior","Marca","Unidade","Regional","Cidade_UF","Cluster","Qtd. IRR","Bairro","Bucket","NovaRegional","Novo Cluster"]},"IRT":{"arquivos":["IRT.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging IRT","Chamado","Contrato","OS","Conclusão OS","Motivo OS","Marca","Empresa","Unidade","Cidade_UF","Regional","IDTecnico","Tecnico","Bairro","Cidade","qtd_Reparos_totais","Bucket","NovaRegional","Novo Cluster"]},"MAX":{"arquivos":[],"cols":[]},"Mudança de Endereço":{"arquivos":["Mud Endereco.xlsx"],"cols":["Data Conclusão","Data Abertura Chamado","Aging","Chamado","Contrato","OS","Conclusão OS","Motivo OS","Marca","Empresa","Unidade","Cidade_UF","Cluster","Regional","Tecnico","Bairro","Cidade","qtd_Mud_Endereco","Bucket","NovaRegional","Novo Cluster"]},"Planta Média":{"arquivos":["Planta Media.xlsx"],"cols":["Unidade","Cidade_UF","Bairro","Regional","Empresa","Cluster","NovaRegional","Novo Cluster","Media Base Media","Empresa","bucket"]},"Prod. B2C":{"arquivos":["Analítico Nominal por Quartil de Produtividade 11 OK dos Técnicos  Período Filtrado  B2C.xlsx"],"cols":["Periodo Filtrado","Semana Ano","Regional","Cluster","Técnico","Cargo","GG's","GO's","GA's","FUNCID","ID_OFS","Admissao","Faixa Tempo de Casa","Vol. Prod. 1:1","Dias Trab.","Prod.","Quartil Prod.","Vol. Improd.","Prod. OK e NOK","Vol. Altas","Vol. ME","Vol. MC","Vol. Reparo","Vol. Prev","Vol. Cleanup","Vol. em Apoio","Vol. em Preset","Vol. em O&M","Vol. em B2B","Vol. em Infra"]},"Prod.Infra e Rede":{"arquivos":["Analítico Nominal por Quartil de Produtividade 11 OK dos Técnicos  Período Filtrado  Rede + Infra.xlsx"],"cols":["Periodo Filtrado","Semana Ano","Regional","Cluster","Técnico","Cargo","GG's","GO's","GA's","FUNCID","ID_OFS","Admissao","Faixa Tempo de Casa","Vol. Prod. 1:1","Dias Trab.","Prod.","Quartil Prod.","Vol. Improd.","Prod. OK e NOK","Vol. Altas","Vol. ME","Vol. MC","Vol. Reparo","Vol. Prev","Vol. Cleanup","Vol. em Apoio","Vol. em Preset","Vol. em O&M","Vol. em B2B","Vol. em Infra"]},"Reparos 24h":{"arquivos":["Reparos Prazo.xlsx"],"cols":["Data Evento","Data Abertura Chamado","Aging (Minutos)","Chamado","Contrato","codigo_os","Reparo","Motivo OS","Tecnico","Cidade_UF","Unidade","Marca","Empresa","Regional","Cluster","Qtd.","Bairro","Bucket","NovaRegional","Novo Cluster"]}};
 /* pasta Modelos vinculada (File System Access): relida a cada anexo */
 const RS_MOD_DIR_KEY='rs_modelos_dir_v1';let rsModDir=null,rsModDirLido=false,rsModScan=null;const rsModColsCache=new Map();
 async function rsModelosLer(pedir){
@@ -39898,7 +39901,7 @@ async function rsVerificarBase(ind,m,planta,file,objs){
     const s2=rsNomeScore(file.name,x,'');if(s2>sc&&(!outro||s2>outro.s))outro={m:x,s:s2};}
   if(alvo&&!sc)problemas.push('O nome do arquivo não corresponde ao indicador '+nomeInd+'.');
   if(outro)problemas.push('Este arquivo parece ser a base de '+outro.m.modelo+' ('+rsModeloTxt(outro.m)+').');
-  if(alvo&&objs&&objs.length){const cols=await rsModeloCols(alvo);
+  if(alvo&&objs&&objs.length&&!alvo.pivotAgenda){const cols=await rsModeloCols(alvo);
     if(cols.length){const tem=new Set(Object.keys(objs[0]).map(RS_NK));const falta=[...new Set(cols)].filter(c=>!tem.has(RS_NK(c)));
       if(falta.length)problemas.push('Faltam colunas do modelo: '+falta.slice(0,6).join(', ')+(falta.length>6?' (+'+(falta.length-6)+')':'')+'.');}}
   if(!problemas.length)return '';
@@ -40597,6 +40600,53 @@ function rsTaxaCruzada(a,r,D){
     const j=a.dims.findIndex(x=>x.k===k);if(j>=0)a.dims[j]=d;else a.dims.push(d);}
   if(a.sem&&t1!=null){rsSugPrepend(a.sug,r.indicador+' de '+rsPctTxt(t1)+' na '+a.semLbl+(mt?' (meta '+mt+')':'')+': '+a.sem+' casos em '+rsNf0.format(n.sem)+' '+c.lbl+(t0!=null?', contra '+rsPctTxt(t0)+' na '+a.antLbl:''),rsAcaoIndicador(r.indicador));rsSugPrazo(a.sug);}
 }
+/* ── Cumprimento de Agenda (pedido 2026-11-12) ─────────────────────────────────────────
+   O modelo (Modelos\Cumprimento de Agenda\cumprimento-agenda-dia-a-dia-AAAA-MM-….xlsx) é uma
+   planilha CONSOLIDADA: título (… nov/26 … meta 95% …), linha de cabeçalho Cluster | Gerente |
+   Métrica | Total | 01/11 | 02/11 …, e por cluster as métricas Cumpridas, Manhã com NCA (manual),
+   Manhã → tarde sem NCA (manual), Tarde → manhã, Atraso de 1h/2h/3h ou mais e % Dentro.
+   Para usar a mesma análise das outras bases (semana do FCA × anterior, % no padrão, principais
+   causas, dias/ofensores, rascunho de FCA), cada dia de cada cluster vira uma linha por visita:
+   total do dia = Cumpridas ÷ % Dentro; as fora do horário são distribuídas pelas métricas de falha
+   e o que sobra (a base não detalha todas) vira "Fora da agenda (sem detalhe na base)".
+   A linha "Alloha · consolidado" fica fora (é a soma dos clusters). */
+async function rsAgendaLinhas(file){
+  const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
+  const hi=aoa.findIndex(r=>Array.isArray(r)&&r.some(c=>RS_NK(c)==='CLUSTER')&&r.some(c=>RS_NK(c)==='METRICA'));
+  if(hi<0)throw new Error('não encontrei o cabeçalho Cluster | Gerente | Métrica — use o modelo da pasta Modelos\\Cumprimento de Agenda');
+  const h=aoa[hi].map(c=>c==null?'':String(c).trim());
+  const titulo=aoa.slice(0,hi).flat().filter(Boolean).join(' ');
+  const mY=titulo.match(/\b(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\/(\d{2})\b/i);
+  const ano=mY?2000+ +mY[2]:new Date().getFullYear();
+  const iC=h.findIndex(c=>RS_NK(c)==='CLUSTER'),iG=h.findIndex(c=>RS_NK(c)==='GERENTE'),iM=h.findIndex(c=>RS_NK(c)==='METRICA');
+  const dias=h.map((c,i)=>{const m=c.match(/^(\d{1,2})\/(\d{1,2})$/);return m?{i,dd:+m[1],mm:+m[2]}:null;}).filter(Boolean);
+  if(!dias.length)throw new Error('a planilha não tem colunas de dia (01/11, 02/11…)');
+  const grupos=new Map();
+  for(const r of aoa.slice(hi+1)){
+    if(!r||!r[iC]||!r[iM])continue;
+    const cl=String(r[iC]).trim();if(/consolidado/i.test(cl)||!/C\.?\s*\d+/i.test(cl))continue;
+    const g=grupos.get(cl)||{gerente:iG>=0?String(r[iG]||'').trim():'',m:new Map()};g.m.set(String(r[iM]).trim(),r);grupos.set(cl,g);
+  }
+  if(!grupos.size)throw new Error('nenhum cluster C.nn encontrado na planilha');
+  const p2=n=>String(n).padStart(2,'0');const out=[];
+  for(const [cl,g] of grupos){
+    const met=[...g.m.keys()],kC=met.find(k=>RS_NK(k)==='CUMPRIDAS'),kP=met.find(k=>/DENTRO/.test(RS_NK(k)));
+    const falhas=met.filter(k=>k!==kC&&k!==kP&&!/^TOTAL/.test(RS_NK(k)));
+    for(const d of dias){
+      const num=k=>{const v=Number((g.m.get(k)||[])[d.i]);return isFinite(v)?v:0;};
+      const cump=kC?num(kC):0,pct=kP?num(kP):0,listadas=falhas.reduce((s,k)=>s+num(k),0);
+      let total=pct>0?Math.round(cump*100/pct):cump+listadas;if(total<cump+listadas)total=cump+listadas;
+      const data=p2(d.dd)+'/'+p2(d.mm)+'/'+(d.mm===12&&mY&&/jan/i.test(mY[1])?ano-1:ano);
+      const add=(motivo,dentro,n)=>{for(let k=0;k<n;k++)out.push({'Cluster':cl,'Gerente':g.gerente,'Data':data,'Motivo':motivo,'Cumprimento':dentro?'Dentro':'Fora'});};
+      add('Cumprida',true,cump);
+      falhas.forEach(k=>add(k,false,num(k)));
+      add('Fora da agenda (sem detalhe na base)',false,Math.max(0,total-cump-listadas));
+    }
+  }
+  return out;
+}
 async function rsLerPlanilhaObjs(file){
   const buf=await file.arrayBuffer();
   if(typeof b2cParseXlsxInWorker==='function'){try{return await b2cParseXlsxInWorker(buf);}catch(e){console.warn('Redir: leitura no worker falhou, lendo na página',e);}}
@@ -40663,7 +40713,8 @@ async function rsOnIndFile(inp){
   const ind=rsIndAlvo,planta=rsIndPlanta;const m=planta?RS_PLANTA:rsModeloDe(ind);
   _ghToast('Lendo '+file.name+' para '+(planta?'Planta Média':ind)+'… (bases grandes levam alguns segundos)','var(--blue)',6000);
   try{
-    const objs=await rsLerPlanilhaObjs(file);
+    let objs=await rsLerPlanilhaObjs(file);
+    if(!planta&&m&&m.pivotAgenda)objs=await rsAgendaLinhas(file);
     const aviso=await rsVerificarBase(ind,m,planta,file,objs);
     if(aviso&&!confirm(aviso)){_ghToast('Anexo cancelado — escolha a base correta.','var(--orange)',3500);return;}
     const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name,m);b.at=new Date().toISOString();
