@@ -2,9 +2,11 @@
  * Agente do botão "BI ENC" (B2B Encerrados) — pedido do usuário 2026-11-12.
  *
  * Mesmo padrão do botão BI do B2B Abertos (pbi_export.js), mas para a base do B2B Encerrados:
- *   1. abre o relatório "[Reparos] Reparos Encerrados - Giga+ v2_Databricks" na página CCS;
- *   2. no filtro Gerente marca "Wellington Marcio";
- *   3. clica na barra "CMO - Reparo" do gráfico "Reparos Encerrados por Departamentos";
+ *   (roteiro do usuário de 2026-11-12 — "análise e baixa da base B2B Encerrado")
+ *   1. abre o "Dashboard Geral Encerrados" do relatório "[Reparos] Reparos Encerrados - Giga+ v2_Databricks";
+ *   2. no filtro Gerente deixa marcado só "Wellington Marcio" (sem acento);
+ *   3. na barra lateral do relatório (GIGA+, CCS, B2B) vai para B2B e confere que o Gerente continua aplicado;
+ *      clica na barra "CMO - Reparo" do gráfico "Reparos Encerrados por Departamentos" (ref. 12/11/2026: 7.988);
  *   4. botão direito no Total > Drill-through > Base de Reparos;
  *   5. "..." da tabela > Exportar dados > "Dados com layout atual" > Exportar;
  *   6. confere linhas exportadas = Total filtrado;
@@ -25,7 +27,7 @@ const fs    = require('fs');
 const os    = require('os');
 const zlib  = require('zlib');
 
-const REPORT_URL = process.env.PBI_ENC_URL || 'https://app.powerbi.com/groups/me/apps/eafd5bdd-0f37-4837-9ab2-2e50f0f5092f/reports/7d0ecb04-b190-4516-93fe-d70b55f89fbc/2fea571eab4e4c33e757?ctid=7ebaa467-3ace-4a9c-ad91-4e84933a6607&experience=power-bi&clientSideAuth=0';
+const REPORT_URL = process.env.PBI_ENC_URL || 'https://app.powerbi.com/groups/me/apps/eafd5bdd-0f37-4837-9ab2-2e50f0f5092f/reports/7d0ecb04-b190-4516-93fe-d70b55f89fbc/ReportSectionf401e09b917376b3548a?ctid=7ebaa467-3ace-4a9c-ad91-4e84933a6607&experience=power-bi&clientSideAuth=0'; /* Dashboard Geral Encerrados */
 const GERENTE    = process.env.PBI_ENC_GERENTE || 'Wellington Marcio';
 const BARRAS     = ['CMO - Reparo'];
 const AUTH_DIR   = process.env.PBI_AUTH_DIR || 'D:\\JarvisRunner\\pbi-auth';
@@ -38,7 +40,9 @@ const GH_REPO    = process.env.GITHUB_REPO   || 'iatimcll-blip/Acompanhamento-Ja
 const GH_BRANCH  = process.env.GITHUB_BRANCH || 'main';
 const STATUS_FILE = 'data/pbi-enc-status.json';
 const SYNC_FILE   = 'data/sync-state.json';
-const PASSOS = 7;
+const PASSOS = 8;
+/* colunas que o roteiro do usuário espera na tabela exportada */
+const COLS_ESPERADAS = ['ticket_id','protocolo','titulo','UsuarioDesignado','segmento_cliente','numplan','idservico','valorservico','produto','cliente_id','substatus','dep_atual','Canal_Abertura','Tipo_Encerramento','Causa_Raiz','parceiro','ult_OS','os_agrupada','os_concluida_agrupada','ufservico'];
 
 const log = (...a) => console.log(new Date().toLocaleTimeString('pt-BR'), ...a);
 
@@ -132,7 +136,7 @@ async function exportar(browser) {
   const ctx = await browser.newContext({ storageState: STATE_FILE, acceptDownloads: true, viewport: { width: 1600, height: 900 }, locale: 'pt-BR' });
   const page = await ctx.newPage();
   try {
-    await status({ step: 1, stepTxt: 'Abrindo o relatório Reparos Encerrados (página CCS)' });
+    await status({ step: 1, stepTxt: 'Abrindo o Dashboard Geral Encerrados' });
     await page.goto(REPORT_URL, { waitUntil: 'commit', timeout: 120000 });
     const ok = await Promise.race([
       page.waitForSelector('svg[aria-label^="Total "]', { timeout: 150000 }).then(() => 'ok'),
@@ -142,7 +146,9 @@ async function exportar(browser) {
     if (ok === 'login') throw Object.assign(new Error('A sessão do Power BI expirou — refaça o login e atualize o secret PBI_SESSION.'), { code: 'login_required' });
     if (ok !== 'ok') throw new Error('O relatório não carregou em 2,5 min (contador Total não apareceu).');
     await page.waitForTimeout(4000);
-    const totalCcs = await lerTotal(page);
+    const totalCcs = await lerTotal(page); /* Total do Dashboard Geral, sem filtros */
+    const gerenteTxt = () => page.evaluate(() => { const h = [...document.querySelectorAll('h3')].find(x => x.textContent.trim() === 'Gerente'); return h ? h.closest('visual-container').innerText.replace(/\s+/g, ' ') : null; });
+    const nomePagina = () => page.evaluate(() => { const x = [...document.querySelectorAll('*')].find(el => el.tagName === 'EXPLORATION'); return x ? x.getAttribute('aria-label') || '' : ''; });
 
     await status({ step: 2, stepTxt: 'Filtrando Gerente = ' + GERENTE, totalCcs });
     const box = await page.evaluate(() => {
@@ -150,17 +156,34 @@ async function exportar(browser) {
       const vc = h && h.closest('visual-container'); const dd = vc && vc.querySelector('[role=combobox]');
       if (!dd) return null; const r = dd.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     });
-    if (!box) throw new Error('Filtro "Gerente" não encontrado na página CCS (o relatório mudou?).');
+    if (!box) throw new Error('Filtro "Gerente" não encontrado no Dashboard Geral Encerrados (o relatório mudou?).');
     await page.mouse.click(box.x, box.y); await page.waitForTimeout(1500);
-    const item = page.locator('.slicerItemContainer').filter({ hasText: new RegExp('^\\s*' + GERENTE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$') }).first();
-    if (!(await item.count())) throw new Error('Gerente "' + GERENTE + '" não aparece no filtro do relatório.');
+    const reG = new RegExp('^\\s*' + GERENTE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$');
+    const item = page.locator('.slicerItemContainer').filter({ hasText: reG }).first();
+    /* a lista do filtro demora a aparecer: espera os itens antes de concluir que o nome não existe */
+    await page.locator('.slicerItemContainer').first().waitFor({ timeout: 20000 }).catch(() => {});
+    await item.waitFor({ timeout: 15000 }).catch(() => {});
+    if (!(await item.count())) throw new Error('Gerente "' + GERENTE + '" não aparece no filtro do relatório — parei sem baixar nada.');
     await item.click(); await page.waitForTimeout(1000);
-    await page.keyboard.press('Escape');
-    const totalGerente = await esperarMudar(page, totalCcs, 20000);
-    if (!totalGerente || totalGerente === totalCcs) throw new Error('O filtro de Gerente não alterou o Total (continua ' + totalCcs + ').');
-    await page.waitForTimeout(2000);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(3000);
+    if (!new RegExp(GERENTE, 'i').test(await gerenteTxt() || '')) throw new Error('O filtro Gerente não ficou só com "' + GERENTE + '".');
 
-    await status({ step: 3, stepTxt: 'Selecionando CMO - Reparo', totalGerente });
+    /* barra lateral do relatório (GIGA+, CCS, B2B): clica nos atalhos de navegação até a página B2B */
+    await status({ step: 3, stepTxt: 'Indo para a página B2B' });
+    const navs = await page.evaluate(() => [...document.querySelectorAll('visual-container')].map(v => { const r = v.querySelector('[aria-label*="Navegação na página"]'); if (!r) return null; const b = r.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }).filter(Boolean).sort((a, b) => a.y - b.y));
+    let naB2B = false;
+    for (const n of navs) {
+      await page.mouse.click(n.x, n.y); await page.waitForTimeout(6000);
+      if (/B2B/i.test(await nomePagina())) { naB2B = true; break; }
+      await page.goBack().catch(() => {}); await page.waitForTimeout(5000);
+    }
+    if (!naB2B) throw new Error('Não encontrei a página B2B na barra lateral do relatório (o relatório mudou?).');
+    await page.waitForSelector('svg[aria-label^="Total "]', { timeout: 60000 }); await page.waitForTimeout(3000);
+    if (!new RegExp(GERENTE, 'i').test(await gerenteTxt() || '')) throw new Error('Na página B2B o filtro Gerente não está com "' + GERENTE + '".');
+    const totalGerente = await lerTotal(page);
+    log('Página', await nomePagina(), '| Total B2B (Gerente):', totalGerente);
+
+    await status({ step: 4, stepTxt: 'Selecionando CMO - Reparo', totalGerente });
     let soma = 0;
     for (let i = 0; i < BARRAS.length; i++) {
       const b = await localizarBarra(page, BARRAS[i]);
@@ -173,14 +196,14 @@ async function exportar(browser) {
     if (!(await esperarTotal(page, soma, 20000))) throw new Error(`Depois da seleção o Total ficou ${await lerTotal(page)} e não ${soma} (valor da barra).`);
     log('Total filtrado:', soma);
 
-    await status({ step: 4, stepTxt: 'Drill-through › Base de Reparos', totalFiltrado: soma });
+    await status({ step: 5, stepTxt: 'Drill-through › Base de Reparos', totalFiltrado: soma });
     await page.locator('svg[aria-label^="Total "]').first().click({ button: 'right' });
     await page.getByText('Drill-through', { exact: true }).first().hover();
     await page.getByText('Base de Reparos', { exact: true }).first().click();
     await page.waitForSelector('[role="columnheader"]', { timeout: 90000 });
     await page.waitForTimeout(4000);
 
-    await status({ step: 5, stepTxt: 'Exportando a Base de Reparos (' + soma + ' chamados)' });
+    await status({ step: 6, stepTxt: 'Exportando a Base de Reparos (' + soma + ' chamados, layout atual .xlsx)' });
     const cab = await page.locator('[role="columnheader"]:visible').first().boundingBox();
     if (!cab) throw new Error('Tabela "Base de Reparos" não apareceu depois do drill-through.');
     await page.mouse.move(cab.x + cab.width / 2, cab.y + cab.height / 2);
@@ -226,7 +249,7 @@ async function montarBaseEnc(browser, estado, xlsxB64, nomeArquivo) {
     await page.goto('file:///' + path.resolve(PANEL_FILE).split(path.sep).join('/'), { waitUntil: 'load', timeout: 90000 });
     await page.waitForFunction(() => typeof XLSX !== 'undefined' && typeof procEnc === 'function' && typeof applyState === 'function', null, { timeout: 60000 });
     await page.waitForTimeout(1500);
-    return await page.evaluate(({ estado, xlsxB64, nomeArquivo }) => {
+    return await page.evaluate(({ estado, xlsxB64, nomeArquivo, colsEsperadas }) => {
       window.saveState = () => {}; window.saveGhState = async () => false; window._ghToast = () => {}; window.autoSyncAfterBaseUpload = () => {};
       applyState(estado, 'agente BI ENC');
       const bin = Uint8Array.from(atob(xlsxB64), c => c.charCodeAt(0));
@@ -234,11 +257,14 @@ async function montarBaseEnc(browser, estado, xlsxB64, nomeArquivo) {
       const sn = wb.SheetNames.find(n => n.toUpperCase().includes('BASE')) || wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval: '' });
       const linhas = rows.filter(r => (r['ticket_id'] || r['protocolo']) && !encLinhaRodape(r['protocolo'] || r['ticket_id'])).length;
+      const cab = (XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1 })[0] || []).map(String);
+      const faltam = colsEsperadas.filter(c => !cab.includes(c));
+      if (faltam.length) return { faltam };
       procEnc(rows, nomeArquivo);
       const b = buildState();
       return { dEnc: b.dEnc, lastEncAt: b.lastEncAt, lastEncBaseAt: b.lastEncBaseAt, lastEncFile: b.lastEncFile, n: dEnc.length, linhas,
         meses: [...new Set(dEnc.map(d => d.mes).filter(Boolean))].sort() };
-    }, { estado, xlsxB64, nomeArquivo });
+    }, { estado, xlsxB64, nomeArquivo, colsEsperadas: COLS_ESPERADAS });
   } finally { await ctx.close(); }
 }
 async function aplicarNoSync(browser, xlsxB64, fileAt, totalFiltrado) {
@@ -247,6 +273,7 @@ async function aplicarNoSync(browser, xlsxB64, fileAt, totalFiltrado) {
   const ini = await lerSyncState();
   if (ini.st.lastEncBaseAt && ini.st.lastEncBaseAt > fileAt) throw new Error('Uma base do B2B Encerrados mais nova foi anexada durante a rodada — mantida, nada foi alterado.');
   const base = await montarBaseEnc(browser, ini.st, xlsxB64, nome);
+  if (base.faltam) throw new Error('A tabela exportada não tem as colunas esperadas: ' + base.faltam.join(', ') + ' — nada foi alterado.');
   log('Painel montou', base.n, 'chamados de', base.linhas, 'linhas do export; meses', base.meses[0], 'a', base.meses[base.meses.length - 1]);
   if (base.linhas !== totalFiltrado) throw new Error(`O arquivo exportado tem ${base.linhas} chamados, mas o Total filtrado era ${totalFiltrado} — nada foi alterado.`);
   if (!Array.isArray(base.dEnc) || !base.dEnc.length) throw new Error('O painel não gerou nenhum chamado a partir do export — nada foi alterado.');
@@ -275,14 +302,14 @@ async function rodada() {
   const browser = await chromium.launch({ headless: process.env.PBI_HEADED !== '1', args: ['--no-sandbox', '--disable-dev-shm-usage'], ...(process.env.PBI_CHROME ? { executablePath: process.env.PBI_CHROME } : {}) });
   try {
     const ex = await exportar(browser);
-    await status({ step: 6, stepTxt: 'Conferindo o export e montando a base no painel' });
+    await status({ step: 7, stepTxt: 'Conferindo o export e montando a base no painel' });
     const b64 = fs.readFileSync(ex.tmp).toString('base64');
     try { fs.unlinkSync(ex.tmp); } catch (_) {}
     const fileAt = new Date().toISOString();
-    await status({ step: 7, stepTxt: 'Sincronizando a base para todos os aparelhos' });
+    await status({ step: 8, stepTxt: 'Sincronizando a base para todos os aparelhos' });
     const base = await aplicarNoSync(browser, b64, fileAt, ex.totalFiltrado);
     await status({
-      state: 'online', step: 8, stepTxt: 'Concluído', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'success',
+      state: 'online', step: 9, stepTxt: 'Concluído', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'success',
       totalCcs: ex.totalCcs, totalGerente: ex.totalGerente, totalFiltrado: ex.totalFiltrado, linhasExportadas: base.linhas, chamadosPainel: base.n,
       mesDe: base.meses[0] || '', mesAte: base.meses[base.meses.length - 1] || '', arquivoExportado: ex.nomeArquivo, fileAt, aplicadoNoSync: !DRY_RUN
     });
