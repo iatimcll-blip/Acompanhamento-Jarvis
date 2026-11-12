@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-12T13:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-12T14:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1039,6 +1039,8 @@ tr.fap-aud-deb td{background:var(--yellow-bg)}
 .ab-pivot tr.aps td.l{padding-left:18px;color:var(--tx2)}
 .ab-pivot tr.apr td{background:#f8fafc;font-weight:800;border-bottom:none;color:#334155}
 .ab-bloco{border:.5px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:10px}
+.ab-bloco-tbl tr.ab-row-fora td{background:#fde2e2 !important;color:#b91c1c !important}
+.ab-bloco-tbl tr.ab-row-fora td a,.ab-bloco-tbl tr.ab-row-fora td span{color:#b91c1c !important}
 .ab-bloco-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .ab-wpp-btn{background:#25d366 !important;color:#fff !important;border-color:#1ebe5b !important}
 .ab-wpp-btn:disabled{opacity:.45}
@@ -22218,7 +22220,7 @@ function abRenderBlocos(chamados){
       const clienteCF=c.assunto?`<span style="font-weight:600;color:var(--tx)">${eh(c.cliente)}</span><span style="display:block;font-size:13px;color:var(--tx2);margin-top:1px">${eh(c.assunto)}</span>`:eh(c.cliente);
       const resp=(abAnnotations[c.id]||{}).prof||'';
       const obs=(abAnnotations[c.id]||{}).obs||'';
-      return`<tr><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
+      return`<tr${abForaDoPrazo(c)?' class="ab-row-fora" title="Fora do prazo"':''}><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
     }).join(''):`<tr><td colspan="${7+extraCols}" style="text-align:center;color:var(--tx3);padding:14px;font-style:italic">Nenhum chamado em aberto neste MOP/EPS.</td></tr>`;
     return`<div class="ab-bloco"><div class="ab-bloco-hd"><span class="ab-bloco-titulo">▸ ${eh(mop)} <span class="ab-bloco-qtd">· ${itens.length} chamado(s)</span></span><span class="ab-bloco-acts"><button class="ab-copy-btn ab-wpp-btn" onclick="abEnviarWpp('ab','${eh(mop)}')"${itens.length?'':' disabled'} title="Abre o WhatsApp com os chamados deste bloco em texto — escolha o grupo/contato e envie"><i class="ti ti-brand-whatsapp"></i> Enviar no WhatsApp</button><button class="ab-copy-btn" onclick="abCopiarBloco('${eh(mop)}',this)"${itens.length?'':' disabled'}>Copiar bloco</button></span></div><div class="ab-bloco-scroll"><table class="ab-bloco-tbl"><thead><tr><th>ID Ticket</th><th>Cliente / Cliente Final</th><th>UF/Cidade</th><th>Departamento</th><th style="text-align:right">SLA</th><th>Faixa</th><th>Substatus</th>${mostraResp?'<th>Responsável</th>':''}${mostraObs?'<th>Anotações</th>':''}</tr></thead><tbody>${linhas}</tbody></table></div></div>`;
   }).join('');
@@ -22241,17 +22243,23 @@ async function abEnviarWpp(painel,mop){
   }
   window.open(url,'_blank','noopener,noreferrer');
 }
+/* fora do prazo pelo SLA AO VIVO (mesma regra do card: statusSla) */
+function abForaDoPrazo(c){try{return statusSla(c.slaH,c.mop,c.slaLimitH)==='FORA DO PRAZO';}catch(_){return c.statusSla==='FORA DO PRAZO';}}
 function abTextoBloco(mop,chamados){
   const itens=chamados.filter(c=>nk(c.mop)===nk(mop));
   const agora=new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-  let t=`📋 *${mop}* — ${itens.length} chamado(s)\n_Atualizado ${agora}_\n`;
+  /* (2026-11-12) WhatsApp não aceita cor: fora do prazo vai com 🔴 e "FORA DO PRAZO" em negrito; no prazo com 🟢 */
+  const fora=c=>abForaDoPrazo(c);
+  const nf=itens.filter(fora).length;
+  let t=`📋 *${mop}* — ${itens.length} chamado(s)${nf?' · 🔴 *'+nf+' fora do prazo*':''}\n_Atualizado ${agora}_\n`;
   if(!itens.length){return t+'\nSem chamados em aberto.';}
   itens.forEach((c,i)=>{
     const resp=(abAnnotations[c.id]||{}).prof||'';
     const obs=(abAnnotations[c.id]||{}).obs||'';
-    t+=`\n*${i+1}. ${c.cliente}* — #${c.id}\n`;
+    t+=`\n${fora(c)?'🔴':'🟢'} *${i+1}. ${c.cliente}* — #${c.id}\n`;
+    if(fora(c))t+=`*⚠ FORA DO PRAZO*\n`;
     if(c.assunto&&nk(c.assunto)!==nk(c.cliente))t+=`${c.assunto}\n`;
-    t+=`⏱ ${fd(c.slaH)} · Departamento: ${c.depAtual||'—'} · ${c.faixa} · ${c.cidade}/${c.uf}\nSubstatus: ${c.substatus}\n`;
+    t+=`⏱ ${fora(c)?'*'+fd(c.slaH)+'*':fd(c.slaH)} · Departamento: ${c.depAtual||'—'} · ${c.faixa} · ${c.cidade}/${c.uf}\nSubstatus: ${c.substatus}\n`;
     if(resp)t+=`Responsável: ${resp}\n`;
     if(obs)t+=`Anotações: ${obs}\n`;
   });
@@ -22328,7 +22336,7 @@ function swapRenderBlocos(chamados){
       const clienteCF=c.assunto?`<span style="font-weight:600;color:var(--tx)">${eh(c.cliente)}</span><span style="display:block;font-size:13px;color:var(--tx2);margin-top:1px">${eh(c.assunto)}</span>`:eh(c.cliente);
       const resp=(abAnnotations[c.id]||{}).prof||'';
       const obs=(abAnnotations[c.id]||{}).obs||'';
-      return`<tr><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
+      return`<tr${abForaDoPrazo(c)?' class="ab-row-fora" title="Fora do prazo"':''}><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
     }).join(''):`<tr><td colspan="${7+extraCols}" style="text-align:center;color:var(--tx3);padding:14px;font-style:italic">Nenhum chamado em aberto neste MOP/EPS.</td></tr>`;
     return`<div class="ab-bloco"><div class="ab-bloco-hd"><span class="ab-bloco-titulo">▸ ${eh(mop)} <span class="ab-bloco-qtd">· ${itens.length} chamado(s)</span></span><span class="ab-bloco-acts"><button class="ab-copy-btn ab-wpp-btn" onclick="abEnviarWpp('swap','${eh(mop)}')"${itens.length?'':' disabled'} title="Abre o WhatsApp com os chamados deste bloco em texto — escolha o grupo/contato e envie"><i class="ti ti-brand-whatsapp"></i> Enviar no WhatsApp</button><button class="ab-copy-btn" onclick="abCopiarBloco('${eh(mop)}',this)"${itens.length?'':' disabled'}>Copiar bloco</button></span></div><div class="ab-bloco-scroll"><table class="ab-bloco-tbl"><thead><tr><th>ID Ticket</th><th>Cliente / Cliente Final</th><th>UF/Cidade</th><th>Departamento</th><th style="text-align:right">SLA</th><th>Faixa</th><th>Substatus</th>${mostraResp?'<th>Responsável</th>':''}${mostraObs?'<th>Anotações</th>':''}</tr></thead><tbody>${linhas}</tbody></table></div></div>`;
   }).join('');
@@ -22566,7 +22574,7 @@ function eveRenderBlocos(chamados){
       const clienteCF=c.assunto?`<span style="font-weight:600;color:var(--tx)">${eh(c.cliente)}</span><span style="display:block;font-size:13px;color:var(--tx2);margin-top:1px">${eh(c.assunto)}</span>`:eh(c.cliente);
       const resp=(abAnnotations[c.id]||{}).prof||'';
       const obs=(abAnnotations[c.id]||{}).obs||'';
-      return`<tr><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
+      return`<tr${abForaDoPrazo(c)?' class="ab-row-fora" title="Fora do prazo"':''}><td style="white-space:nowrap">${idCell}</td><td class="col-cliente">${clienteCF}</td><td style="white-space:nowrap;color:var(--tx3)">${ufCidade}</td><td class="col-dep" style="color:var(--tx2)">${eh(c.depAtual||'—')}</td><td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${fd(c.slaH)}</td><td><span class="ab-faixa-tag"><span class="ab-faixa-dot" style="background:${SLA_CLR[c.faixa]||'#8e8e93'}"></span>${c.faixa||'—'}</span></td><td class="col-causa" style="color:var(--tx3)">${eh(c.substatus)}</td>${mostraResp?`<td style="white-space:nowrap;font-weight:700;color:var(--tx2)">${resp?eh(resp):'—'}</td>`:''}${mostraObs?`<td class="col-causa" style="color:var(--tx2)">${obs?eh(obs):'—'}</td>`:''}</tr>`;
     }).join(''):`<tr><td colspan="${7+extraCols}" style="text-align:center;color:var(--tx3);padding:14px;font-style:italic">Nenhum chamado em aberto neste MOP/EPS.</td></tr>`;
     return`<div class="ab-bloco"><div class="ab-bloco-hd"><span class="ab-bloco-titulo">▸ ${eh(mop)} <span class="ab-bloco-qtd">· ${itens.length} chamado(s)</span></span><span class="ab-bloco-acts"><button class="ab-copy-btn ab-wpp-btn" onclick="abEnviarWpp('eve','${eh(mop)}')"${itens.length?'':' disabled'} title="Abre o WhatsApp com os chamados deste bloco em texto — escolha o grupo/contato e envie"><i class="ti ti-brand-whatsapp"></i> Enviar no WhatsApp</button><button class="ab-copy-btn" onclick="abCopiarBloco('${eh(mop)}',this)"${itens.length?'':' disabled'}>Copiar bloco</button></span></div><div class="ab-bloco-scroll"><table class="ab-bloco-tbl"><thead><tr><th>ID Ticket</th><th>Cliente / Cliente Final</th><th>UF/Cidade</th><th>Departamento</th><th style="text-align:right">SLA</th><th>Faixa</th><th>Substatus</th>${mostraResp?'<th>Responsável</th>':''}${mostraObs?'<th>Anotações</th>':''}</tr></thead><tbody>${linhas}</tbody></table></div></div>`;
   }).join('');
