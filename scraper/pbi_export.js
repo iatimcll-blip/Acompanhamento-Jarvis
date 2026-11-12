@@ -199,8 +199,9 @@ async function exportar(browser) {
     await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await Promise.race([
       page.waitForSelector('svg[aria-label^="Total "]', { timeout: 120000 }).then(() => 'ok'),
-      page.waitForURL(/login\.microsoftonline\.com|login\.live\.com/, { timeout: 120000 }).then(() => 'login')
+      page.waitForSelector('input[name="loginfmt"], input[type="password"], #i0116, #i0118', { timeout: 120000 }).then(() => 'login')
     ]).catch(() => 'timeout');
+    /* só conta como expirada se aparecer o FORMULÁRIO de login — a passagem rápida pelo login.microsoftonline.com para renovar a sessão sozinho (SSO silencioso) não é expiração */
     if (ok === 'login') throw Object.assign(new Error('A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.'), { code: 'login_required' });
     if (ok !== 'ok') throw new Error('O relatório não carregou em 2 min (contador Total não apareceu).');
     await page.waitForTimeout(3000);

@@ -214,7 +214,9 @@ export default {
        para o botão mostrar o andamento ao vivo. Só este arquivo — não é um leitor genérico. */
     if (payload.action === 'pbi_status') {
       try {
-        const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/data/pbi-runner-status.json?ref=${env.GH_BRANCH}`;
+        /* alvo 'enc' = botão BI ENC do B2B Encerrados (2026-11-12) */
+        const arq = payload.alvo === 'enc' ? 'data/pbi-enc-status.json' : 'data/pbi-runner-status.json';
+        const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/${arq}?ref=${env.GH_BRANCH}`;
         const r = await fetch(url, { headers: ghHeaders(env, { Accept: 'application/vnd.github.raw+json' }) });
         if (r.status === 404) return json({ ok: true, status: null }, 200, env);
         if (!r.ok) return json({ ok: false, error: 'HTTP ' + r.status }, 502, env);
@@ -225,7 +227,7 @@ export default {
     }
     if (payload.action === 'pbi_dispatch') {
       try {
-        const wf = env.PBI_WORKFLOW_FILE || 'pbi-sync.yml';
+        const wf = payload.alvo === 'enc' ? (env.PBI_ENC_WORKFLOW_FILE || 'pbi-enc-sync.yml') : (env.PBI_WORKFLOW_FILE || 'pbi-sync.yml');
         const base = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${wf}/runs?per_page=5`;
         const r = await fetch(base, { headers: ghHeaders(env) });
         if (r.ok) {

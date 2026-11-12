@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-11T17:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-12T09:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1099,8 +1099,10 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .ab-bi-run.ab-bi-rodando i { animation:wppSpin 1.2s linear infinite }
 /* (2026-11-11) Resultado da última atualização pelo BI: verde = chamados atualizados;
    laranja intenso = falhou (a base não mudou). */
-.ab-bi-run.ab-bi-ok { background:#16a34a !important;color:#fff !important;border-color:#15803d !important }
-.ab-bi-run.ab-bi-erro { background:#ea580c !important;color:#fff !important;border-color:#c2410c !important }
+.ab-bi-run.ab-bi-ok,.enc-bi-run.ab-bi-ok { background:#16a34a !important;color:#fff !important;border-color:#15803d !important }
+.ab-bi-run.ab-bi-erro,.enc-bi-run.ab-bi-erro { background:#ea580c !important;color:#fff !important;border-color:#c2410c !important }
+.enc-bi-run.ab-bi-rodando { background:var(--blue-bg);color:var(--blue) }
+.enc-bi-run.ab-bi-rodando i { animation:wppSpin 1.2s linear infinite }
 .atx-tk .atx-bar { position:relative;display:inline-block;width:34px;height:5px;border-radius:3px;background:var(--bd,#d0d5dd);overflow:hidden }
 .atx-tk .atx-fill { position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--blue) }
 .atx-tk .atx-fill.atx-run { animation:atxFill linear forwards }
@@ -12589,6 +12591,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <h2>Chamados encerrados</h2>
       <p>Carregue a base para ver performance e SLA por cluster.</p>
       <button class="empty-btn eb-enc admin-only" onclick="openCentral('enc')" data-up="encerrados"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button data-up="encerrados" class="mop-ref-btn admin-only enc-bi-run" onclick="biEncAtualizar()" title="Atualiza a base do B2B Encerrados direto do Power BI"><i class="ti ti-chart-bar"></i> <span class="enc-bi-txt">BI ENC</span></button><button class="mop-ref-btn" onclick="abrirBiEnc()" title="Abrir o relatório Reparos Encerrados no Power BI"><i class="ti ti-external-link"></i></button></div>
     </div>
     <div id="dash-enc" style="display:none">
       <!-- Configuração de Metas (pedido do usuário: "adicionar um campo para edição das
@@ -12624,7 +12627,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
       <div class="mrow" id="mrow-enc"></div>
-      <button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button><button data-up="encerrados" class="mop-ref-btn admin-only enc-bi-run" onclick="biEncAtualizar()" title="Atualiza a base do B2B Encerrados direto do Power BI"><i class="ti ti-chart-bar"></i> <span class="enc-bi-txt">BI ENC</span></button><button class="mop-ref-btn" onclick="abrirBiEnc()" title="Abrir o relatório Reparos Encerrados no Power BI"><i class="ti ti-external-link"></i></button></div>
       <div id="week-banner-enc"></div>
       <div class="section-hd">Performance por cluster <span class="sh-line"></span></div>
       <div class="cluster-grid" id="cluster-cards"></div>
@@ -21167,6 +21170,90 @@ setInterval(async()=>{
   }catch(_){}
 },120000);
 setTimeout(()=>{try{_pbiBotoes('BI',false);_pbiRetomar();}catch(_){}},4500);
+/* ── Botão "BI ENC" do B2B Encerrados (pedido 2026-11-12) ──────────────────────────────
+   Mesmo padrão do BI do B2B Abertos: Worker (pbi_dispatch alvo 'enc') → workflow
+   pbi-enc-sync.yml (nuvem com o secret PBI_SESSION; senão no PC do agente) →
+   scraper/pbi_enc_export.js: relatório "[Reparos] Reparos Encerrados" › página CCS ›
+   Gerente = Wellington Marcio › barra CMO - Reparo › Drill-through "Base de Reparos" ›
+   Exportar dados. O agente roda o próprio procEnc() ("Anexar base" do Encerrados) e grava a
+   base direto na sincronização — todos os aparelhos recebem. Botão verde = deu certo;
+   laranja intenso = falhou (a base não mudou). Admin ou quem pode anexar base no Encerrados. */
+const PBI_ENC_PASSOS=7;
+const PBI_ENC_URL='https://app.powerbi.com/groups/me/apps/eafd5bdd-0f37-4837-9ab2-2e50f0f5092f/reports/7d0ecb04-b190-4516-93fe-d70b55f89fbc/2fea571eab4e4c33e757?ctid=7ebaa467-3ace-4a9c-ad91-4e84933a6607&experience=power-bi&clientSideAuth=0';
+const _PBI_ENC_TIT='Atualiza a base do B2B Encerrados direto do Power BI (Reparos Encerrados › CCS › Gerente Wellington Marcio › CMO - Reparo › Base de Reparos), como em "Anexar base"';
+let _pbiEncTimer=null;
+function canBiEnc(){return!!(currentUser&&(currentUser.role==='admin'||canEdit('encerrados')));}
+function abrirBiEnc(){window.open(PBI_ENC_URL,'_blank','noopener,noreferrer');}
+async function _pbiEncLerStatus(){
+  try{
+    const r=await fetch(ATRIX_WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},body:JSON.stringify({action:'pbi_status',alvo:'enc'})});
+    const j=await r.json();if(r.ok&&j&&j.ok)return j.status||null;
+  }catch(_){}
+  try{const r=await fetch('https://raw.githubusercontent.com/'+GH_SYNC_OWNER+'/'+GH_SYNC_REPO+'/main/data/pbi-enc-status.json?t='+Date.now(),{cache:'no-store'});return r.ok?await r.json():null;}catch(_){return null;}
+}
+function _pbiEncBotoes(txt,rodando,titulo,cor){
+  document.querySelectorAll('.enc-bi-run').forEach(b=>{
+    const s=b.querySelector('.enc-bi-txt');if(s)s.textContent=txt;
+    b.classList.toggle('ab-bi-rodando',!!rodando);b.classList.toggle('ab-bi-ok',cor==='ok');b.classList.toggle('ab-bi-erro',cor==='erro');
+    b.title=titulo||_PBI_ENC_TIT;
+  });
+}
+function _pbiEncParar(){clearInterval(_pbiEncTimer);_pbiEncTimer=null;_pbiEncBotoes('BI ENC',false);}
+function _pbiEncPintar(st){
+  if(_pbiEncTimer||!st||st.state==='running'||!st.lastRunCompletedAt){if(!_pbiEncTimer)_pbiEncBotoes('BI ENC',false);return;}
+  if(Date.now()-new Date(st.lastRunCompletedAt).getTime()>24*3600000){_pbiEncBotoes('BI ENC',false);return;}
+  const q=_pbiFmtHora(st.lastRunCompletedAt);
+  if(st.lastRunConclusion==='success'&&st.aplicadoNoSync)
+    _pbiEncBotoes('BI ENC ✓',false,'Última atualização pelo BI ENC deu certo ('+q+'): '+(st.chamadosPainel??'—')+' chamados encerrados na base (Total filtrado no Power BI: '+(st.totalFiltrado??'—')+', '+(st.mesDe||'')+' a '+(st.mesAte||'')+'). Clique para atualizar de novo.','ok');
+  else _pbiEncBotoes('BI ENC !',false,'Última atualização pelo BI ENC falhou ('+q+'): '+(st.lastError||'a base não foi sincronizada')+' — a base do B2B Encerrados não foi alterada. Clique para tentar de novo.','erro');
+}
+async function biEncAtualizar(){
+  if(!canBiEnc())return;
+  if(_pbiEncTimer){_ghToast('O agente do BI ENC já está rodando — acompanhe no botão.','var(--blue)',4000);return;}
+  _pbiEncBotoes('BI ENC · iniciando…',true);
+  try{
+    const res=await fetch(ATRIX_WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},body:JSON.stringify({action:'pbi_dispatch',alvo:'enc'})});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.ok)throw new Error(j.error||('HTTP '+res.status));
+    _ghToast(j.alreadyRunning?'Já havia uma atualização pelo BI ENC em andamento — acompanhando.':'Atualização do B2B Encerrados pelo BI iniciada ✓','var(--green-dk)',5000);
+    _pbiEncMonitorar(j.alreadyRunning&&j.startedAt?j.startedAt:new Date().toISOString());
+  }catch(e){
+    _pbiEncParar();
+    _pbiEncBotoes('BI ENC !',false,'Não foi possível iniciar a atualização pelo BI ENC: '+e.message+'. Clique para tentar de novo.','erro');
+    _ghToast('Erro ao iniciar o agente do BI ENC: '+e.message,'#ea580c',7000);
+  }
+}
+function _pbiEncMonitorar(triggeredIso){
+  clearInterval(_pbiEncTimer);
+  const ref=new Date(new Date(triggeredIso).getTime()-120000).toISOString(),t0=Date.now();
+  const tick=async()=>{
+    const st=await _pbiEncLerStatus();
+    const comecou=!!(st&&st.lastRunStartedAt&&st.lastRunStartedAt>=ref);
+    if(!comecou){
+      _pbiEncBotoes('BI ENC · na fila…',true,'Aguardando o agente começar');
+      if(Date.now()-t0>ATRIX_ESPERA_INICIO_MIN*60000){_pbiEncParar();_pbiEncBotoes('BI ENC !',false,'O agente do BI ENC não começou em '+ATRIX_ESPERA_INICIO_MIN+' min.','erro');_ghToast('O agente do BI ENC não começou em '+ATRIX_ESPERA_INICIO_MIN+' min. Tente de novo mais tarde.','#ea580c',9000);}
+      return;
+    }
+    if(st.state==='running'){_pbiEncBotoes('BI ENC · '+Math.min(PBI_ENC_PASSOS,Number(st.step||0))+'/'+PBI_ENC_PASSOS,true,st.stepTxt||_PBI_ENC_TIT);return;}
+    _pbiEncParar();
+    if(st.lastRunConclusion==='success'&&st.aplicadoNoSync){
+      try{await restoreGhState();}catch(_){}
+      _ghToast('Base do B2B Encerrados atualizada pelo BI ENC e sincronizada para todos os aparelhos: '+(st.chamadosPainel??'—')+' chamados ('+(st.mesDe||'')+' a '+(st.mesAte||'')+').','var(--green-dk)',8000);
+    }else _ghToast('O agente do BI ENC falhou: '+(st.lastError||'erro não informado')+' — a base do B2B Encerrados não foi alterada.','#ea580c',10000);
+    _pbiEncPintar(st);
+  };
+  tick();_pbiEncTimer=setInterval(tick,5000);
+}
+async function _pbiEncRetomar(){
+  if(!canBiEnc())return;
+  const st=await _pbiEncLerStatus();if(!st||!st.lastRunStartedAt)return;
+  if(st.state==='running'&&(Date.now()-new Date(st.lastRunStartedAt).getTime())<30*60000){_pbiEncMonitorar(st.lastRunStartedAt);return;}
+  _pbiEncPintar(st);
+}
+setTimeout(()=>{try{_pbiEncBotoes('BI ENC',false);_pbiEncRetomar();}catch(_){}},5000);
+setInterval(async()=>{try{if(_pbiEncTimer||!canBiEnc()||document.hidden)return;const st=await _pbiEncLerStatus();if(!st)return;
+  if(st.state==='running'&&st.lastRunStartedAt&&(Date.now()-new Date(st.lastRunStartedAt).getTime())<30*60000){_pbiEncMonitorar(st.lastRunStartedAt);return;}_pbiEncPintar(st);}catch(_){}},120000);
+
 
 let atrixTriggerLog=[];
 const ATRIX_LOG_MAX=2000;
