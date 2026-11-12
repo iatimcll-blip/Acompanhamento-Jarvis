@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-12T11:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-12T12:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -2301,6 +2301,14 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 #panel-redir-sem .rs-ana-hd small{display:block;font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px}
 #panel-redir-sem .rs-ana-av{color:var(--orange);font-size:10.5px}
 #panel-redir-sem .rs-ana-kpi{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--tx)}
+#panel-redir-sem .rs-diag{margin:8px 0;padding:8px 10px;border:.5px solid var(--bd);border-radius:8px;background:var(--surface);font-size:12px;color:var(--tx)}
+#panel-redir-sem .rs-diag summary{cursor:pointer;font-weight:700;font-size:12.5px}
+#panel-redir-sem .rs-diag h4{margin:10px 0 4px;font-size:12px;color:var(--blue)}
+#panel-redir-sem .rs-diag p,#panel-redir-sem .rs-diag li{margin:3px 0;line-height:1.45}
+#panel-redir-sem .rs-diag ul,#panel-redir-sem .rs-diag ol{margin:3px 0 3px 18px;padding:0}
+#panel-redir-sem .rs-diag-t{border-collapse:collapse;margin:4px 0 6px;font-size:11.5px;width:auto;max-width:100%}
+#panel-redir-sem .rs-diag-t th,#panel-redir-sem .rs-diag-t td{border:.5px solid var(--bd);padding:3px 7px;text-align:left;white-space:nowrap}
+#panel-redir-sem .rs-diag-t th{background:var(--surface2);font-weight:700}
 #panel-redir-sem .rs-ana-kpi span:first-child{font-weight:700}
 #panel-redir-sem .rs-ana-vol{display:flex;flex-wrap:wrap;gap:4px 14px}
 #panel-redir-sem .rs-ana-vol b{color:var(--tx);font-size:13px}
@@ -40395,7 +40403,8 @@ function rsAnalisarFca(r,D){
     else if(f.tipo==='enc')x=rsAnalisarEnc(r,D,f.lbl,m);
     else if(f.tipo==='rede')x=RS_NK(r.indicador).startsWith('OUTLIER')?rsAnalisarRedeOutlier(r,D,f.lbl,m):rsAnalisarRede(r,D,f.lbl,m);
     else{const b=f.tipo==='anexo'?f.base:_rsB2cBase(f.m.b2c);if(!b)return null;
-      x=RS_NK(r.indicador)==='IRTDU'?rsAnalisarIrtDu(b,r,D,f.lbl,m):rsAnalisarBase(b,r,D.meta,{fonte:f.lbl,metaTxt:rsMetaTxt(r,D),periodo:m});}
+      x=RS_NK(r.indicador)==='IRTDU'?rsAnalisarIrtDu(b,r,D,f.lbl,m):rsAnalisarBase(b,r,D.meta,{fonte:f.lbl,metaTxt:rsMetaTxt(r,D),periodo:m});
+      if(x&&b.agenda)try{x.diag=rsAgendaDiag(b.agenda);}catch(e){console.warn('Redir: diagnóstico da agenda',e);}}
     if(!x)return null;
     if(f.m&&f.m.planta&&RS_NK(r.indicador)==='IRT'&&x._escopo)rsIrtComPlanta(x,r);
     try{rsTaxaCruzada(x,r,D);}catch(e){console.warn('Redir: taxa cruzada',e);}
@@ -40630,6 +40639,7 @@ async function rsAgendaLinhas(file){
     const g=grupos.get(cl)||{gerente:iG>=0?String(r[iG]||'').trim():'',m:new Map()};g.m.set(String(r[iM]).trim(),r);grupos.set(cl,g);
   }
   if(!grupos.size)throw new Error('nenhum cluster C.nn encontrado na planilha');
+  const _pivo=rsAgendaPivot(aoa,hi);
   const p2=n=>String(n).padStart(2,'0');const out=[];
   for(const [cl,g] of grupos){
     const met=[...g.m.keys()],kC=met.find(k=>RS_NK(k)==='CUMPRIDAS'),kP=met.find(k=>/DENTRO/.test(RS_NK(k)));
@@ -40645,8 +40655,129 @@ async function rsAgendaLinhas(file){
       add('Fora da agenda (sem detalhe na base)',false,Math.max(0,total-cump-listadas));
     }
   }
+  out.agenda=_pivo;/* números originais da planilha para o diagnóstico (rsAgendaDiag) */
   return out;
 }
+/* ── Diagnóstico do Cumprimento de Agenda (pedido 2026-11-12) ─────────────────────────────
+   Roteiro do usuário: resumo executivo, tabela por cluster, dias críticos (participação nas falhas
+   e % do mês sem o pior dia), comparação entre clusters, remanejamentos/atrasos × falhas (quanto as
+   categorias NÃO explicam), padrões (dia da semana, domingos, últimos dias), projeção para fechar
+   o mês em 95%, recomendações e perguntas para a gerência. Só usa os números da planilha; o total
+   de visitas é ESTIMADO (Cumpridas ÷ % Dentro, por dia, arredondado — ±1 visita). */
+function rsAgendaPivot(aoa,hi){
+  const h=aoa[hi].map(c=>c==null?'':String(c).trim());
+  const titulo=aoa.slice(0,hi).flat().filter(Boolean).join(' ');
+  const iC=h.findIndex(c=>RS_NK(c)==='CLUSTER'),iG=h.findIndex(c=>RS_NK(c)==='GERENTE'),iM=h.findIndex(c=>RS_NK(c)==='METRICA'),iT=h.findIndex(c=>/^TOTAL/.test(RS_NK(c)));
+  const dias=h.map((c,i)=>{const m=c.match(/^(\d{1,2})\/(\d{1,2})$/);return m?{i,dd:+m[1],mm:+m[2],lbl:c}:null;}).filter(Boolean);
+  const mY=titulo.match(/\b(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\/(\d{2})\b/i);
+  const ano=mY?2000+ +mY[2]:new Date().getFullYear();
+  const mMeta=titulo.match(/meta\s*(\d+(?:[.,]\d+)?)\s*%/i);
+  const ents=new Map();
+  for(const r of aoa.slice(hi+1)){
+    if(!r||!r[iC]||!r[iM])continue;const cl=String(r[iC]).trim();
+    const e=ents.get(cl)||{nome:cl,gerente:iG>=0?String(r[iG]||'').trim():'',consolidado:/consolidado/i.test(cl),met:{}};
+    e.met[String(r[iM]).trim()]={total:iT>=0?Number(r[iT]):null,dias:dias.map(d=>{const v=Number(r[d.i]);return isFinite(v)?v:0;})};
+    ents.set(cl,e);
+  }
+  return{titulo,ano,meta:mMeta?Number(mMeta[1].replace(',','.')):95,mes:mY?mY[1].toLowerCase():'',dias:dias.map(d=>({dd:d.dd,mm:d.mm,lbl:d.lbl})),ents:[...ents.values()]};
+}
+function rsAgendaDiag(ag){
+  if(!ag||!ag.ents||!ag.ents.length)return'';
+  const META=ag.meta||95,f1=v=>v==null||!isFinite(v)?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}),n0=v=>Number(v||0).toLocaleString('pt-BR');
+  const pp=v=>(v>0?'+':v<0?'−':'')+f1(Math.abs(v))+' p.p.';
+  const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
+  const dt=d=>new Date(Date.UTC(ag.ano,d.mm-1,d.dd));const wd=d=>SEM[dt(d).getUTCDay()];const dl=d=>d.lbl+' ('+wd(d)+')';
+  const kC=e=>Object.keys(e.met).find(k=>RS_NK(k)==='CUMPRIDAS'),kP=e=>Object.keys(e.met).find(k=>/DENTRO/.test(RS_NK(k)));
+  const cats=e=>Object.keys(e.met).filter(k=>k!==kC(e)&&k!==kP(e));
+  /* série diária estimada de uma entidade */
+  const serie=e=>{const c=e.met[kC(e)]||{dias:[]},p=e.met[kP(e)]||{dias:[]};
+    return ag.dias.map((d,i)=>{const cu=c.dias[i]||0,pc=p.dias[i]||0;let t=pc>0?Math.round(cu*100/pc):cu;
+      const lista=cats(e).reduce((s,k)=>s+((e.met[k].dias||[])[i]||0),0);if(t<cu)t=cu;
+      return{d,cu,pc,t,fora:t-cu,lista,vazio:!t&&!lista};});};
+  const resumoEnt=e=>{const s=serie(e).filter(x=>!x.vazio),C=s.reduce((a,x)=>a+x.cu,0),T=s.reduce((a,x)=>a+x.t,0),F=T-C;
+    const pOf=(e.met[kP(e)]||{}).total,abaixo=s.filter(x=>x.t&&x.pc<META);
+    const pior=s.filter(x=>x.t).slice().sort((a,b)=>a.pc-b.pc||b.fora-a.fora)[0]||null;
+    const semPior=pior&&T-pior.t>0?(C-pior.cu)/(T-pior.t)*100:null;
+    return{e,s,C,T,F,pOf:isFinite(pOf)?pOf:(T?C/T*100:null),pEst:T?C/T*100:null,abaixo,pior,semPior,N:s.filter(x=>x.t).length};};
+  const cons=ag.ents.find(e=>e.consolidado),cls=ag.ents.filter(e=>!e.consolidado);
+  const R=cls.map(resumoEnt),RC=cons?resumoEnt(cons):null;
+  const todos=RC?[RC,...R]:R;
+  const nome=x=>x.e.consolidado?'Consolidado':x.e.nome;
+  const ult=ag.dias[ag.dias.length-1],dim=new Date(Date.UTC(ag.ano,ult.mm,0)).getUTCDate();
+  let h='';const tab=(cab,linhas)=>'<table class="rs-diag-t"><thead><tr>'+cab.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>'+linhas.map(l=>'<tr>'+l.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+  const sec=t=>'<h4>'+t+'</h4>';
+  /* conferência */
+  const somaC=R.reduce((a,x)=>a+x.C,0);
+  const conf=RC?(RC.C===somaC?'✔ Cumpridas do consolidado ('+n0(RC.C)+') = soma dos clusters.':'⚠ Cumpridas do consolidado ('+n0(RC.C)+') ≠ soma dos clusters ('+n0(somaC)+') — a planilha tem clusters fora desta lista.'):'';
+  /* 1 resumo */
+  h+=sec('1. Resumo executivo');
+  h+='<p>'+todos.map(x=>'<b>'+eh(nome(x))+'</b>: '+f1(x.pOf)+'% dentro da agenda no mês ('+pp(x.pOf-META)+' '+(x.pOf>=META?'acima':'abaixo')+' da meta de '+META+'%)').join('<br>')+'</p>';
+  h+='<p class="rs-note">Dados até '+eh(ult.lbl)+'. Total de visitas e "fora da meta" são <b>estimativas</b> (Cumpridas ÷ % Dentro por dia, arredondado; ±1 visita). '+eh(conf)+'</p>';
+  /* 2 tabela */
+  h+=sec('2. Por cluster')+tab(['Cluster','Cumpridas','Total estimado','Fora da meta','% Dentro','Dias abaixo da meta','Pior dia'],
+    todos.map(x=>[eh(nome(x)),n0(x.C),n0(x.T),n0(x.F),f1(x.pOf)+'%',x.abaixo.length+' de '+x.N,x.pior?eh(dl(x.pior.d))+' — '+f1(x.pior.pc)+'%':'—']));
+  /* 3 dias críticos */
+  h+=sec('3. Dias críticos (abaixo de '+META+'%)');
+  todos.forEach(x=>{
+    if(!x.abaixo.length){h+='<p><b>'+eh(nome(x))+'</b>: nenhum dia abaixo da meta.</p>';return;}
+    h+='<p><b>'+eh(nome(x))+'</b> — sem o pior dia ('+eh(x.pior.d.lbl)+') o mês ficaria em <b>'+f1(x.semPior)+'%</b> (hoje '+f1(x.pEst)+'% estimado).</p>'+
+      tab(['Dia','% Dentro','Visitas (est.)','Fora da meta','% das falhas do mês'],x.abaixo.slice().sort((a,b)=>a.pc-b.pc).map(s=>[eh(dl(s.d)),f1(s.pc)+'%',n0(s.t),n0(s.fora),x.F?f1(s.fora/x.F*100)+'%':'—']));
+  });
+  /* 4 comparação */
+  h+=sec('4. Comparação entre clusters');
+  if(R.length){const totF=R.reduce((a,x)=>a+x.F,0),totT=R.reduce((a,x)=>a+x.T,0);
+    const ord=R.slice().sort((a,b)=>b.F-a.F);
+    h+='<ul>'+ord.map(x=>'<li><b>'+eh(nome(x))+'</b>: '+f1(totT?x.T/totT*100:0)+'% do volume e '+f1(totF?x.F/totF*100:0)+'% das visitas fora da meta ('+n0(x.F)+'); '+x.abaixo.length+' dia(s) abaixo de '+META+'%'+(x.pior?' — pior em '+eh(dl(x.pior.d))+' ('+f1(x.pior.pc)+'%)':'')+'.</li>').join('')+'</ul>';
+    const puxa=ord.find(x=>x.pOf<(RC?RC.pOf:META))||ord[0];
+    if(puxa)h+='<p>Quem puxa o resultado para baixo: <b>'+eh(nome(puxa))+'</b> — '+(puxa.F===ord[0].F?'maior número de visitas fora da meta':'menor % Dentro')+(puxa.pior&&puxa.pior.fora>=Math.max(3,puxa.F*.25)?', com queda concentrada em '+eh(dl(puxa.pior.d))+' ('+f1(puxa.F?puxa.pior.fora/puxa.F*100:0)+'% das falhas do mês)':'')+'.</p>';}
+  /* 5 categorias */
+  h+=sec('5. Remanejamentos e atrasos × falhas');
+  todos.forEach(x=>{const cs=cats(x.e);const tot=k=>{const m=x.e.met[k];return m.total!=null&&isFinite(m.total)?m.total:(m.dias||[]).reduce((a,v)=>a+v,0);};
+    const somaCat=cs.reduce((a,k)=>a+tot(k),0),nexp=Math.max(0,x.F-somaCat);
+    h+='<p><b>'+eh(nome(x))+'</b></p>'+tab(['Categoria','Total do mês','Dias com ocorrência'],cs.map(k=>[eh(k),n0(tot(k)),(x.e.met[k].dias||[]).filter(v=>v>0).length+' de '+x.N]))+
+      '<p>Categorias somam <b>'+n0(somaCat)+'</b> contra <b>'+n0(x.F)+'</b> visitas fora da meta (estimadas): <b>'+n0(nexp)+' ('+f1(x.F?nexp/x.F*100:0)+'%) não são explicadas</b> pelas categorias da planilha.</p>';});
+  /* 6 padrões */
+  h+=sec('6. Padrões');
+  const base6=RC||R[0];
+  if(base6){const porWd=new Map();base6.s.forEach(x=>{if(!x.t)return;const w=wd(x.d);const o=porWd.get(w)||{t:0,c:0,n:0};o.t+=x.t;o.c+=x.cu;o.n++;porWd.set(w,o);});
+    h+='<p><b>'+eh(nome(base6))+' por dia da semana</b></p>'+tab(['Dia','Dias','Visitas (est.)','% Dentro'],SEM.filter(w=>porWd.has(w)).map(w=>{const o=porWd.get(w);return[w,o.n,n0(o.t),f1(o.t?o.c/o.t*100:0)+'%'];}));
+    const doms=base6.s.filter(x=>x.t&&wd(x.d)==='dom');
+    if(doms.length)h+='<p>Domingos: '+doms.map(x=>eh(x.d.lbl)+' com '+n0(x.t)+' visita(s) — cada falha pesa '+f1(100/x.t)+' p.p. no dia ('+f1(x.pc)+'%)').join('; ')+'. Em dias de baixo volume um único caso derruba o percentual.</p>';
+    const comT=base6.s.filter(x=>x.t),u3=comT.slice(-3),ant=comT.slice(0,-3);
+    const pc=a=>{const t=a.reduce((s,x)=>s+x.t,0);return t?a.reduce((s,x)=>s+x.cu,0)/t*100:null;};
+    if(u3.length&&ant.length)h+='<p>Tendência: últimos 3 dias ('+u3.map(x=>x.d.lbl).join(', ')+') com '+f1(pc(u3))+'% contra '+f1(pc(ant))+'% nos dias anteriores ('+pp(pc(u3)-pc(ant))+').</p>';}
+  /* 7 projeção */
+  h+=sec('7. Projeção para fechar o mês em '+META+'%');
+  const rest=Math.max(0,dim-ult.dd);
+  h+=tab(['Cluster','Ritmo (visitas/dia)','Total previsto no mês','Fora toleradas no mês','Fora já ocorridas','Ainda toleradas','% Dentro necessário nos '+rest+' dias restantes'],
+    todos.map(x=>{const V=x.N?x.T/x.N:0,Tm=Math.round(x.T+V*rest),tol=Math.floor(Tm*(1-META/100)),ainda=tol-x.F,restT=Math.round(V*rest);
+      const nec=restT?Math.max(0,Math.ceil(Tm*META/100)-x.C)/restT*100:null;
+      return[eh(nome(x)),f1(V),n0(Tm),n0(tol),n0(x.F),ainda>=0?n0(ainda):'<b style="color:var(--red)">'+n0(ainda)+'</b>',nec==null?'—':nec>100?'<b style="color:var(--red)">inviável ('+f1(nec)+'%)</b>':f1(nec)+'%'];}));
+  h+='<p class="rs-note">Ritmo = média de visitas por dia com dados até '+eh(ult.lbl)+' (estimativa); '+rest+' dia(s) restantes no mês.</p>';
+  /* 8 recomendações */
+  h+=sec('8. Recomendações');const rec=[];
+  const ordF=R.slice().sort((a,b)=>b.F-a.F);
+  if(ordF[0]&&ordF[0].pOf<META)rec.push('Plano de recuperação em <b>'+eh(nome(ordF[0]))+'</b> ('+f1(ordF[0].pOf)+'%, '+n0(ordF[0].F)+' visitas fora): revisar a agenda do dia seguinte e confirmar janela com o cliente na véspera.');
+  const piorG=R.filter(x=>x.pior).sort((a,b)=>a.pior.pc-b.pior.pc)[0];
+  if(piorG&&piorG.pior.pc<85)rec.push('Investigar o dia <b>'+eh(dl(piorG.pior.d))+'</b> em <b>'+eh(nome(piorG))+'</b> ('+f1(piorG.pior.pc)+'%, '+n0(piorG.pior.fora)+' fora): checar escala, ausências e volume atípico.');
+  const nexpT=todos.map(x=>{const somaCat=cats(x.e).reduce((a,k)=>{const m=x.e.met[k];return a+(m.total!=null&&isFinite(m.total)?m.total:0);},0);return{x,n:Math.max(0,x.F-somaCat)};});
+  const nx=(RC?nexpT.find(o=>o.x===RC):nexpT[0]);
+  if(nx&&nx.x.F&&nx.n/nx.x.F>.5)rec.push('Exigir o <b>motivo de cada visita fora do horário</b>: '+f1(nx.n/nx.x.F*100)+'% das falhas ('+n0(nx.n)+') não têm categoria na planilha.');
+  const tm=todos.map(x=>({x,v:Object.keys(x.e.met).filter(k=>/TARDE|MANHA|NCA/.test(RS_NK(k))).reduce((a,k)=>a+(x.e.met[k].total||0),0)})).filter(o=>!o.x.e.consolidado).sort((a,b)=>b.v-a.v)[0];
+  if(tm&&tm.v>0)rec.push('Controle de remanejamentos (manhã/tarde) em <b>'+eh(nome(tm.x))+'</b>: '+n0(tm.v)+' no mês — aprovação prévia e registro de NCA.');
+  if(base6&&base6.s.some(x=>x.t&&wd(x.d)==='dom'&&x.pc<META))rec.push('Domingos com baixo volume: acompanhar cada visita individualmente (um caso derruba o dia).');
+  if(!rec.length)rec.push('Manter a rotina atual: todos os clusters dentro da meta.');
+  h+='<ol>'+rec.slice(0,5).map(t=>'<li>'+t+'</li>').join('')+'</ol>';
+  h+='<p><b>Dados adicionais a pedir:</b> motivo de cada visita fora do horário, cancelamentos, reagendamentos solicitados pelo cliente, não comparecimento (cliente ausente) e horário real de chegada.</p>';
+  /* perguntas */
+  h+=sec('Perguntas para a gerência');const q=[];
+  if(piorG&&piorG.pior)q.push('O que aconteceu em '+dl(piorG.pior.d)+' em '+nome(piorG)+' ('+f1(piorG.pior.pc)+'%, '+n0(piorG.pior.fora)+' visitas fora)?');
+  if(nx&&nx.n)q.push('Quais motivos explicam as '+n0(nx.n)+' visitas fora do horário sem categoria na planilha?');
+  if(RC||R[0]){const x=RC||R[0],V=x.N?x.T/x.N:0;q.push('É viável manter ~'+f1(V)+' visitas/dia com '+META+'% dentro da agenda nos '+rest+' dias restantes — qual o plano?');}
+  h+='<ol>'+q.slice(0,3).map(t=>'<li>'+eh(t)+'</li>').join('')+'</ol>';
+  return h;
+}
+
 async function rsLerPlanilhaObjs(file){
   const buf=await file.arrayBuffer();
   if(typeof b2cParseXlsxInWorker==='function'){try{return await b2cParseXlsxInWorker(buf);}catch(e){console.warn('Redir: leitura no worker falhou, lendo na página',e);}}
@@ -40718,6 +40849,7 @@ async function rsOnIndFile(inp){
     const aviso=await rsVerificarBase(ind,m,planta,file,objs);
     if(aviso&&!confirm(aviso)){_ghToast('Anexo cancelado — escolha a base correta.','var(--orange)',3500);return;}
     const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name,m);b.at=new Date().toISOString();
+    if(objs.agenda)b.agenda=objs.agenda;
     const chave=m?m.modelo:ind;
     await rsIndLoad();RS_IND[chave]=b;await rsIndSalvar();
     _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — visível para todos os usuários até alguém limpar','var(--green-dk)',4500);
@@ -40735,6 +40867,7 @@ function rsPintaAnalise(box,a,aplicar){
     '<div class="rs-ana-vol">'+vol+'</div>'+((a.kpis||[]).length?'<div class="rs-ana-kpi">'+a.kpis.map(k=>'<span>'+eh(k)+'</span>').join('')+'</div>':'')+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
     '<div class="rs-ana-dims">'+a.dims.map(li).join('')+(a.reinc?'<div class="rs-ana-dim"><b>Reincidência</b><span>'+a.reinc.reincidentes+' contratos com 2+ eventos <em>'+a.reinc.eventos+' eventos</em></span></div>':'')+'</div>'+
     (a.proj?'<div class="rs-proj"><div class="rs-proj-cv"><canvas aria-label="Projeção de '+eh(a.proj.ind)+'"></canvas></div><div class="rs-proj-txt"><b><i class="ti ti-trending-up"></i> Projeção</b><p>'+eh(a.proj.texto.charAt(0).toUpperCase()+a.proj.texto.slice(1))+'</p><small>Ritmo = média das 2 últimas semanas com valor; fechamento do mês ponderado pelos dias (aproximação). Este texto já está na sugestão de FCA abaixo.</small></div></div>':'')+
+    (a.diag?'<details class="rs-diag" open><summary><i class="ti ti-report-analytics"></i> Diagnóstico do mês — Cumprimento de Agenda</summary>'+a.diag+'</details>':'')+
     '<div class="rs-ana-sug"><b>Sugestão para o FCA</b>'+(a.sug.causa?'<pre>CAUSA\n'+eh(a.sug.causa)+'\n\nAÇÃO\n'+eh(a.sug.acao)+'</pre>':'<p class="rs-note">Os dados não mostram concentração clara (cidade, motivo, técnico). Use a análise acima para descrever a causa.</p>')+'</div>';
   const bar=document.createElement('div');bar.className='acts';
   if(a.sug.causa){const u=document.createElement('button');u.type='button';u.className='rs-btn pri';u.textContent='Usar na justificativa';u.onclick=()=>aplicar(a);bar.appendChild(u);}
