@@ -100,6 +100,31 @@ function sessao() {
   if (!fs.existsSync(STATE_FILE)) throw Object.assign(new Error('Sessão do Power BI não configurada — é preciso refazer o login do Power BI.'), { code: 'login_required' });
 }
 
+/* (2026-11-12) Avisos do Power BI na frente do relatório (ex.: "Suas avaliações gratuitas do Microsoft
+   Fabric e do Power BI terminam em N dias") bloqueavam o clique nas barras — o Total não mudava e a rodada
+   falhava. O aviso só fecha marcando "Entendo que itens… serão excluídos", que é um reconhecimento em nome
+   da conta do usuário: o agente NÃO marca nada. Tenta Esc e, se continuar, só ESCONDE o aviso nesta sessão
+   automática (nada muda na conta nem no relatório). */
+async function fecharAvisos(page) {
+  for (let t = 0; t < 2; t++) {
+    const tem = await page.evaluate(() => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], mat-dialog-container, .cdk-overlay-pane')]
+      .some(d => d.getBoundingClientRect().width > 50 && /avalia[cç][õo]es gratuitas|trial|Fabric|Comprar o Fabric|licen[cç]a/i.test(d.innerText || ''))).catch(() => false);
+    if (!tem) return false;
+    if (t === 0) { await page.keyboard.press('Escape').catch(() => {}); await page.waitForTimeout(800); continue; }
+    const n = await page.evaluate(() => {
+      let n = 0;
+      document.querySelectorAll('[role="dialog"], [role="alertdialog"], mat-dialog-container, .cdk-overlay-pane').forEach(d => {
+        if (/avalia[cç][õo]es gratuitas|trial|Fabric|Comprar o Fabric|licen[cç]a/i.test(d.innerText || '')) { (d.closest('.cdk-overlay-pane') || d).style.display = 'none'; n++; }
+      });
+      document.querySelectorAll('.cdk-overlay-backdrop').forEach(b => { b.style.display = 'none'; b.style.pointerEvents = 'none'; });
+      return n;
+    }).catch(() => 0);
+    log('Aviso do Power BI escondido nesta sessão (sem marcar nada):', n);
+    await page.waitForTimeout(500);
+    return true;
+  }
+  return true;
+}
 async function lerTotal(page) {
   const lbl = await page.locator('svg[aria-label^="Total "]').first().getAttribute('aria-label');
   const n = parseInt(String(lbl).replace(/[^\d]/g, ''), 10);
@@ -146,6 +171,7 @@ async function exportar(browser) {
     if (ok === 'login') throw Object.assign(new Error('A sessão do Power BI expirou — refaça o login e atualize o secret PBI_SESSION.'), { code: 'login_required' });
     if (ok !== 'ok') throw new Error('O relatório não carregou em 2,5 min (contador Total não apareceu).');
     await page.waitForTimeout(4000);
+    await fecharAvisos(page);
     const totalCcs = await lerTotal(page); /* Total do Dashboard Geral, sem filtros */
     const gerenteTxt = () => page.evaluate(() => { const h = [...document.querySelectorAll('h3')].find(x => x.textContent.trim() === 'Gerente'); return h ? h.closest('visual-container').innerText.replace(/\s+/g, ' ') : null; });
     const nomePagina = () => page.evaluate(() => { const x = [...document.querySelectorAll('*')].find(el => el.tagName === 'EXPLORATION'); return x ? x.getAttribute('aria-label') || '' : ''; });
@@ -184,6 +210,7 @@ async function exportar(browser) {
     log('Página', await nomePagina(), '| Total B2B (Gerente):', totalGerente);
 
     await status({ step: 4, stepTxt: 'Selecionando CMO - Reparo', totalGerente });
+    await fecharAvisos(page);
     let soma = 0;
     for (let i = 0; i < BARRAS.length; i++) {
       const b = await localizarBarra(page, BARRAS[i]);
@@ -197,6 +224,7 @@ async function exportar(browser) {
     log('Total filtrado:', soma);
 
     await status({ step: 5, stepTxt: 'Drill-through › Base de Reparos', totalFiltrado: soma });
+    await fecharAvisos(page);
     await page.locator('svg[aria-label^="Total "]').first().click({ button: 'right' });
     await page.getByText('Drill-through', { exact: true }).first().hover();
     await page.getByText('Base de Reparos', { exact: true }).first().click();
