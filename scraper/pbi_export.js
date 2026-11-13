@@ -160,6 +160,31 @@ async function login() {
 }
 
 /* ── Passos no Power BI ──────────────────────────────────────────────────── */
+/* (2026-11-12) Avisos do Power BI na frente do relatório (ex.: "Suas avaliações gratuitas do Microsoft
+   Fabric e do Power BI terminam em N dias") bloqueavam o clique nas barras — o Total não mudava e a rodada
+   falhava. O aviso só fecha marcando "Entendo que itens… serão excluídos", que é um reconhecimento em nome
+   da conta do usuário: o agente NÃO marca nada. Tenta Esc e, se continuar, só ESCONDE o aviso nesta sessão
+   automática (nada muda na conta nem no relatório). */
+async function fecharAvisos(page) {
+  for (let t = 0; t < 2; t++) {
+    const tem = await page.evaluate(() => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], mat-dialog-container, .cdk-overlay-pane')]
+      .some(d => d.getBoundingClientRect().width > 50 && /avalia[cç][õo]es gratuitas|trial|Fabric|Comprar o Fabric|licen[cç]a/i.test(d.innerText || ''))).catch(() => false);
+    if (!tem) return false;
+    if (t === 0) { await page.keyboard.press('Escape').catch(() => {}); await page.waitForTimeout(800); continue; }
+    const n = await page.evaluate(() => {
+      let n = 0;
+      document.querySelectorAll('[role="dialog"], [role="alertdialog"], mat-dialog-container, .cdk-overlay-pane').forEach(d => {
+        if (/avalia[cç][õo]es gratuitas|trial|Fabric|Comprar o Fabric|licen[cç]a/i.test(d.innerText || '')) { (d.closest('.cdk-overlay-pane') || d).style.display = 'none'; n++; }
+      });
+      document.querySelectorAll('.cdk-overlay-backdrop').forEach(b => { b.style.display = 'none'; b.style.pointerEvents = 'none'; });
+      return n;
+    }).catch(() => 0);
+    log('Aviso do Power BI escondido nesta sessão (sem marcar nada):', n);
+    await page.waitForTimeout(500);
+    return true;
+  }
+  return true;
+}
 async function lerTotal(page) {
   const lbl = await page.locator('svg[aria-label^="Total "]').first().getAttribute('aria-label');
   const n = parseInt(String(lbl).replace(/[^\d]/g, ''), 10);
@@ -207,10 +232,12 @@ async function exportar(browser) {
     await page.waitForTimeout(3000);
 
     await status({ step: 2, stepTxt: 'Lendo o Total da página CCS' });
+    await fecharAvisos(page);
     const totalCcs = await lerTotal(page);
     log('Total CCS:', totalCcs);
 
     await status({ step: 3, stepTxt: 'Selecionando CMO - Reparo + CMO - REPARO SWAP' });
+    await fecharAvisos(page);
     let soma = 0;
     for (let i = 0; i < BARRAS.length; i++) {
       const b = await localizarBarra(page, BARRAS[i]);
@@ -225,6 +252,7 @@ async function exportar(browser) {
 
     await status({ step: 4, stepTxt: 'Drill-through › Base de Reparos', totalCcs, totalFiltrado: soma });
     const card = page.locator('svg[aria-label^="Total "]').first();
+    await fecharAvisos(page);
     await card.click({ button: 'right' });
     await page.getByText('Drill-through', { exact: true }).first().hover();
     await page.getByText('Base de Reparos', { exact: true }).first().click();
