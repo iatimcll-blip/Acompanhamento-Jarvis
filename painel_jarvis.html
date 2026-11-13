@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-13T15:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-13T17:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -40457,6 +40457,7 @@ function rsAnalisarFca(r,D){
       :sv&&sv.st?'FCA da SEMANA ('+r.semana+'): mês e semana fora da meta ('+rsFmt(r.indicador,sv.mr.valor)+' no mês · '+rsFmt(r.indicador,r.valor_semana)+' na '+r.semana+') — análise e sugestão sobre a semana, comparada com a anterior'
       :'FCA da SEMANA ('+r.semana+') — a planilha não traz o valor da semana para comparar com a meta';}
   try{const pj=rsProjecao(r,D);if(pj){a.proj=pj;if(a.sug)a.sug.causa=(a.sug.causa?a.sug.causa+'\n\n':'')+'PROJEÇÃO: '+pj.texto;}}catch(e){console.warn('Redir: projeção',e);}
+  if(/^EFICIENCIAME/.test(RS_NK(r.indicador))&&f.tipo==='anexo'&&f.base)try{const dg=rsMeDiag(f.base,r,D,modo);if(dg){a.diag=dg;a.diagTit='Análise com FCA — Eficiência ME (mudança de endereço)';}}catch(e){console.warn('Redir: análise Eficiência ME',e);}
   a.fonteTipo=f.tipo;return a;
 }
 /* ── Projeção (pedido 2026-10-30): série semanal do cluster × indicador (planilha Redir; nos cards criados
@@ -40714,6 +40715,222 @@ function rsAgendaPivot(aoa,hi){
   }
   return{titulo,ano,meta:mMeta?Number(mMeta[1].replace(',','.')):95,mes:mY?mY[1].toLowerCase():'',dias:dias.map(d=>({dd:d.dd,mm:d.mm,lbl:d.lbl})),ents:[...ents.values()]};
 }
+/* ═══ Redir · Eficiência ME — análise com FCA (pedido do usuário 2026-11-13) ═══
+   Segue o roteiro do prompt de analista de operações de campo: tabela resumo → detalhamento (motivos,
+   unidade/cidade, reincidência, tempo abertura→conclusão, origem da causa, eficiência por dimensão × meta)
+   → FCA por problema em ordem de impacto → prioridades → limites. Só números da base: nada inventado.
+   Aceita o modelo Modelos\Eficiencia ME (Realizada/Status/1º Motivo/Último Motivo OS…) e o layout do
+   relatório de improdutivas (Motivo improdutiva/Motivo conclusao/Unidade/Cidade/Gerente/Fila). */
+const RS_ME_COLS={contrato:['Contrato'],chamado:['Chamado'],cluster:['Cluster'],uf:['UF'],
+  dtAb:['Data Abertura','Data abertura','Data Abertura Chamado'],dtConc:['Data ME','Data conclusão','Data Conclusao','Data Conclusão'],
+  realizada:['Realizada'],canc:['Cancelamento'],tipoCanc:['Tipo Cancelamento'],m1:['1º Motivo','1 Motivo'],
+  mImp:['Motivo improdutiva','Motivo Improdutiva','Motivo improdutivo'],mUlt:['Ultimo Motivo OS','Último Motivo OS'],smUlt:['Ultimo Submotivo OS','Último Submotivo OS'],
+  mConc:['Motivo conclusao','Motivo conclusão','Motivo Conclusão','Motivo Conclusao'],resp:['Responsavel Ação','Responsável Ação','Responsavel Acao'],
+  status:['Status'],unidade:['Unidade'],cidade:['Cidade','Cidade_UF'],gerente:['Gerente'],empresa:['Empresa'],fila:['Fila','FILA']};
+/* no anexo: guarda só as colunas desta análise (a base reduzida do Redir não traz Chamado/Data ME/Unidade…) */
+function rsMeExtrair(objs){
+  if(!objs||!objs.length)return null;
+  const nh=new Map();objs.slice(0,50).forEach(o=>Object.keys(o).forEach(h=>{if(!nh.has(RS_NK(h)))nh.set(RS_NK(h),h);}));
+  const cols=[],src=[];
+  for(const[k,c]of Object.entries(RS_ME_COLS)){const h=c.map(x=>nh.get(RS_NK(x))).find(Boolean);if(h){cols.push(k);src.push(h);}}
+  if(!cols.includes('contrato')&&!cols.includes('chamado'))return null;
+  const rows=[];
+  for(const o of objs){const v=src.map(h=>{const x=o[h];return x===''||x==null?null:x;});
+    const id=cols.map((k,i)=>k==='contrato'||k==='chamado'?v[i]:null).filter(x=>x!=null);
+    if(!id.length)continue;if(/filtros aplicados/i.test(String(id[0])))continue;rows.push(v);}
+  return rows.length?{cols,rows,n:rows.length}:null;
+}
+/* base anexada antes desta versão (sem b.me): usa o que a base reduzida tem */
+function rsMeFonte(b){
+  if(b&&b.me&&b.me.rows)return b.me;
+  if(!b||!b.cols)return null;
+  const cols=[],idx=[];
+  for(const[k,c]of Object.entries(RS_ME_COLS)){const i=b.cols.findIndex(h=>c.some(x=>RS_NK(x)===RS_NK(h)));if(i>=0){cols.push(k);idx.push(i);}}
+  if(!cols.includes('contrato'))return null;
+  return{cols,rows:b.rows.map(r=>idx.map(i=>r[i])).filter(v=>v[cols.indexOf('contrato')]!=null&&!/filtros aplicados/i.test(String(v[cols.indexOf('contrato')]))),legado:true};
+}
+function rsMeOrigem(m){
+  const t=RS_NK(m||'');
+  if(!t)return'Sem motivo informado';
+  if(/CONCLU/.test(t))return'Concluída (sem motivo de improdutiva)';
+  if(/ABERTURAINDEVIDA|NAOSOLICITOU|TESTE|DUPLIC|INABILITAD|INDEVID|JAATENDID|JAREALIZAD/.test(t))return'Triagem na abertura';
+  if(/INFRAESTRUTURA|VIABILIDADE|DROP|METRAGEM|SEMPORTA|CTO|COBERTURA|SEMREDE|POSTE|LOTAD|FORADAAREA|FORADEAREA/.test(t))return'Viabilidade técnica';
+  if(/ENDERECONAOLOCALIZADO|ENDERECOINCORRETO|ENDERECOERRADO|CADASTR|TELEFONE|CONTATO/.test(t))return'Dado cadastral';
+  if(/AUSENTE|CASAFECHADA|REAGEND|DESIST|CLIENTE|RECUSA/.test(t))return'Cliente (ausência / reagendamento / desistência)';
+  if(/AGENDA|TECNICO|ATRASO|MATERIAL|EQUIPAMENTO|EXECU|CLIMA|CHUVA|ROTA/.test(t))return'Execução em campo';
+  return'Outros motivos';
+}
+const RS_ME_EVITAVEL={'Triagem na abertura':'evitável na abertura','Viabilidade técnica':'evitável na consulta de viabilidade','Dado cadastral':'evitável na validação do cadastro'};
+const RS_ME_TPL={
+  'Triagem na abertura':{h:'chamado aberto sem checagem (cliente não pediu a mudança, abertura de teste ou contrato inabilitado) no atendimento/comercial antes de ir para a fila de campo',
+    a:'Checklist obrigatório na abertura: confirmar o pedido com o cliente, contrato habilitado e nada de chamado de teste na fila de campo. Auditoria diária dos chamados novos antes do despacho, com devolutiva para quem abriu.'},
+  'Viabilidade técnica':{h:'viabilidade do endereço novo (porta/CTO, metragem do drop, infraestrutura) não consultada antes de agendar, ou cadastro de rede desatualizado',
+    a:'Consultar viabilidade antes de agendar a visita. Sem viabilidade: tratar com Rede/Projetos e avisar o comercial antes de enviar técnico. Lista semanal dos endereços sem viabilidade por unidade.'},
+  'Dado cadastral':{h:'endereço novo incompleto/sem referência ou telefone de contato desatualizado no cadastro',
+    a:'Validar endereço completo (CEP, número, complemento, referência e localização) e telefone na abertura; contato prévio com o cliente quando faltar dado.'},
+  'Cliente (ausência / reagendamento / desistência)':{h:'agenda não confirmada com o cliente na véspera/no dia ou janela de atendimento longa',
+    a:'Confirmação ativa D-1 e no dia (WhatsApp/ligação) antes do deslocamento; reagendar sem deslocar a equipe; registrar o motivo da desistência para o comercial.'},
+  'Execução em campo':{h:'capacidade/roteirização da equipe, atraso na agenda ou falta de material',
+    a:'Acompanhar a agenda do dia por técnico, redistribuir rotas no meio do dia e conferir material antes da saída.'},
+  'Outros motivos':{h:'motivo registrado fora das categorias padrão',a:'Revisar os motivos listados com a unidade e padronizar o apontamento na baixa da OS.'},
+  'Sem motivo informado':{h:'baixa sem motivo de improdutiva registrado',a:'Tornar o motivo obrigatório na baixa da OS e cobrar o apontamento por unidade.'},
+  'Concluída (sem motivo de improdutiva)':{h:'OS concluída mas mudança não marcada como realizada (pendência de baixa ou etapa posterior)',a:'Conferir com a unidade se a mudança foi de fato concluída e corrigir a baixa.'}};
+function rsMePeriodo(r,D,modo){
+  const PER=rsPer();
+  if(PER)return{lbl:'período '+PER.lbl,antLbl:'período anterior ('+PER.antLbl+')',k:d=>rsPerKey(d,PER)};
+  const mk=rsMesKeyDe(D);
+  if((modo==='mes'||modo==='ambos')&&mk){const ak=rsMesAntKey(mk),key=d=>d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');
+    return{lbl:rsMesLblKey(mk),antLbl:rsMesLblKey(ak),k:d=>{const x=key(d);return x===mk?'P':x===ak?'A':null;}};}
+  const w=+String(r&&r.semana||'').replace(/\D/g,'');
+  if(w){const y=mk?+mk.slice(0,4):new Date().getFullYear(),aw=w>1?{y,w:w-1}:{y:y-1,w:52};
+    return{lbl:'W'+w,antLbl:'W'+aw.w,k:d=>{const x=rsIsoWeek(d);return x.y===y&&x.w===w?'P':x.y===aw.y&&x.w===aw.w?'A':null;}};}
+  return null;
+}
+function rsMeDiag(base,r,D,modo){
+  const F=rsMeFonte(base);if(!F||!F.rows.length)return'';
+  const C=F.cols,ix=k=>C.indexOf(k),g=(row,k)=>{const i=ix(k);return i<0?null:row[i];},has=k=>ix(k)>=0&&F.rows.some(x=>x[ix(k)]!=null&&x[ix(k)]!=='');
+  const n0=v=>rsNf0.format(v||0),f1=v=>v==null||!isFinite(v)?'—':rsNf1.format(v),pc=(a,b)=>b?f1(a/b*100)+'%':'—';
+  const pp=v=>v==null||!isFinite(v)?'—':(v>0?'+':v<0?'−':'')+rsNf1.format(Math.abs(v))+' p.p.';
+  const dd=d=>d?String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+String(d.getUTCFullYear()).slice(2):'—';
+  const txt=v=>v==null?'':String(v).trim();
+  const tab=(cab,linhas)=>'<table class="rs-diag-t"><thead><tr>'+cab.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>'+linhas.map(l=>'<tr>'+l.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+  const sec=t=>'<h4>'+t+'</h4>';
+  const avisos=[];
+  /* cluster do FCA (bases ME não têm o código C.nn: nome do cluster ou UF) */
+  let rows=F.rows;
+  {const uf=_rsUfDoCluster(r.cluster),nm=RS_NK(String(r.cluster||'').replace(/^C\.?\s*\d+\s*\|?/i,''));
+    const ok=row=>{const c=RS_NK(g(row,'cluster')),u=RS_NK(g(row,'uf'));return(uf&&u===uf)||(c&&nm&&(c===nm||(nm.length>=4&&(c.startsWith(nm.slice(0,6))||nm.startsWith(c)))))||(uf&&c===uf);};
+    const f=rows.filter(ok);if(f.length)rows=f;else avisos.push('a base não tem linhas do cluster '+r.cluster+' — analisei a base inteira');}
+  /* período da análise (mesmo do FCA) pela Data de abertura */
+  const dAb=row=>rsToDate(g(row,'dtAb')),dCo=row=>rsToDate(g(row,'dtConc'));
+  const P=rsMePeriodo(r,D,modo);let perLbl='base inteira',ant=[];
+  if(P&&has('dtAb')){const pr=rows.filter(x=>{const d=dAb(x);return d&&P.k(d)==='P';});ant=rows.filter(x=>{const d=dAb(x);return d&&P.k(d)==='A';});
+    if(pr.length){rows=pr;perLbl=P.lbl;}else{const ds=rows.map(dAb).filter(Boolean).sort((a,b)=>a-b);avisos.push('a base não tem chamados abertos em '+P.lbl+(ds.length?' (datas de '+dd(ds[0])+' a '+dd(ds[ds.length-1])+')':'')+' — analisei a base inteira');ant=[];}}
+  if(!rows.length)return'';
+  /* produtiva × improdutiva */
+  const temReal=has('realizada'),temImp=has('mImp'),temConc=has('mConc');
+  const produtiva=row=>{if(temReal)return Number(g(row,'realizada'))===1;
+    if(temImp&&txt(g(row,'mImp')))return false;if(temConc)return /CONCLU|REALIZAD|PRODUTIV/.test(RS_NK(g(row,'mConc')))&&!/IMPRODUT/.test(RS_NK(g(row,'mConc')));return null;};
+  const st=rows.map(produtiva),soImp=!temReal&&st.every(x=>x===false||x===null)&&temImp;
+  const motivo=row=>txt(g(row,'mImp'))||txt(g(row,'mUlt'))||txt(g(row,'m1'));
+  const emAberto=row=>/^ABERT/.test(RS_NK(g(row,'status')))&&!motivo(row);
+  const origemDe=row=>emAberto(row)?'Ainda em aberto (sem baixa)':rsMeOrigem(motivo(row));
+  const tot=rows.length,contr=new Set(rows.map(x=>txt(g(x,'contrato'))).filter(Boolean)).size;
+  const prod=st.filter(x=>x===true).length,imp=rows.filter((x,i)=>st[i]!==true);
+  const efic=soImp?null:tot?prod/tot*100:null;
+  const efAnt=(()=>{if(soImp||!ant.length)return null;return ant.filter(x=>produtiva(x)===true).length/ant.length*100;})();
+  /* meta da matriz */
+  let meta=null;{const mm=(D&&D.matriz||[]).find(x=>x.cluster===r.cluster&&x.indicador===r.indicador);if(mm&&mm.meta!=null&&isFinite(+mm.meta)){meta=+mm.meta;if(meta<=1.5)meta*=100;}}
+  /* status / cancelamento */
+  const cnt=(arr,fn)=>{const m=new Map();arr.forEach(x=>{const v=fn(x);if(!v)return;m.set(v,(m.get(v)||0)+1);});return[...m.entries()].sort((a,b)=>b[1]-a[1]);};
+  const stat=has('status')?cnt(rows,x=>txt(g(x,'status'))):[];
+  const abertos=(stat.find(([k])=>/^ABERT/.test(RS_NK(k)))||[0,0])[1];
+  const canc=has('tipoCanc')?cnt(rows,x=>txt(g(x,'tipoCanc'))):[];
+  /* motivos e origem (sobre os não produtivos) */
+  const motImp=cnt(imp,x=>motivo(x)||(emAberto(x)?'Ainda em aberto (sem baixa)':'Sem motivo informado'));
+  const orig=cnt(imp,origemDe);
+  const evit=imp.filter(x=>RS_ME_EVITAVEL[rsMeOrigem(motivo(x))]).length;
+  const prim=has('m1')&&temReal?rows.filter(x=>txt(g(x,'m1'))&&!/CONCLU/.test(RS_NK(g(x,'m1')))):[];
+  /* dimensões disponíveis */
+  const dimsAll=[['unidade','Unidade'],['cidade','Cidade'],['gerente','Gerente'],['empresa','Empresa'],['fila','Fila'],['uf','UF'],['cluster','Cluster']].filter(([k])=>has(k));
+  const dimLoc=dimsAll.filter(([k])=>k==='unidade'||k==='cidade');const dimFallback=dimLoc.length?dimLoc:dimsAll.filter(([k])=>k==='uf'||k==='cluster').slice(0,1);
+  const faltam=['unidade','cidade','gerente','empresa','fila'].filter(k=>!has(k)).map(k=>({unidade:'Unidade',cidade:'Cidade',gerente:'Gerente',empresa:'Empresa',fila:'Fila'})[k]);
+  /* tempo abertura → conclusão (só os produtivos com as duas datas) */
+  const tempos=rows.map(x=>{const a=dAb(x),c=dCo(x);return a&&c&&(produtiva(x)!==false)?{x,d:Math.round((c-a)/864e5)}:null;}).filter(Boolean);
+  const ts=tempos.map(t=>t.d).filter(v=>v>=0).sort((a,b)=>a-b);
+  const q=p=>ts.length?ts[Math.min(ts.length-1,Math.floor(p*(ts.length-1)))]:null;
+  const med=q(.5),q1=q(.25),q3=q(.75),lim=ts.length?Math.max(q3+1.5*(q3-q1),q3+1):null;
+  const media=ts.length?ts.reduce((a,b)=>a+b,0)/ts.length:null,mx=ts.length?ts[ts.length-1]:null;
+  const foraPad=lim!=null?tempos.filter(t=>t.d>lim).sort((a,b)=>b.d-a.d):[];const negativos=tempos.filter(t=>t.d<0);
+  /* reincidência */
+  const porC=new Map();rows.forEach(x=>{const c=txt(g(x,'contrato'));if(!c)return;if(!porC.has(c))porC.set(c,[]);porC.get(c).push(x);});
+  const reinc=[...porC.entries()].filter(([,a])=>a.length>1).sort((a,b)=>b[1].length-a[1].length);
+  const loc=x=>{const v=dimFallback.map(([k])=>txt(g(x,k))).filter(Boolean);return v.join(' · ')||'—';};
+  /* concentração de um conjunto numa dimensão */
+  const conc=arr=>{if(!dimFallback.length||!arr.length)return'';const[k,l]=dimFallback[0];const t=cnt(arr,x=>txt(g(x,k)))[0];return t?l+' '+eh(t[0])+' ('+n0(t[1])+' · '+pc(t[1],arr.length)+')':'';};
+  const contratos=arr=>[...new Set(arr.map(x=>txt(g(x,'contrato'))).filter(Boolean))].slice(0,5).map(eh).join(', ');
+  let h='';
+  if(avisos.length)h+='<p class="rs-note">⚠ '+avisos.map(eh).join(' · ')+'</p>';
+  if(soImp)h+='<p><b>⚠ A base tem só chamados improdutivos</b> — não dá para calcular a taxa de eficiência. Anexe a base completa (produtivas + improdutivas) para ter Eficiência = produtivas ÷ total.</p>';
+  /* 1. tabela resumo */
+  h+=sec('1. Resumo — '+eh(r.cluster)+' · '+eh(perLbl));
+  const res=[['Chamados de mudança de endereço',n0(tot)],['Contratos distintos',n0(contr)]];
+  if(!soImp){res.push(['Produtivas (mudança realizada)',n0(prod)]);res.push(['Não realizadas',n0(imp.length)]);
+    res.push(['<b>Eficiência ME</b> (produtivas ÷ total)','<b>'+f1(efic)+'%</b>'+(meta!=null?' · meta '+f1(meta)+'% ('+pp(efic-meta)+')':' · meta não informada na matriz')]);
+    if(efAnt!=null)res.push(['Eficiência em '+eh(P.antLbl),f1(efAnt)+'% ('+pp(efic-efAnt)+')']);}
+  else res.push(['Chamados improdutivos',n0(imp.length)]);
+  stat.forEach(([k,v])=>res.push(['Status '+eh(k),n0(v)+' ('+pc(v,tot)+')']));
+  if(canc.length)res.push(['Cancelamentos',canc.map(([k,v])=>eh(k)+' '+n0(v)).join(' · ')]);
+  res.push(['<b>Evitável antes de enviar a equipe a campo</b> (triagem + viabilidade + cadastro)','<b>'+n0(evit)+'</b> ('+pc(evit,imp.length)+' das não realizadas'+(tot?' · '+pc(evit,tot)+' do total':'')+')']);
+  if(prim.length)res.push(['1ª tentativa improdutiva (inclui as que depois foram realizadas)',n0(prim.length)+' ('+pc(prim.length,tot)+')']);
+  res.push(['Contratos com mais de um chamado',n0(reinc.length)]);
+  if(ts.length)res.push(['Abertura → conclusão (dias)','média '+f1(media)+' · mediana '+n0(med)+' · máx. '+n0(mx)+(foraPad.length?' · '+n0(foraPad.length)+' fora do padrão (> '+n0(lim)+' dias)':'')]);
+  h+=tab(['Indicador','Valor'],res);
+  /* 2. motivos */
+  h+=sec('2. Motivos das não realizadas');
+  h+=tab(['Motivo','Qtd','%','Origem'],motImp.slice(0,12).map(([k,v])=>{const o=k==='Ainda em aberto (sem baixa)'?k:rsMeOrigem(k);return[eh(k),n0(v),pc(v,imp.length),eh(o)+(RS_ME_EVITAVEL[o]?' <b>· evitável</b>':'')];}));
+  if(motImp.length>12)h+='<p class="rs-note">+ '+(motImp.length-12)+' outros motivos com '+n0(motImp.slice(12).reduce((a,x)=>a+x[1],0))+' casos.</p>';
+  if(has('resp')){const rr=cnt(imp,x=>txt(g(x,'resp')));if(rr.length)h+='<p>Responsável Ação (campo da base) nas não realizadas: '+rr.slice(0,6).map(([k,v])=>eh(k)+' '+n0(v)).join(' · ')+'</p>';}
+  /* 3. por unidade/cidade */
+  if(dimFallback.length){
+    h+=sec('3. Por '+dimFallback.map(d=>d[1]).join(' e ')+(dimLoc.length?'':' (a base não traz Unidade/Cidade)'));
+    dimFallback.forEach(([k,l])=>{const tots=cnt(rows,x=>txt(g(x,k)));
+      h+=tab([l,'Chamados','Não realizadas',soImp?'—':'Eficiência','Principais motivos'],tots.slice(0,15).map(([v,n])=>{const im=imp.filter(x=>txt(g(x,k))===v),pr=rows.filter((x,i)=>txt(g(x,k))===v&&st[i]===true).length;
+        return[eh(v),n0(n),n0(im.length),soImp?'—':f1(pr/n*100)+'%'+(meta!=null?' ('+pp(pr/n*100-meta)+')':''),cnt(im,x=>motivo(x)||(emAberto(x)?'Ainda em aberto':'Sem motivo')).slice(0,3).map(([m,c])=>eh(m)+' '+c).join(' · ')||'—'];}));});}
+  /* 4. reincidência */
+  h+=sec('4. Reincidência — contratos com mais de um chamado');
+  if(!reinc.length)h+='<p>Nenhum contrato com mais de um chamado no recorte.</p>';
+  else{h+='<p>'+n0(reinc.length)+' contrato(s) ('+pc(reinc.length,contr)+' dos contratos) somam '+n0(reinc.reduce((a,x)=>a+x[1].length,0))+' chamados.</p>';
+    h+=tab(['Contrato','Chamados','Datas de abertura','Local','Realizada?'],reinc.slice(0,15).map(([c,a])=>[eh(c),a.length,a.map(dAb).filter(Boolean).sort((x,y)=>x-y).map(dd).join(', ')||'—',eh(loc(a[a.length-1])),soImp?'—':a.some(x=>produtiva(x)===true)?'sim':'não']));
+    if(reinc.length>15)h+='<p class="rs-note">Mostrando 15 de '+n0(reinc.length)+'.</p>';}
+  /* 5. tempo */
+  h+=sec('5. Tempo entre abertura e conclusão');
+  if(!ts.length)h+='<p>A base não traz as duas datas (abertura e conclusão) para calcular.</p>';
+  else{h+='<p>'+n0(ts.length)+' chamados com as duas datas: média <b>'+f1(media)+' dias</b>, mediana <b>'+n0(med)+'</b>, máximo <b>'+n0(mx)+'</b>. Fora do padrão = acima de '+n0(lim)+' dias (3º quartil + 1,5 × intervalo interquartil).</p>';
+    if(foraPad.length)h+=tab(['Contrato','Chamado','Abertura','Conclusão','Dias','Local'],foraPad.slice(0,10).map(t=>[eh(txt(g(t.x,'contrato'))),eh(txt(g(t.x,'chamado'))||'—'),dd(dAb(t.x)),dd(dCo(t.x)),n0(t.d),eh(loc(t.x))]))+(foraPad.length>10?'<p class="rs-note">Mostrando 10 de '+n0(foraPad.length)+'.</p>':'');
+    if(negativos.length)h+='<p class="rs-note">⚠ '+n0(negativos.length)+' chamado(s) com conclusão antes da abertura — dado a corrigir na base.</p>';}
+  /* 6. origem */
+  h+=sec('6. Origem da causa (não realizadas)');
+  h+=tab(['Origem','Qtd','%','Evitável antes do campo?'],orig.map(([k,v])=>[eh(k),n0(v),pc(v,imp.length),RS_ME_EVITAVEL[k]?'<b>sim — '+RS_ME_EVITAVEL[k]+'</b>':/^Cliente/.test(k)?'em parte — confirmação de agenda (hipótese)':/^Ainda em aberto/.test(k)?'— (ainda sem resultado)':'não']));
+  h+='<p class="rs-note">Origem atribuída pelo texto do motivo (regra fixa do painel) — valide a classificação com a unidade.</p>';
+  /* 7. eficiência por dimensão × meta */
+  if(!soImp){const dimsEf=dimsAll.filter(([k])=>k!=='cluster'||dimsAll.length===1);
+    h+=sec('7. Eficiência por '+dimsEf.map(d=>d[1]).join(' / ')+(meta!=null?' × meta '+f1(meta)+'%':' (meta não informada na matriz)'));
+    dimsEf.forEach(([k,l])=>{const tots=cnt(rows,x=>txt(g(x,k)));if(tots.length<2&&dimsEf.length>1)return;
+      h+=tab([l,'Total','Produtivas','Eficiência','vs meta'],tots.slice(0,15).map(([v,n])=>{const pr=rows.filter((x,i)=>txt(g(x,k))===v&&st[i]===true).length,e=pr/n*100;return[eh(v),n0(n),n0(pr),f1(e)+'%',meta!=null?pp(e-meta):'—'];}));});}
+  /* 8. FCA por problema, em ordem de impacto */
+  const probs=[];
+  orig.forEach(([k,v])=>{if(!v||/^Ainda em aberto/.test(k))return;const arr=imp.filter(x=>origemDe(x)===k),mts=cnt(arr,x=>motivo(x)||'Sem motivo').slice(0,3),tp=RS_ME_TPL[k]||RS_ME_TPL['Outros motivos'];
+    probs.push({imp:v,foco:k,ind:'% das não realizadas por '+k.toLowerCase(),val:pc(v,imp.length),loc:conc(arr),
+      F:n0(v)+' não realizadas ('+pc(v,imp.length)+' das não realizadas'+(!soImp?'; tiram '+f1(v/tot*100)+' p.p. da eficiência':'')+'). Motivos: '+mts.map(([m,c])=>eh(m)+' '+n0(c)).join(', ')+'. '+(conc(arr)?'Maior concentração: '+conc(arr)+'. ':'')+'Contratos: '+contratos(arr)+(arr.length>5?'…':'')+'.',
+      Cp:'o motivo registrado na baixa é '+mts.map(([m])=>eh(m)).join(' / ')+(RS_ME_EVITAVEL[k]?' — <b>'+RS_ME_EVITAVEL[k]+', antes de enviar a equipe</b>':''),Ch:tp.h,A:tp.a});});
+  const bl=imp.filter(emAberto);
+  if(bl.length&&!soImp)probs.push({imp:bl.length,foco:'Chamados ainda abertos (sem baixa)',ind:'chamados abertos sem baixa no recorte',val:n0(bl.length),loc:conc(bl),
+    F:n0(bl.length)+' chamados com status Aberto e ainda sem baixa ('+pc(bl.length,tot)+' do total; tiram '+f1(bl.length/tot*100)+' p.p. da eficiência). Contratos: '+contratos(bl)+(bl.length>5?'…':'')+'.',Cp:'estão sem conclusão na data da extração',Ch:'fila/agenda sem capacidade para o volume ou chamados parados aguardando outra área',A:'Tratar o backlog por antiguidade (mais antigos primeiro) e revisar diariamente os parados há mais tempo.'});
+  if(reinc.length)probs.push({imp:reinc.length,foco:'Reincidência de contrato',ind:'contratos com 2+ chamados',val:n0(reinc.length),loc:conc(reinc.map(([,a])=>a[a.length-1])),
+    F:n0(reinc.length)+' contratos com mais de um chamado ('+n0(reinc.reduce((a,x)=>a+x[1].length,0))+' chamados). Ex.: '+reinc.slice(0,5).map(([c,a])=>eh(c)+' ('+a.length+')').join(', ')+'.',
+    Cp:'o mesmo contrato teve mais de um chamado de mudança no recorte',Ch:'primeira tentativa não resolveu (volta do mesmo motivo) ou chamado duplicado na abertura',A:'Checar o histórico do contrato antes de abrir novo chamado e tratar a causa da 1ª improdutividade antes de reagendar.'});
+  if(foraPad.length)probs.push({imp:foraPad.length,foco:'Tempo fora do padrão',ind:'chamados > '+n0(lim)+' dias até concluir',val:n0(foraPad.length),loc:conc(foraPad.map(t=>t.x)),
+    F:n0(foraPad.length)+' chamados levaram mais de '+n0(lim)+' dias entre abertura e conclusão (máx. '+n0(mx)+'). Ex.: '+foraPad.slice(0,5).map(t=>eh(txt(g(t.x,'contrato')))+' ('+t.d+'d)').join(', ')+'.',
+    Cp:'as datas de abertura e conclusão mostram o atraso',Ch:'reagendamentos sucessivos, pendência de viabilidade ou falta de agenda',A:'Revisar os casos listados com a unidade e definir prazo máximo de agendamento para mudança de endereço.'});
+  probs.sort((a,b)=>b.imp-a.imp);
+  h+=sec('8. FCA — problemas em ordem de impacto');
+  if(!probs.length)h+='<p>Nenhum problema relevante no recorte.</p>';
+  probs.slice(0,7).forEach((p,i)=>{h+='<p><b>'+(i+1)+'. '+eh(p.foco)+'</b></p><ul><li><b>FATO:</b> '+p.F+'</li><li><b>CAUSA:</b> a base comprova que '+p.Cp+'. <i>Hipótese a validar com a unidade:</i> '+eh(p.Ch)+'.</li><li><b>AÇÃO:</b> '+eh(p.A)+' <span class="rs-note">Responsável: ___ · Prazo: ___ (informar a estrutura)</span></li></ul>';});
+  /* 9. prioridades */
+  h+=sec('9. Prioridades');
+  h+=probs.length?tab(['#','Foco','Unidade / local','Indicador de acompanhamento','Valor atual'],probs.slice(0,7).map((p,i)=>[i+1,eh(p.foco)+(RS_ME_EVITAVEL[p.foco]?' <b>(evitável)</b>':''),p.loc||'—',eh(p.ind),p.val])):'<p>—</p>';
+  /* 10. limites */
+  const lim2=[n0(tot)+' chamados no recorte ('+eh(perLbl)+')'+(tot<100?' — amostra pequena, cuidado com percentuais':'')];
+  if(faltam.length)lim2.push('a base não traz '+faltam.join(', ')+' — análise por '+(dimFallback.length?dimFallback.map(d=>d[1]).join('/'):'cluster'));
+  if(meta==null)lim2.push('meta de eficiência não informada na matriz do Redir');
+  if(abertos)lim2.push('chamados ainda abertos entram como não produtivos; a eficiência tende a subir quando forem concluídos');
+  lim2.push('origem da causa classificada pelo texto do motivo — a causa raiz real precisa ser validada com a unidade');
+  if(F.legado)lim2.push('base anexada antes desta versão (sem Chamado/Data ME): reanexe a planilha para a análise completa');
+  if(!has('dtConc'))lim2.push('sem data de conclusão: tempo abertura → conclusão não calculado');
+  h+=sec('10. Limites da análise')+'<ul>'+lim2.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+  return h;
+}
 function rsAgendaDiag(ag){
   if(!ag||!ag.ents||!ag.ents.length)return'';
   const META=ag.meta||95,f1=v=>v==null||!isFinite(v)?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}),n0=v=>Number(v||0).toLocaleString('pt-BR');
@@ -40883,6 +41100,7 @@ async function rsOnIndFile(inp){
     if(aviso&&!confirm(aviso)){_ghToast('Anexo cancelado — escolha a base correta.','var(--orange)',3500);return;}
     const b=planta?rsReduzPlanta(objs,file.name):rsReduzBase(objs,file.name,m);b.at=new Date().toISOString();
     if(objs.agenda)b.agenda=objs.agenda;
+    if(m&&m.modelo==='Eficiência ME'){const me=rsMeExtrair(objs);if(me)b.me=me;}/* análise com FCA (rsMeDiag) */
     const chave=m?m.modelo:ind;
     await rsIndLoad();RS_IND[chave]=b;await rsIndSalvar();
     _ghToast((planta?'Planta Média':'Base de '+chave)+': '+file.name+' ('+rsNf0.format(b.total)+' linhas) ✓ — visível para todos os usuários até alguém limpar','var(--green-dk)',4500);
@@ -40900,7 +41118,7 @@ function rsPintaAnalise(box,a,aplicar){
     '<div class="rs-ana-vol">'+vol+'</div>'+((a.kpis||[]).length?'<div class="rs-ana-kpi">'+a.kpis.map(k=>'<span>'+eh(k)+'</span>').join('')+'</div>':'')+(a.sug.tendencia?'<div class="rs-note">Tendência: '+eh(a.sug.tendencia)+'</div>':'')+
     '<div class="rs-ana-dims">'+a.dims.map(li).join('')+(a.reinc?'<div class="rs-ana-dim"><b>Reincidência</b><span>'+a.reinc.reincidentes+' contratos com 2+ eventos <em>'+a.reinc.eventos+' eventos</em></span></div>':'')+'</div>'+
     (a.proj?'<div class="rs-proj"><div class="rs-proj-cv"><canvas aria-label="Projeção de '+eh(a.proj.ind)+'"></canvas></div><div class="rs-proj-txt"><b><i class="ti ti-trending-up"></i> Projeção</b><p>'+eh(a.proj.texto.charAt(0).toUpperCase()+a.proj.texto.slice(1))+'</p><small>Ritmo = média das 2 últimas semanas com valor; fechamento do mês ponderado pelos dias (aproximação). Este texto já está na sugestão de FCA abaixo.</small></div></div>':'')+
-    (a.diag?'<details class="rs-diag" open><summary><i class="ti ti-report-analytics"></i> Diagnóstico do mês — Cumprimento de Agenda</summary>'+a.diag+'</details>':'')+
+    (a.diag?'<details class="rs-diag" open><summary><i class="ti ti-report-analytics"></i> '+eh(a.diagTit||'Diagnóstico do mês — Cumprimento de Agenda')+'</summary>'+a.diag+'</details>':'')+
     '<div class="rs-ana-sug"><b>Sugestão para o FCA</b>'+(a.sug.causa?'<pre>CAUSA\n'+eh(a.sug.causa)+'\n\nAÇÃO\n'+eh(a.sug.acao)+'</pre>':'<p class="rs-note">Os dados não mostram concentração clara (cidade, motivo, técnico). Use a análise acima para descrever a causa.</p>')+'</div>';
   const bar=document.createElement('div');bar.className='acts';
   if(a.sug.causa){const u=document.createElement('button');u.type='button';u.className='rs-btn pri';u.textContent='Usar na justificativa';u.onclick=()=>aplicar(a);bar.appendChild(u);}
