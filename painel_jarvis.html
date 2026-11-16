@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-16T15:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-16T16:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13153,11 +13153,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="card-action" onclick="rdeCopiarGrafico(document.getElementById('rde-mttr-of-box'),this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
         </div>
         <div class="rede-sub" id="rde-mttr-of-sub">Chamados com tempo de reparo acima da meta, puxando o MTTR pra cima.</div>
-        <div class="rede-charts-2">
-          <div class="rede-cbx" style="min-height:240px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-mttr-of-ch-top"></canvas></div>
-          <div class="rede-cbx" style="min-height:240px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-mttr-of-ch-cause"></canvas></div>
-        </div>
-        <div class="rede-cbx" id="rde-mttr-of-box" style="padding:0;overflow-x:auto;max-height:360px;overflow-y:auto">
+        <div class="rede-cbx" id="rde-mttr-of-box" style="padding:0;overflow-x:auto;max-height:480px;overflow-y:auto">
           <table class="rede-dtable" style="font-size:13px">
             <thead style="position:sticky;top:0;background:var(--surface)"><tr><th>OS/ID</th><th>Cidade</th><th>UF</th><th>Cluster</th><th>Data Fechamento</th><th class="rede-num" title="Tempo decorrido entre Abertura e Fechamento — a mesma base de cálculo do card MTTR">Tempo (MTTR)</th><th class="rede-num">Excedente</th><th>Causa</th><th style="text-align:center" title="Excluir do cálculo do MTTR">Expurgo</th></tr></thead>
             <tbody id="rde-mttr-of-body"></tbody>
@@ -33589,14 +33585,16 @@ function rdeMttrOfensoresFcaText(ofensores,m){
   const clMap={};ofensores.forEach(r=>{if(!r.cl)return;(clMap[r.cl]=clMap[r.cl]||[]).push(r);});
   const worstCl=Object.entries(clMap).map(([cl,rows])=>({cl,n:rows.length})).sort((a,b)=>b.n-a.n)[0];
   const causeMap={};ofensores.forEach(r=>{const c=String(r.c||'Não informado').trim()||'Não informado';causeMap[c]=(causeMap[c]||0)+1;});
-  const topCause=Object.entries(causeMap).sort((a,b)=>b[1]-a[1])[0];
+  /* causa "Não informado…" (Backbone da Rede_MTTR vem sem motivo) não é causa: fica fora do topo e vira nota (2026-11-16) */
+  const semCausa=Object.entries(causeMap).filter(([k])=>/^N[ãa]o informado/i.test(k)).reduce((s,[,v])=>s+v,0);
+  const topCause=Object.entries(causeMap).filter(([k])=>!/^N[ãa]o informado/i.test(k)).sort((a,b)=>b[1]-a[1])[0];
   const somaOfensores=ofensores.reduce((s,r)=>s+r.elapsedH,0);
   const somaTotal=m.avg*m.n;
   const nSemOfensores=m.n-ofensores.length;
   const mttrSemOfensores=nSemOfensores>0?(somaTotal-somaOfensores)/nSemOfensores:0;
   const clNome=worstCl?(RDE_CL_NM[worstCl.cl]||worstCl.cl):'';
   const fato='Sem os '+ofensores.length+' chamado(s) ofensor(es), o MTTR cairia de '+m.avg.toFixed(2)+'h para '+mttrSemOfensores.toFixed(2)+'h ('+(m.avg-mttrSemOfensores).toFixed(2)+'h de diferença)'+(worstCl?', concentrados sobretudo no cluster '+clNome+' ('+worstCl.n+' de '+ofensores.length+' chamados)':'')+'.';
-  const causa=topCause?('Causa mais recorrente entre os ofensores: '+topCause[0]+' ('+topCause[1]+' de '+ofensores.length+' chamados).'):'Sem causa concentrada entre os ofensores.';
+  const causa=(topCause?('Causa mais recorrente entre os ofensores: '+topCause[0]+' ('+topCause[1]+' de '+ofensores.length+' chamados).'):'Sem causa informada entre os ofensores.')+(semCausa?' '+semCausa+' chamado(s) sem causa informada na base (Backbone não traz o motivo da falha) — levantar o motivo com a equipe de rede.':'');
   const top5=ofensores.slice(0,5).map(r=>{const det=r._raw&&typeof r._raw[r._scope==='ac'?8:7]==='object'?r._raw[r._scope==='ac'?8:7]:{};return String(det.os||det.id||'—');}).join(', ');
   const acao='Priorizar investigação dos chamados '+top5+(worstCl?' (concentração no cluster '+clNome+')':'')+', revisando o motivo da demora acima da meta de '+RDE_MTME+'h e reforçando o acompanhamento até normalizar.';
   return['▸ FATO','Fato: '+fato,'','▸ CAUSA','Causa: '+causa,'','▸ AÇÃO','Ação: '+acao].join('\n');
@@ -37100,7 +37098,6 @@ const EXEC_PPT_GRAFICOS=[
   {k:'g_rede_evol',g:'Gráficos — Rede',l:'Rede — Prazo & Outlier e TME/TMR por período',painel:'rede',cv:['rde-line-ch','rde-time-ch']},
   {k:'g_rede_wow',g:'Gráficos — Rede',l:'Rede — semana contra semana (WoW)',painel:'rede',cv:['rde-wow-ch']},
   {k:'g_rede_cid',g:'Gráficos — Rede',l:'Rede — cidades ofensoras e principais causas',painel:'rede',cv:['rde-city-ch','rde-cause-ch']},
-  {k:'g_rede_mttrof',g:'Gráficos — Rede',l:'Rede — ofensores do MTTR',painel:'rede',cv:['rde-mttr-of-ch-top','rde-mttr-of-ch-cause']},
   {k:'g_rede_prj',g:'Gráficos — Rede',l:'Rede — projeções (tendência e dia a dia)',painel:'rede',cv:['rprj-trend-ch','rprj-daily-ch']},
   {k:'g_rede_prjmttr',g:'Gráficos — Rede',l:'Rede — tendência de projeção do MTTR por cluster',painel:'rede',cv:['rprj-mttr-ch']},
   {k:'g_4a_out',g:'Gráficos — Rede 4-Analytics',l:'Rede 4-Analytics — Outlier (mensal e diário)',painel:'rede',cv:['rde4-out-m-ch','rde4-out-d-ch']},
@@ -37432,7 +37429,7 @@ function execPptSanear(sl){['addText','addTable'].forEach(fn=>{const o=sl[fn].bi
    gráficos) → B2B (idem) → B2C → Operação do dia. A lista "Conteúdo do PPT" segue a mesma. */
 const EXEC_PPT_ORDEM=['resumo','leitura',
   'rede','rr_mttr','rr_prazo','rr_outlier','rr_volEventos','rr_volOutlier','rr_fca','redeFca',
-  'g_rede_evol','g_rede_wow','g_rede_cid','g_rede_mttrof','g_rede_prj','g_rede_prjmttr','g_4a_out','g_4a_prz','g_4a_tme','g_4a_qtd',
+  'g_rede_evol','g_rede_wow','g_rede_cid','g_rede_prj','g_rede_prjmttr','g_4a_out','g_4a_prz','g_4a_tme','g_4a_qtd',
   'enc','rb_prazo','rb_outlier','rb_fca','encFca','g_enc_dist','g_enc_meta',
   'b2c','b2cFca','g_b2c','ofs','warmup'];
 const EXEC_PPT_SEG={resumo:'geral',leitura:'geral',ofs:'op',warmup:'op'};
