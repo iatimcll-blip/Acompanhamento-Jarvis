@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-16T10:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-16T13:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1670,6 +1670,20 @@ body.is-admin .fuel-forms-admin { display: grid; grid-template-columns: 1fr 1fr;
 .rkqty-row .rkl{margin-bottom:2px}
 .rkqty-row .rkv{font-size:19px}
 .rede-section-title{font-size:15px;font-weight:700;margin:16px 0 4px;color:var(--tx)}
+/* 2026-11-16: blocos numerados do Painel Rede (layout para a base Rede_MTTR.xlsx) */
+.rde-blk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:28px 0 10px;padding:9px 14px;border-radius:10px;background:var(--surface2);border-left:4px solid var(--blue);font-size:14px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--tx)}
+.rde-blk-n{background:var(--blue);color:#fff;border-radius:99px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.rde-blk small{font-weight:500;text-transform:none;letter-spacing:0;color:var(--tx3);font-size:12.5px}
+#rde-kpis2{grid-template-columns:repeat(4,1fr)}
+#rde-kpis2:empty{display:none}
+@media(max-width:1180px){#rde-kpis2{grid-template-columns:repeat(2,1fr)}}
+#rde-kpis2 .rkv{font-size:22px}
+.rde-org-tag{display:inline-block;padding:0 6px;border-radius:6px;font-size:10.5px;font-weight:700;letter-spacing:.02em;border:.5px solid currentColor;vertical-align:1px}
+.rde-o-BDESK{color:#007aff}.rde-o-FIELD{color:#af52de}.rde-o-BACKBONE{color:#ff9500}
+.rde-novo-off{color:var(--tx3);font-size:13px;padding:12px}
+#panel-rede tr.rde-click{cursor:pointer}
+#panel-rede tr.rde-click:hover td{background:var(--surface2)}
+@media(max-width:900px){#panel-rede .rede-charts-2{grid-template-columns:1fr}}
 .rede-charts-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
 .rede-chip{padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}
 .rede-chip.ok{background:rgba(52,199,89,.12);color:#34c759}
@@ -12978,6 +12992,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <span class="rede-clbl">Período</span>
           <div class="rede-seg rde-seg-periods" id="rde-period-seg"></div>
         </div>
+        <div class="rede-ctrlrow" id="rde-novo-row" style="display:none">
+          <span class="rede-clbl" id="rde-org-lbl">Origem</span>
+          <div class="rede-seg" id="rde-org-seg"></div>
+          <span class="rede-clbl">Tipo de evento</span>
+          <div class="rede-seg" id="rde-tev-seg"></div>
+        </div>
       </div>
       <!-- Configuração de Metas -->
       <div class="rede-ctrlbar" id="rde-meta-cfg" style="margin-bottom:14px">
@@ -13012,9 +13032,26 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           </button>
         </div>
       </div>
+      <div class="rde-blk"><span class="rde-blk-n">1</span>Visão geral <small>MTTR, volume, prazo, outlier e TME no filtro atual</small></div>
       <!-- KPI cards (Prazo/Outlier/TME-TMR + MTTR/Projeção, todos numa linha só) -->
       <div class="rede-kpi-grid" id="rde-kpis"></div>
 
+      <div class="rede-kpi-grid" id="rde-kpis2"></div>
+      <div class="rde-blk"><span class="rde-blk-n">2</span>Por origem, tipo e cluster <small>onde está o desvio</small></div>
+      <div class="rede-section-title">Por origem</div>
+      <div class="rede-sub">BDESK e FIELD formam o Acesso; BACKBONE são os trechos de rede. Clique numa linha para ver os chamados.</div>
+      <div class="rede-cbx" id="rde-org-box" style="padding:0;overflow-x:auto"></div>
+      <div class="rede-section-title" style="margin-top:20px">Por tipo de evento</div>
+      <div class="rede-cbx" id="rde-tev-box" style="padding:0;overflow-x:auto"></div>
+      <!-- Cluster table -->
+      <div class="rede-section-title" style="margin-top:20px">Por cluster</div>
+      <div class="rede-cbx" style="padding:0">
+        <table class="rede-dtable" style="font-size:13px">
+          <thead><tr><th>Cluster</th><th class="rede-num">Qtd</th><th class="rede-num">Prazo</th><th class="rede-num">Outlier</th><th class="rede-num" id="rde-th-tme">TME/TMR</th><th>Status</th></tr></thead>
+          <tbody id="rde-cl-tbl"></tbody>
+        </table>
+      </div>
+      <div class="rde-blk"><span class="rde-blk-n">3</span>Indicadores mês a mês <small>Outlier · Prazo · TME · Quantidade</small></div>
       <!-- ── 4 Analytics Sections ── -->
       <div id="rde4-analytics">
         <!-- Outlier -->
@@ -13087,53 +13124,22 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
 
-      <!-- Evolution charts -->
-      <div class="rede-section-title">Evolução <span id="rde-evo-unit">mensal</span></div>
+      <div class="rde-blk"><span class="rde-blk-n">4</span>Análises da base <small>faixa de TME, parada de relógio, clientes afetados e elementos</small></div>
+      <div class="rede-section-title">Faixa de TME</div>
       <div class="rede-charts-2">
-        <div class="rede-cbx" style="min-height:220px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-line-ch"></canvas></div>
-        <div class="rede-cbx" style="min-height:220px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-time-ch"></canvas></div>
+        <div class="rede-cbx" style="min-height:240px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:220px"><canvas id="rde-fx-ch"></canvas></div></div>
+        <div class="rede-cbx" id="rde-fx-tbl" style="overflow-x:auto"></div>
       </div>
-      <!-- Semana Contra Semana (WoW) -->
-      <div class="rede-section-title" style="margin-top:20px">Semana Contra Semana (WoW)</div>
-      <div class="rede-cbx" style="min-height:280px">
-        <button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button>
-        <div id="rde-wow-insight" style="font-size:14px;color:var(--tx3);margin-bottom:8px"></div>
-        <div style="height:220px"><canvas id="rde-wow-ch"></canvas></div>
-      </div>
-      <!-- Cluster table -->
-      <div class="rede-section-title" style="margin-top:20px">Desempenho por cluster</div>
-      <div class="rede-cbx" style="padding:0">
-        <table class="rede-dtable" style="font-size:13px">
-          <thead><tr><th>Cluster</th><th class="rede-num">Qtd</th><th class="rede-num">Prazo</th><th class="rede-num">Outlier</th><th class="rede-num" id="rde-th-tme">TME/TMR</th><th>Status</th></tr></thead>
-          <tbody id="rde-cl-tbl"></tbody>
-        </table>
-      </div>
-      <!-- Projeções (2026-10-19) — recalculadas a cada renderRede(), ou seja, a cada base anexada -->
-      <div class="rede-section-title" style="margin-top:20px" id="rprj-sec">Projeções</div>
-      <div class="rede-sub">Fechamento previsto do mês e da semana, desempenho necessário nos dias restantes para bater a meta, tendência dos próximos meses e evolução dia a dia. Respeita os filtros de Acesso/Backbone, Cluster e Ano (o filtro de período não se aplica: a projeção é sempre do mês/semana corrente da base). Atualiza sozinha quando uma base nova é anexada.</div>
-      <div class="rprj-head">
-        <div class="rede-seg" id="rprj-metric-seg">
-          <button class="rede-sgbtn on" data-prj="prazo" onclick="rdePrjSetMetric('prazo')">Prazo</button>
-          <button class="rede-sgbtn" data-prj="outlier" onclick="rdePrjSetMetric('outlier')">Outlier</button>
-          <button class="rede-sgbtn" data-prj="mttr" onclick="rdePrjSetMetric('mttr')">MTTR</button>
-          <button class="rede-sgbtn" data-prj="volEventos" onclick="rdePrjSetMetric('volEventos')">Volume</button>
-        </div>
-        <span class="rprj-ref" id="rprj-ref"></span>
-      </div>
-      <div class="rprj-cap">Fechamento do mês</div>
-      <div class="rede-cbx" style="padding:0;overflow-x:auto"><table class="rede-dtable rprj-tbl" style="font-size:13px"><tbody id="rprj-mes"></tbody></table></div>
-      <div class="rprj-cap">Fechamento da semana</div>
-      <div class="rede-cbx" style="padding:0;overflow-x:auto"><table class="rede-dtable rprj-tbl" style="font-size:13px"><tbody id="rprj-sem"></tbody></table></div>
-      <div class="rprj-head" style="margin-top:12px">
-        <span class="rede-clbl" style="min-width:0">Gráficos</span>
-        <select class="rprj-sel" id="rprj-chart-cl" onchange="rdePrjSetChartCl(this.value)" aria-label="Recorte dos gráficos de projeção"></select>
-      </div>
+      <div class="rede-section-title" style="margin-top:20px">Parada de relógio</div>
+      <div class="rede-cbx" id="rde-par-box" style="overflow-x:auto"></div>
+      <div class="rede-section-title" style="margin-top:20px">Clientes afetados</div>
       <div class="rede-charts-2">
-        <div class="rede-cbx" style="min-height:280px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:260px"><canvas id="rprj-trend-ch"></canvas></div></div>
-        <div class="rede-cbx" style="min-height:280px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:260px"><canvas id="rprj-daily-ch"></canvas></div></div>
+        <div class="rede-cbx" id="rde-cli-causa" style="overflow-x:auto"></div>
+        <div class="rede-cbx" id="rde-cli-cid" style="overflow-x:auto"></div>
       </div>
-      <!-- Tendência de projeção do MTTR em linhas, uma por cluster + Total (pedido 2026-10-19) -->
-      <div class="rede-cbx" style="min-height:420px;margin-top:4px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:400px"><canvas id="rprj-mttr-ch" aria-label="Tendência de projeção do MTTR por cluster"></canvas></div></div>
+      <div class="rede-section-title" style="margin-top:20px">Elementos ofensores <small style="font-weight:500;color:var(--tx3)">(cabos e trechos)</small></div>
+      <div class="rede-cbx" id="rde-el-box" style="padding:0;overflow-x:auto"></div>
+      <div class="rde-blk"><span class="rde-blk-n">5</span>Ofensores <small>cidades, causas, atenuação e MTTR</small></div>
       <!-- Cities + Causes -->
       <div class="rede-section-title" style="margin-top:20px">Cidades ofensoras &amp; Principais causas</div>
       <div class="rede-sub">Cidades com maior peso nos indicadores e causas mais frequentes de não-conformidade.</div>
@@ -13176,23 +13182,47 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="rede-section-title" style="margin-top:10px;font-size:14px">FCA — Ofensores MTTR</div>
         <div class="rede-report-box" id="rde-mttr-of-fca"><span style="color:var(--tx3);font-size:13px">Carregue uma base para calcular.</span></div>
       </div>
-      <!-- "Redir Rede" (pedido do usuário): mesmo padrão do bloco Redir do B2B Encerrados,
-           adaptado aos indicadores do Painel Rede (MTTR/Prazo/Outlier/Volume de Eventos/
-           Volume de Outlier). Não reage aos filtros do painel (só ao Ano próprio). -->
-      <div class="card" style="margin-top:20px">
-        <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <span class="card-title">Redir Rede</span>
-          <div class="redir-ano-bar"><label for="rde-redir-ano-sel">Ano</label><select id="rde-redir-ano-sel" onchange="rdeRedirSetAno(this.value)"></select></div>
+      <div class="rde-blk"><span class="rde-blk-n">6</span>Tendência e projeções <small>evolução, semana contra semana e fechamento projetado</small></div>
+      <!-- Evolution charts -->
+      <div class="rede-section-title">Evolução <span id="rde-evo-unit">mensal</span></div>
+      <div class="rede-charts-2">
+        <div class="rede-cbx" style="min-height:220px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-line-ch"></canvas></div>
+        <div class="rede-cbx" style="min-height:220px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><canvas id="rde-time-ch"></canvas></div>
+      </div>
+      <!-- Semana Contra Semana (WoW) -->
+      <div class="rede-section-title" style="margin-top:20px">Semana Contra Semana (WoW)</div>
+      <div class="rede-cbx" style="min-height:280px">
+        <button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button>
+        <div id="rde-wow-insight" style="font-size:14px;color:var(--tx3);margin-bottom:8px"></div>
+        <div style="height:220px"><canvas id="rde-wow-ch"></canvas></div>
+      </div>
+      <!-- Projeções (2026-10-19) — recalculadas a cada renderRede(), ou seja, a cada base anexada -->
+      <div class="rede-section-title" style="margin-top:20px" id="rprj-sec">Projeções</div>
+      <div class="rede-sub">Fechamento previsto do mês e da semana, desempenho necessário nos dias restantes para bater a meta, tendência dos próximos meses e evolução dia a dia. Respeita os filtros de Acesso/Backbone, Cluster e Ano (o filtro de período não se aplica: a projeção é sempre do mês/semana corrente da base). Atualiza sozinha quando uma base nova é anexada.</div>
+      <div class="rprj-head">
+        <div class="rede-seg" id="rprj-metric-seg">
+          <button class="rede-sgbtn on" data-prj="prazo" onclick="rdePrjSetMetric('prazo')">Prazo</button>
+          <button class="rede-sgbtn" data-prj="outlier" onclick="rdePrjSetMetric('outlier')">Outlier</button>
+          <button class="rede-sgbtn" data-prj="mttr" onclick="rdePrjSetMetric('mttr')">MTTR</button>
+          <button class="rede-sgbtn" data-prj="volEventos" onclick="rdePrjSetMetric('volEventos')">Volume</button>
         </div>
-        <div class="redir-desc">Cluster Acesso+Backbone (MA CAP, MA INT, PI, Norte) — MTTR, Prazo, Outlier, Volume de Eventos e Volume de Outlier, mesma regra/meta já usada no Painel Rede. Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Não reage aos demais filtros do painel; só muda ao anexar nova base ou trocar o ano.</div>
-        <div id="rde-redir-body"></div>
+        <span class="rprj-ref" id="rprj-ref"></span>
       </div>
-      <!-- Executive Report -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
-        <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
-        <span class="card-action" id="rde-report-copy-btn" onclick="rdeCopiarRelatorioTexto(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      <div class="rprj-cap">Fechamento do mês</div>
+      <div class="rede-cbx" style="padding:0;overflow-x:auto"><table class="rede-dtable rprj-tbl" style="font-size:13px"><tbody id="rprj-mes"></tbody></table></div>
+      <div class="rprj-cap">Fechamento da semana</div>
+      <div class="rede-cbx" style="padding:0;overflow-x:auto"><table class="rede-dtable rprj-tbl" style="font-size:13px"><tbody id="rprj-sem"></tbody></table></div>
+      <div class="rprj-head" style="margin-top:12px">
+        <span class="rede-clbl" style="min-width:0">Gráficos</span>
+        <select class="rprj-sel" id="rprj-chart-cl" onchange="rdePrjSetChartCl(this.value)" aria-label="Recorte dos gráficos de projeção"></select>
       </div>
-      <div class="rede-report-box" id="rde-report"><span style="color:var(--tx3);font-size:13px">Carregue uma base para gerar o relatório automático.</span></div>
+      <div class="rede-charts-2">
+        <div class="rede-cbx" style="min-height:280px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:260px"><canvas id="rprj-trend-ch"></canvas></div></div>
+        <div class="rede-cbx" style="min-height:280px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:260px"><canvas id="rprj-daily-ch"></canvas></div></div>
+      </div>
+      <!-- Tendência de projeção do MTTR em linhas, uma por cluster + Total (pedido 2026-10-19) -->
+      <div class="rede-cbx" style="min-height:420px;margin-top:4px"><button class="rde-chart-copy" title="Copiar imagem" onclick="rdeCopiarGrafico(this.closest('.rede-cbx'),this)"><i class="ti ti-copy"></i></button><div style="position:relative;height:400px"><canvas id="rprj-mttr-ch" aria-label="Tendência de projeção do MTTR por cluster"></canvas></div></div>
+      <div class="rde-blk"><span class="rde-blk-n">7</span>Chamados, relatório e Redir</div>
       <!-- Calls list (on demand: click on period button or chart bar) -->
       <div id="rde-calls" style="display:none;margin-top:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -13208,6 +13238,23 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <tbody id="rde-calls-body"></tbody>
           </table>
         </div>
+      </div>
+      <!-- Executive Report -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+        <div class="rede-section-title" style="margin:0">Relatório Executivo</div>
+        <span class="card-action" id="rde-report-copy-btn" onclick="rdeCopiarRelatorioTexto(this)"><i class="ti ti-copy" style="font-size:11px;vertical-align:-1px"></i> Copiar</span>
+      </div>
+      <div class="rede-report-box" id="rde-report"><span style="color:var(--tx3);font-size:13px">Carregue uma base para gerar o relatório automático.</span></div>
+      <!-- "Redir Rede" (pedido do usuário): mesmo padrão do bloco Redir do B2B Encerrados,
+           adaptado aos indicadores do Painel Rede (MTTR/Prazo/Outlier/Volume de Eventos/
+           Volume de Outlier). Não reage aos filtros do painel (só ao Ano próprio). -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span class="card-title">Redir Rede</span>
+          <div class="redir-ano-bar"><label for="rde-redir-ano-sel">Ano</label><select id="rde-redir-ano-sel" onchange="rdeRedirSetAno(this.value)"></select></div>
+        </div>
+        <div class="redir-desc">Cluster Acesso+Backbone (MA CAP, MA INT, PI, Norte) — MTTR, Prazo, Outlier, Volume de Eventos e Volume de Outlier, mesma regra/meta já usada no Painel Rede. Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Não reage aos demais filtros do painel; só muda ao anexar nova base ou trocar o ano.</div>
+        <div id="rde-redir-body"></div>
       </div>
     </div><!-- /rede-dash -->
   </div><!-- /panel-rede -->
@@ -31722,6 +31769,7 @@ function rdeRowToRede(r,sheet){
     const cli=rdeNum(rdeGv(r,['CLIENTES AFETADOS','clientes afetados','clientes','cliente afetado','impactados','afetados']));
     const motivo=rdeLabelIndex(rdeM.mo,rdeGv(r,['CAUSA_SIMPLES','ORIGEM','CLASSE_CABO','motivo','causa','causa raiz','falha','tipo encerramento']));
     const detail=rdeCompactDetail(r,'Acesso',cl,mi,wi,prazo,out,tempo,rdeM.mo[motivo]||'Acesso',cli);
+    if(novoMttr)Object.assign(detail,rdeNovoCampos(r));
     return{kind:'ac',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,cli,motivo,detail,elapsedH]};
   }
   // Backbone: TMR=col R, Prazo flag=col S (1=prazo ok), Outlier flag=col T (1=outlier) — leitura por posição de coluna tem prioridade sobre o nome do cabeçalho
@@ -31736,6 +31784,7 @@ function rdeRowToRede(r,sheet){
   const causa=rdeLabelIndex(rdeM.ca,novoMttr?(_cbb&&_cbb!=='-'?_cbb:'Não informado na base'):rdeGv(r,['[INCIDENTE - TRECHO DOWN] MOTIVO DA FALHA (REDE)','MOTIVO DA FALHA (REDE)','FALHA','motivo','causa','causa raiz','tipo encerramento']));
   const detail=rdeCompactDetail(r,'Backbone',cl,mi,wi,prazo,out,tempo,rdeM.ca[causa]||'Backbone',0);
   if(novoMttr&&!detail.titulo)detail.titulo=String(rdeGv(r,['ELEMENTO'])||'').trim();
+  if(novoMttr)Object.assign(detail,rdeNovoCampos(r));
   return{kind:'bb',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,causa,detail,elapsedH]};
 }
 function rdeApplyRows(rows,fileName){
@@ -31750,7 +31799,7 @@ function rdeApplyRows(rows,fileName){
   try{localStorage.setItem(REDE_STORAGE,JSON.stringify(st));}catch(e){console.warn('rede save; cópia completa mantida no IndexedDB',e)}
   const fn=document.getElementById('rede-fname');if(fn)fn.textContent=fileName;
   const ts=document.getElementById('rede-ts-text');if(ts)ts.textContent='Anexado '+_now.toLocaleDateString('pt-BR')+' '+_now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  rdeTab='ACESSO';rdeGran='all';rdePeriod=[];rdeCluster=[];rdeYear=[];rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
+  rdeTab='ACESSO';rdeGran='all';rdePeriod=[];rdeCluster=[];rdeYear=[];rdeOrg=[];rdeTev=[];rdeShowDash();rdeSyncControls();renderRede();saveState();autoSyncAfterBaseUpload('Rede');updateClearBtns();updateCentralStatus();
 }
 function rdeHasDetail(rows,idx){return Array.isArray(rows)&&rows.some(r=>Array.isArray(r)&&r.length>idx&&r[idx]&&typeof r[idx]==='object')}
 function rdeRestoreM(saved){
@@ -31787,7 +31836,7 @@ async function rdeRestoreBaseFromIndexedDb(){
   try{const st=await idbGet(REDE_STORAGE);if(st)rdeApplyStoredState(st)}
   catch(e){console.warn('rede IndexedDB restore',e)}
 }
-function rdeSaveUI(){try{localStorage.setItem(REDE_UI_KEY,JSON.stringify({tab:rdeTab,gran:rdeGran,period:rdePeriod,cluster:rdeCluster,year:rdeYear}));}catch(e){}}
+function rdeSaveUI(){try{localStorage.setItem(REDE_UI_KEY,JSON.stringify({tab:rdeTab,gran:rdeGran,period:rdePeriod,cluster:rdeCluster,year:rdeYear,org:rdeOrg,tev:rdeTev}));}catch(e){}}
 function rdeRestoreUI(){
   try{
     const raw=localStorage.getItem(REDE_UI_KEY);if(!raw)return;
@@ -31797,6 +31846,7 @@ function rdeRestoreUI(){
     if(ui.period!==undefined)rdePeriod=asArr(ui.period);
     if(ui.cluster!==undefined)rdeCluster=asArr(ui.cluster);
     if(ui.year!==undefined)rdeYear=asArr(ui.year);
+    if(Array.isArray(ui.org))rdeOrg=ui.org;if(Array.isArray(ui.tev))rdeTev=ui.tev;
   }catch(e){console.warn('rede ui restore',e)}
 }
 function rdeMetaLoad(){
@@ -31964,8 +32014,9 @@ function rdeElapsedFromDetail(det){
   const ab=rdeParseDateBR(partes[0]),fc=rdeParseDateBR(partes[1]);
   return(ab&&fc&&fc>=ab)?(fc-ab)/36e5:null;
 }
-function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';const eh=r[isAC?9:8];const elapsedH=(typeof eh==='number'&&eh>=0)?eh:rdeElapsedFromDetail(det);const o={m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,elapsedH,_raw:r,_scope:isAC?'ac':'bb'};if(RDE_T_MTTR)rdeTComoMttr(o);return o;}).filter(r=>r.m||r.w);}
-function rdeTabFlat(){
+function rdeToFlat(rows,kind){const isAC=kind==='AC';return rows.map(r=>{const det=r[isAC?8:7];const cidade=(det&&typeof det==='object')?String(det.cidade||'').trim():'';const eh=r[isAC?9:8];const elapsedH=(typeof eh==='number'&&eh>=0)?eh:rdeElapsedFromDetail(det);const o={m:rdeM.mes[r[1]]||'',w:rdeM.sem[r[2]]||'',cl:r[0],p:r[3],o:r[4],t:r[5],c:isAC?(rdeM.mo[r[7]]||'Não informado'):(rdeM.ca[r[6]]||'Não informado'),cidade,elapsedH,_raw:r,_scope:isAC?'ac':'bb'};if(det&&typeof det==='object'&&det.org){o.org=det.org;o.tev=det.tev||'';o.el=det.el||'';o.par=det.par||0;o.ti=det.ti||0;o.fx=det.fx||'';o.pz2=det.pz2;o.ou2=det.ou2;}if(isAC)o.cli=+r[6]||0;if(RDE_T_MTTR)rdeTComoMttr(o);return o;}).filter(r=>r.m||r.w);}
+function rdeTabFlat(){return rdeAplicaNovoFiltro(rdeTabFlatBruto());}
+function rdeTabFlatBruto(){
   let out;
   if(rdeTab==='ACESSO')out=rdeToFlat(rdeAD,'AC');
   else if(rdeTab==='BACKBONE')out=rdeToFlat(rdeBD,'BB');
@@ -32017,6 +32068,7 @@ function rdeMttrFlat(){
   const cl=userAllowedClusters();
   if(cl)out=out.filter(r=>cl.includes(r.cl));
   if(rdeYear.length)out=out.filter(r=>rdeYear.includes(rdeRecYear(r)));
+  out=rdeAplicaNovoFiltro(out);
   const gk=rdePKey();
   if(rdeGran!=='all'&&rdePeriod.length)out=out.filter(r=>rdePeriod.includes(r[gk]));
   if(rdeCluster.length)out=out.filter(r=>rdeClFilter(r.cl));
@@ -33177,6 +33229,109 @@ function rdePrjRender(){
     rdePrjDailyCh=new Chart(dCv,{type:'line',data:{labels:acum.map((_,i)=>String(i+1).padStart(2,'0')),datasets:ds},plugins:DL?[DL]:[],options:optsBase('Dia a dia — '+rdeMname(ctx.mes)+' · '+nomeM+' · '+recorte)});
   }
 }
+/* ═══ Painel Rede — layout reestruturado para a base padrão Rede_MTTR.xlsx (pedido do usuário 2026-11-16) ═══
+   Campos novos da base (gravados no detail de cada chamado por rdeNovoCampos): Origem (BDESK/FIELD/BACKBONE),
+   Tipo de evento (FALHA/F. GRAVE), Elemento (cabo / trecho de backbone), Parada de relógio, TME inteiro,
+   Faixa de TME (RANGE_TME) e Prazo/Outlier COM parada de relógio (PRAZO/OUTLIER — só para comparação; o
+   oficial continua sendo *_SEM_PARADA_RELOGIO). Filtros Origem/Tipo só valem com a aba Rede aberta
+   (rdeNovoFiltroAtivo), então o Executivo/PPT e o Redir — que leem o Rede por fora — não são afetados. */
+let rdeOrg=[],rdeTev=[],rdeFxCh=null,_rdeElShown=[],_rdeOrgShown={};
+const RDE_ORGS=['BDESK','FIELD','BACKBONE'];
+const RDE_FAIXAS=['Até 6h','6 a 10h','10 a 18h','18 a 36h','> 36h'],RDE_FX_COR=['#34c759','#a3d977','#ffcc00','#ff9500','#ff3b30'];
+function rdeFaixaNorm(v){const k=rdeNk(v);if(!k)return'';if(/^ATE6/.test(k))return'Até 6h';if(/^6A10/.test(k))return'6 a 10h';if(/^10A18/.test(k))return'10 a 18h';if(/^18A36/.test(k))return'18 a 36h';if(/36/.test(k))return'> 36h';return String(v).trim();}
+function rdeNovoCampos(r){
+  const tev=String(rdeGv(r,['TIPO_EVENTO'])||'').trim();
+  return{org:rdeNk(rdeGv(r,['ORIGEM'])),tev:tev&&tev!=='-'?tev.toUpperCase():'',el:String(rdeGv(r,['ELEMENTO'])||'').trim(),
+    par:Number(rdeGv(r,['PARADA?','PARADA']))===1?1:0,ti:rdeNum(rdeGv(r,['TME_INTEIRO'])),fx:rdeFaixaNorm(rdeGv(r,['RANGE_TME'])),
+    pz2:Number(rdeGv(r,['PRAZO']))===1?1:0,ou2:Number(rdeGv(r,['OUTLIER']))===1?1:0};
+}
+function rdeNovoFiltroAtivo(){return typeof activeTab!=='undefined'&&activeTab==='rede'&&!!(rdeOrg.length||rdeTev.length);}
+const rdeTevKey=r=>r.tev||'SEMTIPO';
+const RDE_TEV_LBL={FALHA:'Falha','F. GRAVE':'Falha grave',SEMTIPO:'Sem tipo (Backbone)'};
+function rdeAplicaNovoFiltro(out){if(!rdeNovoFiltroAtivo())return out;return out.filter(r=>(!rdeOrg.length||rdeOrg.includes(r.org))&&(!rdeTev.length||rdeTev.includes(rdeTevKey(r))));}
+function rdeOrgsDaAba(){return rdeTab==='ACESSO'?['BDESK','FIELD']:rdeTab==='BACKBONE'?['BACKBONE']:RDE_ORGS;}
+function rdeToggleOrg(o){if(!o)rdeOrg=[];else rdeOrg=rdeOrg.includes(o)?rdeOrg.filter(x=>x!==o):[...rdeOrg,o];renderRede();rdeSaveUI();}
+function rdeToggleTev(t){if(!t)rdeTev=[];else rdeTev=rdeTev.includes(t)?rdeTev.filter(x=>x!==t):[...rdeTev,t];renderRede();rdeSaveUI();}
+function rdeNovoSyncControls(){
+  const row=document.getElementById('rde-novo-row');if(!row)return;
+  const bruto=rdeTabFlatBruto(),tem=bruto.some(r=>r.org);
+  row.style.display=tem?'':'none';if(!tem){rdeOrg=[];rdeTev=[];return;}
+  const orgs=rdeOrgsDaAba();rdeOrg=rdeOrg.filter(o=>orgs.includes(o));
+  const yr=r=>!rdeYear.length||rdeYear.includes(rdeRecYear(r)),gk=rdePKey(),per=r=>rdeGran==='all'||!rdePeriod.length||rdePeriod.includes(r[gk]),cl=r=>!rdeCluster.length||rdeClFilter(r.cl);
+  const base=bruto.filter(r=>yr(r)&&per(r)&&cl(r));
+  const oSeg=document.getElementById('rde-org-seg'),oLbl=document.getElementById('rde-org-lbl');
+  const mostraOrg=orgs.length>1;if(oSeg)oSeg.style.display=mostraOrg?'':'none';if(oLbl)oLbl.style.display=mostraOrg?'':'none';
+  if(oSeg&&mostraOrg){const bT=base.filter(r=>!rdeTev.length||rdeTev.includes(rdeTevKey(r)));
+    oSeg.innerHTML=`<button class="rede-sgbtn${!rdeOrg.length?' on':''}" onclick="rdeToggleOrg('')">Todas <span class="rede-cnt">${bT.length}</span></button>`+
+      orgs.map(o=>`<button class="rede-sgbtn${rdeOrg.includes(o)?' on':''}" onclick="rdeToggleOrg('${o}')">${o} <span class="rede-cnt">${bT.filter(r=>r.org===o).length}</span></button>`).join('');}
+  const tSeg=document.getElementById('rde-tev-seg');
+  if(tSeg){const bO=base.filter(r=>!rdeOrg.length||rdeOrg.includes(r.org));const ks=['FALHA','F. GRAVE','SEMTIPO'].filter(k=>bO.some(r=>rdeTevKey(r)===k));
+    rdeTev=rdeTev.filter(k=>ks.includes(k));
+    tSeg.innerHTML=`<button class="rede-sgbtn${!rdeTev.length?' on':''}" onclick="rdeToggleTev('')">Todos <span class="rede-cnt">${bO.length}</span></button>`+
+      ks.map(k=>`<button class="rede-sgbtn${rdeTev.includes(k)?' on':''}" onclick="rdeToggleTev('${k}')">${RDE_TEV_LBL[k]||k} <span class="rede-cnt">${bO.filter(r=>rdeTevKey(r)===k).length}</span></button>`).join('');}
+}
+function rdeMttrDe(arr){const v=arr.filter(r=>{const ch=rdeChaveExpurgo(r);return!(ch&&rdeExpurgo[ch]);}).map(r=>r.elapsedH).filter(t=>t!=null&&t>RDE_MTTR_MIN_H);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;}
+const _rdF1=v=>v==null||!isFinite(v)?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const _rdH=v=>v==null||!isFinite(v)||!v?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'h';
+const _rdN=v=>Number(v||0).toLocaleString('pt-BR');
+const _rdPct=(a,b)=>b?_rdF1(a/b*100)+'%':'—';
+const _rdMed=a=>{const v=a.filter(x=>isFinite(x)&&x>0);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
+function rdeOrgTag(o){return o?`<span class="rde-org-tag rde-o-${eh(o)}">${eh(o)}</span>`:'';}
+function rdeNovoVer(tipo,i){const l=tipo==='el'?(_rdeElShown[i]||null):(_rdeOrgShown[tipo]||null);if(l)rdeShowCalls(l.t,l.recs);}
+function rdeRenderNovo(recs){
+  const tem=rdeTabFlatBruto().some(r=>r.org);
+  const off='<div class="rde-novo-off">Disponível com a base padrão <b>Rede_MTTR.xlsx</b> (traz Origem, Tipo de evento, Elemento, Faixa de TME, Parada de relógio e Clientes afetados).</div>';
+  const set=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;};
+  const ids=['rde-kpis2','rde-org-box','rde-tev-box','rde-fx-tbl','rde-par-box','rde-cli-causa','rde-cli-cid','rde-el-box'];
+  if(!tem){ids.forEach(id=>set(id,id==='rde-kpis2'?'':off));if(rdeFxCh){rdeFxCh.destroy();rdeFxCh=null;}return;}
+  const n=recs.length,ac=recs.filter(r=>r._scope==='ac');
+  const cli=ac.reduce((s,r)=>s+(r.cli||0),0),par=recs.filter(r=>r.par===1),fg=recs.filter(r=>r.tev==='F. GRAVE');
+  const desc=par.reduce((s,r)=>s+Math.max(0,(r.ti||0)-(r.t||0)),0),pz=recs.filter(r=>r.p===1).length,pz2=recs.filter(r=>r.pz2===1).length;
+  const card=(l,v,m,g,cls)=>`<div class="rede-kpi-card"><div class="rkl">${l}</div><div class="rkv${cls?' '+cls:''}">${v}</div><div class="rkmeta">${m}</div>${g?`<div class="rkgap">${g}</div>`:''}</div>`;
+  const topCli=(()=>{const m=new Map();ac.forEach(r=>m.set(r.c,(m.get(r.c)||0)+(r.cli||0)));return[...m.entries()].sort((a,b)=>b[1]-a[1])[0];})();
+  set('rde-kpis2',
+    card('Clientes afetados',_rdN(cli),ac.length?_rdF1(cli/ac.length)+' por evento de Acesso':'só eventos de Acesso trazem clientes',topCli&&topCli[1]?'Maior impacto: '+eh(topCli[0])+' ('+_rdN(topCli[1])+')':'')+
+    card('Parada de relógio',_rdPct(par.length,n),_rdN(par.length)+' de '+_rdN(n)+' eventos com relógio parado',par.length?_rdN(Math.round(desc))+'h descontadas do TME ('+_rdH(desc/par.length)+' por evento)':'')+
+    card('Prazo oficial × com parada',_rdPct(pz,n),'oficial (relógio corrido) · meta ≥'+RDE_M89+'%',n?'Com parada de relógio: '+_rdPct(pz2,n)+' ('+(pz2>=pz?'+':'−')+_rdF1(Math.abs(pz2-pz)/n*100)+' p.p.)':'',pz/n*100>=RDE_M89?'ok':'bd')+
+    card('Falha grave',_rdN(fg.length),fg.length?_rdPct(fg.length,recs.filter(r=>r.tev).length)+' dos eventos de Acesso com tipo':'nenhuma no filtro',fg.length?'Outlier '+_rdPct(fg.filter(r=>r.o===1).length,fg.length)+' · TME '+_rdH(_rdMed(fg.map(r=>r.t))):''));
+  /* por origem */
+  const linha=(lbl,a,k)=>{const g=rdeAgg2(a),mt=rdeMttrDe(a),cl=a.filter(r=>r._scope==='ac').reduce((s,r)=>s+(r.cli||0),0);_rdeOrgShown[k]={t:lbl,recs:a};
+    return`<tr class="rde-click" onclick="rdeNovoVer('${k}')" title="Ver os chamados"><td>${lbl}</td><td class="rede-num">${_rdN(g.n)}</td><td class="rede-num">${_rdPct(g.n,n)}</td><td class="rede-num">${_rdF1(g.prazo)}%</td><td class="rede-num">${_rdF1(g.outlier)}%</td><td class="rede-num">${_rdH(g.tAvg)}</td><td class="rede-num">${_rdH(_rdMed(a.map(r=>r.ti)))}</td><td class="rede-num">${_rdH(mt)}</td><td class="rede-num">${a.some(r=>r._scope==='ac')?_rdN(cl):'—'}</td><td class="rede-num">${_rdPct(a.filter(r=>r.par===1).length,g.n)}</td><td>${rdeChipHtml(g)}</td></tr>`;};
+  const th='<thead><tr><th>%L%</th><th class="rede-num">Eventos</th><th class="rede-num">% do total</th><th class="rede-num">Prazo</th><th class="rede-num">Outlier</th><th class="rede-num">TME</th><th class="rede-num">TME inteiro</th><th class="rede-num">MTTR</th><th class="rede-num">Clientes afet.</th><th class="rede-num">Parada relógio</th><th>Status</th></tr></thead>';
+  const orgs=RDE_ORGS.filter(o=>recs.some(r=>r.org===o));
+  set('rde-org-box','<table class="rede-dtable" style="font-size:13px">'+th.replace('%L%','Origem')+'<tbody>'+orgs.map(o=>linha(rdeOrgTag(o)+' '+({BDESK:'Acesso — chamados BDESK',FIELD:'Acesso — CTO sem sinal (Field)',BACKBONE:'Backbone — trechos'}[o]||''),recs.filter(r=>r.org===o),'o_'+o)).join('')+(orgs.length>1?linha('<b>Total</b>',recs,'o_tot'):'')+'</tbody></table>');
+  const tevs=['FALHA','F. GRAVE','SEMTIPO'].filter(k=>recs.some(r=>rdeTevKey(r)===k));
+  set('rde-tev-box','<table class="rede-dtable" style="font-size:13px">'+th.replace('%L%','Tipo de evento')+'<tbody>'+tevs.map(k=>linha(RDE_TEV_LBL[k]||k,recs.filter(r=>rdeTevKey(r)===k),'t_'+k.replace(/\W/g,''))).join('')+'</tbody></table>');
+  /* faixa de TME */
+  const grupos=orgs.length?orgs:['—'];
+  const cont=(o,f)=>recs.filter(r=>(o==='—'||r.org===o)&&r.fx===f).length,totO=o=>recs.filter(r=>o==='—'||r.org===o).length;
+  set('rde-fx-tbl','<table class="rede-dtable" style="font-size:13px"><thead><tr><th>Origem</th>'+RDE_FAIXAS.map((f,i)=>`<th class="rede-num"><span style="color:${RDE_FX_COR[i]}">●</span> ${f}</th>`).join('')+'</tr></thead><tbody>'+
+    grupos.map(o=>`<tr><td>${rdeOrgTag(o==='—'?'':o)||'Todos'}</td>`+RDE_FAIXAS.map(f=>{const c=cont(o,f);return`<td class="rede-num">${_rdN(c)} <small style="color:var(--tx3)">${_rdPct(c,totO(o))}</small></td>`;}).join('')+'</tr>').join('')+'</tbody></table>'+
+    '<div class="rede-sub" style="margin-top:6px">Faixa calculada pela própria base (RANGE_TME, sobre o TME). Acima de 18h = cauda que puxa Outlier e MTTR.</div>');
+  const cv=document.getElementById('rde-fx-ch');
+  if(cv&&typeof Chart!=='undefined'){if(rdeFxCh){rdeFxCh.destroy();rdeFxCh=null;}
+    const txC=getComputedStyle(document.body).getPropertyValue('--tx3').trim()||'#8e8e93',gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
+    rdeFxCh=new Chart(cv,{type:'bar',data:{labels:grupos.map(o=>o==='—'?'Todos':o),datasets:RDE_FAIXAS.map((f,i)=>({label:f,backgroundColor:RDE_FX_COR[i],data:grupos.map(o=>{const t=totO(o);return t?+(cont(o,f)/t*100).toFixed(1):0;}),_n:grupos.map(o=>cont(o,f))}))},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txC,boxWidth:12}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw+'% ('+c.dataset._n[c.dataIndex]+' eventos)'}},datalabels:{display:false}},
+        scales:{x:{stacked:true,max:100,ticks:{color:txC,callback:v=>v+'%'},grid:{color:gdC}},y:{stacked:true,ticks:{color:txC},grid:{display:false}}}}});}
+  /* parada de relógio */
+  set('rde-par-box','<table class="rede-dtable" style="font-size:13px"><thead><tr><th>Origem</th><th class="rede-num">Com parada</th><th class="rede-num">TME (oficial)</th><th class="rede-num">TME inteiro</th><th class="rede-num">Desconto médio</th><th class="rede-num">Prazo oficial</th><th class="rede-num">Prazo c/ parada</th><th class="rede-num">Outlier oficial</th><th class="rede-num">Outlier c/ parada</th></tr></thead><tbody>'+
+    grupos.map(o=>{const a=recs.filter(r=>o==='—'||r.org===o),p=a.filter(r=>r.par===1),t=a.length;return`<tr><td>${rdeOrgTag(o==='—'?'':o)||'Todos'}</td><td class="rede-num">${_rdN(p.length)} <small style="color:var(--tx3)">${_rdPct(p.length,t)}</small></td><td class="rede-num">${_rdH(_rdMed(a.map(r=>r.t)))}</td><td class="rede-num">${_rdH(_rdMed(a.map(r=>r.ti)))}</td><td class="rede-num">${p.length?_rdH(p.reduce((s,r)=>s+Math.max(0,(r.ti||0)-(r.t||0)),0)/p.length):'—'}</td><td class="rede-num">${_rdPct(a.filter(r=>r.p===1).length,t)}</td><td class="rede-num">${_rdPct(a.filter(r=>r.pz2===1).length,t)}</td><td class="rede-num">${_rdPct(a.filter(r=>r.o===1).length,t)}</td><td class="rede-num">${_rdPct(a.filter(r=>r.ou2===1).length,t)}</td></tr>`;}).join('')+'</tbody></table>'+
+    '<div class="rede-sub" style="margin-top:6px">Oficial = relógio corrido (PRAZO/OUTLIER_SEM_PARADA_RELOGIO), é o que vale para a meta. "Com parada" desconta o tempo de relógio parado — mostra quanto do desvio vem de pausas.</div>');
+  /* clientes afetados */
+  const topBy=(key,lbl)=>{const m=new Map();ac.forEach(r=>{const k=key(r)||'Não informado';const x=m.get(k)||{n:0,c:0,o:0};x.n++;x.c+=r.cli||0;x.o+=r.o===1?1:0;m.set(k,x);});const arr=[...m.entries()].sort((a,b)=>b[1].c-a[1].c).slice(0,8);
+    return arr.length?'<table class="rede-dtable" style="font-size:13px"><thead><tr><th>'+lbl+'</th><th class="rede-num">Eventos</th><th class="rede-num">Clientes</th><th class="rede-num">Média/evento</th><th class="rede-num">Outlier</th></tr></thead><tbody>'+arr.map(([k,x])=>`<tr><td>${eh(k)}</td><td class="rede-num">${_rdN(x.n)}</td><td class="rede-num"><b>${_rdN(x.c)}</b></td><td class="rede-num">${_rdF1(x.c/x.n)}</td><td class="rede-num">${_rdN(x.o)}</td></tr>`).join('')+'</tbody></table>':'<div class="rde-novo-off">Sem eventos de Acesso no filtro (o Backbone não traz clientes afetados).</div>';};
+  set('rde-cli-causa','<h4>Por causa</h4>'+topBy(r=>r.c,'Causa'));
+  set('rde-cli-cid','<h4>Por cidade</h4>'+topBy(r=>r.cidade,'Cidade'));
+  /* elementos ofensores */
+  const em=new Map();recs.forEach(r=>{if(!r.el)return;if(!em.has(r.el))em.set(r.el,[]);em.get(r.el).push(r);});
+  const els=[...em.entries()].map(([k,a])=>({k,a,o:a.filter(r=>r.o===1).length})).sort((x,y)=>y.o-x.o||y.a.length-x.a.length).slice(0,12);
+  _rdeElShown=els.map(x=>({t:'Elemento '+x.k,recs:x.a}));
+  const causaTop=a=>{const m=new Map();a.forEach(r=>m.set(r.c,(m.get(r.c)||0)+1));const t=[...m.entries()].sort((x,y)=>y[1]-x[1])[0];return t?eh(t[0])+' ('+t[1]+')':'—';};
+  set('rde-el-box',els.length?'<table class="rede-dtable" style="font-size:13px"><thead><tr><th>Elemento</th><th>Origem</th><th class="rede-num">Eventos</th><th class="rede-num">Outlier</th><th class="rede-num">Prazo</th><th class="rede-num">TME</th><th class="rede-num">MTTR</th><th class="rede-num">Clientes</th><th>Causa principal</th></tr></thead><tbody>'+
+    els.map((x,i)=>{const g=rdeAgg2(x.a);return`<tr class="rde-click" onclick="rdeNovoVer('el',${i})" title="Ver os chamados deste elemento"><td style="max-width:420px;white-space:normal;word-break:break-word">${eh(x.k)}</td><td>${[...new Set(x.a.map(r=>r.org))].map(rdeOrgTag).join(' ')}</td><td class="rede-num">${_rdN(x.a.length)}</td><td class="rede-num"><b>${_rdN(x.o)}</b></td><td class="rede-num">${_rdF1(g.prazo)}%</td><td class="rede-num">${_rdH(g.tAvg)}</td><td class="rede-num">${_rdH(rdeMttrDe(x.a))}</td><td class="rede-num">${_rdN(x.a.reduce((s,r)=>s+(r.cli||0),0))}</td><td>${causaTop(x.a)}</td></tr>`;}).join('')+'</tbody></table>'+
+    '<div class="rede-sub" style="margin-top:6px">Ordenado por quantidade de Outlier. No Acesso o elemento é o cabo (12/36/72 fibras); no Backbone, o trecho (rota).</div>':'<div class="rde-novo-off">Sem elementos no filtro.</div>');
+}
 function renderRede(){
   if(!rdeBD.length&&!rdeAD.length)return;
   const recs=rdeGetDisplayRecs();
@@ -33192,6 +33347,7 @@ function renderRede(){
   const gdC=getComputedStyle(document.body).getPropertyValue('--bd').trim()||'rgba(0,0,0,.07)';
   const gk=rdePKey();
   rdeSyncControls();
+  try{rdeNovoSyncControls();}catch(e){console.warn('rede: filtros novos',e);}
   const thTme=document.getElementById('rde-th-tme');if(thTme)thTme.textContent=tl;
   // KPIs
   const kpiEl=document.getElementById('rde-kpis');
@@ -33294,6 +33450,7 @@ function renderRede(){
   }else if(rptEl){rptEl.innerHTML='<span style="color:var(--tx3);font-size:13px">Sem dados para o período selecionado.</span>';}
   rdeRenderAtenuacao(recs);
   rdeRenderMttrOfensores();
+  try{rdeRenderNovo(recs);}catch(e){console.warn('rede: análises da base nova',e);}
   // Calls panel: sempre visível enquanto houver cluster e/ou período selecionado
   const _ce=document.getElementById('rde-calls');
   if(rdeCluster.length||rdePeriod.length){
@@ -33336,7 +33493,7 @@ function rdeCallRowHtml(r,i,toggleFn){
     ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="${toggleFn}(${i})"></label>`
     :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
   const rowStyle=marcado?'opacity:.55':(desvioMttr?'background:rgba(255,59,48,.10)':'');
-  return`<tr${rowStyle?` style="${rowStyle}"`:''}${desvioMttr?' title="Desviou da meta de MTTR"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(exc)}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl}</span></td><td style="text-align:center">${expCell}</td></tr>`;
+  return`<tr${rowStyle?` style="${rowStyle}"`:''}${desvioMttr?' title="Desviou da meta de MTTR"':''}><td><span class="rede-did"${det.el?` title="${eh(det.el)}"`:''}>${eh(os)}</span>${det.org?' '+rdeOrgTag(det.org):''}</td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.t>0?r.t.toFixed(2)+'h':'—'}</td><td style="color:${r.p===1?'#34c759':'#ff9500'};text-align:center">${r.p===1?'✓':'✗'}</td><td style="color:${r.o===1?'#ff3b30':'#34c759'};text-align:center">${r.o===1?'⚠':'—'}</td><td class="rede-num" style="white-space:nowrap">${eh(exc)}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td><span class="rede-chip ${cr}">${crLbl}</span></td><td style="text-align:center">${expCell}</td></tr>`;
 }
 function rdeShowCalls(title,flatRecs){
   const el=document.getElementById('rde-calls'),tbody=document.getElementById('rde-calls-body'),tit=document.getElementById('rde-calls-title');
@@ -33438,7 +33595,7 @@ function rdeMttrOfensorRowHtml(r,i){
   const expCell=chave
     ?`<label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer" title="Excluir este chamado do cálculo do MTTR"><input type="checkbox" ${marcado?'checked':''} onchange="rdeToggleExpurgoMttrOfensor(${i})"></label>`
     :`<span title="Sem OS/ID identificável — não é possível marcar expurgo com segurança">—</span>`;
-  return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did">${eh(os)}</span></td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.elapsedH.toFixed(2)}h</td><td class="rede-num" style="color:#ff3b30">+${excedente.toFixed(2)}h</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td style="text-align:center">${expCell}</td></tr>`;
+  return`<tr${marcado?' style="opacity:.55"':''}><td><span class="rede-did"${det.el?` title="${eh(det.el)}"`:''}>${eh(os)}</span>${det.org?' '+rdeOrgTag(det.org):''}</td><td>${eh(r.cidade||'—')}</td><td>${eh(uf)}</td><td>${eh(RDE_CL_NM[r.cl]||r.cl||'—')}</td><td style="white-space:nowrap">${eh(dataFechamento)}</td><td class="rede-num">${r.elapsedH.toFixed(2)}h</td><td class="rede-num" style="color:#ff3b30">+${excedente.toFixed(2)}h</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${eh(r.c)}">${eh(r.c||'—')}</td><td style="text-align:center">${expCell}</td></tr>`;
 }
 function rdeRenderMttrOfensores(){
   const secEl=document.getElementById('rde-mttr-of-section');
