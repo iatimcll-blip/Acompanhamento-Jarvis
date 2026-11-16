@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-16T16:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-16T18:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7682,6 +7682,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-abertos-ofs .aof-quickfilters .aof-chk{flex-direction:row!important;align-items:center;gap:4px!important;padding-top:0;color:var(--aof-muted)!important;font-size:13px!important}
   #panel-abertos-ofs .aof-resumo-date{font:600 13px var(--aof-sans);color:var(--aof-muted);margin-left:8px;padding:3px 10px;border-radius:999px;background:var(--aof-soft);border:1px solid var(--aof-line);vertical-align:middle;letter-spacing:0;text-transform:none}
   #panel-abertos-ofs .aof-resumo-date:empty{display:none}
+  #panel-abertos-ofs .aof-btn-wpp{background:#1faa59;border-color:#1faa59;color:#fff}
+  #panel-abertos-ofs .aof-btn-wpp:hover{background:#178f4a;border-color:#178f4a;color:#fff}
+  #panel-abertos-ofs .aof-btn-wpp .ti{color:#fff}
   #panel-abertos-ofs .aof-tec-link{background:none;border:none;padding:0;font:inherit;color:var(--aof-blue);cursor:pointer;text-align:left}
   #panel-abertos-ofs .aof-tec-link:hover{text-decoration:underline}
   #panel-abertos-ofs tr.aof-ativ-grp{cursor:pointer;background:var(--aof-soft)}
@@ -7837,7 +7840,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             <button type="button" class="aof-tab" role="tab" aria-selected="true" data-tab="tec">Produtividade por técnico</button>
             <button type="button" class="aof-tab" role="tab" aria-selected="false" data-tab="ativ">Atividades por técnico</button>
           </div>
-          <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><button type="button" class="aof-btn" id="aof-btnAtivToggle" style="display:none">Expandir todos</button><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="aof-btn" id="aof-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
+          <div class="aof-tabletools"><span id="aof-tblInfo"></span><span style="display:flex;gap:8px;align-items:center"><button type="button" class="aof-btn" id="aof-btnAtivToggle" style="display:none">Expandir todos</button><input type="search" id="aof-tblSearch" placeholder="Buscar na tabela"><button type="button" class="aof-btn" id="aof-btnCopy" title="Copiar esta tabela como imagem (Ctrl+V pra colar em outro lugar)"><i class="ti ti-copy"></i> Copiar</button><button type="button" class="aof-btn aof-btn-wpp" id="aof-btnWpp" title="Abre o WhatsApp com o conteúdo desta aba do Resumo em texto (mesmos filtros, busca e ordem da tela) — escolha o grupo/contato e envie"><i class="ti ti-brand-whatsapp"></i> WhatsApp</button><button type="button" class="aof-btn" id="aof-btnExport" title="Exportar esta tabela em Excel (.xlsx)"><i class="ti ti-file-spreadsheet"></i> Exportar</button></span></div>
           <div class="aof-tablewrap"><table id="aof-tbl"></table></div>
         </div>
       </section>
@@ -8570,6 +8573,101 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       });
     }
 
+    /* Botão "WhatsApp" do bloco Resumo (pedido 2026-11-16): monta a mensagem em texto da aba
+       atual (Fila / Cidades / Produtividade / Atividades) com o MESMO recorte da tela — filtros,
+       busca e ordenação — e abre o WhatsApp (app ou Web) com o texto pronto. A pessoa escolhe o
+       grupo/contato e envia; o painel não envia nada sozinho (mesmo padrão do abEnviarWpp do B2B).
+       Texto longo demais para o link: copia para a área de transferência e abre o WhatsApp para colar. */
+    function aofLinhasVisiveis(){
+      const D=filtered();
+      const{rows,def0}=tableDefs(D);
+      if(tab==='ativ')return rows;
+      const[sk,sd]=sortState[tab]||def0;
+      const q=n(document.getElementById('aof-tblSearch').value).toLowerCase();
+      let R=q?rows.filter(r=>Object.values(r).some(v=>typeof v!=='object'&&String(v).toLowerCase().includes(q))):rows;
+      return[...R].sort((a,b)=>{const x=a[sk],y=b[sk];
+        if(x==null)return 1;if(y==null)return-1;
+        return(typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt'))*sd;});
+    }
+    function aofRecorteTxt(){
+      const p=[];
+      [['aof-fCluster2','Cluster'],['aof-fUF2','UF'],['aof-fMop2','MOP/EPS'],['aof-fCat2','Categoria'],['aof-fStatus2','Status'],['aof-fSistema2','Sistema']].forEach(([id,l])=>{
+        const el=document.getElementById(id);if(el&&el.value){const o=el.options[el.selectedIndex];p.push(l+': '+(o?o.text:el.value));}});
+      [['aof-cid2',/^Todas/i],['aof-tipo2',/^Todos/i]].forEach(([k,re])=>{
+        const lb=document.querySelector('#msel-btn-'+k+' .msel-btn-lbl');const t=lb?lb.textContent.trim():'';if(t&&!re.test(t))p.push(t);});
+      const tec=document.getElementById('aof-fTec2');if(tec&&tec.value.trim())p.push('Técnico: '+tec.value.trim());
+      const qb=document.getElementById('aof-tblSearch');if(qb&&qb.value.trim())p.push('Busca: "'+qb.value.trim()+'"');
+      return p.join(' · ');
+    }
+    function aofTextoWpp(){
+      const R=aofLinhasVisiveis();
+      const nomeAba={fila:'Fila em aberto',cid:'Cidades',tec:'Produtividade por técnico',ativ:'Atividades por técnico'}[tab]||'Resumo';
+      const rd=(document.getElementById('aof-resumo-date')||{}).textContent||'';
+      const info=(document.getElementById('aof-tblInfo')||{}).textContent||'';
+      const rec=aofRecorteTxt();
+      let t=`📋 *Abertos OFS — ${nomeAba}*\n`;
+      if(rd)t+=`_${rd}_\n`;
+      if(rec)t+=`Recorte: ${rec}\n`;
+      if(info)t+=`${info.split(' · ')[0]}\n`;
+      if(!R.length)return t+'\nNenhum registro no recorte atual.';
+      const sv=v=>v==null||v===''?'—':String(v);
+      if(tab==='fila'){
+        const fora=r=>r.aging!=null&&r.tipo&&(r.aging-aofSlaGet(r.tipo)>0);
+        const nf=R.filter(fora).length,ns=R.filter(r=>r.unassigned).length;
+        if(nf||ns)t+=(nf?`🔴 *${nf} fora do prazo*`:'')+(nf&&ns?' · ':'')+(ns?`⚠ *${ns} sem técnico*`:'')+'\n';
+        R.forEach((r,i)=>{
+          const fp=fora(r);
+          t+=`\n${fp?'🔴':'🟢'} *${i+1}. ${sv(r.tipo)}*${r.os?' — OS '+r.os:''}\n`;
+          if(fp)t+=`*⚠ FORA DO PRAZO*\n`;
+          t+=`Cliente: ${sv(r.nome)} · ${sv(r.cid)}${r.uf?'/'+r.uf:''}${r.mop?' · '+r.mop:''}\n`;
+          t+=`⏱ Aberta há ${r.aging==null?'—':(fp?'*'+fmtSLA(r.aging)+'*':fmtSLA(r.aging))} · SLA prazo ${aofSlaGet(r.tipo)}h${r.sg&&r.sg!=='Em aberto'?' · Status: '+r.sg:''}\n`;
+          t+=r.unassigned?`Recurso: ⚠ *Sem técnico* (${sv(r.rec)})\n`:`Recurso: ${sv(r.rec)}\n`;
+          if(r.obsText)t+=`Obs.: ${r.obsText}\n`;
+        });
+        return t;
+      }
+      if(tab==='tec'){
+        R.forEach((r,i)=>{
+          const ic=r.p>=80?'🟢':r.p>=50?'🟡':'🔴';
+          t+=`\n${ic} *${i+1}. ${sv(r.rec)}* (${sv(r.cluster)}${r.uf?' · '+r.uf:''})\n`;
+          t+=`Concluídas ${r.c}/${r.t} (*${r.p}%*) · Em aberto ${r.ab} · Susp./não concl. ${r.su}\n`;
+          t+=`Tempo em atividade ${fmtH(r.dur)} · Deslocamento ${fmtH(r.desl)}${r.ini!=null?' · '+fmtH(r.ini).replace('h',':')+'–'+(r.fim==null?'—':fmtH(r.fim).replace('h',':')):''}\n`;
+        });
+        return t;
+      }
+      if(tab==='cid'){
+        R.forEach((r,i)=>{
+          const ic=r.p>=80?'🟢':r.p>=50?'🟡':'🔴';
+          t+=`\n${ic} *${i+1}. ${sv(r.cid)}/${sv(r.uf)}* (${sv(r.cluster)})\n`;
+          t+=`${r.t} atividades (Rede ${r.rede} · B2B ${r.b2b}) · Concluídas ${r.c} (*${r.p}%*) · Em aberto ${r.ab} · Susp./não concl. ${r.su}\n`;
+        });
+        return t;
+      }
+      /* ativ: agrupado por técnico, na mesma ordem da tela */
+      const G=[];const idx={};
+      R.forEach(r=>{let g=idx[r.rec];if(!g){g=idx[r.rec]={rec:r.rec,tot:r.totTxt,it:[]};G.push(g);}g.it.push(r);});
+      G.forEach((g,i)=>{
+        const nv=g.it.filter(r=>r.venc).length;
+        t+=`\n${nv?'🔴':'🟢'} *${i+1}. ${sv(g.rec)}* — ${sv(g.tot)}\n`;
+        g.it.forEach(r=>{
+          t+=`• ${r.venc?'🔴 ':''}${r.iniM==null?'—':r.ini}–${r.fimM==null?(r.emAndamento?'em andamento':'—'):r.fim} · ${sv(r.tipo)}${r.os?' · OS '+r.os:''} · ${sv(r.nome)} · ${sv(r.cid)}${r.uf?'/'+r.uf:''}${r.prazo!=null?' · prazo '+(r.venc?'*'+fmtSLA(r.prazo/60)+'*':fmtSLA(r.prazo/60)):''}\n`;
+        });
+      });
+      return t;
+    }
+    async function aofEnviarWpp(){
+      let txt;
+      try{txt=aofTextoWpp();}catch(e){console.error('Abertos OFS WhatsApp',e);alert('Não foi possível montar a mensagem: '+(e&&e.message?e.message:e));return;}
+      let url='https://wa.me/?text='+encodeURIComponent(txt);
+      if(url.length>8750){
+        try{await navigator.clipboard.writeText(txt);
+          if(typeof _ghToast==='function')_ghToast('Mensagem grande demais para o link: o texto foi COPIADO — no WhatsApp, escolha o grupo e cole (Ctrl+V).','var(--green-dk)',8000);
+          else alert('Mensagem grande demais para o link: o texto foi copiado — no WhatsApp, escolha o grupo e cole (Ctrl+V).');}
+        catch(_){alert('Mensagem grande demais para o link e não foi possível copiar automaticamente. Refine os filtros e tente de novo.');return;}
+        url='https://wa.me/';
+      }
+      window.open(url,'_blank','noopener,noreferrer');
+    }
     /* Colunas do Excel exportado — mesmos campos plain-value (sem HTML/badge) já
        calculados por tableDefs(), um mapeamento por aba (tec/fila/cid). */
     function aofExportDefs(){
@@ -9573,6 +9671,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     }
     document.getElementById('aof-btnPpt').onclick=()=>{try{aofGerarApresentacao();}catch(e){console.error('Apresentação Abertos OFS',e);alert('Não foi possível gerar a apresentação: '+(e&&e.message?e.message:e));}};
     document.getElementById('aof-btnExport').onclick=()=>aofExportXlsx();
+    document.getElementById('aof-btnWpp').onclick=()=>aofEnviarWpp();
     document.getElementById('aof-btnAtivToggle').onclick=()=>{aofAtivAllOpen=!aofAtivAllOpen;if(!aofAtivAllOpen)AOF_ATIV_OPEN.clear();drawTable(filtered());};
     document.getElementById('aof-btnMatinal').onclick=()=>aofGerarRelatorioMatinal();
     document.getElementById('aof-btnMatinalNovo').onclick=()=>aofGerarRelatorioMatinalNovo();
