@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-13T17:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-16T10:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -12926,7 +12926,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div id="rede-empty" class="empty">
       <div class="empty-icon"><i class="ti ti-router"></i></div>
       <h2>Painel de Rede</h2>
-      <p>Carregue os dados de Backbone e Acesso para ver os indicadores.</p>
+      <p>Carregue a base padrão <b>Rede_MTTR.xlsx</b> (Acesso + Backbone no mesmo arquivo) para ver os indicadores.</p>
       <button class="empty-btn admin-only" onclick="openCentral('rede')" data-up="rede" style="background:var(--blue);color:#fff;border-color:var(--blue)"><i class="ti ti-database" style="font-size:14px"></i> Carregar na Central de Dados</button>
     </div>
     <!-- Dashboard -->
@@ -31672,7 +31672,15 @@ function rdeRowToRede(r,sheet){
   const cols=new Set(Object.keys(r).map(rdeNk));
   const hasTmr=cols.has('TMR');
   const hasAcessoCols=cols.has('TME')||cols.has('CLIENTESAFETADOS');
-  const isAC=hasTmr?false:hasAcessoCols?true:tipo.includes('acesso');
+  /* (2026-11-16) BASE PADRÃO NOVA: BASESRede_MTTR.xlsx — um único export (aba Export) com Acesso e Backbone
+     juntos: ORIGEM = BDESK/FIELD (Acesso) ou BACKBONE. Mesmas premissas de antes, conferidas contra a base
+     anterior (out/26: Acesso 323 · 85,1% prazo · 9,3% outlier · MTTR 8,12h; Backbone 116 · 20,7% · 65,5% ·
+     18,19h — idênticos): tempo = TME, Prazo = PRAZO_SEM_PARADA_RELOGIO, Outlier = OUTLIER_SEM_PARADA_RELOGIO
+     (sempre pelo NOME — as letras de coluna mudaram e a leitura por posição pegaria TME_INTEIRO/RANGE_TME),
+     competência pelo fechamento e MTTR = fechamento − abertura. */
+  const novoMttr=cols.has('ORIGEM')&&(cols.has('TMEINTEIRO')||cols.has('RANGETME'));
+  const origem=novoMttr?rdeNk(rdeGv(r,['ORIGEM'])):'';
+  const isAC=novoMttr?origem!=='BACKBONE':hasTmr?false:hasAcessoCols?true:tipo.includes('acesso');
   const openedAt=rdeParseDateBR(rdeGv(r,['DATA_ABERTURA','data abertura','abertura','data']));
   /* Competência de mês/semana usa DATA_FECHAMENTO (fechamento), não abertura — bug real
      encontrado comparando a base anexada contra o relatório de referência da Alloha
@@ -31705,7 +31713,7 @@ function rdeRowToRede(r,sheet){
        col N (PRAZO bruto, sem o ajuste de parada de relógio) por engano. Leitura por
        posição de coluna continua tendo prioridade sobre o nome do cabeçalho, evitando
        ambiguidade entre PRAZO e PRAZO_SEM_PARADA_RELOGIO (nomes parecidos). */
-    const colR=rdeColVal(r,'R'),colP=rdeColVal(r,'P'),colQ=rdeColVal(r,'Q');
+    const colR=novoMttr?null:rdeColVal(r,'R'),colP=novoMttr?null:rdeColVal(r,'P'),colQ=novoMttr?null:rdeColVal(r,'Q');
     const tempo=rdeNum(rdeGv(r,['TME','tme','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
     const prazoRaw=rdeGv(r,['PRAZO_SEM_PARADA_RELOGIO','prazo sem parada relogio','no prazo','prazo','dentro prazo','dentro_sla','sla prazo','dentro']);
     const prazo=colP!==null?Number(colP)==1:(prazoRaw!==''?rdeBoolish(prazoRaw):(tempo?tempo<=RDE_MTME:false));
@@ -31717,14 +31725,17 @@ function rdeRowToRede(r,sheet){
     return{kind:'ac',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,cli,motivo,detail,elapsedH]};
   }
   // Backbone: TMR=col R, Prazo flag=col S (1=prazo ok), Outlier flag=col T (1=outlier) — leitura por posição de coluna tem prioridade sobre o nome do cabeçalho
-  const colR=rdeColVal(r,'R'),colS=rdeColVal(r,'S'),colT=rdeColVal(r,'T');
-  const tempo=rdeNum(rdeGv(r,['TMR','tmr','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
+  const colR=novoMttr?null:rdeColVal(r,'R'),colS=novoMttr?null:rdeColVal(r,'S'),colT=novoMttr?null:rdeColVal(r,'T');
+  const tempo=rdeNum(rdeGv(r,novoMttr?['TME']:['TMR','tmr','tempo medio','tempo médio','tempo','horas','duracao','duração'])||(colR!==null?colR:0));
   const prazoRaw=rdeGv(r,['PRAZO_SEM_PARADA_RELOGIO','prazo sem parada relogio','no prazo','prazo','dentro prazo','dentro_sla','sla prazo','dentro']);
   const prazo=colS!==null?Number(colS)==1:(prazoRaw!==''?rdeBoolish(prazoRaw):(tempo?tempo<=RDE_MTME:false));
   const outRaw=rdeGv(r,['OUTLIER_SEM_PARADA_RELOGIO','outlier sem parada relogio','outlier','fora outlier','outlier 24h','outlier_24h']);
   const out=colT!==null?Number(colT)==1:(outRaw!==''?rdeBoolish(outRaw):(tempo>24));
-  const causa=rdeLabelIndex(rdeM.ca,rdeGv(r,['[INCIDENTE - TRECHO DOWN] MOTIVO DA FALHA (REDE)','MOTIVO DA FALHA (REDE)','FALHA','motivo','causa','causa raiz','tipo encerramento']));
+  /* base nova: o Backbone vem com CAUSA_SIMPLES "-" (sem motivo da falha) — fica "Não informado na base"; o trecho (ELEMENTO) vira o título */
+  const _cbb=novoMttr?String(rdeGv(r,['CAUSA_SIMPLES'])||'').trim():'';
+  const causa=rdeLabelIndex(rdeM.ca,novoMttr?(_cbb&&_cbb!=='-'?_cbb:'Não informado na base'):rdeGv(r,['[INCIDENTE - TRECHO DOWN] MOTIVO DA FALHA (REDE)','MOTIVO DA FALHA (REDE)','FALHA','motivo','causa','causa raiz','tipo encerramento']));
   const detail=rdeCompactDetail(r,'Backbone',cl,mi,wi,prazo,out,tempo,rdeM.ca[causa]||'Backbone',0);
+  if(novoMttr&&!detail.titulo)detail.titulo=String(rdeGv(r,['ELEMENTO'])||'').trim();
   return{kind:'bb',row:[cl,mi,wi,prazo?1:0,out?1:0,tempo,causa,detail,elapsedH]};
 }
 function rdeApplyRows(rows,fileName){
