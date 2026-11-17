@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-16T18:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-17T14:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7578,6 +7578,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-fuel" onclick="switchTab('combustivel')">
         <i class="ti ti-gas-station"></i><span class="ntab-label"> Combustíveis</span>
       </button>
+      <button class="ntab" id="ntab-academico" onclick="switchTab('academico')" style="display:none" title="Painel acadêmico — só Admin">
+        <i class="ti ti-certificate"></i><span class="ntab-label"> Acadêmico</span>
+      </button>
       <button class="ntab" id="ntab-ampli" onclick="window.location.href='painel_ampli.html'">
         <i class="ti ti-school"></i><span class="ntab-label"> Ampli</span>
       </button>
@@ -11870,6 +11873,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="dash-module" id="dash-mod-prefeitura" onclick="switchTab('prefeitura')"><i class="ti ti-building-bank"></i><strong>B2B Prefeitura</strong><span>Chamados encerrados do cliente Município de São Luís.</span></button>
       <button class="dash-module" id="dash-mod-ofs" onclick="switchTab('ofs')"><i class="ti ti-chart-bar"></i><strong>Produtividade OFS</strong><span>Técnicos, ordens, alertas e ranking de produtividade.</span></button>
       <button class="dash-module" id="dash-mod-combustivel" onclick="switchTab('combustivel')"><i class="ti ti-gas-station"></i><strong>Combustíveis</strong><span>Saldo, frota, solicitações, aportes, retiradas e Alelo.</span></button>
+      <button class="dash-module" id="dash-mod-academico" onclick="switchTab('academico')" style="display:none"><i class="ti ti-certificate"></i><strong>Acadêmico</strong><span>Histórico de Engenharia Civil — média, carga horária, semestres e previsão de conclusão (só Admin).</span></button>
       <button class="dash-module" id="dash-mod-ampli" onclick="window.location.href='painel_ampli.html'"><i class="ti ti-school"></i><strong>Ampli</strong><span>Painel de estudo com busca sobre questões corrigidas, com OCR para novos anexos.</span></button>
       <button class="dash-module" onclick="openCentral()"><i class="ti ti-database"></i><strong>Central de Dados</strong><span>Controle de importação, status, validação e limpeza de bases.</span></button>
     </div>
@@ -14640,6 +14644,115 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       </div>
     </div>
   </div>
+  <!-- ═══ PAINEL ACADÊMICO (2026-11-17) — só Admin ═══
+       Histórico de Engenharia Civil (Ampli). O repositório é PÚBLICO: aqui só fica a matriz curricular
+       (semestre/disciplina/CH, informação pública do curso). Situação e notas ficam APENAS no navegador
+       de quem anexou (localStorage jarvis_academico_v1) — nunca vão para o arquivo nem para o sync-state. -->
+  <style id="acd-style">
+  #panel-academico .acd-lead{font-size:13px;color:var(--tx2,var(--tx3));margin:0 0 14px;line-height:1.55}
+  #panel-academico .acd-lead b{color:var(--tx)}
+  #panel-academico .acd-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  #panel-academico .acd-badges{display:flex;gap:6px;flex-wrap:wrap}
+  #panel-academico .acd-track{height:6px;border-radius:99px;background:var(--surface2,rgba(120,120,128,.15));overflow:hidden;margin-top:8px}
+  #panel-academico .acd-fill{height:100%;border-radius:99px;background:var(--blue);transition:width .35s ease}
+  #panel-academico .acd-risk{border-left:3px solid var(--orange);background:var(--orange-bg);border-radius:0 10px 10px 0;padding:9px 14px;font-size:12.5px;color:var(--tx);margin:0 0 16px}
+  #panel-academico .acd-risk.ok{border-left-color:var(--green);background:var(--green-bg);color:var(--green-dk)}
+  #panel-academico .acd-sems{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:12px}
+  #panel-academico .acd-sem-top .tag,#panel-academico .acd-dr .tag{white-space:nowrap;font-size:10.5px}
+  #panel-academico .acd-sem-top strong{white-space:nowrap}
+  #panel-academico .acd-sem{font:inherit;text-align:left;cursor:pointer;background:var(--surface);color:var(--tx);border:.5px solid var(--bd);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;transition:border-color .2s,box-shadow .2s}
+  #panel-academico .acd-sem:hover{border-color:var(--blue)}
+  #panel-academico .acd-sem.sel{border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
+  #panel-academico .acd-sem-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+  #panel-academico .acd-sem-top strong{font-size:13px}
+  #panel-academico .acd-sem small{font-size:11.5px;color:var(--tx3)}
+  #panel-academico .acd-dr{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:8px 0;border-top:.5px solid var(--bd);font-size:13px}
+  #panel-academico .acd-dr .n{text-align:right;min-width:36px;font-weight:600}
+  #panel-academico .acd-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+  #panel-academico .acd-chip{font:inherit;font-size:12px;color:var(--tx);background:transparent;border:.5px solid var(--bd);border-radius:99px;padding:4px 12px;cursor:pointer}
+  #panel-academico .acd-chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  #panel-academico .acd-nota{font:inherit;width:70px;text-align:right;color:var(--tx);background:var(--bg);border:.5px solid var(--bd);border-radius:7px;padding:3px 6px}
+  #panel-academico .acd-nota:disabled{opacity:.35}
+  #panel-academico .acd-st{font:inherit;font-size:12px;color:var(--tx);background:var(--bg);border:.5px solid var(--bd);border-radius:7px;padding:3px 6px}
+  #panel-academico tr.acd-ok .acd-st{color:var(--green-dk)}
+  #panel-academico tr.acd-now .acd-st{color:var(--orange)}
+  #panel-academico .acd-num{text-align:right;white-space:nowrap}
+  #panel-academico .acd-imp{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #panel-academico .acd-recon{font-size:12.5px;margin-top:10px}
+  #panel-academico .acd-recon ul{margin:4px 0 8px 18px;padding:0;color:var(--tx3)}
+  #panel-academico .acd-note{font-size:11.5px;color:var(--tx3);margin:6px 0 0;line-height:1.5}
+  #panel-academico .acd-cw{position:relative;height:240px}
+  </style>
+  <div class="panel" id="panel-academico">
+    <div class="acd-hd">
+      <div class="acd-badges">
+        <span class="tag tag-blue">Engenharia Civil · Bacharelado</span>
+        <span class="tag tag-blue">Anhanguera Pitágoras Ampli · 100% online</span>
+        <span class="tag tag-orange" id="acd-origem"></span>
+      </div>
+      <span class="card-action" onclick="document.getElementById('acd-imp-card').scrollIntoView({behavior:'smooth',block:'start'})"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar histórico</span>
+    </div>
+    <p class="acd-lead" id="acd-lead"></p>
+    <div class="mrow" id="mrow-acd"></div>
+    <p class="acd-risk" id="acd-risk" style="display:none"></p>
+
+    <div class="tsec">
+      <div class="tsec-hd">
+        <span class="tsec-title">Semestre a semestre</span>
+        <div class="tsec-meta"><span style="color:var(--tx3)">Clique num semestre para ver as disciplinas</span></div>
+      </div>
+      <div class="acd-sems" id="acd-sems"></div>
+      <div class="card" id="acd-detail"></div>
+    </div>
+
+    <div class="g2">
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Média por semestre</span><span style="font-size:11px;color:var(--tx3)">só disciplinas aprovadas</span></div>
+        <div class="acd-cw"><canvas id="acd-ch-media"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Carga horária por semestre</span><span style="font-size:11px;color:var(--tx3)">aprovado · cursando · a cursar</span></div>
+        <div class="acd-cw"><canvas id="acd-ch-ch"></canvas></div>
+      </div>
+    </div>
+
+    <div class="tsec">
+      <div class="tsec-hd">
+        <span class="tsec-title">Todas as disciplinas</span>
+        <div class="tsec-meta">
+          <span id="cnt-acd" style="color:var(--tx3)"></span>
+          <span class="card-action" onclick="acdZerar()">Zerar histórico</span>
+          <span class="card-action" onclick="acdExportCsv()"><i class="ti ti-download" style="font-size:11px;vertical-align:-1px"></i> Exportar CSV</span>
+        </div>
+      </div>
+      <div class="fbar">
+        <div class="acd-chips" id="acd-chips">
+          <button type="button" class="acd-chip on" data-st="">Todas</button>
+          <button type="button" class="acd-chip" data-st="Aprovado">Aprovado</button>
+          <button type="button" class="acd-chip" data-st="Cursando">Cursando</button>
+          <button type="button" class="acd-chip" data-st="A cursar">A cursar</button>
+        </div>
+        <div class="srch-wrap"><input class="finput" id="f-srch-acd" placeholder="Buscar disciplina…" oninput="acdRenderTabela()"><button class="srch-clear" onclick="document.getElementById('f-srch-acd').value='';acdRenderTabela()" title="Limpar busca">×</button></div>
+      </div>
+      <div class="tw" style="max-height:520px;overflow:auto"><table>
+        <thead><tr><th class="acd-num">Sem.</th><th>Disciplina</th><th class="acd-num">CH</th><th class="acd-num">Nota</th><th>Situação</th></tr></thead>
+        <tbody id="tb-acd"></tbody>
+      </table></div>
+      <p class="acd-note">Altere a situação e lance a nota: média, totais e gráficos se recalculam e ficam salvos neste navegador.</p>
+    </div>
+
+    <div class="card" id="acd-imp-card">
+      <div class="card-hd"><span class="card-title">Anexar novo histórico</span></div>
+      <div class="acd-imp">
+        <input type="file" id="acd-file" accept=".csv,.json,.txt,text/csv,application/json">
+        <span id="acd-imp-st" style="font-size:12px;color:var(--tx3)"></span>
+      </div>
+      <div class="acd-recon" id="acd-recon"></div>
+      <p class="acd-note">CSV ou JSON com as colunas <b>disciplina</b>, <b>situação</b> e <b>nota</b>. Vale a situação mais adiantada (Aprovado › Cursando › A cursar): nenhuma aprovada volta atrás, e a nota do arquivo substitui a atual quando a disciplina já está aprovada.</p>
+      <p class="acd-note"><i class="ti ti-lock" style="font-size:11px;vertical-align:-1px"></i> Notas e situações ficam só neste navegador (o repositório do Jarvis é público). Em outro computador, anexe o histórico de novo.</p>
+    </div>
+  </div>
+
   <!-- ── PAINEL AUDIT MATERIAL ── -->
   <style id="am-style">
   #panel-audit-material{
@@ -15911,7 +16024,7 @@ const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrado
    direto, não trocam de aba aqui). Usado tanto pra normalizar um tab desconhecido
    quanto por defaultLandingTab() pra nunca devolver algo que switchTab() não sabe
    exibir. */
-const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','executivo','abertos','b2c','max','redirSemanal','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
+const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','academico','executivo','abertos','b2c','max','redirSemanal','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -15926,7 +16039,7 @@ function userAllowedClusters(){const p=userPerms();return(p&&Array.isArray(p.clu
 function userAllowedPanels(){const p=userPerms();return(p&&Array.isArray(p.panels))?p.panels:DEFAULT_VIEWER_PANELS;}
 /* Dashboard (pedido do usuário): aparece só pro Admin — nunca configurável por
    Usuário/Usuário Sr via perms.panels (diferente dos demais painéis), regra fixa. */
-function canSeePanel(tab){if(tab==='dashboard')return!!canEdit();return!!canEdit()||userAllowedPanels().includes(tab);}
+function canSeePanel(tab){if(tab==='dashboard'||tab==='academico')return!!canEdit();return!!canEdit()||userAllowedPanels().includes(tab);}
 /* Pra onde mandar quem não pode mais ver a aba atual (perdeu permissão, ou é a
    primeira vez que um usuário sem acesso ao Dashboard entra). Admin sempre cai no
    Dashboard; os demais caem em Painel Executivo (quase sempre liberado por padrão,
@@ -16017,6 +16130,9 @@ function applyPanelVisibility(){
   });
   /* Dashboard não está em ALL_PANEL_KEYS/PANEL_NAV_MAP (não é configurável por
      usuário) — botão da aba escondido à parte, mesma regra fixa de canSeePanel(). */
+  /* Painel Acadêmico (2026-11-17): só Admin, regra fixa (fora de ALL_PANEL_KEYS). */
+  ['ntab-academico','dash-mod-academico'].forEach(id=>{const el=document.getElementById(id);if(!el)return;
+    if(canSeePanel('academico'))el.style.removeProperty('display');else el.style.setProperty('display','none','important');});
   const dashBtn=document.getElementById('ntab-dash');
   if(dashBtn){
     if(canSeePanel('dashboard'))dashBtn.style.removeProperty('display');
@@ -26775,6 +26891,192 @@ function ofsModalRender(){
   document.getElementById('ofs-modal-count').textContent=vis===tot?`${tot} atividades`:`${vis} de ${tot} atividades`;
 }
 /* ─── EXECUTIVE SHELL ─── */
+/* ═══ PAINEL ACADÊMICO (2026-11-17) — só Admin (ver canSeePanel) ═══
+   Matriz curricular pública embutida; situação/nota por disciplina só no localStorage deste navegador. */
+const ACD_KEY='jarvis_academico_v1';
+const ACD_CURSO_H=3600,ACD_INGRESSO=2024*2;/* ingresso 2024/01 */
+const ACD_MATRIZ=[[1,'Administração e Economia para Engenheiros',60],[1,'Design Thinking e Inovação dos Modelos de Negócios',60],[1,'Engenharia, Ciência e Tecnologia',60],[1,'Legislação, Segurança do Trabalho e Meio Ambiente',60],[1,'Optativa I',60],
+[2,'Algoritmos e Lógica de Programação',60],[2,'Cálculo Diferencial e Integral',60],[2,'Química e Ciência dos Materiais',60],[2,'Física Geral e Experimental - Mecânica',60],[2,'Projeto de Extensão I - Engenharia Civil',180],
+[3,'Cálculo Diferencial e Integral II',60],[3,'Física Geral e Experimental - Energia',60],[3,'Desenho Técnico Projetivo',60],[3,'Métodos Matemáticos',60],[3,'Sociedade Brasileira e Cidadania',60],
+[4,'Cálculo Diferencial e Integral III',60],[4,'Princípios de Eletricidade e Magnetismo',60],[4,'Fenômenos de Transporte',60],[4,'Resistência dos Materiais',60],[4,'Projeto de Extensão II - Engenharia Civil',180],
+[5,'Materiais de Construção Civil I',60],[5,'Pensamento Analítico e Análise de Dados',60],[5,'Resistência dos Materiais Avançado',60],[5,'Estruturas Isostáticas',60],[5,'Optativa II',60],
+[6,'Estruturas Hiperestáticas',60],[6,'Materiais de Construção Civil II',60],[6,'Optativa III',60],[6,'Hidráulica e Hidrometria',60],[6,'Geologia e Mecânica dos Solos',60],
+[7,'Hidrologia e Manejo de Bacias Hidrográficas',60],[7,'Topografia e Georreferenciamento',60],[7,'Estruturas de Concreto Armado I',60],[7,'Mecânica dos Solos Avançada e Obras de Terra',60],[7,'Optativa IV',60],[7,'Projeto de Extensão III - Engenharia Civil',180],
+[8,'Saneamento Básico',60],[8,'Estruturas de Concreto Armado II',60],[8,'Fundações',60],[8,'Instalações Elétricas',60],[8,'Projeto Arquitetônico para Engenharia Civil',60],[8,'Estágio Curricular - Engenharia',200],
+[9,'Instalações Hidrossanitárias',60],[9,'Projetos e Detalhes Construtivos de Alvenaria Estrutural',60],[9,'Tecnologia da Construção Civil',60],[9,'Tecnologia e Infraestrutura de Transportes',60],[9,'Projeto de Extensão IV - Engenharia Civil',180],
+[10,'Estruturas de Madeira e Estruturas Metálicas',60],[10,'Pontes e Grandes Estruturas',60],[10,'Processos de Gestão de Obras e Projetos',60],[10,'ESG - Ambiental, Social e Governança na Engenharia',60],[10,'Optativa V',60],[10,'Trabalho de Conclusão de Curso - Engenharia Civil',40]];
+const acdNorm=s=>String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+let acdEst={hist:{},arquivo:'',at:''};/* hist: {discNorm:{st,nota}} */
+let acdSelSem=null,acdFiltro='',acdRecon=null,acdChMedia=null,acdChCh=null;
+try{const o=JSON.parse(localStorage.getItem(ACD_KEY)||'null');if(o&&typeof o==='object'&&o.hist)acdEst=o;}catch(_){}
+function acdSalvar(){acdEst.at=new Date().toISOString();try{localStorage.setItem(ACD_KEY,JSON.stringify(acdEst));}catch(_){_ghToast('Não foi possível salvar neste navegador.','var(--red)',5000);}}
+function acdLinhas(){return ACD_MATRIZ.map(([sem,disc,ch])=>{const h=acdEst.hist[acdNorm(disc)]||{};return{sem,disc,ch,st:h.st||'A cursar',nota:h.st==='Aprovado'&&h.nota!==''&&h.nota!=null?h.nota:''};});}
+const acdNotaDe=r=>r.st==='Aprovado'&&r.nota!==''&&isFinite(Number(r.nota))?Number(r.nota):null;
+function acdResumo(L){
+  const by=new Map();
+  L.forEach(r=>{let o=by.get(r.sem);if(!o){o={sem:r.sem,n:0,ap:0,cu:0,ac:0,chAp:0,chCu:0,chAc:0,chT:0,soma:0,nn:0};by.set(r.sem,o);}
+    o.n++;o.chT+=r.ch;if(r.st==='Aprovado'){o.ap++;o.chAp+=r.ch;const v=acdNotaDe(r);if(v!=null){o.soma+=v;o.nn++;}}else if(r.st==='Cursando'){o.cu++;o.chCu+=r.ch;}else{o.ac++;o.chAc+=r.ch;}});
+  return[...by.values()].sort((a,b)=>a.sem-b.sem).map(o=>({...o,media:o.nn?o.soma/o.nn:null}));
+}
+function acdTotais(R){
+  const t={ap:0,cu:0,ac:0,chAp:0,chCu:0,soma:0,nn:0};
+  R.forEach(o=>{t.ap+=o.ap;t.cu+=o.cu;t.ac+=o.ac;t.chAp+=o.chAp;t.chCu+=o.chCu;t.soma+=o.soma;t.nn+=o.nn;});
+  t.media=t.nn?t.soma/t.nn:null;t.pct=t.chAp/ACD_CURSO_H;
+  const nSem=Math.max(...R.map(o=>o.sem)),hoje=new Date(),agora=hoje.getFullYear()*2+(hoje.getMonth()<6?0:1);
+  t.semAtual=Math.min(nSem,Math.max(1,agora-ACD_INGRESSO+1));
+  const idx=ACD_INGRESSO+t.semAtual-1;t.periodo=Math.floor(idx/2)+'/0'+(idx%2+1);t.semRest=nSem-t.semAtual;
+  const lab=i=>(i%2===0?'Jun/':'Dez/')+Math.floor(i/2);
+  t.previsao=t.chAp>=ACD_CURSO_H?'Concluído':lab(ACD_INGRESSO+nSem-1);t.previsaoAtraso=lab(ACD_INGRESSO+nSem);
+  const pend=R.filter(o=>o.sem<=t.semAtual);t.nPend=pend.reduce((a,o)=>a+o.ac,0);t.chPend=pend.reduce((a,o)=>a+o.chAc,0);
+  return t;
+}
+const acdF1=v=>v==null?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const acdF2=v=>v==null?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const acdN=v=>Number(v).toLocaleString('pt-BR');
+function renderAcademico(){
+  if(!document.getElementById('panel-academico'))return;
+  const L=acdLinhas(),R=acdResumo(L),t=acdTotais(R);
+  const temHist=Object.keys(acdEst.hist).length>0;
+  const og=document.getElementById('acd-origem');
+  if(og)og.textContent=temHist?('Histórico: '+(acdEst.arquivo||'editado no painel')+(acdEst.at?' · '+new Date(acdEst.at).toLocaleDateString('pt-BR'):'')):'Nenhum histórico anexado neste navegador';
+  document.getElementById('acd-lead').innerHTML=temHist
+    ?`Média geral <b>${acdF2(t.media)}</b>, com <b>${Math.round(t.pct*100)}%</b> da carga horária cumprida e <b>${t.cu}</b> disciplina${t.cu===1?'':'s'} em andamento. Previsão de conclusão: <b>${t.previsao}</b>.`
+    :'Anexe o histórico escolar (CSV ou JSON) no fim da página — ou lance a situação e a nota direto na tabela. A matriz curricular já está carregada.';
+  document.getElementById('mrow-acd').innerHTML=`
+    <div class="mc c-blue"><div class="mc-label">Média geral</div><div class="mc-val" style="color:var(--blue)"><b>${acdF2(t.media)}</b></div><div class="mc-sub">nas disciplinas aprovadas</div></div>
+    <div class="mc c-green"><div class="mc-label">Curso concluído</div><div class="mc-val" style="color:var(--green-dk)"><b>${Math.round(t.pct*100)}%</b></div><div class="mc-sub">${acdN(t.chAp)} h de ${acdN(ACD_CURSO_H)} h</div><div class="acd-track"><div class="acd-fill" style="width:${Math.min(100,t.pct*100)}%"></div></div></div>
+    <div class="mc c-orange"><div class="mc-label">Semestre atual</div><div class="mc-val" style="color:var(--orange)"><b>${t.semAtual}º</b></div><div class="mc-sub">período ${t.periodo} · ingresso 2024/01</div></div>
+    <div class="mc c-teal"><div class="mc-label">Previsão de conclusão</div><div class="mc-val" style="color:var(--teal-dk)"><b>${t.previsao}</b></div><div class="mc-sub">prazo regular · faltam ${t.semRest} semestre${t.semRest===1?'':'s'} depois do atual</div></div>
+    <div class="mc c-green"><div class="mc-label">Aprovadas</div><div class="mc-val"><b>${t.ap}</b></div><div class="mc-sub">de ${L.length} disciplinas</div></div>
+    <div class="mc c-orange"><div class="mc-label">Em andamento</div><div class="mc-val"><b>${t.cu}</b></div><div class="mc-sub">${acdN(t.chCu)} h cursando</div></div>
+    <div class="mc c-blue"><div class="mc-label">A cursar</div><div class="mc-val"><b>${t.ac}</b></div><div class="mc-sub">${acdN(ACD_CURSO_H-t.chAp-t.chCu)} h restantes</div></div>`;
+  const rk=document.getElementById('acd-risk');
+  if(!temHist)rk.style.display='none';
+  else{rk.style.display='';rk.className='acd-risk'+(t.nPend?'':' ok');
+    rk.innerHTML=t.nPend?`<i class="ti ti-alert-triangle" style="vertical-align:-2px"></i> Há <b>${t.nPend}</b> disciplina${t.nPend===1?'':'s'} (<b>${acdN(t.chPend)} h</b>) de semestres até o atual ainda a cursar. Se ficarem para depois do último semestre, a conclusão passa para <b>${t.previsaoAtraso}</b>.`
+      :'<i class="ti ti-circle-check" style="vertical-align:-2px"></i> Sem pendências dos semestres até o atual: o prazo regular está mantido.';}
+  const sel=acdSelSem!=null?acdSelSem:t.semAtual;
+  document.getElementById('acd-sems').innerHTML=R.map(o=>{
+    const done=o.ap===o.n,going=o.cu>0||(o.ap>0&&!done),atual=o.sem===t.semAtual;
+    const tag=atual&&!done?'<span class="tag tag-orange">Semestre atual</span>':done?'<span class="tag tag-green">Concluído</span>':going?'<span class="tag tag-orange">Em andamento</span>':'<span class="tag tag-blue">A cursar</span>';
+    const p=o.chT?o.chAp/o.chT*100:0;
+    return`<button type="button" class="acd-sem${o.sem===sel?' sel':''}" onclick="acdSelSem=${o.sem};renderAcademico()"><div class="acd-sem-top"><strong>${o.sem}º semestre</strong>${tag}</div>
+      <small>${o.ap} de ${o.n} disciplinas aprovadas</small><small>${o.media==null?'Média —':'Média '+acdF1(o.media)}</small><small>${acdN(o.chAp)} h de ${acdN(o.chT)} h · ${Math.round(p)}%</small>
+      <div class="acd-track"><div class="acd-fill" style="width:${p}%"></div></div></button>`;}).join('');
+  const lst=L.filter(r=>r.sem===sel),ns=lst.map(acdNotaDe).filter(v=>v!=null);
+  document.getElementById('acd-detail').innerHTML=`<div class="card-hd"><span class="card-title">${sel}º semestre</span><span style="font-size:12px;color:var(--tx3)">${lst.filter(r=>r.st==='Aprovado').length} de ${lst.length} aprovadas${ns.length?' · média '+acdF1(ns.reduce((a,b)=>a+b,0)/ns.length):''}</span></div>`
+    +lst.map(r=>{const v=acdNotaDe(r);return`<div class="acd-dr"><span>${eh(r.disc)}</span><span class="n">${v==null?'':v}</span>${r.st==='Aprovado'?'<span class="tag tag-green">Aprovado</span>':r.st==='Cursando'?'<span class="tag tag-orange">Cursando</span>':'<span class="tag tag-blue">A cursar</span>'}</div>`;}).join('');
+  acdRenderTabela(L);
+  acdRenderGraficos(R);
+}
+function acdRenderTabela(L){
+  L=L||acdLinhas();
+  const q=acdNorm((document.getElementById('f-srch-acd')||{}).value||'');
+  const F=L.filter(r=>(!acdFiltro||r.st===acdFiltro)&&(!q||acdNorm(r.disc).includes(q)));
+  document.getElementById('cnt-acd').textContent=`${F.length} de ${L.length} disciplinas`;
+  document.getElementById('tb-acd').innerHTML=F.map(r=>`<tr class="${r.st==='Aprovado'?'acd-ok':r.st==='Cursando'?'acd-now':''}" data-k="${eh(acdNorm(r.disc))}">
+    <td class="acd-num">${r.sem}º</td><td>${eh(r.disc)}</td><td class="acd-num">${r.ch} h</td>
+    <td class="acd-num"><input type="number" class="acd-nota" min="0" max="100" step="any" value="${eh(r.nota)}" ${r.st==='Aprovado'?'':'disabled'} aria-label="Nota de ${eh(r.disc)}"></td>
+    <td><select class="acd-st" aria-label="Situação de ${eh(r.disc)}">${['Aprovado','Cursando','A cursar'].map(s=>`<option${s===r.st?' selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')
+    ||'<tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:18px">Nenhuma disciplina no filtro.</td></tr>';
+}
+function acdCor(v,fb){try{const c=getComputedStyle(document.body).getPropertyValue(v).trim();return c||fb;}catch(_){return fb;}}
+function acdRenderGraficos(R){
+  if(typeof Chart==='undefined')return;
+  const tx=acdCor('--tx3','#888'),grid=acdCor('--bd','rgba(128,128,128,.2)'),blue=acdCor('--blue','#007aff'),orange=acdCor('--orange','#ff9500'),muted='rgba(142,142,147,.35)';
+  const M=R.filter(o=>o.media!=null);
+  const c1=document.getElementById('acd-ch-media'),c2=document.getElementById('acd-ch-ch');
+  if(acdChMedia){acdChMedia.destroy();acdChMedia=null;}
+  if(acdChCh){acdChCh.destroy();acdChCh=null;}
+  if(c1&&c1.offsetParent)acdChMedia=new Chart(c1,{type:'bar',data:{labels:M.map(o=>o.sem+'º'),datasets:[{label:'Média',data:M.map(o=>+o.media.toFixed(1)),backgroundColor:blue,borderRadius:5,maxBarThickness:46}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},plugins:{legend:{display:false},datalabels:{display:true,anchor:'end',align:'end',offset:2,color:tx,font:{size:11,weight:'600'},formatter:v=>acdF1(v)},
+      tooltip:{callbacks:{title:i=>i[0].label+' semestre',label:i=>'Média: '+acdF1(i.raw)+' · '+M[i.dataIndex].ap+' aprovadas'}}},
+      scales:{y:{min:0,max:100,ticks:{stepSize:50,color:tx},grid:{color:grid},border:{display:false}},x:{ticks:{color:tx},grid:{display:false}}}},plugins:typeof ChartDataLabels!=='undefined'?[ChartDataLabels]:[]});
+  if(c2&&c2.offsetParent)acdChCh=new Chart(c2,{type:'bar',data:{labels:R.map(o=>o.sem+'º'),datasets:[
+      {label:'Aprovado',data:R.map(o=>o.chAp),backgroundColor:blue,barThickness:14},
+      {label:'Cursando',data:R.map(o=>o.chCu),backgroundColor:orange,barThickness:14},
+      {label:'A cursar',data:R.map(o=>o.chAc),backgroundColor:muted,barThickness:14}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',align:'end',labels:{boxWidth:10,color:tx,font:{size:11}}},datalabels:{display:false},
+      tooltip:{mode:'index',intersect:false,callbacks:{title:i=>i[0].label+' semestre',label:i=>i.dataset.label+': '+acdN(i.raw)+' h'}}},
+      scales:{x:{stacked:true,ticks:{color:tx,callback:v=>v+' h'},grid:{color:grid},border:{display:false}},y:{stacked:true,ticks:{color:tx},grid:{display:false}}}}});
+}
+function acdSet(k,st,nota){
+  const disc=ACD_MATRIZ.find(m=>acdNorm(m[1])===k);if(!disc)return;
+  if(st==='A cursar')delete acdEst.hist[k];else acdEst.hist[k]={st,nota:st==='Aprovado'?nota:''};
+}
+const acdClampNota=v=>{const t=String(v==null?'':v).trim().replace(',','.');const n=Number(t);return t!==''&&isFinite(n)?String(Math.min(100,Math.max(0,n))):'';};
+function acdZerar(){
+  if(!confirm('Zerar o histórico deste navegador? Todas as situações voltam para "A cursar" e as notas são apagadas.'))return;
+  acdEst={hist:{},arquivo:'',at:''};acdRecon=null;acdSalvar();document.getElementById('acd-recon').innerHTML='';renderAcademico();
+}
+function acdExportCsv(){
+  const L=acdLinhas(),q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const csv='﻿'+['semestre;disciplina;ch;nota;situacao'].concat(L.map(r=>[r.sem,q(r.disc),r.ch,r.nota,r.st].join(';'))).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='historico_academico_'+new Date().toISOString().slice(0,10)+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function acdNormSt(s){const n=acdNorm(s);if(n.startsWith('aprov'))return'Aprovado';if(n.startsWith('cursando')||n==='em andamento')return'Cursando';if(n==='a cursar'||n.startsWith('pend'))return'A cursar';return null;}
+function acdParseCsv(text){
+  const first=text.split(/\r?\n/)[0]||'';const d=(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':',';
+  const rows=[];let row=[],cur='',qq=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(qq){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++;}else qq=false;}else cur+=c;}
+    else if(c==='"')qq=true;else if(c===d){row.push(cur);cur='';}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cur);cur='';if(row.some(x=>x!==''))rows.push(row);row=[];}
+    else cur+=c;}
+  row.push(cur);if(row.some(x=>x!==''))rows.push(row);if(!rows.length)return[];
+  const h=rows.shift().map(acdNorm);return rows.map(r=>Object.fromEntries(h.map((k,i)=>[k,(r[i]||'').trim()])));
+}
+function acdConciliar(objs,nome){
+  const itens=objs.map(o0=>{const o=Object.fromEntries(Object.entries(o0).map(([k,v])=>[acdNorm(k),v==null?'':String(v)]));
+    const g=ks=>{for(const k of ks)if(o[k]!==undefined&&o[k]!=='')return o[k];return'';};
+    return{disc:g(['disciplina','nome','materia']),st:acdNormSt(g(['situacao','status','resultado'])),nota:g(['nota','media'])};}).filter(x=>x.disc);
+  if(!itens.length)return false;
+  const RANK={'A cursar':0,'Cursando':1,'Aprovado':2};
+  const atual=Object.fromEntries(acdLinhas().map(r=>[acdNorm(r.disc),r]));
+  const rec={nome,atu:[],man:[],ig:0,nao:[]};
+  itens.forEach(it=>{
+    const k=acdNorm(it.disc),r=atual[k];
+    if(!r){rec.nao.push(it.disc);return;}
+    const stI=it.st||(it.nota!==''?'Aprovado':null);
+    if(!stI){rec.nao.push(it.disc+' (sem situação)');return;}
+    const nI=stI==='Aprovado'?acdClampNota(it.nota):'';
+    if(RANK[stI]>RANK[r.st]||(stI==='Aprovado'&&r.st==='Aprovado'&&nI!==''&&String(r.nota)!==nI)){
+      acdSet(k,stI,nI);rec.atu.push(`${r.disc}: ${r.st} → ${stI}${nI?', nota '+nI:''}`);}
+    else if(RANK[stI]<RANK[r.st])rec.man.push(`${r.disc}: o arquivo diz ${stI}, o painel já tem ${r.st}`);
+    else rec.ig++;
+  });
+  acdEst.arquivo=nome;acdRecon=rec;acdSalvar();
+  const li=a=>a.length?'<ul>'+a.slice(0,25).map(x=>'<li>'+eh(x)+'</li>').join('')+(a.length>25?`<li>e mais ${a.length-25}</li>`:'')+'</ul>':'';
+  document.getElementById('acd-recon').innerHTML=`<b>${eh(nome)}</b> — ${rec.atu.length} atualizadas, ${rec.ig} sem mudança, ${rec.man.length} mantidas (painel mais adiantado), ${rec.nao.length} não encontradas.`
+    +(rec.atu.length?'<div style="margin-top:6px">Atualizadas</div>'+li(rec.atu):'')+(rec.man.length?'<div>Mantidas</div>'+li(rec.man):'')+(rec.nao.length?'<div>Não encontradas na matriz</div>'+li(rec.nao):'');
+  renderAcademico();return true;
+}
+(function acdInit(){
+  const tb=document.getElementById('tb-acd');if(!tb)return;
+  tb.addEventListener('change',ev=>{
+    const tr=ev.target.closest('tr[data-k]');if(!tr)return;
+    const st=tr.querySelector('.acd-st').value,inp=tr.querySelector('.acd-nota');
+    acdSet(tr.dataset.k,st,st==='Aprovado'?acdClampNota(inp.value):'');
+    if(!acdEst.arquivo)acdEst.arquivo='editado no painel';
+    acdSalvar();renderAcademico();
+  });
+  document.getElementById('acd-chips').addEventListener('click',ev=>{
+    const b=ev.target.closest('.acd-chip');if(!b)return;acdFiltro=b.dataset.st;
+    document.querySelectorAll('#acd-chips .acd-chip').forEach(c=>c.classList.toggle('on',c===b));acdRenderTabela();
+  });
+  document.getElementById('acd-file').addEventListener('change',async ev=>{
+    const inp=ev.target,f=inp.files&&inp.files[0];if(!f)return;
+    const st=document.getElementById('acd-imp-st');
+    try{
+      const text=(await f.text()).replace(/^﻿/,''),t=text.trim();let objs;
+      if(/\.json$/i.test(f.name)||t.startsWith('[')||t.startsWith('{')){const j=JSON.parse(t);objs=Array.isArray(j)?j:(j.rows||j.data||j.results||[]);}
+      else objs=acdParseCsv(text);
+      st.textContent=acdConciliar(objs,f.name)?'Histórico conciliado — resumo abaixo.':'Não encontrei disciplinas nesse arquivo. Use as colunas disciplina, situação e nota.';
+    }catch(e){console.error('Painel acadêmico',e);st.textContent='Não foi possível ler o arquivo.';}
+    finally{inp.value='';}
+  });
+})();
 const TAB_META={
   aportes:['Aportes Combustível','Aportes e retiradas de saldo por placa'],
   dashboard:['Dashboard Executivo','Resumo operacional do ambiente B2B'],
@@ -26791,7 +27093,8 @@ const TAB_META={
   whatsapp:['WhatsApp','Espelho interno do WhatsApp Web no Jarvis MCLL'],
   pop:['POP','Catálogo de POPs e endereços — base oficial'],
   max:['MAX','Diagnóstico MAX — reabertura de reparo em até 30 dias'],
-  redirSemanal:['Redir (Semanal)','Cluster com Desvio — entrega de FCA, justificativas e indicadores do mês']
+  redirSemanal:['Redir (Semanal)','Cluster com Desvio — entrega de FCA, justificativas e indicadores do mês'],
+  academico:['Acadêmico','Engenharia Civil — média, carga horária, semestres e previsão de conclusão']
 };
 function openMobileNav(){
   document.getElementById('atrix-sidebar')?.classList.add('open');
@@ -26908,9 +27211,9 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(typeof _srEditSync==='function')_srEditSync();
   if(tab==='executivo'&&typeof mtsimInit==='function')setTimeout(()=>{const d=document.getElementById('mtsim');if(d&&d.open)mtsimInit();},0);
   if(persist)localStorage.setItem(ACTIVE_TAB_KEY,tab);
-  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap',isMax=tab==='max',isRs=tab==='redirSemanal';
+  const isAof=tab==='abertosOfs',isWarmap=tab==='warmap',isFap=tab==='aportes',isDash=tab==='dashboard',isExec=tab==='executivo',isAb=tab==='abertos',isB2c=tab==='b2c',isSwap=tab==='swap',isEve=tab==='eve',isEnc=tab==='encerrados',isSi=tab==='semIntervencao',isPref=tab==='prefeitura',isRede=tab==='rede',isFuel=tab==='combustivel',isRep=tab==='repetidos',isMon=tab==='monitor',isWpp=tab==='whatsapp',isOfs=tab==='ofs',isAtiv=tab==='ativacoes',isPrevent=tab==='preventivas',isPop=tab==='pop',isAuditMaterial=tab==='auditMaterial',isSaldoSap=tab==='saldoSap',isMax=tab==='max',isRs=tab==='redirSemanal',isAcd=tab==='academico';
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
-  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isMax?'max':isRs?'redir-sem':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
+  const tabId='ntab-'+(isAof?'abertos-ofs':isWarmap?'warmap':isFap?'aportes':isDash?'dash':isExec?'exec':isAb?'ab':isB2c?'b2c':isSwap?'swap':isEve?'eve':isEnc?'enc':isSi?'si':isPref?'pref':isRede?'rede':isFuel?'fuel':isMon?'monitor':isWpp?'wpp':isOfs?'ofs':isAtiv?'ativacoes':isPrevent?'preventivas':isPop?'pop':isMax?'max':isRs?'redir-sem':isAcd?'academico':isAuditMaterial?'audit-material':isSaldoSap?'saldo-sap':'rep');
   const tabEl=document.getElementById(tabId);if(tabEl)tabEl.classList.add('active');
   document.getElementById('panel-abertos-ofs').classList.toggle('active',isAof);
   document.getElementById('panel-warmap').classList.toggle('active',isWarmap);
@@ -26929,6 +27232,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   document.getElementById('panel-pop').classList.toggle('active',isPop);
   document.getElementById('panel-max').classList.toggle('active',isMax);
   document.getElementById('panel-redir-sem').classList.toggle('active',isRs);
+  document.getElementById('panel-academico').classList.toggle('active',isAcd);
   document.getElementById('panel-repetidos').classList.toggle('active',isRep);
   document.getElementById('panel-monitor').classList.toggle('active',isMon);
   document.getElementById('panel-whatsapp').classList.toggle('active',isWpp);
@@ -26964,6 +27268,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(isPop&&!_skip('pop'))renderAllPop();
   if(isMax&&window.mxRenderAll)mxRenderAll();
   if(isRs&&window.rsRender)rsRender();
+  if(isAcd)setTimeout(renderAcademico,0);
   if(isAuditMaterial)amRenderTable();
   if(isSaldoSap)sbRenderTable();
   if(isB2c)b2cRenderAll();
@@ -26985,7 +27290,7 @@ function toggleTheme(){
   const dk=document.body.dataset.theme==='dark';
   document.body.dataset.theme=dk?'light':'dark';
   document.getElementById('ti-icon').className=dk?'ti ti-moon':'ti ti-sun';
-  setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();if(activeTab==='max'&&window.mxRenderAll)mxRenderAll();if(window.rsSyncTheme)rsSyncTheme();},60);
+  setTimeout(()=>{if(chAb)rChAb();if(chEnc&&dEnc.length)rChEnc(encScope());if(chSem&&dEnc.length)rChSem();if(chFuel||chFuelProj||chFuelTop)renderFuelChart();if(activeTab==='max'&&window.mxRenderAll)mxRenderAll();if(window.rsSyncTheme)rsSyncTheme();if(activeTab==='academico'&&typeof renderAcademico==='function')renderAcademico();},60);
 }
 /* Zoom da interface — ver comentário da CSS .nav-zoom. 70-130% em passos de
    10, guardado por dispositivo/navegador (não sincroniza entre aparelhos —
