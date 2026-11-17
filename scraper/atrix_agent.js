@@ -149,8 +149,17 @@ async function saveGate(gate, sha) {
   await ghPutFile(GH_GATE_FILE, JSON.stringify(gate, null, 2), sha, `chore: gate Atrix ${gate.lastManualTriggerDate || 'reset'}`);
 }
 
-async function publishRunnerStatus(patch) {
+/* 2026-11-17 ("sincronização bloqueada"): o progresso por chamado gerava 1 commit a cada
+   ~12 s. Cada commit dispara um build do GitHub Pages que cancela o anterior, então durante
+   toda a execução o Pages nunca publicava a versão nova do painel; as abas viam o ID novo no
+   raw e bloqueavam o envio do sync ("aba desatualizada"). Agora o progresso (throttle) sai no
+   máximo a cada 60 s; mudanças de estado (início/fim/erro) continuam imediatas. */
+const STATUS_THROTTLE_MS = 60 * 1000;
+let lastStatusPublishAt = 0;
+async function publishRunnerStatus(patch, opts) {
   if (!GH_TOKEN) return;
+  if (opts && opts.throttle && Date.now() - lastStatusPublishAt < STATUS_THROTTLE_MS) return;
+  lastStatusPublishAt = Date.now();
   try {
     let current = {};
     let sha = null;
@@ -869,7 +878,7 @@ async function runCycle() {
         /* Limite de tempo: o workflow cai em 30 min — não começa revisão depois de 22 min. */
         if (Date.now() - cycleStart.getTime() > 22 * 60000) { warn(`Revisões interrompidas: rodada passou de 22 min (${fila.length} chamado(s) sem leitura).`); break; }
         info(`── Revisão ${volta - 1}: ${fila.length} chamado(s) sem leitura na volta anterior ──`);
-        await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: fila.length, lastTicketsProgress: feitos, lastTicketsTotal: totalPassos, lastTicketsState: estadoTk, lastTicketsCurrent: tidDe(fila[0]) });
+        await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: fila.length, lastTicketsProgress: feitos, lastTicketsTotal: totalPassos, lastTicketsState: estadoTk, lastTicketsCurrent: tidDe(fila[0]) }, { throttle: true });
         await page.waitForTimeout(10000);
       }
       const pendentes = [];
@@ -922,7 +931,7 @@ async function runCycle() {
 
         feitos++;
         if (feitos % progressStep === 0 || i === fila.length - 1) {
-          await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: pendentes.length + (fila.length - i - 1), lastTicketsProgress: feitos, lastTicketsTotal: totalPassos, lastTicketsState: estadoTk, lastTicketsCurrent: tidDe(fila[i + 1]) });
+          await publishRunnerStatus({ state: 'running', lastPass: volta, lastTicketsPending: pendentes.length + (fila.length - i - 1), lastTicketsProgress: feitos, lastTicketsTotal: totalPassos, lastTicketsState: estadoTk, lastTicketsCurrent: tidDe(fila[i + 1]) }, { throttle: true });
         }
 
         if (i < fila.length - 1) await page.waitForTimeout(DELAY_MS);
