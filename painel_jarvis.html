@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-17T22:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-17T23:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14682,6 +14682,18 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
   #panel-academico .acd-recon ul{margin:4px 0 8px 18px;padding:0;color:var(--tx3)}
   #panel-academico .acd-note{font-size:11.5px;color:var(--tx3);margin:6px 0 0;line-height:1.5}
   #panel-academico .acd-cw{position:relative;height:240px}
+  #panel-academico .acd-btn-pdf{cursor:pointer}
+  #panel-academico .acd-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-bottom:10px}
+  #panel-academico .acd-gs{background:var(--surface);border:.5px solid var(--bd);border-radius:12px;padding:12px 14px}
+  #panel-academico .acd-gs.done{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green);background:var(--green-bg)}
+  #panel-academico .acd-gs-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+  #panel-academico .acd-gs-hd strong{font-size:13px}
+  #panel-academico .acd-gs-hd small{font-weight:400;color:var(--tx3);font-size:11.5px}
+  #panel-academico .acd-gs .tag{white-space:nowrap}
+  #panel-academico .acd-gi{display:grid;grid-template-columns:16px 1fr auto 44px;gap:8px;align-items:center;font-size:12.5px;padding:5px 0;border-top:.5px solid var(--bd)}
+  #panel-academico .acd-gi .ti{font-size:14px}
+  #panel-academico .acd-gi-n{font-weight:600;text-align:right}
+  #panel-academico .acd-gi-ch{color:var(--tx3);text-align:right;white-space:nowrap}
   #panel-academico .acd-vazio{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:34px 20px;margin-bottom:16px;color:var(--tx3);font-size:13px}
   #panel-academico .acd-vazio .ti{font-size:34px;color:var(--blue)}
   #panel-academico .acd-vazio strong{font-size:15px;color:var(--tx)}
@@ -14695,7 +14707,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <span class="tag tag-blue">Anhanguera Pitágoras Ampli · 100% online</span>
         <span class="tag tag-orange" id="acd-origem"></span>
       </div>
-      <span class="card-action" onclick="document.getElementById('acd-imp-card').scrollIntoView({behavior:'smooth',block:'start'})"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar histórico</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="card-action acd-btn-pdf" for="acd-file"><i class="ti ti-file-upload" style="font-size:12px;vertical-align:-1px"></i> Anexar histórico (PDF)</label><label class="card-action acd-btn-pdf" for="acd-grade-file"><i class="ti ti-file-upload" style="font-size:12px;vertical-align:-1px"></i> Anexar grade (PDF)</label></div>
     </div>
     <p class="acd-lead" id="acd-lead"></p>
     <div id="acd-dados">
@@ -14720,6 +14732,23 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="card-hd"><span class="card-title">Carga horária por semestre</span><span style="font-size:11px;color:var(--tx3)">aprovado · cursando · a cursar</span></div>
         <div class="acd-cw"><canvas id="acd-ch-ch"></canvas></div>
       </div>
+    </div>
+
+    <div class="tsec" id="acd-grade-sec">
+      <div class="tsec-hd">
+        <span class="tsec-title">Grade curricular × histórico</span>
+        <div class="tsec-meta">
+          <span id="acd-grade-meta" style="color:var(--tx3)"></span>
+          <label class="card-action acd-btn-pdf" for="acd-grade-file"><i class="ti ti-file-upload" style="font-size:12px;vertical-align:-1px"></i> Anexar grade (PDF)</label>
+          <span class="card-action" id="acd-grade-rm" onclick="acdRemoverGrade()" style="display:none">Remover grade</span>
+          <input type="file" id="acd-grade-file" accept=".pdf,application/pdf" style="display:none">
+        </div>
+      </div>
+      <div class="mrow" id="mrow-acd-grade"></div>
+      <p class="acd-risk" id="acd-grade-banner" style="display:none"></p>
+      <div class="acd-grade" id="acd-grade-grid"></div>
+      <div class="acd-recon" id="acd-grade-div"></div>
+      <p class="acd-note"><span id="acd-grade-st"></span> A grade é a <b>Matriz Curricular</b> em PDF emitida pelo Ampli. Cada disciplina mostra a situação do histórico: <i class="ti ti-circle-check" style="color:var(--green)"></i> aprovada · <i class="ti ti-progress" style="color:var(--orange)"></i> cursando · <i class="ti ti-circle"></i> a cursar · <i class="ti ti-alert-triangle" style="color:var(--red)"></i> não consta no histórico. A série fica verde quando todas as disciplinas dela estão aprovadas.</p>
     </div>
 
     <div class="tsec">
@@ -26996,6 +27025,7 @@ function renderAcademico(){
       :`<div class="acd-dr" style="grid-template-columns:1fr;color:var(--tx3)"><span>${temHist?'Nenhuma disciplina neste semestre.':'Sem dados — anexe o histórico em PDF para ver as disciplinas.'}</span></div>`);
   acdRenderTabela(L);
   acdRenderGraficos(temHist?R:sems.map(o=>({sem:o.sem,media:null,ap:0,chAp:0,chCu:0,chAc:0})),!temHist);
+  acdRenderGrade();
 }
 function acdRenderTabela(L){
   L=L||(acdTemDados()?acdLinhas():[]);
@@ -27035,8 +27065,8 @@ function acdSet(k,st,nota){
 }
 const acdClampNota=v=>{const t=String(v==null?'':v).trim().replace(',','.');const n=Number(t);return t!==''&&isFinite(n)?String(Math.min(100,Math.max(0,n))):'';};
 function acdZerar(){
-  if(!confirm('Zerar o histórico deste navegador? O painel fica sem informação até um novo histórico ser anexado.'))return;
-  acdEst={hist:{},disc:[],ofi:null,arquivo:'',at:''};acdSelSem=null;acdRecon=null;acdSalvar();document.getElementById('acd-recon').innerHTML='';renderAcademico();
+  if(!confirm('Zerar o histórico deste navegador? O painel fica sem informação até um novo histórico ser anexado (a grade curricular é mantida).'))return;
+  acdEst={hist:{},disc:[],ofi:null,grade:acdEst.grade,arquivo:'',at:''};acdSelSem=null;acdRecon=null;acdSalvar();document.getElementById('acd-recon').innerHTML='';renderAcademico();
 }
 function acdExportCsv(){
   if(!acdTemDados()){_ghToast('Anexe o histórico antes de exportar.','var(--orange)',4000);return;}
@@ -27142,7 +27172,7 @@ async function acdImportPdf(f){
   const mud=[];
   if(antes)disc.forEach(d=>{const a=antes[acdNorm(d.disc)];const n=d.st==='Aprovado'?d.nota:'';
     if(!a)mud.push(d.disc+': nova no histórico ('+d.st+')');else if(a.st!==d.st||String(a.nota||'')!==String(n||''))mud.push(d.disc+': '+a.st+(a.nota?' '+a.nota:'')+' → '+d.st+(n?' '+n:''));});
-  acdEst={hist:{},disc,ofi,arquivo:f.name,at:''};acdSelSem=null;acdSalvar();
+  acdEst={hist:{},disc,ofi,grade:acdEst.grade,arquivo:f.name,at:''};acdSelSem=null;acdSalvar();
   const c=s=>disc.filter(d=>d.st===s).length;
   const li=a=>a.length?'<ul>'+a.slice(0,30).map(x=>'<li>'+eh(x)+'</li>').join('')+(a.length>30?'<li>e mais '+(a.length-30)+'</li>':'')+'</ul>':'';
   acdRecon={nome:f.name};
@@ -27150,6 +27180,100 @@ async function acdImportPdf(f){
     +(ofi.media!=null?' Média geral do histórico <b>'+acdF2(ofi.media)+'</b>'+(ofi.pct!=null?' · <b>'+acdF2(ofi.pct)+'%</b> cursado':'')+'.':'')
     +(antes?(mud.length?'<div style="margin-top:6px">Mudanças em relação ao histórico anterior</div>'+li(mud):'<div style="margin-top:6px">Nenhuma mudança em relação ao histórico anterior.</div>'):'');
   renderAcademico();
+}
+/* ── Grade curricular × histórico (2026-11-17) ──
+   Lê a "Matriz Curricular" em PDF do Ampli (séries, disciplinas e C.H. prática/teórica/outros/total, mais o
+   resumo do curso) e cruza com o histórico: cada disciplina da grade aparece com a situação do histórico,
+   cada série sinaliza quando está concluída e o bloco avisa quando TODAS as disciplinas da grade foram
+   aprovadas. A grade é pública (não tem dado pessoal); fica no mesmo localStorage do histórico. */
+async function acdPdfItens(buf){
+  if(typeof pdfjsLib==='undefined')throw new Error('pdf.js não carregado');
+  if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='assets/vendor/pdfjs/pdf.worker.min.js';
+  const doc=await pdfjsLib.getDocument({data:buf}).promise;const its=[];
+  for(let p=1;p<=doc.numPages;p++){const tc=await (await doc.getPage(p)).getTextContent();
+    tc.items.forEach(i=>{const s=(i.str||'').trim();if(s)its.push({p,x:i.transform[4],y:i.transform[5],f:i.fontName,s});});}
+  return{its,texto:its.map(i=>i.s).join(' ')};
+}
+const acdEhGradePdf=texto=>/Matriz Curricular/i.test(texto)&&!/HIST[ÓO]RICO ESCOLAR/i.test(texto);
+function acdParseGrade(its,texto){
+  const ord=(a,b)=>a.p-b.p||b.y-a.y||a.x-b.x;const S=its.slice().sort(ord);
+  const lin=[];S.forEach(i=>{const l=lin[lin.length-1];if(l&&l.p===i.p&&Math.abs(l.y-i.y)<=2)l.items.push(i);else lin.push({p:i.p,y:i.y,items:[i]});});
+  let serie=null;const disc=[],vistos=new Set();
+  lin.forEach(l=>{
+    const txt=l.items.map(i=>i.s).join(' ').replace(/\s+/g,' ').trim();
+    const ms=/^(\d{1,2})\s*ª\s*S[ée]rie\b/i.exec(txt);if(ms){serie=+ms[1];return;}
+    if(serie==null)return;
+    const nums=l.items.filter(i=>i.x>=380&&/^\d+$/.test(i.s)).sort((a,b)=>a.x-b.x);
+    const nome=l.items.filter(i=>i.x<380).map(i=>i.s).join(' ').replace(/\s+/g,' ').trim();
+    if(!nome||nums.length<4||/^total\b/i.test(nome))return;
+    const n=nums.slice(-4).map(i=>+i.s),d=acdTitulo(nome.replace(/\s*-\s*/g,' - '));
+    const k=serie+'|'+acdNorm(d);if(vistos.has(k))return;vistos.add(k);
+    disc.push({serie,disc:d,p:n[0],t:n[1],o:n[2],ch:n[3]});
+  });
+  if(!disc.length)throw new Error('não encontrei disciplinas — confira se é a Matriz Curricular em PDF');
+  const num=re=>{const m=re.exec(texto);return m?+m[1]:null;};
+  const mz=its.find(i=>/^Matriz:/i.test(i.s)),cs=its.find(i=>/^Estrutura Curricular do Curso:/i.test(i.s));
+  return{disc,matriz:mz?mz.s.replace(/^Matriz:\s*/i,''):'',curso:cs?cs.s.replace(/^Estrutura Curricular do Curso:\s*/i,''):'',
+    chDisc:num(/Total C\.?\s*H\.? Disciplinas Curso\s*:\s*(\d+)/i)||disc.reduce((a,d)=>a+d.ch,0),
+    chCompl:num(/Atividades Complementares Curso\s*:\s*(\d+)/i),chTotal:num(/Total Carga Hor[áa]ria Curso\s*:\s*(\d+)/i)};
+}
+async function acdImportGrade(f,pre){
+  const{its,texto}=pre||await acdPdfItens(await f.arrayBuffer());
+  const G=acdParseGrade(its,texto);G.arquivo=f.name;G.at=new Date().toISOString();
+  acdEst.grade=G;acdSalvar();renderAcademico();
+  const st=document.getElementById('acd-grade-st');
+  if(st)st.textContent=`${f.name}: ${G.disc.length} disciplinas em ${Math.max(...G.disc.map(d=>d.serie))} séries lidas.`;
+  const sec=document.getElementById('acd-grade-sec');if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function acdRemoverGrade(){
+  if(!acdEst.grade||!confirm('Remover a grade curricular deste navegador? O histórico não é alterado.'))return;
+  delete acdEst.grade;acdSalvar();const st=document.getElementById('acd-grade-st');if(st)st.textContent='';renderAcademico();
+}
+function acdCruzamento(){
+  const G=acdEst.grade;if(!G)return null;
+  const H=acdTemDados()?acdLinhas():[];
+  const k1=s=>acdNorm(s),k2=s=>acdNorm(String(s).replace(/\(.*?\)/g,' '));
+  const ex=new Map(),base=new Map();H.forEach(h=>{ex.set(k1(h.disc),h);const b=k2(h.disc);if(!base.has(b))base.set(b,h);});
+  const usados=new Set();
+  const itens=G.disc.map(g=>{let h=ex.get(k1(g.disc));if(!h||usados.has(h))h=base.get(k2(g.disc));if(h&&usados.has(h))h=null;if(h)usados.add(h);
+    return{...g,h,st:h?h.st:'Não consta',nota:h?acdNotaDe(h):null};});
+  return{G,itens,fora:H.filter(h=>!usados.has(h)),temH:H.length>0};
+}
+function acdRenderGrade(){
+  const box=document.getElementById('acd-grade-grid');if(!box)return;
+  const C=acdCruzamento(),D='—',ban=document.getElementById('acd-grade-banner'),dv=document.getElementById('acd-grade-div');
+  const meta=document.getElementById('acd-grade-meta'),rm=document.getElementById('acd-grade-rm');
+  if(rm)rm.style.display=C?'':'none';
+  if(meta)meta.textContent=C?[C.G.matriz,C.G.arquivo].filter(Boolean).join(' · '):'Nenhuma grade anexada';
+  const ap=C?C.itens.filter(i=>i.st==='Aprovado'):[],cu=C?C.itens.filter(i=>i.st==='Cursando'):[],falta=C?C.itens.filter(i=>i.st!=='Aprovado'):[];
+  const chAp=ap.reduce((a,i)=>a+i.ch,0),chF=falta.reduce((a,i)=>a+i.ch,0),chG=C?C.itens.reduce((a,i)=>a+i.ch,0):0;
+  const ok=!!(C&&C.temH);
+  document.getElementById('mrow-acd-grade').innerHTML=`
+    <div class="mc c-blue"><div class="mc-label">Disciplinas da grade</div><div class="mc-val"><b>${C?C.itens.length:D}</b></div><div class="mc-sub">${C?acdN(chG)+' h nas séries'+(C.G.chCompl?' + '+acdN(C.G.chCompl)+' h complementares':''):'aguardando grade'}</div></div>
+    <div class="mc c-green"><div class="mc-label">Concluídas</div><div class="mc-val" style="color:var(--green-dk)"><b>${ok?ap.length:D}</b></div><div class="mc-sub">${ok?acdN(chAp)+' h · '+Math.round(chG?chAp/chG*100:0)+'% da grade':C?'aguardando histórico':'aguardando grade'}</div></div>
+    <div class="mc c-orange"><div class="mc-label">Em andamento</div><div class="mc-val" style="color:var(--orange)"><b>${ok?cu.length:D}</b></div><div class="mc-sub">${ok?acdN(cu.reduce((a,i)=>a+i.ch,0))+' h cursando':C?'aguardando histórico':'aguardando grade'}</div></div>
+    <div class="mc c-teal"><div class="mc-label">Faltam concluir</div><div class="mc-val" style="color:var(--teal-dk)"><b>${ok?falta.length:D}</b></div><div class="mc-sub">${ok?acdN(chF)+' h da grade':C?'aguardando histórico':'aguardando grade'}</div></div>`;
+  if(!C){ban.style.display='none';dv.innerHTML='';
+    box.innerHTML='<div class="acd-gs" style="grid-column:1/-1;color:var(--tx3);font-size:13px;text-align:center;padding:22px">Sem dados — anexe a <b>grade curricular em PDF</b> (botão <b>Anexar grade (PDF)</b>) para cruzar com o histórico.</div>';return;}
+  const series=[...new Set(C.itens.map(i=>i.serie))].sort((a,b)=>a-b);
+  const fechadas=series.filter(s=>C.itens.filter(i=>i.serie===s).every(i=>i.st==='Aprovado'));
+  ban.style.display='';
+  if(!ok){ban.className='acd-risk';ban.innerHTML='<i class="ti ti-info-circle" style="vertical-align:-2px"></i> Grade carregada. Anexe o <b>histórico escolar em PDF</b> para cruzar as disciplinas.';}
+  else if(!falta.length){ban.className='acd-risk ok';ban.innerHTML=`<i class="ti ti-school" style="vertical-align:-2px"></i> <b>Grade concluída!</b> Todas as ${C.itens.length} disciplinas da grade estão aprovadas no histórico (${acdN(chAp)} h).`+(C.G.chCompl?` Confira as ${acdN(C.G.chCompl)} h de atividades complementares.`:'');}
+  else{ban.className='acd-risk';ban.innerHTML=`<i class="ti ti-list-check" style="vertical-align:-2px"></i> <b>${ap.length} de ${C.itens.length}</b> disciplinas da grade concluídas · ${fechadas.length} de ${series.length} séries completas. Faltam <b>${falta.length}</b> (${acdN(chF)} h)${cu.length?', '+cu.length+' em andamento':''}.`;}
+  const ic=st=>st==='Aprovado'?'<i class="ti ti-circle-check" style="color:var(--green)"></i>':st==='Cursando'?'<i class="ti ti-progress" style="color:var(--orange)"></i>':st==='A cursar'?'<i class="ti ti-circle" style="color:var(--tx3)"></i>':ok?'<i class="ti ti-alert-triangle" style="color:var(--red)"></i>':'<i class="ti ti-circle" style="color:var(--tx3)"></i>';
+  box.innerHTML=series.map(s=>{const L=C.itens.filter(i=>i.serie===s),a=L.filter(i=>i.st==='Aprovado').length,done=ok&&a===L.length,ch=L.reduce((x,i)=>x+i.ch,0);
+    const tag=!ok?`<span class="tag tag-blue">${L.length} disc.</span>`:done?'<span class="tag tag-green"><i class="ti ti-check" style="font-size:11px"></i> Concluída</span>':`<span class="tag ${a?'tag-orange':'tag-blue'}">${a}/${L.length}</span>`;
+    return`<div class="acd-gs${done?' done':''}"><div class="acd-gs-hd"><strong>${s}ª série <small>· ${acdN(ch)} h</small></strong>${tag}</div>`
+      +L.map(i=>`<div class="acd-gi" title="${eh(i.disc)} — prática ${i.p} h · teórica ${i.t} h · outros ${i.o} h"><span>${ic(i.st)}</span><span>${eh(i.disc)}</span><span class="acd-gi-n">${i.nota!=null?i.nota:''}</span><span class="acd-gi-ch">${i.ch} h</span></div>`).join('')+'</div>';}).join('');
+  if(!ok){dv.innerHTML='';return;}
+  const nao=C.itens.filter(i=>!i.h),chDif=C.itens.filter(i=>i.h&&i.h.ch!==i.ch),semDif=C.itens.filter(i=>i.h&&i.h.sem!==i.serie);
+  const li=a=>'<ul>'+a.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+  dv.innerHTML=(nao.length?'<div><b>Na grade, mas não constam no histórico</b></div>'+li(nao.map(i=>eh(i.disc)+' ('+i.serie+'ª série)')):'')
+    +(C.fora.length?'<div><b>No histórico, mas fora da grade</b></div>'+li(C.fora.map(h=>eh(h.disc)+' ('+h.sem+'º sem.)')):'')
+    +(chDif.length?'<div><b>Carga horária diferente</b> (grade × histórico)</div>'+li(chDif.map(i=>eh(i.disc)+': '+i.ch+' h × '+i.h.ch+' h')):'')
+    +(semDif.length?'<div><b>Série diferente</b> (grade × histórico)</div>'+li(semDif.map(i=>eh(i.disc)+': '+i.serie+'ª × '+i.h.sem+'º')):'')
+    ||'<div style="color:var(--green-dk)"><i class="ti ti-circle-check"></i> Grade e histórico batem: mesmas disciplinas, séries e cargas horárias.</div>';
 }
 (function acdInit(){
   const tb=document.getElementById('tb-acd');if(!tb)return;
@@ -27164,11 +27288,22 @@ async function acdImportPdf(f){
     const b=ev.target.closest('.acd-chip');if(!b)return;acdFiltro=b.dataset.st;
     document.querySelectorAll('#acd-chips .acd-chip').forEach(c=>c.classList.toggle('on',c===b));acdRenderTabela();
   });
+  document.getElementById('acd-grade-file').addEventListener('change',async ev=>{
+    const inp=ev.target,f=inp.files&&inp.files[0];if(!f)return;const st=document.getElementById('acd-grade-st');
+    try{st.textContent='Lendo a grade…';const pre=await acdPdfItens(await f.arrayBuffer());
+      if(/HIST[ÓO]RICO ESCOLAR/i.test(pre.texto)){await acdImportPdf(f);st.textContent='Esse PDF é o histórico escolar — importado como histórico.';return;}
+      await acdImportGrade(f,pre);
+    }catch(e){console.error('Painel acadêmico (grade)',e);st.textContent='Não foi possível ler a grade'+(e&&e.message?' ('+e.message+')':'')+'.';}
+    finally{inp.value='';}
+  });
   document.getElementById('acd-file').addEventListener('change',async ev=>{
     const inp=ev.target,f=inp.files&&inp.files[0];if(!f)return;
     const st=document.getElementById('acd-imp-st');
     try{
-      if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){st.textContent='Lendo o PDF…';await acdImportPdf(f);st.textContent='Histórico em PDF importado — resumo abaixo.';return;}
+      if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){st.textContent='Lendo o PDF…';
+        const pre=await acdPdfItens(await f.arrayBuffer());
+        if(acdEhGradePdf(pre.texto)){await acdImportGrade(f,pre);st.textContent='Esse PDF é a grade curricular — carregada no bloco Grade curricular × histórico.';return;}
+        await acdImportPdf(f);st.textContent='Histórico em PDF importado — resumo abaixo.';return;}
       const text=(await f.text()).replace(/^﻿/,''),t=text.trim();let objs;
       if(/\.json$/i.test(f.name)||t.startsWith('[')||t.startsWith('{')){const j=JSON.parse(t);objs=Array.isArray(j)?j:(j.rows||j.data||j.results||[]);}
       else objs=acdParseCsv(text);
