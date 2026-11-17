@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-17T14:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-17T22:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14698,7 +14698,6 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <span class="card-action" onclick="document.getElementById('acd-imp-card').scrollIntoView({behavior:'smooth',block:'start'})"><i class="ti ti-upload" style="font-size:11px;vertical-align:-1px"></i> Anexar histórico</span>
     </div>
     <p class="acd-lead" id="acd-lead"></p>
-    <div class="card acd-vazio" id="acd-vazio" style="display:none"><i class="ti ti-file-upload"></i><strong>Nenhum histórico anexado</strong><span>Anexe o histórico escolar (CSV ou JSON) em <b>Anexar novo histórico</b>, logo abaixo. Média, carga horária, semestres, gráficos e disciplinas aparecem depois do anexo.</span></div>
     <div id="acd-dados">
     <div class="mrow" id="mrow-acd"></div>
     <p class="acd-risk" id="acd-risk" style="display:none"></p>
@@ -14752,12 +14751,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     <div class="card" id="acd-imp-card">
       <div class="card-hd"><span class="card-title">Anexar novo histórico</span></div>
       <div class="acd-imp">
-        <input type="file" id="acd-file" accept=".csv,.json,.txt,text/csv,application/json">
+        <input type="file" id="acd-file" accept=".pdf,application/pdf,.csv,.json,.txt,text/csv,application/json">
         <span id="acd-imp-st" style="font-size:12px;color:var(--tx3)"></span>
       </div>
       <div class="acd-recon" id="acd-recon"></div>
-      <p class="acd-note">CSV ou JSON com as colunas <b>disciplina</b>, <b>situação</b> e <b>nota</b>. Vale a situação mais adiantada (Aprovado › Cursando › A cursar): nenhuma aprovada volta atrás, e a nota do arquivo substitui a atual quando a disciplina já está aprovada.</p>
-      <p class="acd-note"><i class="ti ti-lock" style="font-size:11px;vertical-align:-1px"></i> Notas e situações ficam só neste navegador (o repositório do Jarvis é público). Em outro computador, anexe o histórico de novo.</p>
+      <p class="acd-note"><b>Histórico escolar em PDF</b> (o emitido pelo Ampli): o painel lê a tabela de disciplinas — semestre, carga horária, média e resultado — e passa a usar a lista do próprio histórico. Também aceita CSV ou JSON com as colunas <b>disciplina</b>, <b>situação</b> e <b>nota</b>.</p>
+      <p class="acd-note"><i class="ti ti-lock" style="font-size:11px;vertical-align:-1px"></i> Só as disciplinas, notas e totais ficam guardados, e apenas neste navegador — nome, CPF, RG e matrícula do PDF não são lidos nem salvos (o repositório do Jarvis é público). Em outro computador, anexe o histórico de novo.</p>
     </div>
   </div>
 
@@ -26924,7 +26923,13 @@ let acdEst={hist:{},arquivo:'',at:''};/* hist: {discNorm:{st,nota}} */
 let acdSelSem=null,acdFiltro='',acdRecon=null,acdChMedia=null,acdChCh=null;
 try{const o=JSON.parse(localStorage.getItem(ACD_KEY)||'null');if(o&&typeof o==='object'&&o.hist)acdEst=o;}catch(_){}
 function acdSalvar(){acdEst.at=new Date().toISOString();try{localStorage.setItem(ACD_KEY,JSON.stringify(acdEst));}catch(_){_ghToast('Não foi possível salvar neste navegador.','var(--red)',5000);}}
-function acdLinhas(){return ACD_MATRIZ.map(([sem,disc,ch])=>{const h=acdEst.hist[acdNorm(disc)]||{};return{sem,disc,ch,st:h.st||'A cursar',nota:h.st==='Aprovado'&&h.nota!==''&&h.nota!=null?h.nota:''};});}
+const acdTemDados=()=>!!((acdEst.disc&&acdEst.disc.length)||Object.keys(acdEst.hist||{}).length);
+const acdCursoH=()=>(acdEst.ofi&&acdEst.ofi.chCurso)||ACD_CURSO_H;
+const acdIngresso=()=>{const m=/^(\d{4})\/0?([12])$/.exec((acdEst.ofi&&acdEst.ofi.ingresso)||'');return m?(+m[1])*2+(+m[2]-1):ACD_INGRESSO;};
+function acdLinhas(){
+  /* histórico em PDF: a lista de disciplinas é a do próprio histórico (oficial) */
+  if(acdEst.disc&&acdEst.disc.length)return acdEst.disc.map(d=>({sem:d.sem,disc:d.disc,ch:d.ch,st:d.st,nota:d.st==='Aprovado'&&d.nota!==''&&d.nota!=null?d.nota:'',freq:d.freq||''})).sort((a,b)=>a.sem-b.sem||a.disc.localeCompare(b.disc,'pt-BR'));
+  return ACD_MATRIZ.map(([sem,disc,ch])=>{const h=acdEst.hist[acdNorm(disc)]||{};return{sem,disc,ch,st:h.st||'A cursar',nota:h.st==='Aprovado'&&h.nota!==''&&h.nota!=null?h.nota:''};});}
 const acdNotaDe=r=>r.st==='Aprovado'&&r.nota!==''&&isFinite(Number(r.nota))?Number(r.nota):null;
 function acdResumo(L){
   const by=new Map();
@@ -26935,12 +26940,12 @@ function acdResumo(L){
 function acdTotais(R){
   const t={ap:0,cu:0,ac:0,chAp:0,chCu:0,soma:0,nn:0};
   R.forEach(o=>{t.ap+=o.ap;t.cu+=o.cu;t.ac+=o.ac;t.chAp+=o.chAp;t.chCu+=o.chCu;t.soma+=o.soma;t.nn+=o.nn;});
-  t.media=t.nn?t.soma/t.nn:null;t.pct=t.chAp/ACD_CURSO_H;
+  t.media=t.nn?t.soma/t.nn:null;t.pct=t.chAp/acdCursoH();
   const nSem=Math.max(...R.map(o=>o.sem)),hoje=new Date(),agora=hoje.getFullYear()*2+(hoje.getMonth()<6?0:1);
-  t.semAtual=Math.min(nSem,Math.max(1,agora-ACD_INGRESSO+1));
-  const idx=ACD_INGRESSO+t.semAtual-1;t.periodo=Math.floor(idx/2)+'/0'+(idx%2+1);t.semRest=nSem-t.semAtual;
+  t.semAtual=Math.min(nSem,Math.max(1,agora-acdIngresso()+1));
+  const idx=acdIngresso()+t.semAtual-1;t.periodo=Math.floor(idx/2)+'/0'+(idx%2+1);t.semRest=nSem-t.semAtual;
   const lab=i=>(i%2===0?'Jun/':'Dez/')+Math.floor(i/2);
-  t.previsao=t.chAp>=ACD_CURSO_H?'Concluído':lab(ACD_INGRESSO+nSem-1);t.previsaoAtraso=lab(ACD_INGRESSO+nSem);
+  t.previsao=t.chAp>=acdCursoH()?'Concluído':lab(acdIngresso()+nSem-1);t.previsaoAtraso=lab(acdIngresso()+nSem);
   const pend=R.filter(o=>o.sem<=t.semAtual);t.nPend=pend.reduce((a,o)=>a+o.ac,0);t.chPend=pend.reduce((a,o)=>a+o.chAc,0);
   return t;
 }
@@ -26949,48 +26954,51 @@ const acdF2=v=>v==null?'—':v.toLocaleString('pt-BR',{minimumFractionDigits:2,m
 const acdN=v=>Number(v).toLocaleString('pt-BR');
 function renderAcademico(){
   if(!document.getElementById('panel-academico'))return;
-  const L=acdLinhas(),R=acdResumo(L),t=acdTotais(R);
-  const temHist=Object.keys(acdEst.hist).length>0;
-  /* Sem base anexada: painel limpo, só o estado vazio + card de anexo (2026-11-17). */
-  const dd=document.getElementById('acd-dados'),vz=document.getElementById('acd-vazio');
-  if(dd)dd.style.display=temHist?'':'none';
-  if(vz)vz.style.display=temHist?'none':'';
+  /* 2026-11-17: o painel mostra sempre a mesma estrutura (contadores, semestres, gráficos e tabela),
+     mas SEM informação até o histórico ser anexado (PDF do Ampli, ou CSV/JSON). */
+  const temHist=acdTemDados(),ofi=acdEst.ofi||{},D='—';
+  const L=temHist?acdLinhas():[],R=temHist?acdResumo(L):[],t=temHist?acdTotais(R):null;
+  const nSem=temHist?Math.max(...R.map(o=>o.sem)):Math.max(...ACD_MATRIZ.map(m=>m[0]));
+  const ingTxt=(()=>{const i=acdIngresso();return Math.floor(i/2)+'/0'+(i%2+1);})();
   const og=document.getElementById('acd-origem');
-  if(og){og.style.display=temHist?'':'none';og.textContent=temHist?('Histórico: '+(acdEst.arquivo||'editado no painel')+(acdEst.at?' · '+new Date(acdEst.at).toLocaleDateString('pt-BR'):'')):'';}
-  if(!temHist){document.getElementById('acd-lead').innerHTML='';
-    if(acdChMedia){acdChMedia.destroy();acdChMedia=null;}if(acdChCh){acdChCh.destroy();acdChCh=null;}
-    ['mrow-acd','acd-sems','acd-detail','tb-acd','cnt-acd'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='';});
-    return;}
-  document.getElementById('acd-lead').innerHTML=`Média geral <b>${acdF2(t.media)}</b>, com <b>${Math.round(t.pct*100)}%</b> da carga horária cumprida e <b>${t.cu}</b> disciplina${t.cu===1?'':'s'} em andamento. Previsão de conclusão: <b>${t.previsao}</b>.`;
+  if(og)og.textContent=temHist?('Histórico: '+(acdEst.arquivo||'editado no painel')+(acdEst.at?' · '+new Date(acdEst.at).toLocaleDateString('pt-BR'):'')):'Nenhum histórico anexado';
+  document.getElementById('acd-lead').innerHTML=temHist
+    ?`Média geral <b>${acdF2(t.media)}</b>, com <b>${Math.round(t.pct*100)}%</b> da carga horária cumprida e <b>${t.cu}</b> disciplina${t.cu===1?'':'s'} em andamento. Previsão de conclusão: <b>${t.previsao}</b>.`
+    :'Sem histórico anexado: os indicadores ficam vazios até você anexar o <b>histórico escolar em PDF</b> no card <b>Anexar novo histórico</b>, no fim da página.';
+  const v=x=>temHist?x:D,sub=x=>temHist?x:'aguardando histórico';
   document.getElementById('mrow-acd').innerHTML=`
-    <div class="mc c-blue"><div class="mc-label">Média geral</div><div class="mc-val" style="color:var(--blue)"><b>${acdF2(t.media)}</b></div><div class="mc-sub">nas disciplinas aprovadas</div></div>
-    <div class="mc c-green"><div class="mc-label">Curso concluído</div><div class="mc-val" style="color:var(--green-dk)"><b>${Math.round(t.pct*100)}%</b></div><div class="mc-sub">${acdN(t.chAp)} h de ${acdN(ACD_CURSO_H)} h</div><div class="acd-track"><div class="acd-fill" style="width:${Math.min(100,t.pct*100)}%"></div></div></div>
-    <div class="mc c-orange"><div class="mc-label">Semestre atual</div><div class="mc-val" style="color:var(--orange)"><b>${t.semAtual}º</b></div><div class="mc-sub">período ${t.periodo} · ingresso 2024/01</div></div>
-    <div class="mc c-teal"><div class="mc-label">Previsão de conclusão</div><div class="mc-val" style="color:var(--teal-dk)"><b>${t.previsao}</b></div><div class="mc-sub">prazo regular · faltam ${t.semRest} semestre${t.semRest===1?'':'s'} depois do atual</div></div>
-    <div class="mc c-green"><div class="mc-label">Aprovadas</div><div class="mc-val"><b>${t.ap}</b></div><div class="mc-sub">de ${L.length} disciplinas</div></div>
-    <div class="mc c-orange"><div class="mc-label">Em andamento</div><div class="mc-val"><b>${t.cu}</b></div><div class="mc-sub">${acdN(t.chCu)} h cursando</div></div>
-    <div class="mc c-blue"><div class="mc-label">A cursar</div><div class="mc-val"><b>${t.ac}</b></div><div class="mc-sub">${acdN(ACD_CURSO_H-t.chAp-t.chCu)} h restantes</div></div>`;
+    <div class="mc c-blue"><div class="mc-label">Média geral</div><div class="mc-val" style="color:var(--blue)"><b>${v(temHist&&acdF2(t.media))}</b></div><div class="mc-sub">${sub(temHist&&('nas disciplinas aprovadas'+(ofi.media!=null?' · histórico '+acdF2(ofi.media):'')))}</div></div>
+    <div class="mc c-green"><div class="mc-label">Curso concluído</div><div class="mc-val" style="color:var(--green-dk)"><b>${v(temHist&&Math.round(t.pct*100)+'%')}</b></div><div class="mc-sub">${sub(temHist&&(acdN(t.chAp)+' h de '+acdN(acdCursoH())+' h'+(ofi.pct!=null?' · histórico '+acdF2(ofi.pct)+'%':'')))}</div><div class="acd-track"><div class="acd-fill" style="width:${temHist?Math.min(100,t.pct*100):0}%"></div></div></div>
+    <div class="mc c-orange"><div class="mc-label">Semestre atual</div><div class="mc-val" style="color:var(--orange)"><b>${v(temHist&&t.semAtual+'º')}</b></div><div class="mc-sub">${sub(temHist&&('período '+t.periodo+' · ingresso '+ingTxt))}</div></div>
+    <div class="mc c-teal"><div class="mc-label">Previsão de conclusão</div><div class="mc-val" style="color:var(--teal-dk)"><b>${v(temHist&&t.previsao)}</b></div><div class="mc-sub">${sub(temHist&&('prazo regular · faltam '+t.semRest+' semestre'+(t.semRest===1?'':'s')+' depois do atual'))}</div></div>
+    <div class="mc c-green"><div class="mc-label">Aprovadas</div><div class="mc-val"><b>${v(temHist&&t.ap)}</b></div><div class="mc-sub">${sub(temHist&&('de '+L.length+' disciplinas'))}</div></div>
+    <div class="mc c-orange"><div class="mc-label">Em andamento</div><div class="mc-val"><b>${v(temHist&&t.cu)}</b></div><div class="mc-sub">${sub(temHist&&(acdN(t.chCu)+' h cursando'))}</div></div>
+    <div class="mc c-blue"><div class="mc-label">A cursar</div><div class="mc-val"><b>${v(temHist&&t.ac)}</b></div><div class="mc-sub">${sub(temHist&&(acdN(Math.max(0,acdCursoH()-t.chAp-t.chCu))+' h restantes'))}</div></div>`;
   const rk=document.getElementById('acd-risk');
   if(!temHist)rk.style.display='none';
   else{rk.style.display='';rk.className='acd-risk'+(t.nPend?'':' ok');
     rk.innerHTML=t.nPend?`<i class="ti ti-alert-triangle" style="vertical-align:-2px"></i> Há <b>${t.nPend}</b> disciplina${t.nPend===1?'':'s'} (<b>${acdN(t.chPend)} h</b>) de semestres até o atual ainda a cursar. Se ficarem para depois do último semestre, a conclusão passa para <b>${t.previsaoAtraso}</b>.`
       :'<i class="ti ti-circle-check" style="vertical-align:-2px"></i> Sem pendências dos semestres até o atual: o prazo regular está mantido.';}
-  const sel=acdSelSem!=null?acdSelSem:t.semAtual;
-  document.getElementById('acd-sems').innerHTML=R.map(o=>{
+  const sel=Math.min(nSem,acdSelSem!=null?acdSelSem:(temHist?t.semAtual:1));
+  const sems=[];for(let s=1;s<=nSem;s++)sems.push(R.find(o=>o.sem===s)||{sem:s,vazio:true});
+  document.getElementById('acd-sems').innerHTML=sems.map(o=>{
+    if(o.vazio)return`<button type="button" class="acd-sem${o.sem===sel?' sel':''}" onclick="acdSelSem=${o.sem};renderAcademico()"><div class="acd-sem-top"><strong>${o.sem}º semestre</strong></div>
+      <small>— disciplinas aprovadas</small><small>Média —</small><small>— h</small><div class="acd-track"><div class="acd-fill" style="width:0%"></div></div></button>`;
     const done=o.ap===o.n,going=o.cu>0||(o.ap>0&&!done),atual=o.sem===t.semAtual;
     const tag=atual&&!done?'<span class="tag tag-orange">Semestre atual</span>':done?'<span class="tag tag-green">Concluído</span>':going?'<span class="tag tag-orange">Em andamento</span>':'<span class="tag tag-blue">A cursar</span>';
     const p=o.chT?o.chAp/o.chT*100:0;
     return`<button type="button" class="acd-sem${o.sem===sel?' sel':''}" onclick="acdSelSem=${o.sem};renderAcademico()"><div class="acd-sem-top"><strong>${o.sem}º semestre</strong>${tag}</div>
       <small>${o.ap} de ${o.n} disciplinas aprovadas</small><small>${o.media==null?'Média —':'Média '+acdF1(o.media)}</small><small>${acdN(o.chAp)} h de ${acdN(o.chT)} h · ${Math.round(p)}%</small>
       <div class="acd-track"><div class="acd-fill" style="width:${p}%"></div></div></button>`;}).join('');
-  const lst=L.filter(r=>r.sem===sel),ns=lst.map(acdNotaDe).filter(v=>v!=null);
-  document.getElementById('acd-detail').innerHTML=`<div class="card-hd"><span class="card-title">${sel}º semestre</span><span style="font-size:12px;color:var(--tx3)">${lst.filter(r=>r.st==='Aprovado').length} de ${lst.length} aprovadas${ns.length?' · média '+acdF1(ns.reduce((a,b)=>a+b,0)/ns.length):''}</span></div>`
-    +lst.map(r=>{const v=acdNotaDe(r);return`<div class="acd-dr"><span>${eh(r.disc)}</span><span class="n">${v==null?'':v}</span>${r.st==='Aprovado'?'<span class="tag tag-green">Aprovado</span>':r.st==='Cursando'?'<span class="tag tag-orange">Cursando</span>':'<span class="tag tag-blue">A cursar</span>'}</div>`;}).join('');
+  const lst=L.filter(r=>r.sem===sel),ns=lst.map(acdNotaDe).filter(x=>x!=null);
+  document.getElementById('acd-detail').innerHTML=`<div class="card-hd"><span class="card-title">${sel}º semestre</span><span style="font-size:12px;color:var(--tx3)">${temHist?lst.filter(r=>r.st==='Aprovado').length+' de '+lst.length+' aprovadas'+(ns.length?' · média '+acdF1(ns.reduce((a,b)=>a+b,0)/ns.length):''):'— de — aprovadas'}</span></div>`
+    +(lst.length?lst.map(r=>{const n=acdNotaDe(r);return`<div class="acd-dr"><span>${eh(r.disc)}</span><span class="n">${n==null?'':n}</span>${r.st==='Aprovado'?'<span class="tag tag-green">Aprovado</span>':r.st==='Cursando'?'<span class="tag tag-orange">Cursando</span>':'<span class="tag tag-blue">A cursar</span>'}</div>`;}).join('')
+      :`<div class="acd-dr" style="grid-template-columns:1fr;color:var(--tx3)"><span>${temHist?'Nenhuma disciplina neste semestre.':'Sem dados — anexe o histórico em PDF para ver as disciplinas.'}</span></div>`);
   acdRenderTabela(L);
-  acdRenderGraficos(R);
+  acdRenderGraficos(temHist?R:sems.map(o=>({sem:o.sem,media:null,ap:0,chAp:0,chCu:0,chAc:0})),!temHist);
 }
 function acdRenderTabela(L){
-  L=L||acdLinhas();
+  L=L||(acdTemDados()?acdLinhas():[]);
   const q=acdNorm((document.getElementById('f-srch-acd')||{}).value||'');
   const F=L.filter(r=>(!acdFiltro||r.st===acdFiltro)&&(!q||acdNorm(r.disc).includes(q)));
   document.getElementById('cnt-acd').textContent=`${F.length} de ${L.length} disciplinas`;
@@ -26998,18 +27006,18 @@ function acdRenderTabela(L){
     <td class="acd-num">${r.sem}º</td><td>${eh(r.disc)}</td><td class="acd-num">${r.ch} h</td>
     <td class="acd-num"><input type="number" class="acd-nota" min="0" max="100" step="any" value="${eh(r.nota)}" ${r.st==='Aprovado'?'':'disabled'} aria-label="Nota de ${eh(r.disc)}"></td>
     <td><select class="acd-st" aria-label="Situação de ${eh(r.disc)}">${['Aprovado','Cursando','A cursar'].map(s=>`<option${s===r.st?' selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')
-    ||'<tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:18px">Nenhuma disciplina no filtro.</td></tr>';
+    ||'<tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:18px">'+(L.length?'Nenhuma disciplina no filtro.':'Sem dados — anexe o histórico escolar em PDF para listar as disciplinas.')+'</td></tr>';
 }
 function acdCor(v,fb){try{const c=getComputedStyle(document.body).getPropertyValue(v).trim();return c||fb;}catch(_){return fb;}}
-function acdRenderGraficos(R){
+function acdRenderGraficos(R,vazio){
   if(typeof Chart==='undefined')return;
   const tx=acdCor('--tx3','#888'),grid=acdCor('--bd','rgba(128,128,128,.2)'),blue=acdCor('--blue','#007aff'),orange=acdCor('--orange','#ff9500'),muted='rgba(142,142,147,.35)';
-  const M=R.filter(o=>o.media!=null);
+  const M=vazio?R:R.filter(o=>o.media!=null);
   const c1=document.getElementById('acd-ch-media'),c2=document.getElementById('acd-ch-ch');
   if(acdChMedia){acdChMedia.destroy();acdChMedia=null;}
   if(acdChCh){acdChCh.destroy();acdChCh=null;}
-  if(c1&&c1.offsetParent)acdChMedia=new Chart(c1,{type:'bar',data:{labels:M.map(o=>o.sem+'º'),datasets:[{label:'Média',data:M.map(o=>+o.media.toFixed(1)),backgroundColor:blue,borderRadius:5,maxBarThickness:46}]},
-    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},plugins:{legend:{display:false},datalabels:{display:true,anchor:'end',align:'end',offset:2,color:tx,font:{size:11,weight:'600'},formatter:v=>acdF1(v)},
+  if(c1&&c1.offsetParent)acdChMedia=new Chart(c1,{type:'bar',data:{labels:M.map(o=>o.sem+'º'),datasets:[{label:'Média',data:M.map(o=>o.media==null?null:+o.media.toFixed(1)),backgroundColor:blue,borderRadius:5,maxBarThickness:46}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},plugins:{legend:{display:false},datalabels:{display:true,anchor:'end',align:'end',offset:2,color:tx,font:{size:11,weight:'600'},formatter:v=>v==null?'':acdF1(v)},
       tooltip:{callbacks:{title:i=>i[0].label+' semestre',label:i=>'Média: '+acdF1(i.raw)+' · '+M[i.dataIndex].ap+' aprovadas'}}},
       scales:{y:{min:0,max:100,ticks:{stepSize:50,color:tx},grid:{color:grid},border:{display:false}},x:{ticks:{color:tx},grid:{display:false}}}},plugins:typeof ChartDataLabels!=='undefined'?[ChartDataLabels]:[]});
   if(c2&&c2.offsetParent)acdChCh=new Chart(c2,{type:'bar',data:{labels:R.map(o=>o.sem+'º'),datasets:[
@@ -27021,15 +27029,17 @@ function acdRenderGraficos(R){
       scales:{x:{stacked:true,ticks:{color:tx,callback:v=>v+' h'},grid:{color:grid},border:{display:false}},y:{stacked:true,ticks:{color:tx},grid:{display:false}}}}});
 }
 function acdSet(k,st,nota){
+  if(acdEst.disc&&acdEst.disc.length){const d=acdEst.disc.find(x=>acdNorm(x.disc)===k);if(!d)return;d.st=st;d.nota=st==='Aprovado'?nota:'';return;}
   const disc=ACD_MATRIZ.find(m=>acdNorm(m[1])===k);if(!disc)return;
   if(st==='A cursar')delete acdEst.hist[k];else acdEst.hist[k]={st,nota:st==='Aprovado'?nota:''};
 }
 const acdClampNota=v=>{const t=String(v==null?'':v).trim().replace(',','.');const n=Number(t);return t!==''&&isFinite(n)?String(Math.min(100,Math.max(0,n))):'';};
 function acdZerar(){
-  if(!confirm('Zerar o histórico deste navegador? O painel fica limpo até um novo histórico ser anexado.'))return;
-  acdEst={hist:{},arquivo:'',at:''};acdRecon=null;acdSalvar();document.getElementById('acd-recon').innerHTML='';renderAcademico();
+  if(!confirm('Zerar o histórico deste navegador? O painel fica sem informação até um novo histórico ser anexado.'))return;
+  acdEst={hist:{},disc:[],ofi:null,arquivo:'',at:''};acdSelSem=null;acdRecon=null;acdSalvar();document.getElementById('acd-recon').innerHTML='';renderAcademico();
 }
 function acdExportCsv(){
+  if(!acdTemDados()){_ghToast('Anexe o histórico antes de exportar.','var(--orange)',4000);return;}
   const L=acdLinhas(),q=s=>'"'+String(s).replace(/"/g,'""')+'"';
   const csv='﻿'+['semestre;disciplina;ch;nota;situacao'].concat(L.map(r=>[r.sem,q(r.disc),r.ch,r.nota,r.st].join(';'))).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
@@ -27072,6 +27082,75 @@ function acdConciliar(objs,nome){
     +(rec.atu.length?'<div style="margin-top:6px">Atualizadas</div>'+li(rec.atu):'')+(rec.man.length?'<div>Mantidas</div>'+li(rec.man):'')+(rec.nao.length?'<div>Não encontradas na matriz</div>'+li(rec.nao):'');
   renderAcademico();return true;
 }
+/* ── Leitura do histórico escolar em PDF (Ampli / Anhanguera, 2026-11-17) ──
+   Lê só a tabela de disciplinas (nome, semestre, C.H., média, frequência, resultado) e os totais
+   oficiais (média geral, % cursado, C.H. do curso, ingresso). Nome, CPF, RG e demais dados pessoais
+   do cabeçalho NÃO são guardados. O nome de cada disciplina vem das linhas em negrito da coluna
+   DISCIPLINA, fechadas pelo rótulo "Docente" — isso cobre nomes quebrados entre páginas. */
+function acdTitulo(s){
+  const min=new Set(['de','da','do','das','dos','e','para','na','no','nas','nos','em','a','o','com']);
+  return String(s).toLowerCase().split(/\s+/).filter(Boolean).map((w,i)=>{
+    const m=/^([(\[]?)(.*?)([)\],.;:]*)$/.exec(w),pre=m[1],suf=m[3];let c=m[2];
+    if(/^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/.test(c)||c==='esg'||c==='tcc')c=c.toUpperCase();
+    else if(!(i>0&&!pre&&min.has(c)))c=c.charAt(0).toUpperCase()+c.slice(1);
+    return pre+c+suf;}).join(' ');
+}
+async function acdParsePdf(buf){
+  if(typeof pdfjsLib==='undefined')throw new Error('pdf.js não carregado');
+  if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='assets/vendor/pdfjs/pdf.worker.min.js';
+  const doc=await pdfjsLib.getDocument({data:buf}).promise;const its=[];
+  for(let p=1;p<=doc.numPages;p++){const tc=await (await doc.getPage(p)).getTextContent();
+    tc.items.forEach(i=>{const s=(i.str||'').trim();if(s)its.push({p,x:i.transform[4],y:i.transform[5],f:i.fontName,s});});}
+  const texto=its.map(i=>i.s).join(' ');
+  const num=re=>{const m=re.exec(texto);return m?Number(m[1].replace(/\./g,'').replace(',','.')):null;};
+  const ingM=/Ano\/Semestre Ingresso\s*:\s*(\d{4})\/0?([12])/i.exec(texto);
+  const ofi={media:num(/M[ée]dia Geral\s*:\s*([\d.,]+)/i),pct:num(/Percentual Cursado\s*:\s*([\d.,]+)\s*%/i),
+    chCursada:num(/Carga Hor[áa]ria Cursada\s*:\s*(\d+)/i),chCurso:num(/Carga Hor[áa]ria do Curso\s*:\s*(\d+)/i),ingresso:ingM?ingM[1]+'/0'+ingM[2]:''};
+  const fim=its.find(i=>i.s==='Total'||/^Total de Carga/i.test(i.s));
+  const hdr={};its.filter(i=>i.s==='DISCIPLINA').forEach(i=>{hdr[i.p]=i.y;});
+  const T=its.filter(i=>(!fim||i.p<fim.p||(i.p===fim.p&&i.y>fim.y+1))&&(hdr[i.p]==null||i.y<hdr[i.p]-2));
+  const ord=(a,b)=>a.p-b.p||b.y-a.y||a.x-b.x;
+  const xh=(n,d)=>{const h=its.find(i=>i.s===n);return h?h.x:d;};
+  const xCH=xh('C.H.',370),xMed=xh('MÉDIA',395),xFreq=xh('FREQUÊNCIA',426),xRes=xh('RESULTADO',489);
+  /* linhas de dados: âncora no ANO/SEM (ex.: 202509/08) */
+  const linhas=T.filter(i=>/^\d{6}\/\d{2}$/.test(i.s)).sort(ord).map(a=>{
+    const mesma=T.filter(i=>i.p===a.p&&Math.abs(i.y-a.y)<=3&&i!==a);
+    const semI=mesma.filter(i=>/^\d{1,2}$/.test(i.s)&&i.x<a.x&&i.x>a.x-40).sort((u,w)=>w.x-u.x)[0];
+    const dir=mesma.filter(i=>i.x>a.x+20).sort((u,w)=>u.x-w.x);
+    const r={p:a.p,y:a.y,sem:semI?+semI.s:null,ch:'',media:'',freq:'',res:''};
+    dir.forEach(i=>{if(/^\d+([.,]\d+)?$/.test(i.s)){const v=i.s.replace(',','.');if(i.x<(xCH+xMed)/2)r.ch=v;else if(i.x<(xMed+xFreq)/2)r.media=v;else if(i.x<(xFreq+xRes)/2)r.freq=v;}
+      else if(i.x>=(xFreq+xRes)/2-20)r.res=(r.res?r.res+' ':'')+i.s;});
+    return r;}).filter(r=>r.sem&&r.ch);
+  /* nomes: negrito (mesma fonte do rótulo "Docente") à esquerda da coluna Titulação */
+  const fN=new Set(T.filter(i=>i.s==='Docente').map(i=>i.p+'|'+i.f));
+  const xTit=Math.min(...T.filter(i=>i.s==='Titulação').map(i=>i.x).concat([164]));
+  const frag=T.filter(i=>fN.has(i.p+'|'+i.f)&&i.x<xTit-4&&i.s!=='Titulação').sort(ord);
+  const lin=[];frag.forEach(i=>{const l=lin[lin.length-1];if(l&&l.p===i.p&&Math.abs(l.y-i.y)<=2)l.s+=' '+i.s;else lin.push({p:i.p,y:i.y,s:i.s});});
+  const grupos=[];let cur=null,ult=null;
+  lin.forEach(l=>{if(l.s==='Docente'){cur=null;ult=null;return;}
+    if(cur&&ult&&ult.p===l.p&&ult.y-l.y>30)cur=null;
+    if(!cur){cur=[];grupos.push(cur);}cur.push(l.s);ult=l;});
+  const nomes=grupos.map(g=>g.join(' ').replace(/\s+/g,' ').trim());
+  if(!linhas.length||nomes.length!==linhas.length)throw new Error('formato não reconhecido ('+nomes.length+' nomes × '+linhas.length+' linhas de dados)');
+  const disc=linhas.map((r,k)=>{const rs=r.res||'';let st=acdNormSt(rs);if(!st)st=/dispens|aproveit|equival/i.test(rs)?'Aprovado':'A cursar';
+    return{sem:r.sem,disc:acdTitulo(nomes[k]),ch:Number(r.ch)||0,st,nota:r.media,freq:r.freq,res:rs};});
+  return{disc,ofi};
+}
+async function acdImportPdf(f){
+  const{disc,ofi}=await acdParsePdf(await f.arrayBuffer());
+  const antes=acdTemDados()?Object.fromEntries(acdLinhas().map(r=>[acdNorm(r.disc),r])):null;
+  const mud=[];
+  if(antes)disc.forEach(d=>{const a=antes[acdNorm(d.disc)];const n=d.st==='Aprovado'?d.nota:'';
+    if(!a)mud.push(d.disc+': nova no histórico ('+d.st+')');else if(a.st!==d.st||String(a.nota||'')!==String(n||''))mud.push(d.disc+': '+a.st+(a.nota?' '+a.nota:'')+' → '+d.st+(n?' '+n:''));});
+  acdEst={hist:{},disc,ofi,arquivo:f.name,at:''};acdSelSem=null;acdSalvar();
+  const c=s=>disc.filter(d=>d.st===s).length;
+  const li=a=>a.length?'<ul>'+a.slice(0,30).map(x=>'<li>'+eh(x)+'</li>').join('')+(a.length>30?'<li>e mais '+(a.length-30)+'</li>':'')+'</ul>':'';
+  acdRecon={nome:f.name};
+  document.getElementById('acd-recon').innerHTML='<b>'+eh(f.name)+'</b> — '+disc.length+' disciplinas lidas do PDF: '+c('Aprovado')+' aprovadas, '+c('Cursando')+' cursando, '+c('A cursar')+' a cursar.'
+    +(ofi.media!=null?' Média geral do histórico <b>'+acdF2(ofi.media)+'</b>'+(ofi.pct!=null?' · <b>'+acdF2(ofi.pct)+'%</b> cursado':'')+'.':'')
+    +(antes?(mud.length?'<div style="margin-top:6px">Mudanças em relação ao histórico anterior</div>'+li(mud):'<div style="margin-top:6px">Nenhuma mudança em relação ao histórico anterior.</div>'):'');
+  renderAcademico();
+}
 (function acdInit(){
   const tb=document.getElementById('tb-acd');if(!tb)return;
   tb.addEventListener('change',ev=>{
@@ -27089,11 +27168,12 @@ function acdConciliar(objs,nome){
     const inp=ev.target,f=inp.files&&inp.files[0];if(!f)return;
     const st=document.getElementById('acd-imp-st');
     try{
+      if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){st.textContent='Lendo o PDF…';await acdImportPdf(f);st.textContent='Histórico em PDF importado — resumo abaixo.';return;}
       const text=(await f.text()).replace(/^﻿/,''),t=text.trim();let objs;
       if(/\.json$/i.test(f.name)||t.startsWith('[')||t.startsWith('{')){const j=JSON.parse(t);objs=Array.isArray(j)?j:(j.rows||j.data||j.results||[]);}
       else objs=acdParseCsv(text);
       st.textContent=acdConciliar(objs,f.name)?'Histórico conciliado — resumo abaixo.':'Não encontrei disciplinas nesse arquivo. Use as colunas disciplina, situação e nota.';
-    }catch(e){console.error('Painel acadêmico',e);st.textContent='Não foi possível ler o arquivo.';}
+    }catch(e){console.error('Painel acadêmico',e);st.textContent='Não foi possível ler o arquivo'+(e&&e.message?' ('+e.message+')':'')+'.';}
     finally{inp.value='';}
   });
 })();
