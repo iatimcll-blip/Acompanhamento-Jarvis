@@ -8,7 +8,9 @@ const { WebSocketServer } = require('ws');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
 const PORT = Number(process.env.PORT || process.env.WPP_PORT || 8788);
-const CORS_ORIGIN = process.env.WPP_CORS_ORIGIN || '*';
+const HOST = process.env.WPP_HOST || '127.0.0.1';
+const CORS_ORIGIN = process.env.WPP_CORS_ORIGIN || 'https://iatimcll-blip.github.io';
+const NOTIFY_FILE = process.env.WPP_NOTIFY_FILE || path.join(__dirname, '.jarvis-notify.json');
 const CLIENT_ID = process.env.WPP_CLIENT_ID || 'jarvis';
 const AUTH_DIR = process.env.WPP_AUTH_DIR || path.join(__dirname, '.wwebjs_auth');
 
@@ -24,7 +26,23 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   next();
 });
-app.use(cors({ origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN.split(',').map(s => s.trim()) }));
+const ALLOWED = CORS_ORIGIN === '*' ? null : CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean);
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+app.use(cors({
+  origin(origin, cb) {
+    // sem Origin (curl/serviço local), página local (file:// = "null") ou origem liberada
+    if (!ALLOWED || !origin || origin === 'null' || LOCAL_ORIGIN.test(origin) || ALLOWED.includes(origin)) return cb(null, true);
+    cb(null, false);
+  }
+}));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (req.method !== 'GET' && req.method !== 'OPTIONS' && ALLOWED && origin && origin !== 'null' && !LOCAL_ORIGIN.test(origin) && !ALLOWED.includes(origin)) {
+    res.status(403).json({ error: 'Origem não autorizada.' });
+    return;
+  }
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
 
 let client;
@@ -231,7 +249,7 @@ process.on('unhandledRejection', err => {
   scheduleRestart();
 });
 
-app.get('/', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', docs: ['/health', '/api/status', '/api/chats'] }));
+app.get('/', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', docs: ['/health', '/api/status', '/api/chats', '/api/groups', '/api/notify-config', '/api/notify'] }));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'jarvis-whatsapp-bridge', authDir: AUTH_DIR, state: publicState() }));
 app.get('/api/status', (_req, res) => res.json(publicState()));
 
@@ -294,12 +312,99 @@ app.post('/api/send-message', async (req, res) => {
   }
 });
 
+// ── Grupos principais para notificações (2026-11-18) ─────────────────────────
+// Config local (não vai para o repositório): grupos escolhidos no painel, tipos ligados e
+// chaves já enviadas — a mesma notificação disparada por vários navegadores/abas sai uma vez só.
+function loadNotify() {
+  try {
+    const j = JSON.parse(fs.readFileSync(NOTIFY_FILE, 'utf8'));
+    return { groups: Array.isArray(j.groups) ? j.groups : [], kinds: j.kinds || {}, sent: j.sent || {}, log: Array.isArray(j.log) ? j.log : [], updatedAt: j.updatedAt || '' };
+  } catch (_e) {
+    return { groups: [], kinds: { 'bdesk-sla': true }, sent: {}, log: [], updatedAt: '' };
+  }
+}
+function saveNotify(cfg) {
+  const now = Date.now();
+  for (const [k, t] of Object.entries(cfg.sent)) if (now - t > 72 * 3600e3) delete cfg.sent[k];
+  cfg.log = cfg.log.slice(-60);
+  fs.writeFileSync(NOTIFY_FILE, JSON.stringify(cfg, null, 2));
+}
+function publicNotify(cfg) {
+  return { groups: cfg.groups, kinds: cfg.kinds, log: cfg.log.slice(-20).reverse(), updatedAt: cfg.updatedAt };
+}
+async function sendToGroups(cfg, body, kind) {
+  const results = [];
+  for (const g of cfg.groups) {
+    try { await client.sendMessage(g.id, body); results.push({ id: g.id, name: g.name, ok: true }); }
+    catch (err) { results.push({ id: g.id, name: g.name, ok: false, error: err.message }); }
+  }
+  cfg.log.push({ at: new Date().toISOString(), kind, groups: results.length, ok: results.filter(r => r.ok).length, preview: body.slice(0, 140) });
+  return results;
+}
+
+app.get('/api/groups', async (_req, res) => {
+  if (!requireReady(res)) return;
+  try {
+    const chats = await client.getChats();
+    res.json(chats.filter(c => c.isGroup).map(c => ({ id: c.id._serialized, name: c.name || 'Grupo sem nome', participants: (c.participants || []).length, timestamp: c.timestamp || 0 }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/notify-config', (_req, res) => res.json(publicNotify(loadNotify())));
+
+app.post('/api/notify-config', (req, res) => {
+  const cfg = loadNotify();
+  if (Array.isArray(req.body.groups)) {
+    cfg.groups = req.body.groups.filter(g => g && /@g\.us$/.test(String(g.id || ''))).map(g => ({ id: String(g.id), name: String(g.name || '').slice(0, 120) })).slice(0, 20);
+  }
+  if (req.body.kinds && typeof req.body.kinds === 'object') {
+    for (const [k, v] of Object.entries(req.body.kinds)) cfg.kinds[String(k).slice(0, 40)] = !!v;
+  }
+  cfg.updatedAt = new Date().toISOString();
+  saveNotify(cfg);
+  res.json(publicNotify(cfg));
+});
+
+app.post('/api/notify-test', async (_req, res) => {
+  if (!requireReady(res)) return;
+  const cfg = loadNotify();
+  if (!cfg.groups.length) { res.status(400).json({ error: 'Nenhum grupo principal escolhido.' }); return; }
+  const body = '✅ *Jarvis* — teste de notificação.\nEste grupo foi escolhido como principal para receber os alertas do painel.';
+  const results = await sendToGroups(cfg, body, 'teste');
+  saveNotify(cfg);
+  res.json({ ok: results.every(r => r.ok), results });
+});
+
+// Notificação com itens deduplicados por chave: { kind, title, items:[{key,text}], footer, ttlHours }
+app.post('/api/notify', async (req, res) => {
+  if (!requireReady(res)) return;
+  const cfg = loadNotify();
+  const kind = String(req.body.kind || 'geral').slice(0, 40);
+  if (cfg.kinds[kind] === false) { res.json({ ok: true, skipped: 'tipo desligado' }); return; }
+  if (!cfg.groups.length) { res.json({ ok: true, skipped: 'sem grupos principais' }); return; }
+  const ttl = Math.max(1, Math.min(72, Number(req.body.ttlHours || 12))) * 3600e3;
+  const now = Date.now();
+  const items = (Array.isArray(req.body.items) ? req.body.items : []).map(i => ({ key: kind + ':' + String(i.key || i.text || ''), text: String(i.text || '').slice(0, 300) })).filter(i => i.text);
+  const novos = items.filter(i => !(cfg.sent[i.key] && now - cfg.sent[i.key] < ttl));
+  if (!novos.length) { res.json({ ok: true, skipped: 'já enviado' }); return; }
+  const title = String(req.body.title || 'Jarvis').slice(0, 200);
+  const footer = String(req.body.footer || '').slice(0, 200);
+  const body = [title, ...novos.slice(0, 25).map(i => '• ' + i.text), novos.length > 25 ? '… e mais ' + (novos.length - 25) : '', footer].filter(Boolean).join('\n');
+  novos.forEach(i => { cfg.sent[i.key] = now; });
+  const results = await sendToGroups(cfg, body, kind);
+  saveNotify(cfg);
+  res.json({ ok: results.every(r => r.ok), sent: novos.length, results });
+});
+
 wss.on('connection', ws => {
   ws.send(JSON.stringify({ type: 'status', state: publicState() }));
 });
 
-server.listen(PORT, () => {
-  console.log(`Jarvis WhatsApp bridge on http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Jarvis WhatsApp bridge on http://${HOST}:${PORT}`);
   console.log(`WhatsApp auth dir: ${AUTH_DIR}`);
   startClient();
 });

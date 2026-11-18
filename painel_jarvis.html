@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-18T09:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T11:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -312,6 +312,24 @@ body {
 .wpp-bridge-actions button:hover{background:rgba(255,255,255,.16)}
 .wpp-qr-steps-list{text-align:left;padding-left:18px;color:#8e8e93;font-size:14px;line-height:1.7;margin:0}
 .wpp-qr-steps-list li strong{color:#fff}
+.wpp-nt-box{background:var(--surface);color:var(--tx);border-radius:16px;width:100%;max-width:560px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.wpp-nt-hd{display:flex;justify-content:space-between;gap:10px;padding:16px 18px 10px}
+.wpp-nt-hd b{font-size:16px;display:block}.wpp-nt-hd small{display:block;color:var(--tx3);font-size:12.5px;margin-top:4px}
+.wpp-nt-x{background:none;border:0;color:var(--tx3);font-size:20px;cursor:pointer}
+.wpp-nt-kinds{padding:0 18px 8px}.wpp-nt-kind{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:.5px solid var(--bd);border-radius:10px;cursor:pointer}
+.wpp-nt-kind input{margin-top:3px;accent-color:#00a884}.wpp-nt-kind b{font-size:13px;display:block}.wpp-nt-kind small{color:var(--tx3);font-size:12px}
+.wpp-nt-srch{margin:0 18px 8px;display:flex;align-items:center;gap:8px;border:.5px solid var(--bd);border-radius:10px;padding:7px 10px;color:var(--tx3)}
+.wpp-nt-srch input{border:0;outline:0;background:transparent;color:var(--tx);font:inherit;flex:1}
+.wpp-nt-sel{padding:0 18px 8px;font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wpp-nt-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(0,168,132,.12);color:#00806a;border-radius:99px;padding:3px 6px 3px 10px;font-weight:600}
+.wpp-nt-chip button{border:0;background:none;color:inherit;cursor:pointer;font-size:15px;line-height:1}
+.wpp-nt-list{flex:1;overflow:auto;padding:0 18px;border-top:.5px solid var(--bd);border-bottom:.5px solid var(--bd);min-height:120px}
+.wpp-nt-g{display:grid;grid-template-columns:18px 18px 1fr auto;gap:8px;align-items:center;padding:9px 2px;border-bottom:.5px solid var(--bd);cursor:pointer;font-size:13.5px}
+.wpp-nt-g input{accent-color:#00a884}.wpp-nt-g .ti{color:var(--tx3)}.wpp-nt-g small{color:var(--tx3);font-size:11.5px}.wpp-nt-g.on span{font-weight:600}
+.wpp-nt-empty{text-align:center;color:var(--tx3);padding:26px 10px;font-size:13px;line-height:1.6}.wpp-nt-empty b{color:var(--tx)}
+.wpp-nt-log{padding:8px 18px 0;font-size:11.5px;color:var(--tx3)}.wpp-nt-log b{color:var(--tx);font-size:12px}.wpp-nt-log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wpp-nt-ft{display:flex;align-items:center;gap:8px;padding:12px 18px}.wpp-nt-ft span{flex:1;font-size:12.5px;color:var(--tx3)}
+.wpp-nt-ft .wpp-page-btn{color:var(--tx);border-color:var(--bd)}.wpp-nt-ft .wpp-page-btn.primary{background:#00a884;border-color:#00a884;color:#fff}
 /* Chat view */
 .wpp-chat-view{position:absolute;inset:0;display:none;flex-direction:column;z-index:2}
 .wpp-chat-view.show{display:flex}
@@ -7578,6 +7596,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <button class="ntab" id="ntab-fuel" onclick="switchTab('combustivel')">
         <i class="ti ti-gas-station"></i><span class="ntab-label"> Combustíveis</span>
       </button>
+      <button class="ntab" id="ntab-wpp" onclick="switchTab('whatsapp')" style="display:none" title="WhatsApp — conexão e grupos de notificação (só Admin)">
+        <i class="ti ti-brand-whatsapp"></i><span class="ntab-label"> WhatsApp</span><span class="nbadge" id="nb-wpp" style="display:none"></span>
+      </button>
       <button class="ntab" id="ntab-academico" onclick="switchTab('academico')" style="display:none" title="Painel acadêmico — só Admin">
         <i class="ti ti-certificate"></i><span class="ntab-label"> Acadêmico</span>
       </button>
@@ -9788,6 +9809,11 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const msg=`${novos.length} chamado(s) Bdesk com SLA vencendo em até ${AOF_NOTIF_WINDOW_H}h`;
         _ghToast('⚠ '+msg,'var(--red)',6000);
         aofNotifyNativo('Abertos OFS — SLA Bdesk',msg+': '+novos.slice(0,5).map(x=>x.r.os).join(', '));
+        /* 2026-11-18: também nos grupos principais do WhatsApp (a ponte descarta o que já foi avisado) */
+        if(typeof wppNotificarGrupos==='function')wppNotificarGrupos({kind:'bdesk-sla',ttlHours:12,
+          title:'⚠️ *Jarvis — SLA Bdesk vencendo* ('+novos.length+' chamado'+(novos.length===1?'':'s')+' em até '+AOF_NOTIF_WINDOW_H+'h)',
+          items:novos.map(x=>({key:aofRowKey(x.r),text:[x.r.os||'—',x.r.cid||'—',x.r.tipo||'—','faltam '+aofFmtRestante(x.restH)].join(' · ')})),
+          footer:'_Abertos OFS · '+new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' — reportar as atualizações_'});
       }
       if(lista.length&&Date.now()-aofLastReminderAt>=AOF_NOTIF_REMIND_MS){
         aofLastReminderAt=Date.now();
@@ -13596,7 +13622,8 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <p>Use o QR Code para conectar o aparelho, acompanhe conversas e mantenha o bridge sincronizado no painel.</p>
       </div>
       <div class="wpp-page-actions">
-        <button type="button" class="wpp-page-btn primary" onclick="refreshWhatsAppPanel()"><i class="ti ti-refresh"></i>Atualizar</button>
+        <button type="button" class="wpp-page-btn primary" onclick="openWppNotif()" title="Escolher os grupos que recebem as notificações do Jarvis"><i class="ti ti-bell-ringing"></i>Grupos de notificação</button>
+        <button type="button" class="wpp-page-btn" onclick="refreshWhatsAppPanel()"><i class="ti ti-refresh"></i>Atualizar</button>
         <button type="button" class="wpp-page-btn" onclick="restartWppBridge()"><i class="ti ti-rotate-clockwise"></i>Reiniciar bridge</button>
         <button type="button" class="wpp-page-btn" onclick="openWhatsAppExternal()"><i class="ti ti-settings-2"></i>Configurar URL</button>
       </div>
@@ -16066,7 +16093,7 @@ const DEFAULT_VIEWER_PANELS=['executivo','abertos','b2c','swap','eve','encerrado
    direto, não trocam de aba aqui). Usado tanto pra normalizar um tab desconhecido
    quanto por defaultLandingTab() pra nunca devolver algo que switchTab() não sabe
    exibir. */
-const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','academico','executivo','abertos','b2c','max','redirSemanal','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
+const TAB_SWITCHABLE_KEYS=['abertosOfs','warmap','aportes','dashboard','academico','whatsapp','executivo','abertos','b2c','max','redirSemanal','swap','eve','encerrados','semIntervencao','prefeitura','rede','combustivel','repetidos','ofs','ativacoes','pop'];
 const RDE_CLUSTER_KEYS=['C','I','P','N'];
 const RDE_CLUSTER_LABELS={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE'};
 function userPerms(){
@@ -16081,7 +16108,7 @@ function userAllowedClusters(){const p=userPerms();return(p&&Array.isArray(p.clu
 function userAllowedPanels(){const p=userPerms();return(p&&Array.isArray(p.panels))?p.panels:DEFAULT_VIEWER_PANELS;}
 /* Dashboard (pedido do usuário): aparece só pro Admin — nunca configurável por
    Usuário/Usuário Sr via perms.panels (diferente dos demais painéis), regra fixa. */
-function canSeePanel(tab){if(tab==='dashboard'||tab==='academico')return!!canEdit();return!!canEdit()||userAllowedPanels().includes(tab);}
+function canSeePanel(tab){if(tab==='dashboard'||tab==='academico'||tab==='whatsapp')return!!canEdit();return!!canEdit()||userAllowedPanels().includes(tab);}
 /* Pra onde mandar quem não pode mais ver a aba atual (perdeu permissão, ou é a
    primeira vez que um usuário sem acesso ao Dashboard entra). Admin sempre cai no
    Dashboard; os demais caem em Painel Executivo (quase sempre liberado por padrão,
@@ -16173,6 +16200,8 @@ function applyPanelVisibility(){
   /* Dashboard não está em ALL_PANEL_KEYS/PANEL_NAV_MAP (não é configurável por
      usuário) — botão da aba escondido à parte, mesma regra fixa de canSeePanel(). */
   /* Painel Acadêmico (2026-11-17): só Admin, regra fixa (fora de ALL_PANEL_KEYS). */
+  ['ntab-wpp'].forEach(id=>{const el=document.getElementById(id);if(!el)return;
+    if(canSeePanel('whatsapp'))el.style.removeProperty('display');else el.style.setProperty('display','none','important');});
   ['ntab-academico','dash-mod-academico'].forEach(id=>{const el=document.getElementById(id);if(!el)return;
     if(canSeePanel('academico'))el.style.removeProperty('display');else el.style.setProperty('display','none','important');});
   const dashBtn=document.getElementById('ntab-dash');
@@ -25077,8 +25106,8 @@ function playWppSound(){
     setTimeout(()=>{try{ctx.close();}catch(_){}},600);
   }catch(_){}
 }
-const WPP_BRIDGE_RAILWAY='https://jarvis-whatsapp-bridge-production.up.railway.app';
-const WPP_BRIDGE_LOCAL='http://localhost:8788';
+const WPP_BRIDGE_RAILWAY='';/* 2026-11-18: serviço no Railway desativado — a ponte roda neste PC (D:\JarvisWhatsApp) */
+const WPP_BRIDGE_LOCAL='http://127.0.0.1:8788';
 const WPP_BRIDGE_DEFAULT=WPP_BRIDGE_LOCAL;
 const WPP_BRIDGE_KEY='jarvis:wpp:bridge-url';
 const WPP_FILTER_KEY='jarvis:wpp:filter:v1';
@@ -25095,19 +25124,15 @@ function wppIsHostedPage(){return location.protocol==='https:'&&!['localhost','1
 function wppIsLocalBridgeUrl(u){return/^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(String(u||'').trim())}
 function wppStoredBridge(){
   const saved=(localStorage.getItem(WPP_BRIDGE_KEY)||'').trim().replace(/\/+$/,'');
-  if(saved&&wppIsHostedPage()&&wppIsLocalBridgeUrl(saved)){
-    localStorage.removeItem(WPP_BRIDGE_KEY);
-    return '';
-  }
+  /* ponte local agora é o caminho oficial, também a partir do github.io (Chrome permite http://127.0.0.1) */
   return saved;
 }
 function wppBridgeUrl(){
-  const fallback=wppIsHostedPage()?(WPP_BRIDGE_RAILWAY||''):WPP_BRIDGE_DEFAULT;
+  const fallback=WPP_BRIDGE_LOCAL;
   return(wppActiveBridgeUrl||wppStoredBridge()||fallback||'').replace(/\/+$/,'')
 }
 function wppBridgeCandidates(){
-  const localOk=!wppIsHostedPage();
-  return[...new Set([wppStoredBridge(),WPP_BRIDGE_RAILWAY,localOk?WPP_BRIDGE_LOCAL:''].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
+  return[...new Set([wppStoredBridge(),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
 }
 function wppWsUrl(){const base=wppBridgeUrl();return base?base.replace(/^http/i,'ws')+'/ws':''}
 function setWppDiag(text,kind=''){
@@ -25302,6 +25327,104 @@ function setMonitorLoading(show,msg){
     const sp=el.querySelector('span');if(sp&&msg)sp.textContent=msg;
     el.classList.toggle('hide',!show);
   }
+}
+/* ═══ WhatsApp: grupos principais para notificações (2026-11-18) ═══
+   A ponte roda NESTE PC (D:\JarvisWhatsApp, inicia com o Windows, http://127.0.0.1:8788) e guarda a
+   escolha dos grupos e as chaves já enviadas — a mesma notificação disparada por várias abas sai uma vez.
+   Só o navegador deste PC tenta enviar (flag local WPP_NOTIFY_HERE_KEY, ligada ao salvar os grupos),
+   para outros aparelhos não pedirem acesso à rede local à toa. */
+const WPP_NOTIFY_HERE_KEY='jarvis:wpp:notify-here:v1';
+const WPP_NOTIFY_KINDS=[['bdesk-sla','Alerta SLA Bdesk','Abertos OFS: chamados Bdesk entrando na janela de vencimento do SLA (cada chamado é avisado uma vez a cada 12 h).']];
+let wppNotifCfg=null,wppNotifGroups=[],wppNotifSel=new Map(),wppNotifQ='';
+function wppNotifyHere(){try{return localStorage.getItem(WPP_NOTIFY_HERE_KEY)==='1';}catch(_){return false;}}
+async function wppNotifFetch(path,opts){
+  const bases=wppBridgeCandidates();let err=null;
+  for(const base of bases){
+    const ctl=typeof AbortController!=='undefined'?new AbortController():null;const tm=ctl?setTimeout(()=>ctl.abort(),opts&&opts.timeout||8000):null;
+    try{const res=await fetch(base+path,{cache:'no-store',method:(opts&&opts.method)||'GET',signal:ctl?ctl.signal:undefined,headers:{'Content-Type':'application/json'},body:opts&&opts.body});
+      const data=await res.json().catch(()=>null);if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));return data;}
+    catch(e){err=e;}finally{if(tm)clearTimeout(tm);}
+  }
+  throw err||new Error('Ponte do WhatsApp não encontrada.');
+}
+/* Chamado pelos painéis (ex.: Abertos OFS). Silencioso: falha não atrapalha nada. */
+async function wppNotificarGrupos(payload){
+  if(!wppNotifyHere()||typeof canEdit!=='function'||!canEdit())return null;
+  try{return await wppNotifFetch('/api/notify',{method:'POST',body:JSON.stringify(payload),timeout:30000});}
+  catch(e){console.warn('WhatsApp (notificação):',e&&e.message||e);return null;}
+}
+function openWppNotif(){
+  let ov=document.getElementById('wpp-notif-modal');
+  if(!ov){
+    ov=document.createElement('div');ov.id='wpp-notif-modal';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML='<div class="wpp-nt-box"><div class="wpp-nt-hd"><div><b><i class="ti ti-bell-ringing" style="color:#00a884"></i> Grupos principais para notificações</b><small>Os alertas do Jarvis são enviados para os grupos marcados, pelo WhatsApp conectado neste PC.</small></div><button type="button" class="wpp-nt-x" onclick="closeWppNotif()" title="Fechar"><i class="ti ti-x"></i></button></div>'
+      +'<div class="wpp-nt-kinds" id="wpp-nt-kinds"></div>'
+      +'<div class="wpp-nt-srch"><i class="ti ti-search"></i><input id="wpp-nt-q" placeholder="Buscar grupo…" oninput="wppNotifQ=this.value;_wppNotifRender()"></div>'
+      +'<div class="wpp-nt-sel" id="wpp-nt-sel"></div><div class="wpp-nt-list" id="wpp-nt-list"></div>'
+      +'<div class="wpp-nt-log" id="wpp-nt-log"></div>'
+      +'<div class="wpp-nt-ft"><span id="wpp-nt-st"></span><button type="button" class="wpp-page-btn" onclick="wppNotifTeste()"><i class="ti ti-send"></i>Enviar teste</button><button type="button" class="wpp-page-btn primary" onclick="wppNotifSalvar()"><i class="ti ti-device-floppy"></i>Salvar</button></div></div>';
+    ov.addEventListener('click',e=>{if(e.target===ov)closeWppNotif();});
+    document.body.appendChild(ov);
+  }
+  ov.style.display='flex';wppNotifCarregar();
+}
+function closeWppNotif(){const ov=document.getElementById('wpp-notif-modal');if(ov)ov.style.display='none';}
+async function wppNotifCarregar(){
+  const list=document.getElementById('wpp-nt-list'),st=document.getElementById('wpp-nt-st');
+  list.innerHTML='<div class="wpp-nt-empty"><i class="ti ti-loader-2"></i> Carregando grupos…</div>';st.textContent='';
+  try{
+    wppNotifCfg=await wppNotifFetch('/api/notify-config');
+    wppNotifSel=new Map((wppNotifCfg.groups||[]).map(g=>[g.id,g.name]));
+    _wppNotifRenderKinds();_wppNotifRenderLog();
+    wppNotifGroups=await wppNotifFetch('/api/groups',{timeout:30000});
+    _wppNotifRender();
+  }catch(e){
+    const m=String(e&&e.message||e);
+    list.innerHTML='<div class="wpp-nt-empty"><i class="ti ti-plug-connected-x" style="color:#e5484d"></i><br><b>'+(/conectado|QR/i.test(m)?'WhatsApp ainda não conectado':'Ponte do WhatsApp não respondeu')+'</b><br>'
+      +(/conectado|QR/i.test(m)?'Leia o QR Code na tela do painel WhatsApp e abra esta janela de novo.':'A ponte roda neste PC (D:\\JarvisWhatsApp) e inicia com o Windows. Se não abriu, execute <b>D:\\JarvisWhatsApp\\iniciar-oculto.vbs</b>.')+'</div>';
+    if(wppNotifCfg){_wppNotifRender(true);}
+  }
+}
+function _wppNotifRenderKinds(){
+  const k=(wppNotifCfg&&wppNotifCfg.kinds)||{};
+  document.getElementById('wpp-nt-kinds').innerHTML=WPP_NOTIFY_KINDS.map(([id,lb,ds])=>'<label class="wpp-nt-kind"><input type="checkbox" data-kind="'+id+'"'+(k[id]!==false?' checked':'')+'><span><b>'+lb+'</b><small>'+ds+'</small></span></label>').join('');
+}
+function _wppNotifRenderLog(){
+  const L=(wppNotifCfg&&wppNotifCfg.log)||[],el=document.getElementById('wpp-nt-log');
+  el.innerHTML=L.length?'<b>Últimos envios</b>'+L.slice(0,5).map(x=>'<div>'+eh(new Date(x.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))+' · '+eh(x.kind)+' · '+x.ok+'/'+x.groups+' grupo(s) · <span>'+eh(x.preview)+'</span></div>').join(''):'';
+}
+function _wppNotifRender(soSel){
+  const sel=document.getElementById('wpp-nt-sel'),list=document.getElementById('wpp-nt-list');
+  sel.innerHTML=wppNotifSel.size?'<b>Principais ('+wppNotifSel.size+'):</b> '+[...wppNotifSel].map(([id,n])=>'<span class="wpp-nt-chip">'+eh(n||id)+'<button type="button" onclick="wppNotifToggle(\''+eh(id)+'\',false)" title="Remover">×</button></span>').join(''):'<span style="color:var(--tx3)">Nenhum grupo principal escolhido ainda.</span>';
+  if(soSel)return;
+  const q=acdNorm?acdNorm(wppNotifQ):String(wppNotifQ).toLowerCase();
+  const G=wppNotifGroups.filter(g=>!q||(acdNorm?acdNorm(g.name):g.name.toLowerCase()).includes(q));
+  list.innerHTML=G.length?G.map(g=>'<label class="wpp-nt-g'+(wppNotifSel.has(g.id)?' on':'')+'"><input type="checkbox"'+(wppNotifSel.has(g.id)?' checked':'')+' onchange="wppNotifToggle(\''+eh(g.id)+'\',this.checked)"><i class="ti ti-users"></i><span>'+eh(g.name)+'</span><small>'+(g.participants?g.participants+' participantes':'')+'</small></label>').join('')
+    :'<div class="wpp-nt-empty">'+(wppNotifGroups.length?'Nenhum grupo com esse nome.':'Nenhum grupo encontrado neste WhatsApp.')+'</div>';
+}
+function wppNotifToggle(id,on){
+  if(on){const g=wppNotifGroups.find(x=>x.id===id);wppNotifSel.set(id,g?g.name:id);}else wppNotifSel.delete(id);
+  _wppNotifRender();
+}
+async function wppNotifSalvar(){
+  const st=document.getElementById('wpp-nt-st'),kinds={};
+  document.querySelectorAll('#wpp-nt-kinds input[data-kind]').forEach(i=>{kinds[i.dataset.kind]=i.checked;});
+  try{
+    wppNotifCfg=await wppNotifFetch('/api/notify-config',{method:'POST',body:JSON.stringify({groups:[...wppNotifSel].map(([id,name])=>({id,name})),kinds})});
+    try{localStorage.setItem(WPP_NOTIFY_HERE_KEY,'1');}catch(_){}
+    st.textContent='Salvo — '+wppNotifCfg.groups.length+' grupo(s) principal(is).';_wppNotifRenderLog();
+    _ghToast('WhatsApp: '+wppNotifCfg.groups.length+' grupo(s) principal(is) salvo(s).','#00a884',4000);
+  }catch(e){st.textContent='Não foi possível salvar: '+(e&&e.message||e);}
+}
+async function wppNotifTeste(){
+  const st=document.getElementById('wpp-nt-st');
+  if(!wppNotifCfg||!(wppNotifCfg.groups||[]).length){st.textContent='Salve ao menos um grupo antes do teste.';return;}
+  st.textContent='Enviando teste…';
+  try{const r=await wppNotifFetch('/api/notify-test',{method:'POST',body:'{}',timeout:60000});
+    st.textContent=r.ok?'Teste enviado para '+r.results.length+' grupo(s).':'Falhou em '+r.results.filter(x=>!x.ok).length+' grupo(s).';
+    wppNotifCfg=await wppNotifFetch('/api/notify-config');_wppNotifRenderLog();
+  }catch(e){st.textContent='Falha no teste: '+(e&&e.message||e);}
 }
 function loadWhatsAppPanel(force=false){
   wppFilterLoad();
