@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-18T22:50:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T23:10:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13924,6 +13924,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
             </div>
             <div class="wpp-ios-nav-icons">
               <button type="button" class="wpp-ios-icon" id="wpp-filter-btn" onclick="openWppFilter()" title="Monitoramento seletivo"><i class="ti ti-star"></i></button>
+              <button type="button" class="wpp-ios-icon" onclick="wppMarcarTodasLidas()" title="Marcar todas como lidas"><i class="ti ti-checks"></i></button>
               <button type="button" class="wpp-ios-icon" onclick="wppTagsAbrir('')" title="Criar e gerenciar tags"><i class="ti ti-tags"></i></button>
               <button type="button" class="wpp-ios-icon" onclick="refreshWhatsAppPanel()" title="Atualizar conversas"><i class="ti ti-refresh"></i></button>
             </div>
@@ -13983,6 +13984,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <div id="wpp-chat-tags"></div>
             </div>
             <div class="wpp-chat-hd-actions">
+              <button type="button" class="wpp-chat-action-btn" onclick="if(wppActiveChat)wppMarcarLidaChat(wppActiveChat)" title="Marcar como lida"><i class="ti ti-checks"></i></button>
               <button type="button" class="wpp-chat-action-btn" id="wpp-hd-pin" onclick="if(wppActiveChat)wppFixar(wppActiveChat)" title="Fixar conversa no topo"><i class="ti ti-pin"></i></button>
               <button type="button" class="wpp-chat-action-btn" onclick="if(wppActiveChat)wppTagsAbrir(wppActiveChat)" title="Tags desta conversa"><i class="ti ti-tag"></i></button>
             </div>
@@ -25540,7 +25542,7 @@ function renderWppChats(){
     <div class="wpp-ci-top"><span class="wpp-ci-name">${eh(c.name)}${isPri?'<span class="wpp-ci-tag">PRINCIPAL</span>':''}</span><span class="wpp-ci-time${hasUnr?' unr':''}">${ts}</span></div>
     <div class="wpp-ci-bot"><span class="wpp-ci-prev">${prev}</span><div class="wpp-ci-badges">${wppPins.includes(c.id)?'<i class="ti ti-pinned-filled wpp-pin-ic" title="Fixada"></i>':''}${isMon?'<i class="ti ti-star-filled wpp-starred" title="Monitorado"></i>':''}${hasUnr?`<span class="wpp-unread">${c.unreadCount>99?'99+':c.unreadCount}</span>`:''}</div></div>
     ${(wppTags.map[c.id]||[]).length?'<div class="wpp-ci-tags">'+wppTagChips(c.id)+'</div>':''}
-  </div><div class="wpp-ci-acts"><button type="button" class="${wppPins.includes(c.id)?'on':''}" onclick="wppFixar('${eh(c.id)}',event)" title="${wppPins.includes(c.id)?'Desafixar':'Fixar no topo'}"><i class="ti ${wppPins.includes(c.id)?'ti-pinned-off':'ti-pin'}"></i></button><button type="button" onclick="wppTagsAbrir('${eh(c.id)}',event)" title="Tags"><i class="ti ti-tag"></i></button></div></div>`;
+  </div><div class="wpp-ci-acts">${hasUnr||wppPiscando.has(c.id)?`<button type="button" onclick="wppMarcarLidaChat('${eh(c.id)}',event)" title="Marcar como lida"><i class="ti ti-checks"></i></button>`:''}<button type="button" class="${wppPins.includes(c.id)?'on':''}" onclick="wppFixar('${eh(c.id)}',event)" title="${wppPins.includes(c.id)?'Desafixar':'Fixar no topo'}"><i class="ti ${wppPins.includes(c.id)?'ti-pinned-off':'ti-pin'}"></i></button><button type="button" onclick="wppTagsAbrir('${eh(c.id)}',event)" title="Tags"><i class="ti ti-tag"></i></button></div></div>`;
   }).join('');
   renderWppResumo();
 }
@@ -26224,6 +26226,25 @@ async function wppAcessoNovaChave(){
   try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/tunel/nova-chave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw new Error('HTTP '+r.status);}
   catch(e){_ghToast('Não foi possível gerar: '+(e&&e.message||e),'var(--red)',5000);return;}
   await wppTunelPublicar();wppAcessoAbrir();
+}
+/* ── Marcar como lida (2026-11-18): zera o contador, para de piscar, tira o aviso e marca como lida no celular ── */
+function _wppLidaLocal(id){
+  wppPiscando.delete(id);const c=wppChats.find(x=>x.id===id);if(c)c.unreadCount=0;
+  if(wppActiveChat===id){_wppNovas=0;wppRenderNovas();}
+}
+async function wppMarcarLidaChat(id,ev){
+  if(ev)ev.stopPropagation();if(!id)return;
+  _wppLidaLocal(id);renderWppChats();renderWppMonCelula(id);renderWppResumo();
+  try{await wppFetch('/api/chats/'+encodeURIComponent(id)+'/seen',{method:'POST',body:'{}'});}
+  catch(e){_ghToast('Não foi possível marcar como lida no WhatsApp: '+(e&&e.message||e),'var(--red)',5000);}
+}
+async function wppMarcarTodasLidas(){
+  const ids=[...new Set(wppChats.filter(c=>c.unreadCount>0).map(c=>c.id).concat([...wppPiscando]))];
+  if(!ids.length){_ghToast('Nenhuma conversa não lida.','#00a884',3000);return;}
+  if(ids.length>1&&!confirm('Marcar '+ids.length+' conversa(s) como lida(s)? Também ficam lidas no celular.'))return;
+  ids.forEach(_wppLidaLocal);wppUnreadCount=0;updateWppBadge();renderWppChats();ids.forEach(id=>renderWppMonCelula(id));renderWppResumo();
+  let falhas=0;for(const id of ids){try{await wppFetch('/api/chats/'+encodeURIComponent(id)+'/seen',{method:'POST',body:'{}'});}catch(_){falhas++;}}
+  _ghToast(falhas?(ids.length-falhas)+' marcada(s) como lida(s); '+falhas+' falharam.':ids.length+' conversa(s) marcada(s) como lida(s).',falhas?'var(--orange)':'#00a884',4000);
 }
 /* grupos principais (para a faixa laranja) — lidos da ponte, silencioso */
 let wppPrincipais=new Set(),_wppPrincAt=0;
