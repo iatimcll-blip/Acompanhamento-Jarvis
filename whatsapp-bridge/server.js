@@ -136,6 +136,14 @@ async function summarizeMessage(message) {
   };
 }
 
+// Depois do 1º login o WhatsApp Web recarrega a página e o script injetado (window.WWebJS) some:
+// chamadas falham com "reading 'getChats'". Reinicia o cliente com a sessão salva (sem novo QR).
+function falhaDeInjecao(err) {
+  const m = String(err && err.message || err);
+  if (/WWebJS|reading 'getChats'|Execution context was destroyed|detached Frame/i.test(m)) { console.error('Injeção perdida — reiniciando cliente:', m); scheduleRestart(1500); return true; }
+  return false;
+}
+
 function requireReady(res) {
   if (!client || state.status !== 'ready') {
     res.status(409).json({ error: 'WhatsApp ainda não conectado. Leia o QR Code primeiro.', state: publicState() });
@@ -260,7 +268,7 @@ app.post('/api/restart', async (_req, res) => {
     await restartClient();
     res.json(publicState());
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -270,7 +278,7 @@ app.post('/api/logout', async (_req, res) => {
     setStatus('disconnected', { me: null, qr: '', qrText: '' });
     res.json(publicState());
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -280,7 +288,7 @@ app.get('/api/chats', async (_req, res) => {
     const chats = await client.getChats();
     res.json(chats.map(summarizeChat).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -292,7 +300,7 @@ app.get('/api/chats/:id/messages', async (req, res) => {
     const messages = await chat.fetchMessages({ limit });
     res.json(await Promise.all(messages.map(summarizeMessage)));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -308,7 +316,7 @@ app.post('/api/send-message', async (req, res) => {
     const msg = await client.sendMessage(to, body);
     res.json({ ok: true, message: await summarizeMessage(msg) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -349,7 +357,7 @@ app.get('/api/groups', async (_req, res) => {
     res.json(chats.filter(c => c.isGroup).map(c => ({ id: c.id._serialized, name: c.name || 'Grupo sem nome', participants: (c.participants || []).length, timestamp: c.timestamp || 0 }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
 });
 
