@@ -379,6 +379,26 @@ app.post('/api/send-media', async (req, res) => {
   }
 });
 
+// ── Encaminhar (2026-11-18): reenvia uma mensagem existente (texto ou mídia) para 1..20 conversas ──
+app.post('/api/forward', async (req, res) => {
+  if (!requireReady(res)) return;
+  const messageId = String(req.body.messageId || '').trim();
+  const destinos = (Array.isArray(req.body.to) ? req.body.to : [req.body.to]).map(x => String(x || '').trim()).filter(x => /@(c|g).us$/.test(x)).slice(0, 20);
+  if (!messageId || !destinos.length) { res.status(400).json({ error: 'Informe messageId e to.' }); return; }
+  try {
+    const msg = await client.getMessageById(messageId);
+    if (!msg) { res.status(404).json({ error: 'Mensagem não encontrada (pode ter sido apagada).' }); return; }
+    const results = [];
+    for (const to of destinos) {
+      try { await msg.forward(to); results.push({ to, ok: true }); }
+      catch (e) { results.push({ to, ok: false, error: e.message }); }
+    }
+    res.json({ ok: results.every(r => r.ok), results });
+  } catch (err) {
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/send-message', async (req, res) => {
   if (!requireReady(res)) return;
   const to = String(req.body.to || '').trim();
@@ -433,12 +453,28 @@ app.get('/api/avatar/:id', async (req, res) => {
 // ── Grupos principais para notificações (2026-11-18) ─────────────────────────
 // Config local (não vai para o repositório): grupos escolhidos no painel, tipos ligados e
 // chaves já enviadas — a mesma notificação disparada por vários navegadores/abas sai uma vez só.
+// Fixar conversas e TAGs (2026-11-18): guardados aqui, junto da config, para valer em qualquer navegador deste PC.
+const CHAT_ID_RE = /^[\w.-]+@(c|g)\.us$|^[\w.-]+@lid$/;
+function normTags(t) {
+  t = t && typeof t === 'object' ? t : {};
+  const defs = (Array.isArray(t.defs) ? t.defs : []).filter(d => d && d.id && d.nome).map(d => ({
+    id: String(d.id).replace(/[^\w-]/g, '').slice(0, 24), nome: String(d.nome).slice(0, 40),
+    cor: /^#[0-9a-f]{6}$/i.test(String(d.cor || '')) ? String(d.cor) : '#64748b',
+  })).filter(d => d.id).slice(0, 40);
+  const ids = new Set(defs.map(d => d.id)), map = {};
+  for (const [chat, lista] of Object.entries(t.map && typeof t.map === 'object' ? t.map : {})) {
+    if (!CHAT_ID_RE.test(chat) || !Array.isArray(lista)) continue;
+    const l = [...new Set(lista.map(String))].filter(x => ids.has(x)).slice(0, 10);
+    if (l.length) map[chat] = l;
+  }
+  return { defs, map };
+}
 function loadNotify() {
   try {
     const j = JSON.parse(fs.readFileSync(NOTIFY_FILE, 'utf8'));
-    return { groups: Array.isArray(j.groups) ? j.groups : [], monitor: Array.isArray(j.monitor) ? j.monitor : [], kinds: j.kinds || {}, sent: j.sent || {}, log: Array.isArray(j.log) ? j.log : [], updatedAt: j.updatedAt || '' };
+    return { groups: Array.isArray(j.groups) ? j.groups : [], monitor: Array.isArray(j.monitor) ? j.monitor : [], pins: Array.isArray(j.pins) ? j.pins : [], tags: normTags(j.tags), kinds: j.kinds || {}, sent: j.sent || {}, log: Array.isArray(j.log) ? j.log : [], updatedAt: j.updatedAt || '' };
   } catch (_e) {
-    return { groups: [], monitor: [], kinds: { 'bdesk-sla': true }, sent: {}, log: [], updatedAt: '' };
+    return { groups: [], monitor: [], pins: [], tags: normTags(null), kinds: { 'bdesk-sla': true }, sent: {}, log: [], updatedAt: '' };
   }
 }
 function saveNotify(cfg) {
@@ -448,7 +484,7 @@ function saveNotify(cfg) {
   fs.writeFileSync(NOTIFY_FILE, JSON.stringify(cfg, null, 2));
 }
 function publicNotify(cfg) {
-  return { groups: cfg.groups, monitor: cfg.monitor || [], kinds: cfg.kinds, log: cfg.log.slice(-20).reverse(), updatedAt: cfg.updatedAt };
+  return { groups: cfg.groups, monitor: cfg.monitor || [], pins: cfg.pins || [], tags: cfg.tags || normTags(null), kinds: cfg.kinds, log: cfg.log.slice(-20).reverse(), updatedAt: cfg.updatedAt };
 }
 async function sendToGroups(cfg, body, kind) {
   const results = [];
@@ -481,6 +517,10 @@ app.post('/api/notify-config', (req, res) => {
   if (Array.isArray(req.body.monitor)) {
     cfg.monitor = req.body.monitor.filter(g => g && /@(g|c)\.us$/.test(String(g.id || ''))).map(g => ({ id: String(g.id), name: String(g.name || '').slice(0, 120) })).slice(0, 4);
   }
+  if (Array.isArray(req.body.pins)) {
+    cfg.pins = [...new Set(req.body.pins.map(String))].filter(id => CHAT_ID_RE.test(id)).slice(0, 30);
+  }
+  if (req.body.tags && typeof req.body.tags === 'object') cfg.tags = normTags(req.body.tags);
   if (req.body.kinds && typeof req.body.kinds === 'object') {
     for (const [k, v] of Object.entries(req.body.kinds)) cfg.kinds[String(k).slice(0, 40)] = !!v;
   }
