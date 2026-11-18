@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-18T21:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T22:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13796,7 +13796,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     @keyframes wppPiscaVm{0%,100%{box-shadow:inset 0 0 0 999px rgba(220,38,38,0)}50%{box-shadow:inset 0 0 0 999px rgba(220,38,38,.35)}}
     .wpp-fw-prev{margin:0 16px 8px;padding:8px 10px;border-left:4px solid #00a884;background:var(--bg);border-radius:6px;font-size:12.5px;display:flex;flex-direction:column;gap:2px;max-height:110px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
     .wpp-fw-prev b{color:#00a884}
-    #wpp-alertas{position:fixed;right:16px;bottom:16px;z-index:9998;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 32px))}
+    #wpp-alertas{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 32px))}
     #wpp-alertas .wpp-alerta{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--surface,#fff);border:1px solid #dc2626;border-left:5px solid #dc2626;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer;animation:wppAlertaIn .25s ease-out,wppPiscaVm 1s ease-in-out 3;font-size:12.5px;color:var(--tx,#111)}
     #wpp-alertas .wpp-alerta>i{color:#dc2626;font-size:20px;margin-top:2px}
     #wpp-alertas .wpp-alerta>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
@@ -13804,6 +13804,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     #wpp-alertas .wpp-alerta span{overflow-wrap:anywhere}
     #wpp-alertas .wpp-alerta em{font-style:normal;font-weight:600}
     #wpp-alertas .wpp-alerta button{border:0;background:none;color:var(--tx3,#666);cursor:pointer;padding:0}
+    #wpp-alertas .wpp-alerta:not(.prio){border-color:#facc15;border-left-color:#eab308;animation:wppAlertaIn .25s ease-out}
+    #wpp-alertas .wpp-alerta:not(.prio)>i{color:#ca8a04}
+    #wpp-alertas .wpp-alerta.prio{animation:wppAlertaIn .25s ease-out,wppPiscaVm 1s ease-in-out infinite}
+    #wpp-alertas .wpp-alerta.prio small:first-of-type{color:#dc2626;font-weight:700}
+    #wpp-alertas .wpp-alerta-n{display:inline-block;background:#dc2626;color:#fff;border-radius:99px;padding:0 6px;font-size:10px;margin-left:4px}
+    #wpp-alertas .wpp-alerta:not(.prio) .wpp-alerta-n{background:#ca8a04}
+    #wpp-alertas .wpp-alerta-perm{align-self:flex-start;margin-top:4px;border:1px solid var(--bd)!important;border-radius:6px;padding:2px 8px!important;font-size:11px;color:var(--blue)!important;background:var(--surface)!important}
     @keyframes wppAlertaIn{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
     #panel-whatsapp .wpp-chat-item.wpp-pisca.wpp-pisca-vm{animation-name:wppPiscaVm}
     /* fixar + tags */
@@ -14024,7 +14031,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
 
       </div><!-- /wpp-chat-area -->
       <section class="wpp-mon" aria-label="Acompanhamento online 2x2">
-        <div class="wpp-mon-hd"><span><i class="ti ti-layout-grid"></i> Acompanhamento online</span><span class="wpp-mon-bts"><button type="button" class="card-action" id="wpp-som-btn" onclick="wppSomAlternar()"><i class="ti ti-volume"></i>Som ligado</button><button type="button" class="card-action" onclick="wppMonEscolher()">Escolher grupos</button></span></div>
+        <div class="wpp-mon-hd"><span><i class="ti ti-layout-grid"></i> Acompanhamento online</span><span class="wpp-mon-bts"><button type="button" class="card-action" id="wpp-perm-btn" onclick="wppPedirPermissao(event)" title="Mostrar os avisos também no Windows, por cima de qualquer programa" style="display:none"><i class="ti ti-bell-plus"></i>Alertas do Windows</button><button type="button" class="card-action" id="wpp-som-btn" onclick="wppSomAlternar()"><i class="ti ti-volume"></i>Som ligado</button><button type="button" class="card-action" onclick="wppMonEscolher()">Escolher grupos</button></span></div>
         <div class="wpp-mon-grid" id="wpp-mon-grid"></div>
       </section>
     </div><!-- /wpp-app -->
@@ -25896,6 +25903,7 @@ async function wppEnvConfirmar(){
 const WPP_SOM_KEY='jarvis:wpp:som:v1';
 function wppSomLigado(){try{return localStorage.getItem(WPP_SOM_KEY)!=='0';}catch(_){return true;}}
 function wppSomRender(){
+  const pb=document.getElementById('wpp-perm-btn');if(pb)pb.style.display=wppPermNotif()==='granted'||wppPermNotif()==='indisponivel'?'none':'';
   const b=document.getElementById('wpp-som-btn');if(!b)return;const on=wppSomLigado();
   b.classList.toggle('off',!on);b.innerHTML='<i class="ti '+(on?'ti-volume':'ti-volume-off')+'"></i>'+(on?'Som ligado':'Som desligado');
   b.title=on?'Alerta sonoro do acompanhamento online LIGADO — clique para silenciar':'Alerta sonoro DESLIGADO — clique para ligar';
@@ -25919,31 +25927,55 @@ function wppSomAlerta(forcar){
   }));
 }
 /* demais conversas, fora do painel: o toque curto de antes (no máximo 1 a cada 10 s) */
-function wppSomSuave(){if(!wppSomLigado()||Date.now()-_wppSomSuaveAt<10000)return;_wppSomSuaveAt=Date.now();playWppSound();}
-/* aviso na tela (canto inferior direito) + notificação do Windows quando o navegador está minimizado */
-function wppAvisoTela(chatId,m){
+function wppSomSuave(){if(!wppSomLigado()||Date.now()-_wppSomSuaveAt<4000)return;_wppSomSuaveAt=Date.now();playWppSound();}
+/* ── Avisos em primeiro plano (2026-11-18) ──
+   TODA mensagem nova recebida vira aviso, em qualquer painel do Jarvis (canto inferior direito, por cima de tudo).
+   PRIORITÁRIAS = conversas do Monitoramento seletivo (estrela) e do Acompanhamento online 2x2: aviso VERMELHO,
+   alarme sonoro e o aviso FICA até você abrir/ler/fechar. Demais: aviso amarelo, toque curto, some em 10 s.
+   Com o navegador minimizado, em outra aba ou atrás de outro programa, sai também a notificação do Windows
+   (a prioritária fica na tela até ser clicada). Um aviso por conversa: mensagens seguidas atualizam o mesmo. */
+function wppPermNotif(){try{return window.Notification?Notification.permission:'indisponivel';}catch(_){return'indisponivel';}}
+function wppPedirPermissao(ev){
+  if(ev)ev.stopPropagation();
+  try{Notification.requestPermission().then(()=>{wppSomRender();document.querySelectorAll('.wpp-alerta-perm').forEach(x=>{if(wppPermNotif()!=='default')x.remove();});
+    if(wppPermNotif()==='granted')_ghToast('Alertas do Windows ativados.','#00a884',3500);
+    else if(wppPermNotif()==='denied')_ghToast('O navegador bloqueou os alertas do Windows. Libere no cadeado ao lado do endereço › Notificações › Permitir.','var(--orange)',9000);});}catch(_){}
+}
+function wppAvisoTela(chatId,m,prio){
   const c=wppChats.find(x=>x.id===chatId)||wppMonitor.find(g=>g.id===chatId)||{},nome=c.name||chatId.split('@')[0];
   const quem=/@g\.us$/.test(chatId)?(m.senderName||String(m.author||'').split('@')[0]||''):'';
   const txt=m.body||(WPP_MIDIA[m.type]||['','Mídia'])[1];
   let box=document.getElementById('wpp-alertas');
   if(!box){box=document.createElement('div');box.id='wpp-alertas';document.body.appendChild(box);}
-  const el=document.createElement('div');el.className='wpp-alerta';
-  el.innerHTML='<i class="ti ti-bell-ringing"></i><div><b>'+eh(nome)+'</b><small>Acompanhamento online</small><span>'+(quem?'<em>'+eh(quem)+':</em> ':'')+eh(String(txt).slice(0,180))+'</span></div><button type="button" title="Fechar"><i class="ti ti-x"></i></button>';
-  el.onclick=e=>{el.remove();if(e.target.closest('button'))return;if(activeTab!=='whatsapp')switchTab('whatsapp');selectWppChat(chatId);};
-  box.prepend(el);while(box.children.length>4)box.lastChild.remove();
-  setTimeout(()=>el.remove(),15000);
-  try{if(document.hidden&&window.Notification&&Notification.permission==='granted'){
-    const n=new Notification('WhatsApp · '+nome,{body:(quem?quem+': ':'')+String(txt).slice(0,180),tag:'jarvis-wpp-'+chatId,renotify:true});
-    n.onclick=()=>{window.focus();if(activeTab!=='whatsapp')switchTab('whatsapp');selectWppChat(chatId);n.close();};}}catch(_){}
+  let el=box.querySelector('.wpp-alerta[data-chat="'+CSS.escape(chatId)+'"]');
+  const n=el?(+el.dataset.n||1)+1:1;
+  if(!el){el=document.createElement('div');el.dataset.chat=chatId;}
+  el.dataset.n=n;el.className='wpp-alerta'+(prio?' prio':'');
+  const perm=wppPermNotif()==='default'?'<button type="button" class="wpp-alerta-perm" onclick="wppPedirPermissao(event)"><i class="ti ti-bell-plus"></i> Ativar alertas do Windows</button>':'';
+  el.innerHTML='<i class="ti '+(prio?'ti-alert-octagon':'ti-message-circle')+'"></i><div><b>'+eh(nome)+(n>1?' <span class="wpp-alerta-n">'+n+' novas</span>':'')+'</b><small>'+(prio?'PRIORITÁRIA · Monitoramento seletivo':'Nova mensagem no WhatsApp')+'</small><span>'+(quem?'<em>'+eh(quem)+':</em> ':'')+eh(String(txt).slice(0,220))+'</span>'+perm+'</div><button type="button" class="wpp-alerta-x" title="Fechar"><i class="ti ti-x"></i></button>';
+  el.onclick=e=>{if(e.target.closest('.wpp-alerta-perm'))return;el.remove();if(e.target.closest('.wpp-alerta-x'))return;window.focus();if(activeTab!=='whatsapp')switchTab('whatsapp');selectWppChat(chatId);};
+  box.prepend(el);
+  /* no máximo 6: sai primeiro o aviso comum mais antigo */
+  while(box.children.length>6){const comuns=[...box.children].filter(x=>!x.classList.contains('prio'));(comuns.pop()||box.lastChild).remove();}
+  clearTimeout(el._t);if(!prio)el._t=setTimeout(()=>el.remove(),10000);
+  el.style.animation='none';void el.offsetWidth;el.style.animation='';
+  try{if((document.hidden||!document.hasFocus())&&wppPermNotif()==='granted'){
+    const nt=new Notification((prio?'🔴 PRIORITÁRIA · ':'WhatsApp · ')+nome,{body:(quem?quem+': ':'')+String(txt).slice(0,180),tag:'jarvis-wpp-'+chatId,renotify:true,requireInteraction:!!prio,silent:false});
+    nt.onclick=()=>{window.focus();if(activeTab!=='whatsapp')switchTab('whatsapp');selectWppChat(chatId);nt.close();};}}catch(_){}
 }
+/* quando a conversa é lida, o aviso dela some */
+function wppAvisosLimpar(){const box=document.getElementById('wpp-alertas');if(!box)return;[...box.children].forEach(x=>{if(x.dataset.chat&&!wppPiscando.has(x.dataset.chat))x.remove();});}
 const _wppAlertados=new Set();
 function wppAlertaNova(chatId,m){
   if(!m||m.fromMe||!m.id||_wppAlertados.has(m.id))return;_wppAlertados.add(m.id);
   if(_wppAlertados.size>500)_wppAlertados.delete(_wppAlertados.values().next().value);
-  if(wppMonitor.some(g=>g.id===chatId)){wppSomAlerta();wppAvisoTela(chatId,m);}
+  const prio=wppEhSeletivo(chatId);
+  if(prio)wppSomAlerta();else wppSomSuave();
+  wppAvisoTela(chatId,m,prio);
 }
 /* botão do menu: pisca VERMELHO se há conversa do acompanhamento online sem ler, AMARELO para as demais */
 function wppNavPisca(){
+  wppAvisosLimpar();
   const b=document.getElementById('ntab-wpp');if(!b)return;
   const fora=activeTab!=='whatsapp',mon=[...wppPiscando].some(wppEhSeletivo);
   b.classList.toggle('wpp-nav-vm',fora&&mon);
@@ -26219,7 +26251,7 @@ function connectWppBridge(force=false){
       else if(msg.type==='message'||msg.type==='message_create'){
         wppNoEvento(msg);
         const srcId=msg.message&&msg.message.from;
-        if(msg.type==='message'&&activeTab!=='whatsapp'&&!(msg.message&&msg.message.fromMe)&&!wppMonitor.some(g=>g.id===srcId)&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();wppSomSuave();}
+        if(msg.type==='message'&&activeTab!=='whatsapp'&&!(msg.message&&msg.message.fromMe)&&!wppMonitor.some(g=>g.id===srcId)&&wppIsMonitored(srcId)){wppUnreadCount++;updateWppBadge();}
         scheduleMonitorRefresh();
       }else if(msg.state&&msg.state.status==='ready'&&!wppChats.length){loadWppChats();}
     }catch(err){console.warn('WhatsApp ws:',err)}};
