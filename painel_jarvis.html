@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-18T23:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T23:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -25791,8 +25791,9 @@ function renderWppMonCelula(id,fim){
   const i=wppMonitor.findIndex(g=>g.id===id);if(i<0)return;
   const el=document.getElementById('wpp-mc-'+i);if(!el)return;
   const g=wppMonitor[i],c=wppChats.find(x=>x.id===id)||{},isGrp=/@g\.us$/.test(id);
-  const L=(wppMonMsgs[id]||[]).slice().sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
-  const lista=el.querySelector('.wpp-mc-msgs'),perto=!lista||lista.scrollHeight-lista.scrollTop-lista.clientHeight<80;
+  /* acompanhamento online: mensagem MAIS RECENTE EM CIMA, as antigas descem (pedido 2026-11-18) */
+  const L=(wppMonMsgs[id]||[]).slice().sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  const lista=el.querySelector('.wpp-mc-msgs'),perto=!lista||lista.scrollTop<60,topoAntes=lista?lista.scrollTop:0,altAntes=lista?lista.scrollHeight:0;
   const rascunho=(el.querySelector('.wpp-mc-env input')||{}).value||'';
   el.className='wpp-mc'+(wppPiscando.has(id)?' wpp-pisca':'')+(wppPrincipais.has(id)?' k-pri':'');
   el.innerHTML='<div class="wpp-mc-hd"><span class="wpp-ci-av'+(isGrp?' grp':'')+'">'+(isGrp?'<i class="ti ti-users"></i>':'<i class="ti ti-user"></i>')+wppAvatarImg(id)+'</span>'
@@ -25802,7 +25803,8 @@ function renderWppMonCelula(id,fim){
     +'<div class="wpp-mc-msgs">'+(L.length?L.map(m=>wppMsgCompacta(m,isGrp,id)).join(''):'<div class="wpp-mc-sis">Carregando…</div>')+'</div>'
     +'<form class="wpp-mc-env" onsubmit="wppMonEnviar(event,\''+eh(id)+'\')" onclick="event.stopPropagation()"><input placeholder="Responder neste grupo…" autocomplete="off"><button type="submit" title="Enviar"><i class="ti ti-send-2"></i></button></form>';
   const inp=el.querySelector('.wpp-mc-env input');if(inp&&rascunho)inp.value=rascunho;
-  const nl=el.querySelector('.wpp-mc-msgs');if(nl&&(fim||perto)){nl.scrollTop=nl.scrollHeight;requestAnimationFrame(()=>{nl.scrollTop=nl.scrollHeight;});nl.querySelectorAll('img').forEach(im=>im.addEventListener('load',()=>{nl.scrollTop=nl.scrollHeight;},{once:true}));}
+  /* quem está no topo continua vendo a mais nova; quem rolou para ler as antigas não é empurrado */
+  const nl=el.querySelector('.wpp-mc-msgs');if(nl){if(fim||perto)nl.scrollTop=0;else nl.scrollTop=topoAntes+(nl.scrollHeight-altAntes);}
 }
 function wppMonLida(id){
   if(!wppPiscando.delete(id)){const c=wppChats.find(x=>x.id===id);if(!c||!c.unreadCount)return;}
