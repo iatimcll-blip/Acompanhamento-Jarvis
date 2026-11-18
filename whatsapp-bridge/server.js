@@ -244,10 +244,38 @@ function requireReady(res) {
   return true;
 }
 
+// Chrome "órfão" (2026-11-18): se o navegador antigo trava ao fechar, ele segura a pasta da sessão e
+// toda tentativa nova falha com "The browser is already running for ...". Antes de abrir, encerra SÓ os
+// processos de Chrome cujo comando aponta para a pasta de sessão da ponte (nunca o Chrome do usuário)
+// e apaga as travas de perfil que sobraram.
+function liberarPerfil() {
+  return new Promise(resolve => {
+    const dir = path.join(AUTH_DIR, 'session-' + CLIENT_ID);
+    const fim = () => {
+      for (const n of ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile']) {
+        try { fs.rmSync(path.join(dir, n), { force: true }); } catch (_) {}
+      }
+      resolve();
+    };
+    if (process.platform !== 'win32') { fim(); return; }
+    const alvo = dir.replace(/'/g, "''");
+    const ps = "$a='" + alvo + "'; Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | " +
+      "Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($a, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | " +
+      "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }";
+    require('child_process').execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
+      { windowsHide: true, timeout: 20000 }, (_e, out) => {
+        const n = String(out || '').trim().split(/\s+/).filter(Boolean).length;
+        if (n) console.log('[perfil] ' + n + ' processo(s) de Chrome órfão(s) encerrado(s)');
+        setTimeout(fim, n ? 1500 : 0);
+      });
+  });
+}
+
 async function startClient() {
   if (initializing) return;
   initializing = true;
   setStatus('starting', { lastError: '' });
+  await liberarPerfil();
 
   client = new Client({
     authStrategy: new LocalAuth({ clientId: CLIENT_ID, dataPath: AUTH_DIR }),
@@ -313,7 +341,7 @@ async function startClient() {
     await client.initialize();
   } catch (err) {
     setStatus('error', { lastError: err.message || String(err) });
-    scheduleRestart(15000); // ex.: 'Requesting main frame too early!' — tenta de novo sozinho
+    scheduleRestart(/already running/i.test(String(err && err.message)) ? 3000 : 15000); // ex.: 'Requesting main frame too early!' — tenta de novo sozinho
   } finally {
     initializing = false;
   }
@@ -329,7 +357,11 @@ async function restartClient() {
   initializing = false;
   if (oldClient) {
     oldClient.removeAllListeners();
-    await oldClient.destroy().catch(() => {});
+    let proc = null;
+    try { proc = oldClient.pupBrowser && oldClient.pupBrowser.process(); } catch (_) {}
+    // destroy() pode ficar pendurado com o frame "detached": no máximo 10 s
+    await Promise.race([oldClient.destroy().catch(() => {}), new Promise(r => setTimeout(r, 10000))]);
+    try { if (proc && proc.exitCode === null) proc.kill('SIGKILL'); } catch (_) {}
   }
   contactCache.clear();
   await startClient();
