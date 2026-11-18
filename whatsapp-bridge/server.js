@@ -18,7 +18,7 @@ fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient: info => ehLocal(info.req) || chaveOk(info.req) });
 
 // Allow HTTPS pages (GitHub Pages) to reach the local bridge via Chrome Private Network Access.
 // Must run BEFORE cors(), since cors() answers OPTIONS preflights itself and never calls next().
@@ -45,6 +45,83 @@ app.use((req, res, next) => {
 });
 const jsonPequeno = express.json({ limit: '1mb' }), jsonMidia = express.json({ limit: '90mb' });
 app.use((req, res, next) => (req.path === '/api/send-media' ? jsonMidia : jsonPequeno)(req, res, next));
+
+// ── Acesso de outros aparelhos (2026-11-18) ───────────────────────────────────────────────
+// A ponte continua ouvindo só em 127.0.0.1. Para outros aparelhos, ela abre um túnel gratuito da
+// Cloudflare (cloudflared "quick tunnel", https://<aleatório>.trycloudflare.com → 127.0.0.1:8788).
+// TODO acesso que chega pelo túnel precisa da CHAVE (header X-Jarvis-Key ou ?k=); o acesso local
+// (este PC) segue como antes. A chave fica só neste PC (.jarvis-chave, fora do git). O painel deste
+// PC publica o endereço do túnel CRIPTOGRAFADO com a chave no estado sincronizado do Jarvis.
+const crypto = require('crypto');
+const { spawn } = require('child_process');
+const CHAVE_FILE = process.env.WPP_CHAVE_FILE || path.join(__dirname, '.jarvis-chave');
+const CLOUDFLARED = process.env.WPP_CLOUDFLARED || path.join(__dirname, 'cloudflared.exe');
+function lerChave() {
+  try { const k = fs.readFileSync(CHAVE_FILE, 'utf8').trim(); if (k.length >= 24) return k; } catch (_e) {}
+  return gerarChave();
+}
+function gerarChave() {
+  const k = crypto.randomBytes(18).toString('base64url'); // 24 caracteres
+  fs.writeFileSync(CHAVE_FILE, k);
+  return k;
+}
+let CHAVE = lerChave();
+function ehLocal(req) {
+  const h = req.headers || {};
+  if (h['cf-connecting-ip'] || h['cf-ray'] || h['cdn-loop']) return false;
+  const host = String(h.host || '').toLowerCase();
+  if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)) return false;
+  const ip = String((req.socket && req.socket.remoteAddress) || '');
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+function chaveOk(req) {
+  let k = String((req.headers && req.headers['x-jarvis-key']) || '');
+  if (!k) { try { k = new URL(req.url, 'http://x').searchParams.get('k') || ''; } catch (_e) {} }
+  const a = Buffer.from(k), b = Buffer.from(CHAVE);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+const _falhas = new Map(); // ip -> { n, at } — freia tentativa de adivinhar a chave
+function bloqueado(req) {
+  const ip = String((req.headers && req.headers['cf-connecting-ip']) || '?');
+  const f = _falhas.get(ip); return !!(f && f.n >= 20 && Date.now() - f.at < 15 * 60e3);
+}
+function registraFalha(req) {
+  const ip = String((req.headers && req.headers['cf-connecting-ip']) || '?');
+  const f = _falhas.get(ip) || { n: 0, at: 0 };
+  if (Date.now() - f.at > 15 * 60e3) f.n = 0;
+  f.n++; f.at = Date.now(); _falhas.set(ip, f);
+}
+const tunel = { url: '', status: 'desligado', erro: '', at: '' };
+let tunelProc = null, tunelTentativas = 0;
+function iniciarTunel() {
+  if (process.env.WPP_TUNEL === '0') { tunel.status = 'desativado'; return; }
+  if (!fs.existsSync(CLOUDFLARED)) { tunel.status = 'sem-cloudflared'; tunel.erro = 'cloudflared.exe não encontrado em ' + CLOUDFLARED; return; }
+  tunel.status = 'iniciando'; tunel.url = ''; tunel.erro = '';
+  try {
+    tunelProc = spawn(CLOUDFLARED, ['tunnel', '--no-autoupdate', '--url', 'http://127.0.0.1:' + PORT], { windowsHide: true });
+  } catch (e) { tunel.status = 'erro'; tunel.erro = e.message; agendaTunel(); return; }
+  const ler = buf => {
+    const m = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.exec(String(buf));
+    if (m && m[0] !== tunel.url) { tunel.url = m[0]; tunel.status = 'ativo'; tunel.at = new Date().toISOString(); tunelTentativas = 0; console.log('[tunel] ativo:', tunel.url); broadcast('status'); }
+  };
+  tunelProc.stdout.on('data', ler); tunelProc.stderr.on('data', ler);
+  tunelProc.on('exit', code => { console.warn('[tunel] encerrado, código', code); tunelProc = null; tunel.status = 'caiu'; tunel.url = ''; agendaTunel(); });
+  tunelProc.on('error', e => { tunel.status = 'erro'; tunel.erro = e.message; });
+}
+function agendaTunel() { tunelTentativas++; setTimeout(iniciarTunel, Math.min(300e3, 10e3 * tunelTentativas)); }
+process.on('exit', () => { try { if (tunelProc) tunelProc.kill(); } catch (_e) {} });
+// Porteiro: acesso pelo túnel só com a chave
+app.use((req, res, next) => {
+  if (ehLocal(req)) return next();
+  if (req.method === 'OPTIONS') return next();
+  if (bloqueado(req)) { res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos.' }); return; }
+  if (!chaveOk(req)) { registraFalha(req); res.status(401).json({ error: 'Chave de acesso inválida.' }); return; }
+  if (/^\/api\/(tunel|restart)/.test(req.path)) { res.status(403).json({ error: 'Disponível só no PC da ponte.' }); return; }
+  next();
+});
+// Só no PC da ponte: endereço do túnel + chave (para o painel publicar criptografado) e troca de chave
+app.get('/api/tunel', (_req, res) => { res.json({ ...tunel, chave: CHAVE }); });
+app.post('/api/tunel/nova-chave', (_req, res) => { CHAVE = gerarChave(); _falhas.clear(); res.json({ ...tunel, chave: CHAVE }); });
 
 let client;
 let initializing = false;
@@ -568,6 +645,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Jarvis WhatsApp bridge on http://${HOST}:${PORT}`);
   console.log(`WhatsApp auth dir: ${AUTH_DIR}`);
   startClient();
+  iniciarTunel();
 });
 
 process.on('SIGINT', async () => {

@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-18T20:50:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T21:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13840,6 +13840,15 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     #panel-whatsapp .wpp-search-wrap{padding:2px 10px 6px!important}
     #panel-whatsapp .wpp-search-box{height:28px!important;border-radius:8px!important}
     #panel-whatsapp .wpp-search-box input{font-size:12.5px!important}
+    .wpp-acesso-box{max-width:560px}
+    .wpp-acesso-corpo{padding:4px 16px 4px;font-size:13px;display:flex;flex-direction:column;gap:8px}
+    .wpp-acesso-corpo p{margin:0}
+    .wpp-acesso-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
+    .wpp-acesso-chave{display:flex;gap:6px;flex-wrap:wrap}
+    .wpp-acesso-chave input{flex:1;min-width:200px;padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:13px ui-monospace,Consolas,monospace}
+    .wpp-acesso-chave .wpp-page-btn,.wpp-acesso-corpo .wpp-nt-ft .wpp-page-btn{display:inline-flex;align-items:center;gap:4px;padding:7px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--surface);color:var(--tx);font-weight:600;font-size:12.5px;cursor:pointer}
+    .wpp-acesso-chave .wpp-page-btn.primary{background:#00a884;border-color:#00a884;color:#fff}
+    .wpp-acesso-aviso{font-size:12px;color:var(--tx3);background:var(--bg);border-radius:8px;padding:8px 10px}
     .wpp-tag-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:.5px solid var(--bd)}
     .wpp-tag-row small{color:var(--tx3);flex:1}
     .wpp-tag-row button{border:0;background:none;color:var(--tx3);cursor:pointer}
@@ -13881,6 +13890,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
       <div class="wpp-hd-acts">
         <button type="button" class="dash-action" onclick="wppMonEscolher()" title="Escolher os 4 grupos do acompanhamento online"><i class="ti ti-layout-grid"></i> Monitor 2x2</button>
         <button type="button" class="dash-action" onclick="openWppNotif()" title="Escolher os grupos que recebem as notificações do Jarvis"><i class="ti ti-bell-ringing"></i> Notificações</button>
+        <button type="button" class="dash-action" onclick="wppAcessoAbrir()" title="Usar este WhatsApp em outros aparelhos (chave de acesso)"><i class="ti ti-devices"></i> Acesso remoto</button>
         <button type="button" class="dash-action" onclick="refreshWhatsAppPanel()" title="Atualizar"><i class="ti ti-refresh"></i></button>
         <button type="button" class="dash-action" onclick="restartWppBridge()" title="Reiniciar ponte"><i class="ti ti-rotate-clockwise"></i></button>
       </div>
@@ -16061,6 +16071,8 @@ var rsBaseSync=null,rsIndSync=null,rsDraftsSync=null,mxSync=null;
    sozinha). O Jarvis só precisa preservá-lo — buildState() monta o estado do zero e, sem
    isso, cada sync do Jarvis apagaria o pacote do Ampli (2026-11-03). */
 var ampliSync=null;
+/* wppTunelSync: endereço do túnel do WhatsApp, CRIPTOGRAFADO com a chave de acesso (ver wppTunelPublicar) */
+var wppTunelSync=null;
 async function _syncZip(obj){
   const gz=await new Response(new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
   return await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const u=String(fr.result);res(u.slice(u.indexOf(',')+1));};fr.onerror=()=>rej(fr.error);fr.readAsDataURL(gz);});
@@ -16073,7 +16085,7 @@ async function _syncUnzip(z){
 var _syncEnviado={};
 function _syncMarcarEnviado(st){
   if(!st||typeof st!=='object')return;let mud=false;
-  for(const k of['rsBaseSync','rsIndSync','mxSync','ampliSync']){const p=st[k];if(p&&p.at&&String(p.at)>String(_syncEnviado[k]||'')){_syncEnviado[k]=p.at;mud=true;}}
+  for(const k of['rsBaseSync','rsIndSync','mxSync','ampliSync','wppTunelSync']){const p=st[k];if(p&&p.at&&String(p.at)>String(_syncEnviado[k]||'')){_syncEnviado[k]=p.at;mud=true;}}
   if(st.rsDraftsSync&&typeof st.rsDraftsSync==='object'){const m=_syncEnviado.drafts||(_syncEnviado.drafts={});
     for(const[id,d]of Object.entries(st.rsDraftsSync))if(d&&d.at&&String(d.at)>String(m[id]||'')){m[id]=d.at;mud=true;}}
   if(mud)_syncAvisa('status');
@@ -16086,6 +16098,7 @@ function _syncAdotar(st){
   if(_syncMaisNovo(st.rsIndSync,rsIndSync)){rsIndSync=st.rsIndSync;_syncAvisa('rsIndSync');}
   if(_syncMaisNovo(st.mxSync,mxSync)){mxSync=st.mxSync;_syncAvisa('mxSync');}
   if(_syncMaisNovo(st.ampliSync,ampliSync)){ampliSync=st.ampliSync;}
+  if(_syncMaisNovo(st.wppTunelSync,wppTunelSync)){wppTunelSync=st.wppTunelSync;_syncAvisa('wppTunelSync');}
   if(st.rsDraftsSync&&typeof st.rsDraftsSync==='object'&&st.rsDraftsSync!==rsDraftsSync){
     const m=rsDraftsSync||(rsDraftsSync={});let mud=false;
     for(const[id,d]of Object.entries(st.rsDraftsSync))if(d&&d.at&&(!m[id]||!m[id].at||String(d.at)>String(m[id].at))){m[id]=d;mud=true;}
@@ -18581,6 +18594,7 @@ const REMOTE_MERGE_SECTIONS=[
   {at:'rsIndSync.at',keys:['rsIndSync']},
   {at:'mxSync.at',keys:['mxSync']},
   {at:'ampliSync.at',keys:['ampliSync']},
+  {at:'wppTunelSync.at',keys:['wppTunelSync']},
 ];
 function _stPath(obj,path){return path.split('.').reduce((o,k)=>o&&o[k],obj);}
 function mergeRemoteStateForRestore(remoteSt){
@@ -18613,7 +18627,7 @@ function buildRedeState(){return{version:3,BD:rdeBD||[],AD:rdeAD||[],fileName:rd
    #f-srch-swap, #f-srch-enc, #f-srch-si, #f-srch-pref, #f-srch-pop, #prevent-q-srch)
    já leem o valor direto do DOM a cada render, sem variável global nem saveState() —
    conferido nesta mesma auditoria, não têm esse problema. */
-function buildState(){return{version:8,atrixLastTrigger,atrixTriggerLog,abBiLink,abPbiAplicadoAt,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,ampliSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
+function buildState(){return{version:8,atrixLastTrigger,atrixTriggerLog,abBiLink,abPbiAplicadoAt,rsBaseSync,rsIndSync,rsDraftsSync,mxSync,ampliSync,wppTunelSync,dAb:serializeAb(),dAbCleared,dAbClearedAt,dEnc,dFuelVehicles,dFuelRequests,dFuelWithdrawals,dFuelAportes,fuelBalanceTotal,fuelCardBalance,fuelCardBalanceAt,fuelCycleStartDay,fuelCycleEndDay,fuelCycleStartDate,fuelCycleEndDate,monitorAudio:monAudioState||null,users:getUsers(),usersAt,selWeek,selCluster,selMes,selYear,selRepMes,selRepSemana,selRepCluster,selRepCausa,selRepSeg,selAbMop,selAbFaixa,selAbSub,selAbUf,selSwapMop,selSwapFaixa,selSwapSub,selSwapUf,selEveMop,selEveFaixa,selEveSub,selEveUf,selEncCluster,selEncAging,selEncCausa,selEncUf,selEncSemana,selEncSeg,selEncOut,redirSelAno,rdeRedirSelAno,selSiCluster,selSiAging,selSiCausa,selSiUf,selSiSemana,selSiSeg,selSiOut,selPrefCluster,selPrefAging,selPrefCausa,selPrefUf,selPrefSemana,selPrefSeg,selPrefOut,fuelRFilter:{...fuelRFilter,q:''},fuelVFilter:{...fuelVFilter,placa:'',condutor:''},activeTab,lastAbAt,lastAbBaseAt,lastEncAt,lastEncBaseAt,lastAbFile,lastEncFile,abLastUpd,fuelBaseAt,fuelBaseAtIso,fuelBaseFile,fuelVeiculosBaseAt,fuelVeiculosBaseAtIso,fuelVeiculosBaseFile,fuelVeiculosCleared,fuelVeiculosClearedAt,ofsRows:ofsRows.slice(0,6000),ofsMeta,rdeState:buildRedeState(),dAtiv,lastAtivAt,lastAtivBaseAt,lastAtivFile,selAtivUf,selAtivCidade,selAtivDep,selAtivStatusAtual,selAtivAging,selAtivSeg,selAtivFc,selAtivSubstatus,selAtivProd,selAtivTec,selAtivCluster,selAtivYear,ativGran,ativPeriod,dPrevent,dPrevTecnicos,lastPreventAt,dPop,lastPopAt,lastPopBaseAt,lastPopFile,amTickets:AM_TICKETS,amTicketsClearedAt,amLastEditAt,SB_STOCK,sbStockAt,FAP_PLACAS,FAP_APORTES,FAP_PLACAS_DEL,FAP_APORTES_DEL,fapCleared,fapClearedAt,fapAt,fapSaldoMes,fapCartao,fapCotaOverrides:{...FAP_COTA_CATEGORIA},fapCotaCondutorOverrides:{...FAP_COTA_CONDUTOR_OVERRIDES},FAP_CONSUMO_CONDUTOR,fapConsumoAt,fapConsumoCleared,fapConsumoClearedAt,FAP_CONSUMO_MC,fapConsumoMcAt,fapConsumoMcCleared,fapConsumoMcClearedAt,FAP_AUDIT,fapAuditAt,FAP_AUDIT_JUST,FAP_SALDO_CICLOS,FAP_HIER,fapHierAt,FAP_HIER_EDIT,fapBaseAlelo,fapBaseAleloAt,b2cSummary:B2C_SUMMARY,b2cSummaryAt,selB2cCluster,selB2cAno,selB2cMes,selB2cSemana,b2cMetaOverrides:b2cMetaOverrides(),selExecAno,selExecMes,selExecSemana,selExecRedeCluster,selExecEncCluster,selExecB2cCluster,execTab,AOF_SYNC_TABLE,AOF_SYNC_FILENAME,AOF_SYNC_AT,AOF_SYNC_CFG,WM_SYNC_RECORDS,WM_SYNC_FILENAME,WM_SYNC_AT,WM_SYNC_CFG,savedAt:new Date().toISOString(),savedBy:currentUser&&currentUser.username||''}}
 /* Bases carregadas com a aba "Chamados UF" antes do fix do commit 8214a4a podem ter
    ficado com "cliente" salvo como o texto de auditoria interno da coluna "Origem
    UF/Cidade" (ex.: "Coluna V (ufservico)", "Inferido do Título (Col C)") — esse dado
@@ -25402,9 +25416,11 @@ function wppBridgeUrl(){
   return(wppActiveBridgeUrl||wppStoredBridge()||fallback||'').replace(/\/+$/,'')
 }
 function wppBridgeCandidates(){
-  return[...new Set([wppStoredBridge(),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY].filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
+  const loc=[wppStoredBridge(),WPP_BRIDGE_LOCAL,WPP_BRIDGE_RAILWAY],rem=(typeof wppTunelUrl==='string'&&wppTunelUrl)?[wppTunelUrl]:[];
+  const L=(typeof wppNotifyHere==='function'&&wppNotifyHere())?loc.concat(rem):(rem.length?rem:loc);
+  return[...new Set(L.filter(Boolean).map(u=>u.replace(/\/+$/,'')))]
 }
-function wppWsUrl(){const base=wppBridgeUrl();return base?base.replace(/^http/i,'ws')+'/ws':''}
+function wppWsUrl(){const base=wppBridgeUrl();return base?base.replace(/^http/i,'ws')+'/ws'+wppKQ(base):''}
 function setWppDiag(text,kind=''){
   const el=document.getElementById('wpp-bridge-diag');if(!el)return;
   el.textContent=text;
@@ -25417,7 +25433,7 @@ async function wppFetch(path,opts){
   if(!bases.length)throw new Error('Configure a URL HTTPS do Railway WhatsApp Bridge.');
   for(const base of bases){
     try{
-      const res=await fetch(base+path,{cache:'no-store',...opts,headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+      const res=await fetch(base+path,{cache:'no-store',...opts,headers:{'Content-Type':'application/json',...wppHdrChave(base),...(opts&&opts.headers||{})}});
       const data=await res.json().catch(()=>null);
       if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));
       wppActiveBridgeUrl=base;
@@ -25550,7 +25566,7 @@ function wppMidiaHtml(m){
   if(m._preview&&m.type==='video')return'<span class="wpp-midia"><video src="'+m._preview+'" controls muted></video></span>';
   const base=(wppActiveBridgeUrl||wppBridgeUrl()||'').replace(/\/+$/,'');
   if((m.type==='image'||m.type==='sticker')&&m.hasMedia&&m.id&&!m._tmp&&base)
-    return'<a class="wpp-midia'+(m.type==='sticker'?' fig':'')+'" href="'+base+'/api/media/'+encodeURIComponent(m.id)+'" target="_blank" rel="noopener" title="Abrir imagem"><img src="'+base+'/api/media/'+encodeURIComponent(m.id)+'" alt="" loading="lazy" onerror="this.parentNode.outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-photo&quot;></i> Imagem (abra no celular)</span>\'"></a>';
+    return'<a class="wpp-midia'+(m.type==='sticker'?' fig':'')+'" href="'+base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base)+'" target="_blank" rel="noopener" title="Abrir imagem"><img src="'+base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base)+'" alt="" loading="lazy" onerror="this.parentNode.outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-photo&quot;></i> Imagem (abra no celular)</span>\'"></a>';
   const md=WPP_MIDIA[m.type];
   return md?'<span class="wpp-midia-lbl"><i class="ti '+md[0]+'"></i> '+md[1]+(m.filename?' · '+eh(m.filename):'')+'</span>':'';
 }
@@ -25937,7 +25953,8 @@ function wppNavPisca(){
 /* mantém a ponte conectada em segundo plano neste PC (Admin), para avisar mesmo em outro painel */
 async function wppSegundoPlano(){
   try{
-    if(typeof canSeePanel!=='function'||!canSeePanel('whatsapp')||!wppNotifyHere())return;
+    if(typeof canSeePanel!=='function'||!canSeePanel('whatsapp')||!(wppNotifyHere()||wppChaveRemota()))return;
+    if(!wppNotifyHere())await wppTunelResolver();
     wppFilterLoad();
     if(wppWs&&wppWs.readyState<2)return;
     const st=await wppNotifFetch('/api/status',{timeout:3000});if(!st||st.status!=='ready')return;
@@ -26071,6 +26088,91 @@ function wppTagApagar(tagId){
   if(wppTagFiltro===tagId)wppTagFiltro='';
   wppOrgSalvar().then(_wppTagsRender);
 }
+/* ═══ WhatsApp de outros aparelhos (2026-11-18) ═══
+   A ponte (neste PC) abre um túnel https://….trycloudflare.com e exige a CHAVE em todo acesso que vem
+   por ele. O endereço muda quando o PC/ponte reinicia: o Jarvis deste PC publica o endereço atual
+   CRIPTOGRAFADO com a chave (AES-GCM, chave derivada por PBKDF2) no estado sincronizado (wppTunelSync).
+   Os outros aparelhos digitam a chave uma vez; com ela decifram o endereço e falam com a ponte. */
+const WPP_CHAVE_KEY='jarvis:wpp:chave-remota:v1';
+var wppTunelUrl='';
+function wppChaveRemota(){try{return localStorage.getItem(WPP_CHAVE_KEY)||'';}catch(_){return'';}}
+function wppEhTunel(base){return!!(base&&wppTunelUrl&&base.replace(/\/+$/,'')===wppTunelUrl);}
+function wppHdrChave(base){return wppEhTunel(base)&&wppChaveRemota()?{'X-Jarvis-Key':wppChaveRemota()}:{};}
+function wppKQ(base){return wppEhTunel(base)&&wppChaveRemota()?'?k='+encodeURIComponent(wppChaveRemota()):'';}
+const _b64=u=>btoa(String.fromCharCode(...new Uint8Array(u))),_unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function _wppDeriva(chave,salt){
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(chave),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function wppCifrar(texto,chave){
+  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},await _wppDeriva(chave,salt),new TextEncoder().encode(texto));
+  return{salt:_b64(salt),iv:_b64(iv),ct:_b64(ct)};
+}
+async function wppDecifrar(p,chave){
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_unb64(p.iv)},await _wppDeriva(chave,_unb64(p.salt)),_unb64(p.ct));
+  return new TextDecoder().decode(pt);
+}
+var _wppTunelDe='';
+async function wppTunelResolver(){
+  const k=wppChaveRemota(),p=wppTunelSync;
+  if(!k||!p||!p.ct){wppTunelUrl='';return'';}
+  const marca=p.at+'|'+k;if(marca===_wppTunelDe)return wppTunelUrl;
+  try{const u=await wppDecifrar(p,k);wppTunelUrl=/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(u)?u:'';}catch(_){wppTunelUrl='';}
+  _wppTunelDe=marca;return wppTunelUrl;
+}
+window.addEventListener('jarvis-sync-pacote',e=>{if(e.detail==='wppTunelSync')wppTunelResolver().then(u=>{if(u&&activeTab==='whatsapp'&&!wppNotifyHere())loadWhatsAppPanel(true);});});
+/* PC da ponte: publica o endereço do túnel (criptografado) quando ele muda ou a chave muda */
+async function wppTunelPublicar(){
+  if(!wppNotifyHere()||!(typeof canEdit==='function'&&canEdit()))return;
+  let t=null;try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/tunel',{cache:'no-store'});t=r.ok?await r.json():null;}catch(_){return;}
+  window._wppTunelLocal=t;
+  if(!t||!t.url||!t.chave)return;
+  let atual='';try{if(wppTunelSync&&wppTunelSync.ct)atual=await wppDecifrar(wppTunelSync,t.chave);}catch(_){}
+  if(atual===t.url)return;
+  wppTunelSync=Object.assign({at:new Date().toISOString()},await wppCifrar(t.url,t.chave));
+  saveState();
+}
+setTimeout(wppTunelPublicar,9000);setInterval(wppTunelPublicar,60000);
+/* janela "Acesso de outros aparelhos" */
+async function wppAcessoAbrir(){
+  let ov=document.getElementById('wpp-acesso-modal');
+  if(!ov){ov=document.createElement('div');ov.id='wpp-acesso-modal';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px';
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.style.display='none';});document.body.appendChild(ov);}
+  ov.style.display='flex';ov.innerHTML='<div class="wpp-nt-box wpp-acesso-box"><div class="wpp-nt-empty"><i class="ti ti-loader-2"></i> Verificando…</div></div>';
+  let t=null;if(wppNotifyHere()){try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/tunel',{cache:'no-store'});t=r.ok?await r.json():null;}catch(_){}}
+  const hd='<div class="wpp-nt-hd"><div><b><i class="ti ti-devices" style="color:#00a884"></i> Acesso de outros aparelhos</b><small>O WhatsApp continua conectado neste PC; os outros aparelhos usam um túnel seguro protegido por chave.</small></div><button type="button" class="wpp-nt-x" onclick="document.getElementById(\'wpp-acesso-modal\').style.display=\'none\'"><i class="ti ti-x"></i></button></div>';
+  let corpo;
+  if(t){
+    const ST={ativo:['#16a34a','Ativo — outros aparelhos conseguem acessar'],iniciando:['#ca8a04','Iniciando o túnel…'],caiu:['#dc2626','Túnel caiu — tentando de novo sozinho'],erro:['#dc2626','Erro no túnel: '+(t.erro||'')],'sem-cloudflared':['#dc2626','cloudflared.exe não instalado na pasta da ponte'],desativado:['#64748b','Desativado (WPP_TUNEL=0)']}[t.status]||['#64748b',t.status];
+    const pub=wppTunelSync&&wppTunelSync.at?new Date(wppTunelSync.at).toLocaleString('pt-BR'):'ainda não';
+    corpo='<div class="wpp-acesso-corpo"><p><span class="wpp-acesso-dot" style="background:'+ST[0]+'"></span><b>'+eh(ST[1])+'</b></p>'
+      +'<p>Endereço publicado (criptografado) para os outros aparelhos: <b>'+eh(pub)+'</b></p>'
+      +'<label>Chave de acesso (digite uma vez em cada aparelho):</label><div class="wpp-acesso-chave"><input id="wpp-acesso-k" type="password" readonly value="'+eh(t.chave)+'"><button type="button" class="wpp-page-btn" onclick="const i=document.getElementById(\'wpp-acesso-k\');i.type=i.type===\'password\'?\'text\':\'password\'"><i class="ti ti-eye"></i>Mostrar</button><button type="button" class="wpp-page-btn" onclick="navigator.clipboard.writeText(document.getElementById(\'wpp-acesso-k\').value).then(()=>_ghToast(\'Chave copiada.\',\'#00a884\',3000))"><i class="ti ti-copy"></i>Copiar</button></div>'
+      +'<p class="wpp-acesso-aviso"><i class="ti ti-shield-lock"></i> Quem tiver a chave lê e envia mensagens neste WhatsApp. Não mande a chave em grupo; se ela vazar, gere outra (os aparelhos precisarão da nova).</p>'
+      +'<div class="wpp-nt-ft"><span id="wpp-acesso-st"></span><button type="button" class="wpp-page-btn" onclick="wppAcessoNovaChave()"><i class="ti ti-key"></i>Gerar nova chave</button></div></div>';
+  }else{
+    const k=wppChaveRemota(),u=await wppTunelResolver();
+    const st=!k?'Digite a chave para acessar o WhatsApp do PC.':!wppTunelSync?'O PC da ponte ainda não publicou o endereço (ele precisa estar ligado com o Jarvis aberto).':u?'Chave correta — endereço encontrado.':'Chave não confere com a publicada pelo PC.';
+    corpo='<div class="wpp-acesso-corpo"><label>Chave de acesso (pegue no PC da ponte: WhatsApp › Acesso remoto):</label><div class="wpp-acesso-chave"><input id="wpp-acesso-k" type="password" autocomplete="off" placeholder="Cole a chave aqui" value="'+eh(k)+'" onkeydown="if(event.key===\'Enter\')wppAcessoSalvar()"><button type="button" class="wpp-page-btn primary" onclick="wppAcessoSalvar()"><i class="ti ti-check"></i>Salvar</button>'+(k?'<button type="button" class="wpp-page-btn" onclick="wppAcessoSalvar(true)"><i class="ti ti-trash"></i>Esquecer</button>':'')+'</div>'
+      +'<p><b>'+eh(st)+'</b></p><p class="wpp-acesso-aviso"><i class="ti ti-shield-lock"></i> A chave fica guardada só neste navegador. O PC da ponte precisa estar ligado.</p></div>';
+  }
+  ov.innerHTML='<div class="wpp-nt-box wpp-acesso-box">'+hd+corpo+'</div>';
+}
+async function wppAcessoSalvar(esquecer){
+  const v=esquecer?'':(document.getElementById('wpp-acesso-k').value||'').trim();
+  try{if(v)localStorage.setItem(WPP_CHAVE_KEY,v);else localStorage.removeItem(WPP_CHAVE_KEY);}catch(_){}
+  _wppTunelDe='';const u=await wppTunelResolver();
+  if(u){_ghToast('Acesso remoto configurado — conectando ao WhatsApp do PC…','#00a884',4000);document.getElementById('wpp-acesso-modal').style.display='none';wppActiveBridgeUrl='';loadWhatsAppPanel(true);}
+  else wppAcessoAbrir();
+}
+async function wppAcessoNovaChave(){
+  if(!confirm('Gerar uma nova chave? Os outros aparelhos deixam de acessar até receberem a nova chave.'))return;
+  try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/tunel/nova-chave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw new Error('HTTP '+r.status);}
+  catch(e){_ghToast('Não foi possível gerar: '+(e&&e.message||e),'var(--red)',5000);return;}
+  await wppTunelPublicar();wppAcessoAbrir();
+}
 /* grupos principais (para a faixa laranja) — lidos da ponte, silencioso */
 let wppPrincipais=new Set(),_wppPrincAt=0;
 async function wppCarregarPrincipais(){
@@ -26078,13 +26180,13 @@ async function wppCarregarPrincipais(){
   try{const c=await wppNotifFetch('/api/notify-config',{timeout:5000});wppPrincipais=new Set((c.groups||[]).map(g=>g.id));wppOrgDe(c);renderWppTagBar();renderWppHdOrg();wppMonSincronizar(c);}catch(_){}
 }
 /* foto de perfil original (servida pela ponte, com cache); sem foto → fica o ícone padrão */
-function wppAvatarImg(id){const base=(wppActiveBridgeUrl||wppBridgeUrl()||'').replace(/\/+$/,'');return base&&id?'<img class="wpp-av-img" src="'+base+'/api/avatar/'+encodeURIComponent(id)+'" alt="" loading="lazy" decoding="async" onerror="this.remove()">':'';}
+function wppAvatarImg(id){const base=(wppActiveBridgeUrl||wppBridgeUrl()||'').replace(/\/+$/,'');return base&&id?'<img class="wpp-av-img" src="'+base+'/api/avatar/'+encodeURIComponent(id)+wppKQ(base)+'" alt="" loading="lazy" decoding="async" onerror="this.remove()">':'';}
 const WPP_CORES=['#2563eb','#ea580c','#0d9488','#7c3aed','#db2777','#ca8a04','#0891b2','#dc2626','#4f46e5','#65a30d'];
 function wppCorDe(id){let h=0;const t=String(id||'');for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))>>>0;return WPP_CORES[h%WPP_CORES.length];}
 function renderWppResumo(){
   const el=document.getElementById('mrow-wpp');if(!el)return;
   const st=wppBridgeState&&wppBridgeState.status,ok=st==='ready',D='—';
-  if(ok){try{localStorage.setItem(WPP_NOTIFY_HERE_KEY,'1');}catch(_){}}
+  if(ok&&!wppEhTunel(wppActiveBridgeUrl)){try{localStorage.setItem(WPP_NOTIFY_HERE_KEY,'1');}catch(_){}}
   const g=wppChats.filter(c=>c.isGroup),unr=wppChats.filter(c=>c.unreadCount>0);
   const conta=document.getElementById('wpp-hd-conta');
   if(conta){conta.className='tag '+(ok?'tag-green':'tag-orange');conta.textContent=ok?('Conectado'+(wppBridgeState.me&&wppBridgeState.me.pushname?' · '+wppBridgeState.me.pushname:'')):st==='qr'?'Aguardando leitura do QR Code':'Ponte: '+(st||'sem resposta');}
@@ -26162,7 +26264,7 @@ async function wppNotifFetch(path,opts){
   const bases=wppBridgeCandidates();let err=null;
   for(const base of bases){
     const ctl=typeof AbortController!=='undefined'?new AbortController():null;const tm=ctl?setTimeout(()=>ctl.abort(),opts&&opts.timeout||8000):null;
-    try{const res=await fetch(base+path,{cache:'no-store',method:(opts&&opts.method)||'GET',signal:ctl?ctl.signal:undefined,headers:{'Content-Type':'application/json'},body:opts&&opts.body});
+    try{const res=await fetch(base+path,{cache:'no-store',method:(opts&&opts.method)||'GET',signal:ctl?ctl.signal:undefined,headers:{'Content-Type':'application/json',...wppHdrChave(base)},body:opts&&opts.body});
       const data=await res.json().catch(()=>null);if(!res.ok)throw new Error((data&&data.error)||('HTTP '+res.status));return data;}
     catch(e){err=e;}finally{if(tm)clearTimeout(tm);}
   }
@@ -26248,6 +26350,7 @@ async function wppNotifTeste(){
   }catch(e){st.textContent='Falha no teste: '+(e&&e.message||e);}
 }
 function loadWhatsAppPanel(force=false){
+  if(typeof wppChaveRemota==='function'&&wppChaveRemota()&&wppTunelSync&&(wppTunelSync.at+'|'+wppChaveRemota())!==_wppTunelDe){wppTunelResolver().finally(()=>loadWhatsAppPanel(force));return;}
   wppFilterLoad();
   setWppLoading(true);
   const bases=wppBridgeCandidates();
