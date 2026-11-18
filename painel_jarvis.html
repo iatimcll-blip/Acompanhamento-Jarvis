@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-18T22:20:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T22:50:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13796,6 +13796,13 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     @keyframes wppPiscaVm{0%,100%{box-shadow:inset 0 0 0 999px rgba(220,38,38,0)}50%{box-shadow:inset 0 0 0 999px rgba(220,38,38,.35)}}
     .wpp-fw-prev{margin:0 16px 8px;padding:8px 10px;border-left:4px solid #00a884;background:var(--bg);border-radius:6px;font-size:12.5px;display:flex;flex-direction:column;gap:2px;max-height:110px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
     .wpp-fw-prev b{color:#00a884}
+    #panel-whatsapp .wpp-midia-aud{display:flex;align-items:center;gap:6px;margin:2px 0 4px;background:var(--bg);border-radius:22px;padding:3px 8px 3px 10px;max-width:100%}
+    #panel-whatsapp .wpp-midia-aud>i{color:#00a884;font-size:17px;flex-shrink:0}
+    #panel-whatsapp .wpp-midia-aud audio{height:34px;flex:1;min-width:170px;max-width:300px}
+    #panel-whatsapp .wpp-aud-vel{border:1px solid var(--bd);background:var(--surface);color:var(--tx2);border-radius:99px;font-size:11px;font-weight:700;padding:1px 7px;cursor:pointer;flex-shrink:0}
+    #panel-whatsapp .wpp-mc .wpp-midia-aud audio{min-width:130px}
+    #panel-whatsapp .wpp-midia video{display:block;max-width:100%;max-height:300px;border-radius:6px;background:#000}
+    #panel-whatsapp .wpp-midia-doc{text-decoration:none;color:var(--blue)!important;cursor:pointer}
     #wpp-alertas{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 32px))}
     #wpp-alertas .wpp-alerta{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--surface,#fff);border:1px solid #dc2626;border-left:5px solid #dc2626;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer;animation:wppAlertaIn .25s ease-out,wppPiscaVm 1s ease-in-out 3;font-size:12.5px;color:var(--tx,#111)}
     #wpp-alertas .wpp-alerta>i{color:#dc2626;font-size:20px;margin-top:2px}
@@ -25574,9 +25581,22 @@ function wppMidiaHtml(m){
   const base=(wppActiveBridgeUrl||wppBridgeUrl()||'').replace(/\/+$/,'');
   if((m.type==='image'||m.type==='sticker')&&m.hasMedia&&m.id&&!m._tmp&&base)
     return'<a class="wpp-midia'+(m.type==='sticker'?' fig':'')+'" href="'+base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base)+'" target="_blank" rel="noopener" title="Abrir imagem"><img src="'+base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base)+'" alt="" loading="lazy" onerror="this.parentNode.outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-photo&quot;></i> Imagem (abra no celular)</span>\'"></a>';
+  /* áudio e mensagem de voz: tocar no painel (2026-11-18); vídeo: assistir; documento: baixar */
+  if(m.hasMedia&&m.id&&!m._tmp&&base&&(m.type==='audio'||m.type==='ptt'||m.type==='video'||m.type==='document')){
+    const u=base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base),dl=u+(u.includes('?')?'&':'?')+'dl=1';
+    const falha='this.closest(\'.wpp-midia-aud,.wpp-midia\').outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-alert-circle&quot;></i> Mídia indisponível (abra no celular)</span>\'';
+    if(m.type==='audio'||m.type==='ptt')
+      return'<span class="wpp-midia-aud'+(m.type==='ptt'?' voz':'')+'"><i class="ti '+(m.type==='ptt'?'ti-microphone':'ti-music')+'"></i><audio controls preload="none" src="'+u+'" onerror="'+falha+'" onplay="wppAudioTocando(this)"></audio><button type="button" class="wpp-aud-vel" onclick="wppAudioVel(this)" title="Velocidade">1x</button></span>';
+    if(m.type==='video')
+      return'<span class="wpp-midia"><video controls preload="metadata" src="'+u+'#t=0.1" onerror="'+falha+'"></video></span>';
+    return'<a class="wpp-midia-lbl wpp-midia-doc" href="'+dl+'" title="Baixar"><i class="ti ti-file-download"></i> '+eh(m.filename||'Documento')+'</a>';
+  }
   const md=WPP_MIDIA[m.type];
   return md?'<span class="wpp-midia-lbl"><i class="ti '+md[0]+'"></i> '+md[1]+(m.filename?' · '+eh(m.filename):'')+'</span>':'';
 }
+/* só um áudio tocando por vez; velocidade 1x → 1,5x → 2x (como no WhatsApp) */
+function wppAudioTocando(a){document.querySelectorAll('.wpp-midia-aud audio').forEach(x=>{if(x!==a&&!x.paused)x.pause();});}
+function wppAudioVel(b){const a=b.parentNode.querySelector('audio');if(!a)return;const v=a.playbackRate>=2?1:a.playbackRate>=1.5?2:1.5;a.playbackRate=v;b.textContent=String(v).replace('.',',')+'x';}
 function wppScroller(){const b=document.getElementById('wpp-messages');return b?b.parentElement:null;}
 function wppPertoDoFim(){const s=wppScroller();return!s||s.scrollHeight-s.scrollTop-s.clientHeight<140;}
 function wppIrParaFim(){const s=wppScroller();if(s)s.scrollTop=s.scrollHeight;_wppNovas=0;wppRenderNovas();}

@@ -411,21 +411,49 @@ app.post('/api/chats/:id/seen', async (req, res) => {
 });
 
 const mediaCache = new Map(); // id -> { buf, type, at }
+// Mídia das mensagens: imagem/figurinha (miniatura), ÁUDIO e mensagem de voz (tocar no painel, 2026-11-18),
+// vídeo (assistir) e documento (?dl=1 baixa com o nome original). Suporta Range, para o player poder avançar/voltar.
+const MEDIA_TIPOS = ['image', 'sticker', 'audio', 'ptt', 'video', 'document'];
+function enviaMidia(req, res, c) {
+  res.set('Content-Type', c.type).set('Cache-Control', 'private, max-age=86400').set('Accept-Ranges', 'bytes');
+  if (req.query.dl) res.set('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(c.nome || 'arquivo'));
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+  if (m && (m[1] || m[2])) {
+    const total = c.buf.length;
+    let ini = m[1] ? Number(m[1]) : total - Number(m[2]), fim = m[1] && m[2] ? Number(m[2]) : total - 1;
+    if (ini < 0) ini = 0; if (fim >= total) fim = total - 1;
+    if (ini > fim) { res.status(416).set('Content-Range', 'bytes */' + total).end(); return; }
+    res.status(206).set('Content-Range', 'bytes ' + ini + '-' + fim + '/' + total).send(c.buf.subarray(ini, fim + 1));
+    return;
+  }
+  res.send(c.buf);
+}
+const mediaBaixando = new Map();
 app.get('/api/media/:id', async (req, res) => {
   const id = String(req.params.id || '');
   const c = mediaCache.get(id);
-  if (c) { res.set('Content-Type', c.type).set('Cache-Control', 'private, max-age=86400').send(c.buf); return; }
+  if (c) { enviaMidia(req, res, c); return; }
   if (!client || state.status !== 'ready') { res.status(404).end(); return; }
   try {
-    const msg = await client.getMessageById(id);
-    if (!msg || !msg.hasMedia || !['image', 'sticker'].includes(msg.type)) { res.status(404).end(); return; }
-    const media = await msg.downloadMedia();
-    if (!media || !media.data) { res.status(404).end(); return; }
-    const buf = Buffer.from(media.data, 'base64');
-    if (buf.length > 8 * 1024 * 1024) { res.status(413).end(); return; }
-    if (mediaCache.size > 300) mediaCache.delete(mediaCache.keys().next().value);
-    mediaCache.set(id, { buf, type: media.mimetype || 'image/jpeg', at: Date.now() });
-    res.set('Content-Type', media.mimetype || 'image/jpeg').set('Cache-Control', 'private, max-age=86400').send(buf);
+    // o player pede o mesmo arquivo várias vezes (Range): um download só
+    if (!mediaBaixando.has(id)) mediaBaixando.set(id, (async () => {
+      const msg = await client.getMessageById(id);
+      if (!msg || !msg.hasMedia || !MEDIA_TIPOS.includes(msg.type)) return null;
+      const media = await msg.downloadMedia();
+      if (!media || !media.data) return null;
+      const buf = Buffer.from(media.data, 'base64');
+      const tipo = String(media.mimetype || 'application/octet-stream').split(';')[0].trim() || 'application/octet-stream';
+      const item = { buf, type: tipo, nome: media.filename || msg.filename || ('arquivo-' + id.slice(-6)), at: Date.now() };
+      if (buf.length <= 40 * 1024 * 1024) {
+        if (mediaCache.size > 300) mediaCache.delete(mediaCache.keys().next().value);
+        mediaCache.set(id, item);
+      }
+      return item;
+    })().finally(() => setTimeout(() => mediaBaixando.delete(id), 1000)));
+    const item = await mediaBaixando.get(id);
+    if (!item) { res.status(404).end(); return; }
+    if (item.buf.length > 64 * 1024 * 1024) { res.status(413).end(); return; }
+    enviaMidia(req, res, item);
   } catch (_err) {
     res.status(404).end();
   }
