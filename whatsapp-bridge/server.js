@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 const PORT = Number(process.env.PORT || process.env.WPP_PORT || 8788);
 const HOST = process.env.WPP_HOST || '127.0.0.1';
@@ -43,7 +43,8 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: '1mb' }));
+const jsonPequeno = express.json({ limit: '1mb' }), jsonMidia = express.json({ limit: '90mb' });
+app.use((req, res, next) => (req.path === '/api/send-media' ? jsonMidia : jsonPequeno)(req, res, next));
 
 let client;
 let initializing = false;
@@ -353,6 +354,31 @@ app.get('/api/media/:id', async (req, res) => {
   }
 });
 
+app.post('/api/send-media', async (req, res) => {
+  if (!requireReady(res)) return;
+  const to = String(req.body.to || '').trim();
+  const data = String(req.body.data || '');
+  const mimetype = String(req.body.mimetype || 'application/octet-stream').slice(0, 120);
+  const filename = String(req.body.filename || 'arquivo').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 160);
+  if (!to || !data) { res.status(400).json({ error: 'Informe to e data.' }); return; }
+  try {
+    const media = new MessageMedia(mimetype, data, filename);
+    const tamanho = Math.floor(data.length * 3 / 4);
+    const opts = {};
+    const caption = String(req.body.caption || '').trim();
+    if (caption) opts.caption = caption;
+    const quotedMessageId = String(req.body.quotedMessageId || '').trim();
+    if (quotedMessageId) opts.quotedMessageId = quotedMessageId;
+    // foto/vídeo como mídia; o resto (ou vídeo grande) como documento
+    const ehImg = /^image\/(jpeg|png|webp)$/i.test(mimetype), ehVid = /^video\/mp4$/i.test(mimetype);
+    if (req.body.asDocument || (!ehImg && !(ehVid && tamanho <= 16 * 1024 * 1024))) opts.sendMediaAsDocument = true;
+    const msg = await client.sendMessage(to, media, opts);
+    res.json({ ok: true, message: await summarizeMessage(msg) });
+  } catch (err) {
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/send-message', async (req, res) => {
   if (!requireReady(res)) return;
   const to = String(req.body.to || '').trim();
@@ -410,9 +436,9 @@ app.get('/api/avatar/:id', async (req, res) => {
 function loadNotify() {
   try {
     const j = JSON.parse(fs.readFileSync(NOTIFY_FILE, 'utf8'));
-    return { groups: Array.isArray(j.groups) ? j.groups : [], kinds: j.kinds || {}, sent: j.sent || {}, log: Array.isArray(j.log) ? j.log : [], updatedAt: j.updatedAt || '' };
+    return { groups: Array.isArray(j.groups) ? j.groups : [], monitor: Array.isArray(j.monitor) ? j.monitor : [], kinds: j.kinds || {}, sent: j.sent || {}, log: Array.isArray(j.log) ? j.log : [], updatedAt: j.updatedAt || '' };
   } catch (_e) {
-    return { groups: [], kinds: { 'bdesk-sla': true }, sent: {}, log: [], updatedAt: '' };
+    return { groups: [], monitor: [], kinds: { 'bdesk-sla': true }, sent: {}, log: [], updatedAt: '' };
   }
 }
 function saveNotify(cfg) {
@@ -422,7 +448,7 @@ function saveNotify(cfg) {
   fs.writeFileSync(NOTIFY_FILE, JSON.stringify(cfg, null, 2));
 }
 function publicNotify(cfg) {
-  return { groups: cfg.groups, kinds: cfg.kinds, log: cfg.log.slice(-20).reverse(), updatedAt: cfg.updatedAt };
+  return { groups: cfg.groups, monitor: cfg.monitor || [], kinds: cfg.kinds, log: cfg.log.slice(-20).reverse(), updatedAt: cfg.updatedAt };
 }
 async function sendToGroups(cfg, body, kind) {
   const results = [];
@@ -451,6 +477,9 @@ app.post('/api/notify-config', (req, res) => {
   const cfg = loadNotify();
   if (Array.isArray(req.body.groups)) {
     cfg.groups = req.body.groups.filter(g => g && /@g\.us$/.test(String(g.id || ''))).map(g => ({ id: String(g.id), name: String(g.name || '').slice(0, 120) })).slice(0, 20);
+  }
+  if (Array.isArray(req.body.monitor)) {
+    cfg.monitor = req.body.monitor.filter(g => g && /@(g|c)\.us$/.test(String(g.id || ''))).map(g => ({ id: String(g.id), name: String(g.name || '').slice(0, 120) })).slice(0, 4);
   }
   if (req.body.kinds && typeof req.body.kinds === 'object') {
     for (const [k, v] of Object.entries(req.body.kinds)) cfg.kinds[String(k).slice(0, 40)] = !!v;
