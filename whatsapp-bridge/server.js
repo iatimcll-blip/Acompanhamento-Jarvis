@@ -117,10 +117,24 @@ async function contactSummary(id) {
   }
 }
 
-async function summarizeMessage(message) {
+async function summarizeMessage(message, withQuote = true) {
   const senderId = message.author || (message.fromMe ? message.to : message.from) || '';
   const sender = await contactSummary(senderId);
+  let quoted = null;
+  if (withQuote && message.hasQuotedMsg) {
+    try {
+      const q = await message.getQuotedMessage();
+      if (q) {
+        const qs = await contactSummary(q.author || (q.fromMe ? (client.info && client.info.wid && client.info.wid._serialized) : q.from) || '');
+        quoted = { id: q.id && q.id._serialized, body: (q.body || '').slice(0, 300), type: q.type || 'chat', fromMe: !!q.fromMe, senderName: q.fromMe ? 'Você' : (qs.name || '') };
+      }
+    } catch (_e) { /* citação indisponível */ }
+  }
   return {
+    ack: typeof message.ack === 'number' ? message.ack : null,
+    quoted,
+    isForwarded: !!message.isForwarded,
+    filename: (message._data && message._data.filename) || '',
     id: message.id && message.id._serialized,
     from: message.from,
     to: message.to,
@@ -207,6 +221,9 @@ async function startClient() {
     state.unread += 1;
     touch();
     broadcast('message', { message: await summarizeMessage(message) });
+  });
+  client.on('message_ack', (message, ack) => {
+    broadcast('ack', { id: message.id && message.id._serialized, ack });
   });
   client.on('message_create', async message => {
     if (!message.fromMe) return;
@@ -295,12 +312,44 @@ app.get('/api/chats', async (_req, res) => {
 app.get('/api/chats/:id/messages', async (req, res) => {
   if (!requireReady(res)) return;
   try {
-    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+    const limit = Math.max(1, Math.min(300, Number(req.query.limit || 50)));
     const chat = await client.getChatById(req.params.id);
     const messages = await chat.fetchMessages({ limit });
     res.json(await Promise.all(messages.map(summarizeMessage)));
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/chats/:id/seen', async (req, res) => {
+  if (!requireReady(res)) return;
+  try {
+    const chat = await client.getChatById(req.params.id);
+    await chat.sendSeen();
+    res.json({ ok: true });
+  } catch (err) {
+    falhaDeInjecao(err); res.status(500).json({ error: err.message });
+  }
+});
+
+const mediaCache = new Map(); // id -> { buf, type, at }
+app.get('/api/media/:id', async (req, res) => {
+  const id = String(req.params.id || '');
+  const c = mediaCache.get(id);
+  if (c) { res.set('Content-Type', c.type).set('Cache-Control', 'private, max-age=86400').send(c.buf); return; }
+  if (!client || state.status !== 'ready') { res.status(404).end(); return; }
+  try {
+    const msg = await client.getMessageById(id);
+    if (!msg || !msg.hasMedia || !['image', 'sticker'].includes(msg.type)) { res.status(404).end(); return; }
+    const media = await msg.downloadMedia();
+    if (!media || !media.data) { res.status(404).end(); return; }
+    const buf = Buffer.from(media.data, 'base64');
+    if (buf.length > 8 * 1024 * 1024) { res.status(413).end(); return; }
+    if (mediaCache.size > 300) mediaCache.delete(mediaCache.keys().next().value);
+    mediaCache.set(id, { buf, type: media.mimetype || 'image/jpeg', at: Date.now() });
+    res.set('Content-Type', media.mimetype || 'image/jpeg').set('Cache-Control', 'private, max-age=86400').send(buf);
+  } catch (_err) {
+    res.status(404).end();
   }
 });
 
@@ -313,11 +362,46 @@ app.post('/api/send-message', async (req, res) => {
     return;
   }
   try {
-    const msg = await client.sendMessage(to, body);
+    const opts = {};
+    const quotedMessageId = String(req.body.quotedMessageId || '').trim();
+    if (quotedMessageId) opts.quotedMessageId = quotedMessageId;
+    const msg = await client.sendMessage(to, body, opts);
     res.json({ ok: true, message: await summarizeMessage(msg) });
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
+});
+
+// ── Foto de perfil (2026-11-18): o painel mostra a foto original de cada contato/grupo ──
+// A URL do WhatsApp (pps.whatsapp.net) expira; a ponte baixa e serve a imagem, com cache em memória.
+const avatarCache = new Map(); // id -> { buf, type, at } | { none: true, at }
+const AVATAR_TTL = 6 * 3600e3, AVATAR_NONE_TTL = 3600e3;
+let avatarAtivos = 0; const avatarFila = [];
+function avatarSlot() {
+  if (avatarAtivos < 4) { avatarAtivos++; return Promise.resolve(); }
+  return new Promise(r => avatarFila.push(r));
+}
+function avatarLibera() { const n = avatarFila.shift(); if (n) n(); else avatarAtivos--; }
+app.get('/api/avatar/:id', async (req, res) => {
+  const id = String(req.params.id || '');
+  if (!/^[\w.-]+@(c|g)\.us$|^[\w.-]+@lid$/.test(id)) { res.status(400).end(); return; }
+  const c = avatarCache.get(id), now = Date.now();
+  if (c && c.none && now - c.at < AVATAR_NONE_TTL) { res.status(404).end(); return; }
+  if (c && c.buf && now - c.at < AVATAR_TTL) { res.set('Content-Type', c.type).set('Cache-Control', 'private, max-age=3600').send(c.buf); return; }
+  if (!client || state.status !== 'ready') { res.status(404).end(); return; }
+  await avatarSlot();
+  try {
+    const url = await client.getProfilePicUrl(id).catch(() => '');
+    if (!url) { avatarCache.set(id, { none: true, at: now }); res.status(404).end(); return; }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const buf = Buffer.from(await r.arrayBuffer()), type = r.headers.get('content-type') || 'image/jpeg';
+    avatarCache.set(id, { buf, type, at: now });
+    res.set('Content-Type', type).set('Cache-Control', 'private, max-age=3600').send(buf);
+  } catch (_err) {
+    avatarCache.set(id, { none: true, at: now });
+    res.status(404).end();
+  } finally { avatarLibera(); }
 });
 
 // ── Grupos principais para notificações (2026-11-18) ─────────────────────────
