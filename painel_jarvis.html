@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-17T23:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-18T09:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -33112,7 +33112,9 @@ function rdeRedirFca(metric){
     if(metric==='volOutlier')return r.o===1;
     return true;
   }
-  const metricLabel={mttr:'com tempo acima da meta de MTTR',prazo:'fora da meta de Prazo',outlier:'em Outlier',volEventos:'no volume de eventos',volOutlier:'em Outlier (dentro do volume)'}[metric];
+  const metricLabel={mttr:'com tempo acima da meta de MTTR',prazo:'fora da meta de Prazo',outlier:'em Outlier',volEventos:'no volume de eventos',volOutlier:'em Outlier'}[metric];
+  /* 2026-11-18: "9/9 (100%) dos chamados ficaram no volume de eventos" não dizia nada — volume é contagem, não desvio. */
+  const fatoVol=(info,pref)=>pref+', '+info.total+(info.total===1?' evento de rede registrado':' eventos de rede registrados')+'.';
   function resumo(rows){
     const total=rows.length;
     const bad=rows.filter(isBad);
@@ -33130,13 +33132,13 @@ function rdeRedirFca(metric){
   const fmtRankingCausa=info=>info.rankingCausa.slice(0,3).map(([c,n])=>`${c} (${n}/${info.badTotal} — ${pp(n/info.badTotal*100)}%)`).join(', ')||'sem causa identificada';
   const mesLbl=fmtMesLabel(curMonth);
   const mesTxt=mesInfo.total
-    ?`Fato: em ${mesLbl}${mtdTag}, ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
+    ?(metric==='volEventos'?fatoVol(mesInfo,`Fato: em ${mesLbl}${mtdTag}`):`Fato: em ${mesLbl}${mtdTag}, ${mesInfo.badTotal}/${mesInfo.total} (${pp(mesInfo.badTotal/mesInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`)
       +(mesInfo.badTotal?`\nCidades com maior peso no resultado do mês: ${fmtRankingCidade(mesInfo)}.`:'')
       +(mesInfo.badTotal?`\nPrincipais causas no mês: ${fmtRankingCausa(mesInfo)}.`:'')
     :`Sem chamados no período em ${mesLbl} até o momento.`;
   const semLbl=`S${(/-W(\d{2})$/.exec(curWeek)||[])[1]||''} (${rdeRedirWeekRangeLabel(curWeek)})`;
   const semTxt=semInfo.total
-    ?`Na semana ${semLbl}${wtdTag}, ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`
+    ?(metric==='volEventos'?fatoVol(semInfo,`Na semana ${semLbl}${wtdTag}`):`Na semana ${semLbl}${wtdTag}, ${semInfo.badTotal}/${semInfo.total} (${pp(semInfo.badTotal/semInfo.total*100)}%) dos chamados ficaram ${metricLabel}.`)
       +(semInfo.badTotal?`\nCidades com maior peso no resultado da semana: ${fmtRankingCidade(semInfo)}.`:'')
       +(semInfo.badTotal?`\nPrincipais causas na semana: ${fmtRankingCausa(semInfo)}.`:'')
     :`Sem chamados no período na semana ${semLbl} até o momento.`;
@@ -38343,7 +38345,7 @@ async function execGerarApresentacao(modo){
         const ag=rdeRedirStatsFor(recsRede,'prazo').val;
         out.push({t:'REDE · '+execN(recsRede.length)+' chamados no recorte',cor:COR_ST[stInd('higher',ag,RDE_M89,3)],
           cols:[['Cluster',1.6],['Chamados',1.1],['Prazo',1.1],['vs meta '+pp(RDE_M89)+'%',1.3],['Outlier',1.1],['vs máx. '+pp(RDE_MOUT)+'%',1.3],['MTTR',1.1],['vs meta '+String(RDE_MTME).replace('.',',')+' h',1.3]],rows,
-          dest:off.length?'Atenção: '+off.length+' chamados fora do prazo'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro do prazo.'});
+          dest:off.length?'Atenção: '+off.length+(off.length===1?' chamado':' chamados')+' fora do prazo'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro do prazo.'});
       }
       if(segOn('b2b')&&recsEnc.length){
         const cls=[...new Set(recsEnc.map(x=>x.cluster).filter(Boolean))].sort((a,b)=>{const ia=ordEnc.indexOf(a),ib=ordEnc.indexOf(b);return(ia<0?99:ia)-(ib<0?99:ib);});
@@ -38353,7 +38355,7 @@ async function execGerarApresentacao(modo){
         const off=execPptOfEnc(recsEnc,'prazo'),cid=topo(off,'cidade'),cau=topo(off,'causa'),stt=encRuleStats(recsEnc);
         out.push({t:'B2B ENCERRADOS · '+execN(recsEnc.length)+' chamados no recorte',cor:COR_ST[stInd('higher',stt.pPrazo,ENC_META_PRAZO,3)],
           cols:[['Cluster',1.8],['Chamados',1.1],['Prazo ≤ 8h',1.2],['vs meta '+pp(ENC_META_PRAZO)+'%',1.4],['Outlier > 12h',1.3],['vs máx. '+pp(ENC_META_OUTLIER)+'%',1.4]],rows,
-          dest:off.length?'Atenção: '+off.length+' chamados acima de 8h'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa raiz mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro de 8h.'});
+          dest:off.length?'Atenção: '+off.length+(off.length===1?' chamado':' chamados')+' acima de 8h'+(cid?' — '+cid.k+' concentra '+cid.n:'')+(cau?'; causa raiz mais frequente: '+cau.k+' ('+cau.n+')':'')+'.':'Todos os chamados do recorte dentro de 8h.'});
       }
       if(segOn('b2c')&&b2c.total){
         const rows=b2c.indicadores.map(i=>[cel(NOME_IND(i),NAVY,true),cel(fmtR(i),COR_ST[i.status==='wn'?'wn':i.status]||GREY,true),cel(fmtM(i)),cel(execStatusLabel(i.status),COR_ST[i.status==='wn'?'wn':i.status]||GREY,true)]);
