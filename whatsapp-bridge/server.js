@@ -160,8 +160,7 @@ async function startClient() {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-extensions',
-        '--disable-software-rasterizer',
-        '--single-process'
+        '--disable-software-rasterizer'
       ]
     }
   });
@@ -211,6 +210,7 @@ async function startClient() {
     await client.initialize();
   } catch (err) {
     setStatus('error', { lastError: err.message || String(err) });
+    scheduleRestart(15000); // ex.: 'Requesting main frame too early!' — tenta de novo sozinho
   } finally {
     initializing = false;
   }
