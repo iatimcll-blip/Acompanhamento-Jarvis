@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-19T00:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-19T00:55:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -25416,7 +25416,8 @@ let wppWs=null,wppBridgeState=null,wppChats=[],wppActiveChat='',wppMessages=[],w
 let wppFilterEnabled=false,wppFilterIds=new Set(),wppSearchQuery='';
 function wppFilterLoad(){try{const s=JSON.parse(localStorage.getItem(WPP_FILTER_KEY)||'{}');wppFilterEnabled=!!s.enabled;wppFilterIds=new Set(Array.isArray(s.ids)?s.ids:[]);}catch(e){wppFilterEnabled=false;wppFilterIds=new Set();}}
 function wppFilterSave(){try{localStorage.setItem(WPP_FILTER_KEY,JSON.stringify({enabled:wppFilterEnabled,ids:[...wppFilterIds]}));}catch(e){}}
-function wppIsMonitored(chatId){return !wppFilterEnabled||!wppFilterIds.size||wppFilterIds.has(chatId);}
+/* 2026-11-18: o Monitoramento Seletivo só PRIORIZA (notificação vermelha); nada é filtrado nem bloqueado */
+function wppIsMonitored(chatId){return true;}
 function wppSearch(q){wppSearchQuery=(q||'').toLowerCase();renderWppChats();}
 function wppIsHostedPage(){return location.protocol==='https:'&&!['localhost','127.0.0.1','::1'].includes(location.hostname)}
 function wppIsLocalBridgeUrl(u){return/^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(String(u||'').trim())}
@@ -25521,12 +25522,11 @@ function renderWppChats(){
   if(typeof wppNavPisca==='function')wppNavPisca();
   const el=document.getElementById('wpp-chat-list');if(!el)return;
   const fbtn=document.getElementById('wpp-filter-btn');
-  if(fbtn){const active=wppFilterEnabled&&wppFilterIds.size>0;fbtn.classList.toggle('active',active);}
+  if(fbtn){const active=wppFilterIds.size>0;fbtn.classList.toggle('active',active);}
   if(!wppChats.length){el.innerHTML='<div class="wpp-chat-item"><div class="wpp-ci-av"><i class="ti ti-qrcode"></i></div><div class="wpp-ci-info"><div class="wpp-ci-top"><span class="wpp-ci-name">Conectar aparelho</span></div><div class="wpp-ci-bot"><span class="wpp-ci-prev">Leia o QR Code para iniciar</span></div></div></div>';return}
   let chats=[...wppChats];
   if(wppTabFilter==='unread')chats=chats.filter(c=>c.unreadCount>0);
   else if(wppTabFilter==='groups')chats=chats.filter(c=>c.isGroup);
-  if(wppFilterEnabled&&wppFilterIds.size)chats=chats.filter(c=>wppFilterIds.has(c.id));
   if(wppSearchQuery)chats=chats.filter(c=>(c.name||'').toLowerCase().includes(wppSearchQuery));
   if(wppTagFiltro)chats=chats.filter(c=>((wppTags.map[c.id])||[]).includes(wppTagFiltro));
   chats=wppOrdenarFixadas(chats);
@@ -26468,7 +26468,7 @@ function openWppFilter(){
     overlay=document.createElement('div');
     overlay.id='wpp-filter-modal';
     overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px';
-    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;width:100%;max-width:440px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:18px 18px 0;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:10px"><i class="ti ti-filter" style="font-size:22px;color:#00a884"></i><div><div style="font-size:15px;font-weight:700;color:var(--tx)">Monitoramento Seletivo</div><div style="font-size:13px;color:var(--tx2);margin-top:1px">Escolha quais grupos e contatos geram alertas</div></div></div><button onclick="closeWppFilter()" style="background:none;border:none;cursor:pointer;color:var(--tx2);font-size:18px;padding:4px"><i class="ti ti-x"></i></button></div><div style="padding:12px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:15px;color:var(--tx)"><strong>Ativar filtro</strong><div style="font-size:13px;color:var(--tx2);margin-top:2px">Badge e som apenas das conversas marcadas com ★</div></div><div id="wpp-filter-switch" onclick="wppToggleFilterMode()" style="width:44px;height:24px;border-radius:99px;cursor:pointer;transition:.2s;flex-shrink:0;position:relative"><div id="wpp-filter-thumb" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div></div></div><div id="wpp-filter-body" style="overflow-y:auto;padding:0 18px;flex:1"></div><div style="padding:14px 18px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px"><span id="wpp-filter-count" style="flex:1;font-size:14px;color:var(--tx2)"></span><button type="button" id="wpp-filter-clear" onclick="wppFilterDesmarcarTodos()" title="Tira a estrela de todas as conversas (confirme com Salvar)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--red);font-size:14px;white-space:nowrap"><i class="ti ti-star-off"></i> Desmarcar todos</button><button onclick="closeWppFilter()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--tx);font-size:15px">Cancelar</button><button onclick="wppSaveFilter()" style="padding:8px 20px;border-radius:8px;border:none;background:#00a884;color:#fff;cursor:pointer;font-weight:600;font-size:15px">Salvar</button></div></div>`;
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;width:100%;max-width:440px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:18px 18px 0;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:10px"><i class="ti ti-filter" style="font-size:22px;color:#00a884"></i><div><div style="font-size:15px;font-weight:700;color:var(--tx)">Monitoramento Seletivo</div><div style="font-size:13px;color:var(--tx2);margin-top:1px">Grupos e contatos com notificação prioritária</div></div></div><button onclick="closeWppFilter()" style="background:none;border:none;cursor:pointer;color:var(--tx2);font-size:18px;padding:4px"><i class="ti ti-x"></i></button></div><div style="padding:10px 18px;border-bottom:1px solid var(--bd);font-size:13px;color:var(--tx2);line-height:1.45"><b style="color:#d93025">★ Marcadas:</b> mensagem chega como notificação <b style="color:#d93025">PRIORITÁRIA (vermelha)</b>, piscando até você ver.<br><b style="color:#b8860b">Demais conversas:</b> continuam na lista e notificam normalmente (amarela).</div><div id="wpp-filter-body" style="overflow-y:auto;padding:0 18px;flex:1"></div><div style="padding:14px 18px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px"><span id="wpp-filter-count" style="flex:1;font-size:14px;color:var(--tx2)"></span><button type="button" id="wpp-filter-clear" onclick="wppFilterDesmarcarTodos()" title="Tira a estrela de todas as conversas (confirme com Salvar)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--red);font-size:14px;white-space:nowrap"><i class="ti ti-star-off"></i> Desmarcar todos</button><button onclick="closeWppFilter()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--tx);font-size:15px">Cancelar</button><button onclick="wppSaveFilter()" style="padding:8px 20px;border-radius:8px;border:none;background:#00a884;color:#fff;cursor:pointer;font-weight:600;font-size:15px">Salvar</button></div></div>`;
     overlay.addEventListener('click',e=>{if(e.target===overlay)closeWppFilter();});
     document.body.appendChild(overlay);
   }
@@ -26495,7 +26495,7 @@ function wppToggleFilterItem(id,checked){
 }
 function _wppFilterUpdateCount(){
   const el=document.getElementById('wpp-filter-count');
-  if(el)el.textContent=wppFilterIds.size?`${wppFilterIds.size} conversa${wppFilterIds.size!==1?'s':''} marcada${wppFilterIds.size!==1?'s':''}`:wppFilterEnabled?'Nenhuma conversa marcada — todos os alertas bloqueados':'Nenhuma conversa marcada';
+  if(el)el.textContent=wppFilterIds.size?`${wppFilterIds.size} conversa${wppFilterIds.size!==1?'s':''} marcada${wppFilterIds.size!==1?'s':''}`:false?'':'Nenhuma conversa marcada';
 }
 function wppToggleFilterMode(){
   wppFilterEnabled=!wppFilterEnabled;
@@ -26509,7 +26509,7 @@ function closeWppFilter(){wppFilterLoad();/* Cancelar desfaz o que não foi salv
 function wppSaveFilter(){
   wppFilterSave();closeWppFilter();renderWppChats();
   const n=wppFilterIds.size;
-  _ghToast(wppFilterEnabled&&n?`★ Monitorando ${n} conversa${n!==1?'s':''}`:wppFilterEnabled?'Filtro ativo — marque ao menos uma conversa':'Filtro desativado — recebendo alertas de todos','#00a884',4000);
+  _ghToast(n?`★ ${n} conversa${n!==1?'s':''} com notificação prioritária (vermelha)`:'Nenhuma conversa prioritária — todas notificam em amarelo','#00a884',4000);
 }
 function monNorm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();}
 function monChatName(c){return String((c&&(c.name||c.pushname||c.formattedTitle||c.id))||'').trim();}
