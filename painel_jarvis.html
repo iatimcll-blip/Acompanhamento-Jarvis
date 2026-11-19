@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-19T01:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-19T13:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -12814,7 +12814,7 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         </div>
       </div>
       <div class="mrow" id="mrow-enc"></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button><button data-up="encerrados" class="mop-ref-btn admin-only enc-bi-run" onclick="biEncAtualizar()" title="Atualiza a base do B2B Encerrados direto do Power BI"><i class="ti ti-chart-bar"></i> <span class="enc-bi-txt">BI ENC</span></button><button class="mop-ref-btn" onclick="abrirBiEnc()" title="Abrir o relatório Reparos Encerrados no Power BI"><i class="ti ti-external-link"></i></button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="mop-ref-btn" onclick="document.getElementById('modal-mop').style.display='flex'"><i class="ti ti-map-2"></i> Cobertura por região</button><button data-up="encerrados" class="mop-ref-btn admin-only enc-bi-run" onclick="biEncAtualizar()" title="Atualiza a base do B2B Encerrados direto do Power BI"><i class="ti ti-chart-bar"></i> <span class="enc-bi-txt">BI ENC</span></button><button class="mop-ref-btn" onclick="abrirBiEnc()" title="Abrir o relatório Reparos Encerrados no Power BI"><i class="ti ti-external-link"></i></button><button class="mop-ref-btn" onclick="exportEncExcel()" title="Baixa um Excel com a base do recorte atual e uma aba para cada análise do painel (cluster, faixa SLA, causa, mês, semana/meta, WoW, segmento, UF, cidades, Redir e relatório)"><i class="ti ti-file-spreadsheet"></i> Exportar base (Excel)</button></div>
       <div id="week-banner-enc"></div>
       <div class="section-hd">Performance por cluster <span class="sh-line"></span></div>
       <div class="cluster-grid" id="cluster-cards"></div>
@@ -23601,6 +23601,171 @@ function renderTEnc(){
     const clsSpan=`<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${clrDot};flex-shrink:0"></span>${d.cluster||'—'}</span>`;
     return`<tr class="enc-flat"><td class="tid enc-nowrap">${eh(d.protocolo)}</td><td class="enc-cli" title="${eh(cliTC)}" style="color:var(--tx)">${eh(cliTC)}</td><td class="enc-cf" title="${eh(cfTC)}" style="color:var(--tx2)">${eh(cfTC)}</td><td class="enc-nowrap" style="color:var(--tx3)">${eh(cidadeUf)}</td><td class="enc-nowrap">${clsSpan}</td><td class="enc-nowrap"><span class="badge ${bc}">${eh(d.faixa)}</span></td><td class="enc-semana enc-nowrap"><span class="badge b-teal">${eh(d.semana||'—')}</span></td><td class="enc-tempo enc-nowrap" style="${sc}">${fh(d.tempoTotal)}</td><td class="enc-nowrap">${d8}&nbsp;${ol}</td><td class="enc-causa" title="${eh(causa)}">${eh(causa||'—')}</td></tr>`;
   }).join('')||'<tr><td colspan="10" class="nores"><i class="ti ti-search-off"></i>Nenhum resultado</td></tr>';
+}
+/* ── B2B Encerrados: "Exportar base (Excel)" com todas as análises (pedido 2026-11-19) ──
+   Um .xlsx com uma aba por análise da tela, todas no MESMO recorte do painel (encScope():
+   Ano/Mês/Semana/Cluster do topo). A aba "Lista filtrada" só aparece quando a tabela tem
+   filtros próprios (cluster/faixa/causa/UF/semana/segmento/outlier/busca/clique no gráfico),
+   e traz exatamente as linhas da tabela, na ordem da tela. */
+function _encXlPct(n,t){return t?Math.round(n/t*1000)/10:0;}
+function _encXlH(v){return Math.round((Number(v)||0)*100)/100;}
+function _encXlClass(x){return x.outlier24h?'Outlier >12h':x.dentro8h?'Prazo ≤8h':'8h a 12h';}
+function _encXlAgrupa(d,chaveFn){
+  const g={};d.forEach(x=>{const k=chaveFn(x);const kk=(k===undefined||k===null||k==='')?'(sem informação)':String(k);(g[kk]=g[kk]||[]).push(x);});
+  return g;
+}
+function _encXlLinhaStats(rows,total){
+  const s=encRuleStats(rows);const vs=rows.map(x=>x.tempoTotal).filter(v=>v>0);
+  return{'Chamados':s.total,'% do total':_encXlPct(s.total,total),'Prazo ≤8h':s.prazo,'% Prazo':_encXlPct(s.prazo,s.total),
+    '8h a 12h':s.intermediario,'% 8h a 12h':_encXlPct(s.intermediario,s.total),'Outlier >12h':s.outlier,'% Outlier':_encXlPct(s.outlier,s.total),
+    'Tempo médio (h)':vs.length?_encXlH(vs.reduce((a,b)=>a+b,0)/vs.length):0};
+}
+function _encXlTabela(d,chaveFn,rotulo,ordem){
+  const g=_encXlAgrupa(d,chaveFn),total=d.length;
+  let ks=Object.keys(g);
+  if(ordem)ks=ordem.filter(k=>g[k]).concat(ks.filter(k=>!ordem.includes(k)));
+  else ks.sort((a,b)=>g[b].length-g[a].length||a.localeCompare(b,'pt-BR'));
+  return ks.map(k=>Object.assign({[rotulo]:k},_encXlLinhaStats(g[k],total)));
+}
+const ENC_XL_COLS=[['protocolo','Protocolo'],['cliente','Cliente'],['titulo','Cliente Final'],['uf','UF'],['cidade','Cidade'],['mop','MOP'],['cluster','Cluster'],['segmento','Segmento'],['mes','Mês'],['semana','Semana'],['dataAbertura','Data Abertura'],['dataFechamento','Data Fechamento'],['tempoTotal','Tempo total (h)'],['faixa','Faixa SLA'],['dentro8h','Dentro 8h'],['outlier24h','Outlier >12h'],['causaRaiz','Causa raiz (original)']];
+function _encXlBase(rows){
+  const conhecidas=new Set(ENC_XL_COLS.map(c=>c[0]));
+  const extras=[];
+  rows.forEach(r=>Object.keys(r).forEach(k=>{if(conhecidas.has(k)||k.charAt(0)==='_'||extras.includes(k))return;const v=r[k];if(v===null||v===undefined||typeof v!=='object')extras.push(k);}));
+  return rows.map(r=>{
+    const o={};
+    ENC_XL_COLS.forEach(([k,l])=>{let v=r[k];
+      if(k==='dentro8h'||k==='outlier24h')v=v?'Sim':'Não';
+      else if(k==='tempoTotal')v=_encXlH(v);
+      else if(k==='segmento'||k==='cliente'||k==='titulo')v=repairPtBR(v||'');
+      o[l]=v===undefined||v===null?'':v;
+      if(k==='tempoTotal'){o['Tempo (h:min)']=fh(Number(r.tempoTotal)||0);}
+      if(k==='faixa'){o['Classificação']=_encXlClass(r);}
+      if(k==='causaRaiz'){o['Causa raiz']=fmtCausaRaiz(r.causaRaiz);}
+    });
+    extras.forEach(k=>{const v=r[k];o[k]=typeof v==='boolean'?(v?'Sim':'Não'):(v===undefined||v===null?'':v);});
+    return o;
+  });
+}
+function _encXlFolha(wb,nome,linhas,larguras){
+  const ws=linhas.length?XLSX.utils.json_to_sheet(linhas):XLSX.utils.aoa_to_sheet([['Sem dados no recorte atual']]);
+  if(linhas.length){const cab=Object.keys(linhas[0]);
+    ws['!cols']=cab.map((c,i)=>({wch:(larguras&&larguras[i])||Math.min(45,Math.max(10,c.length+2,...linhas.slice(0,300).map(l=>String(l[c]===undefined?'':l[c]).length+1)))}));
+    ws['!autofilter']={ref:XLSX.utils.encode_range({s:{c:0,r:0},e:{c:cab.length-1,r:linhas.length}})};}
+  XLSX.utils.book_append_sheet(wb,ws,nome.slice(0,31));
+}
+function exportEncExcel(){
+  if(typeof XLSX==='undefined'){_ghToast('Biblioteca de Excel não carregou — recarregue a página (F5).','var(--red)',6000);return;}
+  if(!dEnc||!dEnc.length){_ghToast('Nenhuma base do B2B Encerrados carregada.','var(--orange)',4000);return;}
+  try{
+  const d=encScope(),lista=gFEnc();
+  const wb=XLSX.utils.book_new();
+  const agora=new Date();
+  const s=encRuleStats(d),sm=encStatsClusterAvg(d);
+  const vs=d.map(x=>x.tempoTotal).filter(v=>v>0),media=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;
+  const lider=se(cnt(d,'cluster'))[0]||['—',0];
+  const srch=(document.getElementById('f-srch-enc')||{}).value||'';
+  const filtrosTabela=[selEncCluster.length?'Cluster: '+selEncCluster.join(', '):'',selEncAging.length?'Faixa: '+selEncAging.join(', '):'',selEncCausa.length?'Causa: '+selEncCausa.join(', '):'',selEncUf.length?'UF: '+selEncUf.join(', '):'',selEncSemana.length?'Semana: '+selEncSemana.join(', '):'',selEncSeg.length?'Segmento: '+selEncSeg.join(', '):'',selEncOut.length?'Outlier: '+selEncOut.join(', '):'',srch?'Busca: "'+srch+'"':'',encChartBucket?'Gráfico: '+({prazo:'Prazo ≤8h',inter:'8h a 12h',outlier:'Outlier >12h'}[encChartBucket]||encChartBucket):''].filter(Boolean);
+  /* 1) Resumo */
+  const R=[
+    ['B2B Encerrados — exportação com todas as análises'],
+    ['Gerado em',agora.toLocaleString('pt-BR')],
+    ['Base completa',dEnc.length+' chamados'],
+    [],
+    ['FILTROS DO PAINEL (valem para todas as abas)'],
+    ['Ano',(typeof selYear!=='undefined'&&selYear.length)?selYear.join(', '):'Todos'],
+    ['Mês',selMes.length?selMes.map(fmtMesLabel).join(', '):'Todos'],
+    ['Semana',selWeek.length?selWeek.join(', '):'Todas'],
+    ['Cluster',selCluster.length?selCluster.join(', '):'Todos'],
+    ['Filtros da tabela (só aba "Lista filtrada")',filtrosTabela.length?filtrosTabela.join(' · '):'Nenhum'],
+    [],
+    ['INDICADORES DO RECORTE','Quantidade','%'],
+    ['Total encerrados',s.total,''],
+    ['Prazo ≤8h',s.prazo,_encXlPct(s.prazo,s.total)],
+    ['8h a 12h',s.intermediario,_encXlPct(s.intermediario,s.total)],
+    ['Outlier >12h',s.outlier,_encXlPct(s.outlier,s.total)],
+    ['Fora da meta 8h (8h a 12h + Outlier)',s.fora8,_encXlPct(s.fora8,s.total)],
+    ['Tempo médio',fh(media),''],
+    ['Cluster líder (maior volume)',lider[0],lider[1]+' chamados'],
+    [],
+    ['ANÁLISE DE PRAZO E OUTLIER (média entre clusters, igual ao card da tela)','%'],
+    ['% Prazo ≤8h',Math.round(sm.pPrazo*10)/10],
+    ['% 8h a 12h',Math.round(sm.pInter*10)/10],
+    ['% Outlier >12h',Math.round(sm.pOut*10)/10],
+    ['Meta de prazo (≥)',ENC_META_PRAZO],
+    ['Meta de outlier (≤)',ENC_META_OUTLIER],
+    ['Situação da meta de prazo',sm.pPrazo>=ENC_META_PRAZO?'Atingida':'Faltam '+pp(sm.gapPrazo)+' p.p.'],
+    ['Outlier acima do limite',sm.excessoOutlier>0?pp(sm.excessoOutlier)+' p.p.':'Dentro do limite'],
+    [],
+    ['ABAS DESTE ARQUIVO'],
+    ['Base','Todos os chamados do recorte, com todas as colunas'],
+    ['Lista filtrada','Linhas da tabela da tela (só quando há filtro próprio da tabela)'],
+    ['Por Cluster · Faixa SLA · Causa Raiz · Por Mês · Segmento · UF · Cidades','Quantidade, % e prazo/outlier de cada grupo'],
+    ['Semana e Meta','Volume por semana e % no prazo frente à meta de 85% (como os gráficos da tela)'],
+    ['Semana x Semana','Variação do volume frente à semana anterior (WoW)'],
+    ['Redir Regional','% Prazo e % Outlier por regional/cluster, mês a mês e últimas semanas'],
+    ['Relatório','Texto da análise executiva do recorte']
+  ];
+  const wsR=XLSX.utils.aoa_to_sheet(R);wsR['!cols']=[{wch:62},{wch:40},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,wsR,'Resumo');
+  /* 2) Base e lista filtrada */
+  _encXlFolha(wb,'Base',_encXlBase(d));
+  if(filtrosTabela.length)_encXlFolha(wb,'Lista filtrada',_encXlBase(lista));
+  /* 3) Cluster (mesma régua de cor dos cards) */
+  const porCl=_encXlTabela(d,x=>x.cluster,'Cluster',typeof clusterCardOrder==='function'?clusterCardOrder(selCluster):null).map(l=>{
+    const p=l['% Prazo'];return Object.assign(l,{'Meta prazo (≥)':ENC_META_PRAZO,'Situação':p>=ENC_META_PRAZO?'Meta atingida':p>=ENC_META_PRAZO-15?'Próximo da meta':'Abaixo da meta'});});
+  _encXlFolha(wb,'Por Cluster',porCl);
+  _encXlFolha(wb,'Faixa SLA',_encXlTabela(d,x=>x.faixa,'Faixa SLA',SLA_ORDER));
+  _encXlFolha(wb,'Causa Raiz',_encXlTabela(d,x=>fmtCausaRaiz(x.causaRaiz),'Causa raiz'));
+  const porMes=_encXlTabela(d,x=>x.mes,'Mês');porMes.sort((a,b)=>String(a['Mês']).localeCompare(String(b['Mês'])));
+  porMes.forEach(l=>{if(/^\d{4}-\d{2}$/.test(l['Mês']))l['Mês']=fmtMesLabel(l['Mês']);});
+  _encXlFolha(wb,'Por Mês',porMes);
+  /* 4) Semana: mesma base dos gráficos "Volume/Semana" e "Evolução da meta semanal" */
+  const baseSem=selCluster.length?dEnc.filter(x=>clusterRowMatches(selCluster,x.cluster)):dEnc;
+  const gs=_encXlAgrupa(baseSem.filter(x=>x.semana),x=>x.semana);
+  const sem=Object.keys(gs).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).map(k=>{
+    const st=encRuleStats(gs[k]),p=Math.round(st.pPrazo*10)/10;
+    return{'Semana':k,'Selecionada no filtro':selWeek.includes(k)?'Sim':'','Chamados':st.total,'Prazo ≤8h':st.prazo,'% Prazo':p,'Meta (%)':85,'Atingiu a meta':p>=85?'Sim':'Não','8h a 12h':st.intermediario,'Outlier >12h':st.outlier,'% Outlier':Math.round(st.pOut*10)/10};});
+  _encXlFolha(wb,'Semana e Meta',sem);
+  const wow=encWoWSeries().map(w=>({'Semana':w.semana,'Chamados':w.total,'Variação vs semana anterior (%)':w.varPct===null?'':Math.round(w.varPct*10)/10,'% Prazo':Math.round(w.pPrazo*10)/10,'% Outlier':Math.round(w.pOut*10)/10}));
+  _encXlFolha(wb,'Semana x Semana',wow);
+  _encXlFolha(wb,'Segmento',_encXlTabela(d,x=>repairPtBR(x.segmento||''),'Segmento'));
+  _encXlFolha(wb,'UF',_encXlTabela(d,x=>x.uf,'UF'));
+  /* 5) Cidades — ranking completo (a tela mostra o top 10) */
+  const gc=_encXlAgrupa(d.filter(x=>x.cidade),x=>x.cidade+'|'+(x.uf||''));
+  const cid=Object.keys(gc).map(k=>{const r=gc[k],cl=se(cnt(r,'cluster'))[0];
+    return Object.assign({'Cidade':r[0].cidade,'UF':r[0].uf||'','Cluster':cl?cl[0]:''},_encXlLinhaStats(r,d.length));})
+    .sort((a,b)=>b['Chamados']-a['Chamados']||a['Cidade'].localeCompare(b['Cidade'],'pt-BR'));
+  cid.forEach((l,i)=>{l['Posição']=i+1;});
+  _encXlFolha(wb,'Cidades',cid.map(l=>Object.assign({'Posição':l['Posição']},l)));
+  /* 6) Redir: % Prazo e % Outlier por regional e por cluster (mesmo cálculo da tela) */
+  try{
+    const meses=redirYearMonths(),semanas=redirLastWeeks(5);
+    const linhasRedir=[];
+    ['prazo','outlier'].forEach(metric=>{
+      const nomeM=metric==='prazo'?'% Prazo ≤8h':'% Outlier >12h';
+      const grupos=[];
+      redirGroupsVis().forEach(g=>{grupos.push({g:Object.assign({},g,{label:g.key+(g.code?' ('+g.code+')':'')}),nivel:'Regional'});g.clusters.forEach(c=>grupos.push({g:{key:c,label:c,clusters:[c]},nivel:'Cluster de '+(g.label||g.key)}));});
+      const sMes=redirSeries(meses,x=>x.mes,metric,grupos.map(x=>x.g)),sSem=redirSeries(semanas,x=>x.semana,metric,grupos.map(x=>x.g));
+      grupos.forEach((gr,i)=>{
+        const o={'Indicador':nomeM,'Nível':gr.nivel,'Regional / Cluster':gr.g.label||gr.g.key};
+        meses.forEach((m,j)=>{const c=sMes[i].cells[j];o[redirMesAbrev(m)+'/'+m.slice(0,4)]=c&&c.pct!==null?Math.round(c.pct*10)/10:'';});
+        semanas.forEach((w,j)=>{const c=sSem[i].cells[j];o[w]=c&&c.pct!==null?Math.round(c.pct*10)/10:'';});
+        o['Meta']=metric==='prazo'?'≥ '+ENC_META_PRAZO:'≤ '+ENC_META_OUTLIER;
+        linhasRedir.push(o);
+      });
+    });
+    _encXlFolha(wb,'Redir Regional',linhasRedir);
+  }catch(e){console.warn('Exportar Encerrados — Redir:',e);}
+  /* 7) Relatório executivo (texto) */
+  let rel=null;try{rel=encBuildFullReportText(d);}catch(_){}
+  const relLinhas=(Array.isArray(rel)?rel:String(rel||'Sem dados no recorte atual').split('\n')).map(l=>[String(l)]);
+  const wsT=XLSX.utils.aoa_to_sheet([['Relatório — B2B Encerrados ('+agora.toLocaleDateString('pt-BR')+')']].concat(relLinhas));wsT['!cols']=[{wch:140}];
+  XLSX.utils.book_append_sheet(wb,wsT,'Relatório');
+  const sufixo=[selMes.length?selMes.join('+'):'',selWeek.length?selWeek.join('+'):'',selCluster.length?selCluster.join('+'):''].filter(Boolean).join('_').replace(/[^\w+\-]+/g,'-');
+  XLSX.writeFile(wb,'B2B_Encerrados_analises'+(sufixo?'_'+sufixo:'')+'_'+agora.toISOString().slice(0,10)+'.xlsx');
+  _ghToast('Excel do B2B Encerrados gerado: '+d.length+' chamados e '+wb.SheetNames.length+' abas.','var(--green-dk)',5000);
+  }catch(e){console.error(e);_ghToast('Erro ao gerar o Excel: '+(e&&e.message||e),'var(--red)',7000);}
 }
 function sEnc(c){scEnc===c?sdEnc*=-1:(scEnc=c,sdEnc=-1);renderTEnc()}
 
