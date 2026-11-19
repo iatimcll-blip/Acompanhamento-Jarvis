@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-19T00:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-19T00:25:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -9830,8 +9830,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         const msg=`${novos.length} chamado(s) Bdesk com SLA vencendo em até ${AOF_NOTIF_WINDOW_H}h`;
         _ghToast('⚠ '+msg,'var(--red)',6000);
         aofNotifyNativo('Abertos OFS — SLA Bdesk',msg+': '+novos.slice(0,5).map(x=>x.r.os).join(', '));
-        /* 2026-11-18: também nos grupos principais do WhatsApp (a ponte descarta o que já foi avisado) */
-        if(typeof wppNotificarGrupos==='function')wppNotificarGrupos({kind:'bdesk-sla',ttlHours:12,
+        /* 2026-11-18 (noite): envio AUTOMÁTICO ao WhatsApp DESATIVADO a pedido do usuário — o aviso fica só na tela/Windows.
+           Mensagem ao WhatsApp agora só sai quando alguém clica em enviar e escolhe o grupo. */
+        if(false)wppNotificarGrupos({kind:'bdesk-sla',ttlHours:12,
           title:'⚠️ *Jarvis — SLA Bdesk vencendo* ('+novos.length+' chamado'+(novos.length===1?'':'s')+' em até '+AOF_NOTIF_WINDOW_H+'h)',
           items:novos.map(x=>({key:aofRowKey(x.r),text:[x.r.os||'—',x.r.cid||'—',x.r.tipo||'—','faltam '+aofFmtRestante(x.restH)].join(' · ')})),
           footer:'_Abertos OFS · '+new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' — reportar as atualizações_'});
@@ -26347,6 +26348,7 @@ async function wppNotifFetch(path,opts){
 }
 /* Chamado pelos painéis (ex.: Abertos OFS). Silencioso: falha não atrapalha nada. */
 async function wppNotificarGrupos(payload){
+  return null; /* envio automático de painel para o WhatsApp DESATIVADO (2026-11-18) */
   if(!wppNotifyHere()||typeof canEdit!=='function'||!canEdit())return null;
   try{return await wppNotifFetch('/api/notify',{method:'POST',body:JSON.stringify(payload),timeout:30000});}
   catch(e){console.warn('WhatsApp (notificação):',e&&e.message||e);return null;}
@@ -26465,7 +26467,7 @@ function openWppFilter(){
     overlay=document.createElement('div');
     overlay.id='wpp-filter-modal';
     overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px';
-    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;width:100%;max-width:440px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:18px 18px 0;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:10px"><i class="ti ti-filter" style="font-size:22px;color:#00a884"></i><div><div style="font-size:15px;font-weight:700;color:var(--tx)">Monitoramento Seletivo</div><div style="font-size:13px;color:var(--tx2);margin-top:1px">Escolha quais grupos e contatos geram alertas</div></div></div><button onclick="closeWppFilter()" style="background:none;border:none;cursor:pointer;color:var(--tx2);font-size:18px;padding:4px"><i class="ti ti-x"></i></button></div><div style="padding:12px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:15px;color:var(--tx)"><strong>Ativar filtro</strong><div style="font-size:13px;color:var(--tx2);margin-top:2px">Badge e som apenas das conversas marcadas com ★</div></div><div id="wpp-filter-switch" onclick="wppToggleFilterMode()" style="width:44px;height:24px;border-radius:99px;cursor:pointer;transition:.2s;flex-shrink:0;position:relative"><div id="wpp-filter-thumb" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div></div></div><div id="wpp-filter-body" style="overflow-y:auto;padding:0 18px;flex:1"></div><div style="padding:14px 18px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px"><span id="wpp-filter-count" style="flex:1;font-size:14px;color:var(--tx2)"></span><button onclick="closeWppFilter()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--tx);font-size:15px">Cancelar</button><button onclick="wppSaveFilter()" style="padding:8px 20px;border-radius:8px;border:none;background:#00a884;color:#fff;cursor:pointer;font-weight:600;font-size:15px">Salvar</button></div></div>`;
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;width:100%;max-width:440px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:18px 18px 0;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:10px"><i class="ti ti-filter" style="font-size:22px;color:#00a884"></i><div><div style="font-size:15px;font-weight:700;color:var(--tx)">Monitoramento Seletivo</div><div style="font-size:13px;color:var(--tx2);margin-top:1px">Escolha quais grupos e contatos geram alertas</div></div></div><button onclick="closeWppFilter()" style="background:none;border:none;cursor:pointer;color:var(--tx2);font-size:18px;padding:4px"><i class="ti ti-x"></i></button></div><div style="padding:12px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:15px;color:var(--tx)"><strong>Ativar filtro</strong><div style="font-size:13px;color:var(--tx2);margin-top:2px">Badge e som apenas das conversas marcadas com ★</div></div><div id="wpp-filter-switch" onclick="wppToggleFilterMode()" style="width:44px;height:24px;border-radius:99px;cursor:pointer;transition:.2s;flex-shrink:0;position:relative"><div id="wpp-filter-thumb" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div></div></div><div id="wpp-filter-body" style="overflow-y:auto;padding:0 18px;flex:1"></div><div style="padding:14px 18px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px"><span id="wpp-filter-count" style="flex:1;font-size:14px;color:var(--tx2)"></span><button type="button" id="wpp-filter-clear" onclick="wppFilterDesmarcarTodos()" title="Tira a estrela de todas as conversas (confirme com Salvar)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--red);font-size:14px;white-space:nowrap"><i class="ti ti-star-off"></i> Desmarcar todos</button><button onclick="closeWppFilter()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--bd);background:none;cursor:pointer;color:var(--tx);font-size:15px">Cancelar</button><button onclick="wppSaveFilter()" style="padding:8px 20px;border-radius:8px;border:none;background:#00a884;color:#fff;cursor:pointer;font-weight:600;font-size:15px">Salvar</button></div></div>`;
     overlay.addEventListener('click',e=>{if(e.target===overlay)closeWppFilter();});
     document.body.appendChild(overlay);
   }
@@ -26500,7 +26502,9 @@ function wppToggleFilterMode(){
   if(sw){sw.style.background=wppFilterEnabled?'#00a884':'#ccc';if(th)th.style.left=wppFilterEnabled?'22px':'2px';}
   _wppFilterUpdateCount();
 }
-function closeWppFilter(){const el=document.getElementById('wpp-filter-modal');if(el)el.style.display='none';}
+/* desmarca todas as conversas do monitoramento seletivo (vale ao clicar em Salvar) — 2026-11-18 */
+function wppFilterDesmarcarTodos(){if(!wppFilterIds.size){_ghToast('Nenhuma conversa marcada.','#00a884',2500);return;}wppFilterIds.clear();_wppFilterRenderModal();}
+function closeWppFilter(){wppFilterLoad();/* Cancelar desfaz o que não foi salvo */const el=document.getElementById('wpp-filter-modal');if(el)el.style.display='none';}
 function wppSaveFilter(){
   wppFilterSave();closeWppFilter();renderWppChats();
   const n=wppFilterIds.size;
