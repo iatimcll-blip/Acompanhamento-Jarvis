@@ -677,7 +677,12 @@ app.post('/api/notify-test', async (_req, res) => {
 });
 
 // Notificação com itens deduplicados por chave: { kind, title, items:[{key,text}], footer, ttlHours }
+// Envio AUTOMÁTICO de painel para os grupos: DESATIVADO a pedido do usuário (2026-11-18).
+// Bloqueado aqui na ponte para que nenhuma aba antiga (em qualquer aparelho) dispare mensagens sozinha.
+// Mensagens só saem por ação manual (/api/send-message, /api/forward, /api/notify-test).
+const NOTIFY_AUTOMATICO = false;
 app.post('/api/notify', async (req, res) => {
+  if (!NOTIFY_AUTOMATICO) { res.json({ ok: true, skipped: 'envio automático desativado' }); return; }
   if (!requireReady(res)) return;
   const cfg = loadNotify();
   const kind = String(req.body.kind || 'geral').slice(0, 40);
