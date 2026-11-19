@@ -667,6 +667,7 @@ app.post('/api/notify-config', (req, res) => {
 });
 
 app.post('/api/notify-test', async (_req, res) => {
+  if (!NOTIFY_AUTOMATICO) { res.json({ ok: true, skipped: 'envio automático desativado' }); return; } // regra: só envio manual com destino escolhido
   if (!requireReady(res)) return;
   const cfg = loadNotify();
   if (!cfg.groups.length) { res.status(400).json({ error: 'Nenhum grupo principal escolhido.' }); return; }
