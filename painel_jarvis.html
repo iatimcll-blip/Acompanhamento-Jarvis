@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-19T00:55:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-19T01:10:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -25602,6 +25602,18 @@ function wppAudioTocando(a){document.querySelectorAll('.wpp-midia-aud audio').fo
 function wppAudioVel(b){const a=b.parentNode.querySelector('audio');if(!a)return;const v=a.playbackRate>=2?1:a.playbackRate>=1.5?2:1.5;a.playbackRate=v;b.textContent=String(v).replace('.',',')+'x';}
 function wppScroller(){const b=document.getElementById('wpp-messages');return b?b.parentElement:null;}
 function wppPertoDoFim(){const s=wppScroller();return!s||s.scrollHeight-s.scrollTop-s.clientHeight<140;}
+/* Ao abrir a conversa: sempre mostrar a ÚLTIMA mensagem (2026-11-18). Fotos/vídeos/áudios carregam depois e
+   aumentam a altura — por alguns segundos a rolagem fica presa no fim, a menos que a pessoa role para cima. */
+let _wppGrudeAte=0,_wppGrudeRO=null;
+function wppGrudarFim(ms){
+  const s=wppScroller(),box=document.getElementById('wpp-messages');if(!s||!box)return;
+  _wppGrudeAte=Date.now()+(ms||5000);
+  const ir=()=>{if(Date.now()<_wppGrudeAte)s.scrollTop=s.scrollHeight;};
+  ir();requestAnimationFrame(()=>{ir();requestAnimationFrame(ir);});[150,400,900,1800].forEach(t=>setTimeout(ir,t));
+  box.querySelectorAll('img,video,audio').forEach(el=>{el.addEventListener('load',ir,{once:true});el.addEventListener('loadedmetadata',ir,{once:true});});
+  if(!s._wppGrudeOuv){s._wppGrudeOuv=1;const parar=()=>{_wppGrudeAte=0;};s.addEventListener('wheel',e=>{if(e.deltaY<0)parar();},{passive:true});s.addEventListener('touchmove',parar,{passive:true});s.addEventListener('keydown',parar);}
+  if(window.ResizeObserver){if(_wppGrudeRO)_wppGrudeRO.disconnect();_wppGrudeRO=new ResizeObserver(ir);_wppGrudeRO.observe(box);}
+}
 function wppIrParaFim(){const s=wppScroller();if(s)s.scrollTop=s.scrollHeight;_wppNovas=0;wppRenderNovas();}
 function wppRenderNovas(){
   let b=document.getElementById('wpp-novas');
@@ -25647,7 +25659,8 @@ function renderWppMessages(opt){
   renderWppHdOrg();
   if(s){
     if(opt.manterTopo)s.scrollTop=topAntes+(s.scrollHeight-hAntes);
-    else if(opt.fim||perto){s.scrollTop=s.scrollHeight;_wppNovas=0;}
+    else if(opt.fim){_wppNovas=0;wppGrudarFim();}
+    else if(perto){s.scrollTop=s.scrollHeight;_wppNovas=0;}
   }
   wppRenderNovas();
   renderWppState();
@@ -28624,7 +28637,7 @@ function switchTab(tab,persist=true,skipRenderTabs=null){
   if(isOfs&&!_skip('ofs'))renderOfs();
   if(isRede){rdeSyncControls();if(!_skip('rede'))renderRede();}
   if(isMon)loadMonitorPanel();
-  if(isWpp){wppUnreadCount=0;updateWppBadge();loadWhatsAppPanel();}
+  if(isWpp){wppUnreadCount=0;updateWppBadge();loadWhatsAppPanel();if(typeof wppGrudarFim==='function'&&wppActiveChat)setTimeout(()=>{_wppNovas=0;wppGrudarFim(2500);wppRenderNovas();},0);}
   if(typeof wppNavPisca==='function')wppNavPisca();
   setTimeout(()=>{if(typeof wppAjustarAltura==='function')wppAjustarAltura();},30);
   if(isAtiv&&!_skip('ativacoes'))renderPanelAtivacoes();
