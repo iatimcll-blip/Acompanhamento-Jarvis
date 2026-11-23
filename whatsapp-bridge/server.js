@@ -373,6 +373,19 @@ function scheduleRestart(delayMs = 5000) {
     await restartClient();
   }, delayMs);
 }
+// Vigia (2026-11-23): às vezes o whatsapp-web.js autentica e nunca dispara 'ready' — a ponte ficava
+// presa em 'authenticated' para sempre. Se ficar mais de 2 min em starting/authenticated, reinicia sozinha.
+let _vigDesde = Date.now(), _vigStatus = '', _vigTentativas = 0;
+setInterval(() => {
+  const st = state.status;
+  if (st !== _vigStatus) { _vigStatus = st; _vigDesde = Date.now(); if (st === 'ready') _vigTentativas = 0; return; }
+  if (st !== 'authenticated' && st !== 'starting') return;
+  const limite = (_vigTentativas < 3 ? 120 : 600) * 1000;
+  if (Date.now() - _vigDesde < limite || restartTimer) return;
+  _vigTentativas++; _vigDesde = Date.now();
+  console.error('[vigia] preso em "' + st + '" — reiniciando cliente (tentativa ' + _vigTentativas + ')');
+  scheduleRestart(1000);
+}, 15000);
 process.on('uncaughtException', err => {
   console.error('uncaughtException:', err);
   setStatus('error', { lastError: err.message || String(err) });
