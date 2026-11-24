@@ -251,7 +251,7 @@ export default {
       }
     }
 
-    const minInterval = Number(env.MIN_INTERVAL_MIN || '30');
+    const minInterval = Number(env.MIN_INTERVAL_MIN || '10');
     try {
       if (!payload.force) {
         const minsAgo = await getLatestRunAgeMinutes(env);
