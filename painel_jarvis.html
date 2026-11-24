@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-21T13:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-23T21:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22942,12 +22942,12 @@ function abResumoWhatsappAtivo(c){
 function abResumoWhatsappScope(chamados){
   return (Array.isArray(chamados)?chamados:[]).filter(abResumoWhatsappAtivo);
 }
-function abConstruirPivot(chamados){
+function abConstruirPivot(chamados,chaveFn){
   const ufs=AB_ORDEM_UF.filter(uf=>chamados.some(c=>c.uf===uf));
   chamados.forEach(c=>{if(c.uf&&!ufs.includes(c.uf))ufs.push(c.uf);});
   const mapa={};
   chamados.forEach(c=>{
-    const s=fmtSubstatus(c.substatus)||'—',m=c.mop||'—',uf=c.uf||'—';
+    const s=(chaveFn?chaveFn(c):fmtSubstatus(c.substatus))||'—',m=c.mop||'—',uf=c.uf||'—';
     (mapa[s]=mapa[s]||{});(mapa[s][m]=mapa[s][m]||{});
     mapa[s][m][uf]=(mapa[s][m][uf]||0)+1;
   });
@@ -22961,10 +22961,27 @@ function abFaixaDot(f){
   if(f.includes('8h e 12h'))return'var(--yellow)';
   return'var(--green)';
 }
+/* 2026-11-23 (pedido do usuário): o Resumo & WhatsApp do B2B Abertos também lista os chamados
+   dos painéis SWAP e EVE, identificados como "SWAP" e "TIM (EVE)" — na tabela dinâmica viram dois
+   grupos próprios (depois dos substatus) e nos blocos por MOP/EPS ganham uma etiqueta. Os mesmos
+   filtros do Abertos (MOP, faixa, substatus, UF, busca) valem para eles. Painéis SWAP/EVE não mudam. */
+const AB_TIPO_SWAP='SWAP',AB_TIPO_EVE='TIM (EVE)';
+function abTipoExtra(c){return isEveTitle(c)?AB_TIPO_EVE:isSwapDep(c)?AB_TIPO_SWAP:'';}
+function abChavePivot(c){return abTipoExtra(c)||fmtSubstatus(c.substatus);}
+function abOrdemPivot(a,b){const x=[AB_TIPO_SWAP,AB_TIPO_EVE],ia=x.indexOf(a),ib=x.indexOf(b);if(ia>=0||ib>=0)return(ia<0?-1:ia)-(ib<0?-1:ib)||0;return abOrdenarPor(AB_ORDEM_SUB)(a,b);}
+function abExtrasSwapEve(){
+  const srch=nk((document.getElementById('f-srch-ab')||{}).value||'');
+  let f=[...slnSwap(),...slnEve()];
+  if(selAbMop.length)f=f.filter(d=>selAbMop.includes(d.mop));if(selAbFaixa.length)f=f.filter(d=>selAbFaixa.includes(d.faixa));
+  if(selAbSub.length)f=f.filter(d=>selAbSub.includes(fmtSubstatus(d.substatus)));if(selAbUf.length)f=f.filter(d=>selAbUf.includes(d.uf));
+  if(srch)f=f.filter(d=>nk(d.cliente).includes(srch)||nk(d.id).includes(srch));
+  return abResumoWhatsappScope(f).sort((a,b)=>(b.slaH||0)-(a.slaH||0));
+}
+function abTagExtraHtml(c){const t=abTipoExtra(c);if(!t)return'';const eve=t===AB_TIPO_EVE;return'<span class="ab-tag-extra" style="display:inline-block;margin-left:6px;padding:0 6px;border-radius:99px;font-size:10.5px;font-weight:800;line-height:16px;vertical-align:1px;color:#fff!important;background:'+(eve?'#7c3aed':'#0891b2')+'">'+eh(t)+'</span>';}
 function abRenderPivot(chamados){
   const el=document.getElementById('ab-pivot');if(!el)return;
-  const{ufs,mapa}=abConstruirPivot(chamados);
-  const subs=Object.keys(mapa).sort(abOrdenarPor(AB_ORDEM_SUB));
+  const{ufs,mapa}=abConstruirPivot(chamados,abChavePivot);
+  const subs=Object.keys(mapa).sort(abOrdemPivot);
   const totalUf={};ufs.forEach(uf=>totalUf[uf]=0);let totalGeral=0;
   let h='<colgroup><col class="col-label">'+ufs.map(()=>'<col class="col-uf">').join('')+'<col class="col-total"></colgroup><thead><tr><th class="l">Substatus / MOP/EPS</th>'
     +ufs.map(uf=>`<th>${eh(uf)}</th>`).join('')+'<th>Total</th></tr></thead>';
@@ -22985,8 +23002,8 @@ function abRenderPivot(chamados){
   el.innerHTML=h+b;
 }
 function abTextoPivot(chamados){
-  const{ufs,mapa}=abConstruirPivot(chamados);
-  const subs=Object.keys(mapa).sort(abOrdenarPor(AB_ORDEM_SUB));
+  const{ufs,mapa}=abConstruirPivot(chamados,abChavePivot);
+  const subs=Object.keys(mapa).sort(abOrdemPivot);
   const agora=new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   let t=`📋 *RESUMO B2B ABERTOS* — ${agora}\nTotal: *${chamados.length}* chamado(s)\n`;
   subs.forEach(s=>{
@@ -23118,7 +23135,7 @@ function abRenderBlocos(chamados){
     const extraCols=(mostraResp?1:0)+(mostraObs?1:0);
     const linhas=itens.length?itens.map(c=>{
       const cl=safeUrl(c.link);
-      const idCell=cl?`<a href="${eh(cl)}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-weight:600">${eh(c.id)}</a>`:`<span style="font-weight:600;color:var(--blue)">${eh(c.id)}</span>`;
+      const idCell=(cl?`<a href="${eh(cl)}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-weight:600">${eh(c.id)}</a>`:`<span style="font-weight:600;color:var(--blue)">${eh(c.id)}</span>`)+abTagExtraHtml(c);
       const ufCidade=c.cidade?`${c.uf}/${c.cidade}`:c.uf||'—';
       const clienteCF=c.assunto?`<span style="font-weight:600;color:var(--tx)">${eh(c.cliente)}</span><span style="display:block;font-size:13px;color:var(--tx2);margin-top:1px">${eh(c.assunto)}</span>`:eh(c.cliente);
       const resp=(abAnnotations[c.id]||{}).prof||'';
@@ -23136,7 +23153,7 @@ function abRenderBlocos(chamados){
 const _abWppCh={};
 async function abEnviarWpp(painel,mop){
   const ch=_abWppCh[painel]||[];
-  const txt=abTextoBloco(mop,ch);
+  const txt=abTextoBloco(mop,ch,painel==='ab');
   /* 2026-11-18: com o WhatsApp do Jarvis conectado neste PC, envia direto (escolhendo os grupos) */
   if(typeof wppTalvezEnviar==='function'&&await wppTalvezEnviar(txt,(painel==='swap'?'SWAP':painel==='eve'?'EVE':'B2B Abertos')+' — '+mop))return;
   const LIM=3500;
@@ -23150,7 +23167,7 @@ async function abEnviarWpp(painel,mop){
 }
 /* fora do prazo pelo SLA AO VIVO (mesma regra do card: statusSla) */
 function abForaDoPrazo(c){try{return statusSla(c.slaH,c.mop,c.slaLimitH)==='FORA DO PRAZO';}catch(_){return c.statusSla==='FORA DO PRAZO';}}
-function abTextoBloco(mop,chamados){
+function abTextoBloco(mop,chamados,marcarTipo){
   const itens=chamados.filter(c=>nk(c.mop)===nk(mop));
   const agora=new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   /* (2026-11-12) WhatsApp não aceita cor: fora do prazo vai com 🔴 e "FORA DO PRAZO" em negrito; no prazo com 🟢 */
@@ -23161,7 +23178,7 @@ function abTextoBloco(mop,chamados){
   itens.forEach((c,i)=>{
     const resp=(abAnnotations[c.id]||{}).prof||'';
     const obs=(abAnnotations[c.id]||{}).obs||'';
-    t+=`\n${fora(c)?'🔴':'🟢'} *${i+1}. ${c.cliente}* — #${c.id}\n`;
+    t+=`\n${fora(c)?'🔴':'🟢'} *${i+1}. ${c.cliente}* — #${c.id}${marcarTipo&&abTipoExtra(c)?' · *['+abTipoExtra(c)+']*':''}\n`;
     if(fora(c))t+=`*⚠ FORA DO PRAZO*\n`;
     if(c.assunto&&nk(c.assunto)!==nk(c.cliente))t+=`${c.assunto}\n`;
     t+=`⏱ ${fora(c)?'*'+fd(c.slaH)+'*':fd(c.slaH)} · Departamento: ${c.depAtual||'—'} · ${c.faixa} · ${c.cidade}/${c.uf}\nSubstatus: ${c.substatus}\n`;
@@ -23184,7 +23201,7 @@ function toggleAbResumo(btn){
 function renderAbResumo(){
   const body=document.getElementById('ab-resumo-body');
   if(!body||body.style.display==='none')return;
-  const ch=abResumoWhatsappScope(gFAb());
+  const ch=abResumoWhatsappScope(gFAb()).concat(abExtrasSwapEve());
   abRenderPivot(ch);
   abRenderBlocos(ch);
   const pb=document.getElementById('ab-btn-pivot');if(pb)pb.disabled=ch.length===0;
