@@ -279,6 +279,9 @@ async function startClient() {
 
   client = new Client({
     authStrategy: new LocalAuth({ clientId: CLIENT_ID, dataPath: AUTH_DIR }),
+    // 2026-11-24 (autorizado pelo usuário): WhatsApp Web atual não casa com a versão embutida da biblioteca; fixa versão compatível do repositório wa-version (terceiros)
+    webVersion: '2.3000.1055837054-alpha',
+    webVersionCache: { type: 'remote', remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html', strict: false },
     authTimeoutMs: 120000, // Chrome lento aqui: o padrão de 30 s estourava "Waiting failed" (2026-11-23)
     puppeteer: {
       headless: true,
