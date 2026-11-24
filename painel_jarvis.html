@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-23T21:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-23T21:25:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -16709,6 +16709,10 @@ function isEveTitle(d){
   return /(?<![A-Z])EVE(?![A-Z])/.test(t);
 }
 function slnAb(){const m=userAllowedMops();const base=dAb.filter(d=>!isSwapDep(d)&&!isEveTitle(d));return m?base.filter(d=>m.includes(d.mop)):base;}
+/* 2026-11-23 (pedido do usuário): o PAINEL B2B Abertos (contadores, cards, filtros, lista "Chamados em
+   aberto", Resumo) conta TODOS os chamados da base, incluindo SWAP e EVE (identificados com etiqueta).
+   slnAb() continua sem eles para o Executivo/relatório, que mostram SWAP e EVE separados. */
+function slnAbTodos(){const m=userAllowedMops();return m?dAb.filter(d=>m.includes(d.mop)):dAb.slice();}
 /* View espelhada de slnAb(), mutuamente exclusiva (um chamado nunca aparece nos dois). */
 function slnSwap(){const m=userAllowedMops();const base=dAb.filter(d=>isSwapDep(d)&&!isEveTitle(d));return m?base.filter(d=>m.includes(d.mop)):base;}
 /* Terceira view mutuamente exclusiva das duas acima — qualquer chamado com "EVE" no
@@ -18589,7 +18593,7 @@ function isPendingSubstatus(v){return nk(v).includes('PENDENTE')}
 function isValidationSubstatus(v){const s=nk(v);return s.includes('PENDENTE')&&s.includes('VALIDA')}
 function abIsInactiveForCount(c){const s=nk(c&&c.substatus);return s.includes('CANCELADO')||s.includes('FECHADO')||isValidationSubstatus(c&&c.substatus)}
 function abActiveCount(list){return(Array.isArray(list)?list:[]).filter(c=>!abIsInactiveForCount(c)).length}
-function refreshAbBadge(){const el=document.getElementById('nb-ab');if(el)el.textContent=abActiveCount(slnAb())}
+function refreshAbBadge(){const el=document.getElementById('nb-ab');if(el)el.textContent=abActiveCount(slnAbTodos())}
 function refreshSwapBadge(){const el=document.getElementById('nb-swap');if(el)el.textContent=abActiveCount(slnSwap())}
 function refreshEveBadge(){const el=document.getElementById('nb-eve');if(el)el.textContent=abActiveCount(slnEve())}
 function isPurpleResponsavel(v){return ['SEA','TIM','CLARO','ONLINE','CARAJANET','MASTERNET','VIVO','GARRATELECOM','SOSTELECOM','ST1'].includes(nk(v))}
@@ -21636,14 +21640,14 @@ function encWeek(){const b=encBase();return selWeek.length?b.filter(d=>selWeek.i
 function encScope(){let f=encWeek();if(selCluster.length)f=f.filter(d=>clusterRowMatches(selCluster,d.cluster));return f}
 
 /* ─── RENDER ABERTOS ─── */
-function abScope(){const base=slnAb();return selAbMop.length?base.filter(d=>selAbMop.includes(d.mop)):base}
+function abScope(){const base=slnAbTodos();return selAbMop.length?base.filter(d=>selAbMop.includes(d.mop)):base}
 function setMopQuick(mop){
   selAbMop=mop?[mop]:[];
   fillFiltersAb();renderAllAb();saveState();
 }
 function renderMopQuick(){
   const el=document.getElementById('quick-mop-ab');if(!el)return;
-  const base=slnAb();
+  const base=slnAbTodos();
   const allowedMops=userAllowedMops();
   const mopOpts=allowedMops?MOP_QUICK.filter(m=>allowedMops.includes(m)):MOP_QUICK;
   const btns=['',...mopOpts].map(m=>{
@@ -21828,7 +21832,7 @@ window.addEventListener('scroll',e=>{
   mselCloseAll();
 },true);
 function fillFiltersAb(){
-  const baseAb=slnAb();
+  const baseAb=slnAbTodos();
   const mops=[...new Set(baseAb.map(d=>d.mop).filter(Boolean))].sort();
   const subs=uniqueSubstatuses([...AB_SUBSTATUS_PADRAO,...baseAb.map(d=>d.substatus)]);
   const ufs=[...new Set(baseAb.map(d=>d.uf).filter(Boolean))].sort();
@@ -22703,7 +22707,7 @@ function _atrixTsBadge(item){
 
 function gFAb(){
   const srch=(document.getElementById('f-srch-ab').value||'').toLowerCase();
-  let f=slnAb();
+  let f=slnAbTodos();
   if(selAbMop.length)f=f.filter(d=>selAbMop.includes(d.mop));if(selAbFaixa.length)f=f.filter(d=>selAbFaixa.includes(d.faixa));
   if(selAbSub.length)f=f.filter(d=>selAbSub.includes(fmtSubstatus(d.substatus)));if(selAbUf.length)f=f.filter(d=>selAbUf.includes(d.uf));
   if(srch)f=f.filter(d=>nk(d.cliente).includes(nk(srch))||nk(d.id).includes(nk(srch)));
@@ -22717,7 +22721,7 @@ function toggleAbHideInactive(){
 }
 function renderTAb(){
   const f=gFAb();
-  document.getElementById('cnt-ab').textContent=f.length+' de '+slnAb().length+' chamados';
+  document.getElementById('cnt-ab').textContent=f.length+' de '+slnAbTodos().length+' chamados';
   const eyeBtn=document.getElementById('ab-toggle-hide-inactive');
   if(eyeBtn){
     eyeBtn.classList.toggle('ab-eye-active',abHideInactive);
@@ -22749,7 +22753,7 @@ function renderTAb(){
     const clienteDisplay=d.assunto?`<span class="abc-cli-nome">${eh(d.assunto)}</span><span class="abc-cliente-final">${eh(d.cliente)}</span>`:eh(d.cliente);
     const profCell=canEdit('abertos')?abAnnProfSelect(d.id):abAnnProfReadonly(d.id);
     const obsCell=canEdit('abertos')?abAnnObsInput(d.id):abAnnObsReadonly(d.id);
-    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(String(d.rowKey))}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}${_atrixTsBadge(d)}${_atxTkMark(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
+    return`<div class="ab-card ${rowCls}" data-rowkey="${eh(String(d.rowKey))}"><${ticketTag} class="abc-ticket"${ticketAttrs}><div class="abc-ticket-top"><div class="abc-id">${idHtml}${lk}${abTagExtraHtml(d)}</div></div><div class="abc-route"><span class="abc-mop"><span style="width:8px;height:8px;border-radius:50%;background:${MOP_CLR[d.mop]||'#8e8e93'};flex-shrink:0;display:inline-block"></span>${eh(d.mop)}</span><span class="abc-city">${eh(d.uf)}${d.cidade?' · '+eh(d.cidade):''}</span></div></${ticketTag}><div class="abc-main"><div class="abc-client-line"><span class="abc-cliente">${clienteDisplay}</span></div><span class="abc-substatus">${substatusLamp(d)}<span class="substatus-cell">${subHtml}</span>${checkBtn}${_atrixTsBadge(d)}${_atxTkMark(d)}</span></div><div class="abc-sla-panel"><div class="abc-sla-head"><span><span class="abc-sla-label">SLA</span><span class="sla-clock" style="${sc}">${fd(d.slaH)}</span></span><span class="badge ${ss}">${eh(d.statusSla)}</span></div><div class="abc-sla-badges"><span class="badge ${bc}">${eh(d.faixa)}</span></div></div><div class="abc-prof"><span class="abc-mini-label">Responsável</span>${profCell}</div><div class="abc-obs"><span class="abc-mini-label">Anotações</span>${obsCell}</div></div>`;
   }).join('')||'<div class="nores" style="padding:24px;text-align:center"><i class="ti ti-search-off"></i> Nenhum resultado</div>';
   /* auto-resize textareas com conteúdo já salvo */
   requestAnimationFrame(()=>{document.querySelectorAll('#tb-ab .ann-obs').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});});
@@ -23201,7 +23205,7 @@ function toggleAbResumo(btn){
 function renderAbResumo(){
   const body=document.getElementById('ab-resumo-body');
   if(!body||body.style.display==='none')return;
-  const ch=abResumoWhatsappScope(gFAb()).concat(abExtrasSwapEve());
+  const ch=abResumoWhatsappScope(gFAb());
   abRenderPivot(ch);
   abRenderBlocos(ch);
   const pb=document.getElementById('ab-btn-pivot');if(pb)pb.disabled=ch.length===0;
@@ -29270,7 +29274,7 @@ function rptBuildAbertos(){
      próprio), não de dAb.length bruto — senão o total do bloco "B2B Chamados Abertos" no
      Relatório Executivo conta chamados Swap que nem aparecem na tabela abaixo (gFAb() já
      os exclui), dando a impressão de que Swap não foi separado corretamente do resto. */
-  const data=gFAb(),total=slnAb().length;
+  const data=gFAb().filter(d=>!abTipoExtra(d)),total=slnAb().length;
   const tRows=data.slice(0,500).map(d=>{
     const ann=abAnnotations[d.id]||{};
     return`<tr>
