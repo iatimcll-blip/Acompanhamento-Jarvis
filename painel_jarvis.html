@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-24T21:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-24T21:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22389,18 +22389,24 @@ function _atxTkPctCur(){
 }
 /* Na rodada de revisão (lastPass>1) todo rótulo ganha "· revisão". Chamado que ainda espera a
    revisão mostra 0% · revisão. */
-function _atxTkPctTxt(s){
-  const suf=_atxTk.rev?' · revisão':'';
-  if(s==='falha')return'sem leitura'+suf;
+/* 2026-11-24: a barra PERMANECE depois do fim da rodada (100% / revisão / sem leitura) até a próxima
+   rodada começar, inclusive depois de F5 (estado final restaurado do status do agente). Chamado que passou
+   pela revisão fica com "· revisão" mesmo depois de lido (conjunto _atxRevIds, salvo por rodada). */
+let _atxRevIds=new Set();
+function _atxRevSalvar(run){try{localStorage.setItem('jarvis:atrix:revset',JSON.stringify({run,ids:[..._atxRevIds]}));}catch(_){}}
+function _atxRevCarregar(run){_atxRevIds=new Set();try{const m=JSON.parse(localStorage.getItem('jarvis:atrix:revset')||'null');if(m&&m.run===run&&Array.isArray(m.ids))_atxRevIds=new Set(m.ids);}catch(_){}}
+function _atxTkPctTxt(s,k){
+  const passou=!!k&&_atxRevIds.has(k);
+  if(s==='falha')return'sem leitura'+(passou?' · revisão':'');
   if(s==='rev')return'0% · revisão';
-  if(s==='ok')return'100%'+suf;
-  if(s==='cur')return _atxTkPctCur()+'%'+suf;
-  return'0%'+suf;
+  if(s==='ok')return'100%'+(passou?' · revisão':'');
+  if(s==='cur')return _atxTkPctCur()+'%'+((_atxTk.rev||passou)?' · revisão':'');
+  return'0%';
 }
-function _atxTkInner(s){
+function _atxTkInner(s,k){
   const ic={ok:'ti-check',falha:'ti-x',cur:'ti-loader-2',rev:'ti-refresh',wait:'ti-clock'}[s];
   const fill=s==='cur'?'<span class="atx-fill atx-run" style="animation-duration:'+_atxTk.dur+'s"></span>':'<span class="atx-fill"></span>';
-  return'<span class="atx-bar">'+fill+'</span><i class="ti '+ic+'"></i><b class="atx-pct">'+_atxTkPctTxt(s)+'</b>';
+  return'<span class="atx-bar">'+fill+'</span><i class="ti '+ic+'"></i><b class="atx-pct">'+_atxTkPctTxt(s,k)+'</b>';
 }
 const _ATX_TK_TIT={ok:'Lido no Atrix nesta rodada',falha:'Sem leitura nesta rodada — mantido o substatus anterior',cur:'Lendo agora no Atrix…',rev:'Não carregou a tempo — vai para a revisão',wait:'Na fila do agente'};
 function _atxTkMark(d){
@@ -22408,14 +22414,14 @@ function _atxTkMark(d){
   const k=eh(_atxTkKey(d));
   if(!_atxTk.on)return'<span class="atx-tk" data-atx="'+k+'"></span>';
   const s=_atxTkEstado(_atxTkKey(d));
-  return'<span class="atx-tk" data-atx="'+k+'" data-s="'+s+'" title="'+_ATX_TK_TIT[s]+'">'+_atxTkInner(s)+'</span>';
+  return'<span class="atx-tk" data-atx="'+k+'" data-s="'+s+'" title="'+_ATX_TK_TIT[s]+'">'+_atxTkInner(s,_atxTkKey(d))+'</span>';
 }
 function _atxTkApply(){
   document.querySelectorAll('.atx-tk[data-atx]').forEach(el=>{
     if(!_atxTk.on){if(el.dataset.s){delete el.dataset.s;el.removeAttribute('title');el.innerHTML='';}return;}
     const s=_atxTkEstado(el.dataset.atx);
     if(el.dataset.s===s)return;
-    el.dataset.s=s;el.title=_ATX_TK_TIT[s];el.innerHTML=_atxTkInner(s);
+    el.dataset.s=s;el.title=_ATX_TK_TIT[s];el.innerHTML=_atxTkInner(s,el.dataset.atx);
   });
 }
 /* st = status do runner DESTA rodada (null enquanto ela ainda não começou: todos "na fila"). */
@@ -22423,6 +22429,12 @@ function _atxTkSet(st){
   clearTimeout(_atxTk.clr);_atxTk.clr=null;
   _atxTk.on=true;
   _atxTk.st=(st&&st.lastTicketsState&&typeof st.lastTicketsState==='object')?st.lastTicketsState:{};
+  if(st&&st.lastRunStartedAt){
+    if(_atxTk.runId!==st.lastRunStartedAt){_atxTk.runId=st.lastRunStartedAt;_atxRevCarregar(st.lastRunStartedAt);}
+    let mudou=false;Object.keys(_atxTk.st).forEach(id=>{if(_atxTk.st[id]==='rev'&&!_atxRevIds.has(id)){_atxRevIds.add(id);mudou=true;}});
+    if(Number(st.lastPass)>1&&st.lastTicketsCurrent&&!_atxRevIds.has(String(st.lastTicketsCurrent))){_atxRevIds.add(String(st.lastTicketsCurrent));mudou=true;}
+    if(mudou)_atxRevSalvar(st.lastRunStartedAt);
+  }else if(!st){_atxRevIds=new Set();_atxTk.runId='';}
   _atxTk.cur=st?String(st.lastTicketsCurrent||''):'';
   if(_atxTk.cur!==_atxTkCurId){
     _atxTkCurId=_atxTk.cur;_atxTkCurDesde=0;
@@ -22441,10 +22453,9 @@ function _atxTkFim(){
   _atxTk.cur='';
   if(!Object.keys(_atxTk.st).length){_atxTk.on=false;_atxTkApply();return;}
   _atxTkApply();
-  clearTimeout(_atxTk.clr);
-  _atxTk.clr=setTimeout(()=>{_atxTk.on=false;_atxTk.st={};_atxTkApply();},180000);
+  clearTimeout(_atxTk.clr);_atxTk.clr=null; /* permanece até a próxima rodada (pedido 2026-11-24) */
 }
-setInterval(()=>{if(!_atxTk.on)return;document.querySelectorAll('.atx-tk[data-s="cur"] .atx-pct').forEach(b=>{b.textContent=_atxTkPctTxt('cur');});},500);
+setInterval(()=>{if(!_atxTk.on)return;document.querySelectorAll('.atx-tk[data-s="cur"] .atx-pct').forEach(b=>{b.textContent=_atxTkPctTxt('cur',_atxTk.cur);});},500);
 /* Bug real corrigido: ao clicar em "Atualizar substatus", a barra pulava direto pra
    ~100% em vez de começar do zero e crescer aos poucos. Causa: data/atrix-runner-
    status.json só zera lastTicketsProgress DEPOIS de carregar a lista de chamados
@@ -22476,8 +22487,7 @@ function _atrixStopProgressPolling(finished){
   clearInterval(_atrixProgressTimer);_atrixProgressTimer=null;
   _atxTkFim();
   if(finished){
-    _atrixRenderProgress(100,true);
-    setTimeout(()=>_atrixRenderProgress(0,false),2500);
+    _atrixRenderProgress(100,true,'concluído'); /* permanece até a próxima rodada */
   }else{
     _atrixRenderProgress(0,false);
   }
@@ -22635,6 +22645,11 @@ function _atrixStartMonitoring(triggeredAtIso,startTries){
 async function _atrixResumeIfRunning(){
   const st=await loadAtrixRunnerStatus();
   _atrixAplicarStatus(st);
+  if(st&&st.state!=='running'&&st.lastRunStartedAt&&st.lastRunCompletedAt&&st.lastRunCompletedAt>=st.lastRunStartedAt&&st.lastTicketsState&&Object.keys(st.lastTicketsState).length){
+    _atxTkSet(st);_atxTkFim();
+    _atrixRenderProgress(100,true,'concluído');
+    return;
+  }
   if(!st||st.state!=='running'||!st.lastRunStartedAt)return;
   const minsAgo=(Date.now()-new Date(st.lastRunStartedAt).getTime())/60000;
   if(minsAgo>ATRIX_ESPERA_TOTAL_MIN)return;
