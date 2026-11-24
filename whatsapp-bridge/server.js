@@ -279,6 +279,7 @@ async function startClient() {
 
   client = new Client({
     authStrategy: new LocalAuth({ clientId: CLIENT_ID, dataPath: AUTH_DIR }),
+    authTimeoutMs: 120000, // Chrome lento aqui: o padrão de 30 s estourava "Waiting failed" (2026-11-23)
     puppeteer: {
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -379,8 +380,8 @@ let _vigDesde = Date.now(), _vigStatus = '', _vigTentativas = 0;
 setInterval(() => {
   const st = state.status;
   if (st !== _vigStatus) { _vigStatus = st; _vigDesde = Date.now(); if (st === 'ready') _vigTentativas = 0; return; }
-  if (st !== 'authenticated' && st !== 'starting') return;
-  const limite = (_vigTentativas < 3 ? 120 : 600) * 1000;
+  if (st !== 'authenticated' && st !== 'starting' && st !== 'error' && st !== 'disconnected') return;
+  const limite = (_vigTentativas < 3 ? 300 : 900) * 1000;
   if (Date.now() - _vigDesde < limite || restartTimer) return;
   _vigTentativas++; _vigDesde = Date.now();
   console.error('[vigia] preso em "' + st + '" — reiniciando cliente (tentativa ' + _vigTentativas + ')');

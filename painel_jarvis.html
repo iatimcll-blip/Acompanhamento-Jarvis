@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-23T21:25:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-24T00:50:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -12633,6 +12633,12 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
               <span class="ab-section-title">Tabela dinâmica — substatus × MOP/EPS × UF</span>
               <button class="ab-copy-btn" id="ab-btn-pivot" onclick="abCopiarPivot(this)" disabled>Copiar tabela</button>
             </div>
+            <div class="ab-extra-opts" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;font-size:13px;color:var(--tx2)">
+              <span style="font-weight:700">Incluir no resumo e no envio:</span>
+              <label style="display:inline-flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="ab-inc-swap" checked onchange="abIncluirToggle()"> SWAP</label>
+              <label style="display:inline-flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="ab-inc-eve" checked onchange="abIncluirToggle()"> TIM (EVE)</label>
+              <span style="color:var(--tx3);font-size:12px">Desmarcado = fica de fora da tabela, dos blocos e do texto copiado/enviado.</span>
+            </div>
             <div id="ab-pivot-cap" class="ab-pivot-cap">
               <div id="ab-pivot-copy" class="ab-pivot-copy"><div class="ab-pivot-scroll"><table class="ab-pivot" id="ab-pivot"></table></div></div>
               <p style="font-size:15px;color:var(--tx2);margin:10px 0 2px">Bom dia, segue backlog B2B reapros.</p>
@@ -16709,6 +16715,12 @@ function isEveTitle(d){
   return /(?<![A-Z])EVE(?![A-Z])/.test(t);
 }
 function slnAb(){const m=userAllowedMops();const base=dAb.filter(d=>!isSwapDep(d)&&!isEveTitle(d));return m?base.filter(d=>m.includes(d.mop)):base;}
+/* 2026-11-23 (pedido): no Resumo, SWAP e TIM (EVE) podem ser incluídos ou não na tabela dinâmica,
+   nos blocos por MOP/EPS e no que é copiado/enviado. Escolha salva neste navegador. */
+const AB_INC_KEY='jarvis:ab:incluirExtra';
+function abIncluirCfg(){try{const v=JSON.parse(localStorage.getItem(AB_INC_KEY)||'null');if(v&&typeof v==='object')return{swap:v.swap!==false,eve:v.eve!==false};}catch(_){}return{swap:true,eve:true};}
+function abIncluirSync(){const c=abIncluirCfg();const a=document.getElementById('ab-inc-swap'),b=document.getElementById('ab-inc-eve');if(a)a.checked=c.swap;if(b)b.checked=c.eve;}
+function abIncluirToggle(){const a=document.getElementById('ab-inc-swap'),b=document.getElementById('ab-inc-eve');const cfg={swap:!a||a.checked,eve:!b||b.checked};try{localStorage.setItem(AB_INC_KEY,JSON.stringify(cfg));}catch(_){}renderAbResumo();}
 /* 2026-11-23 (pedido do usuário): o PAINEL B2B Abertos (contadores, cards, filtros, lista "Chamados em
    aberto", Resumo) conta TODOS os chamados da base, incluindo SWAP e EVE (identificados com etiqueta).
    slnAb() continua sem eles para o Executivo/relatório, que mostram SWAP e EVE separados. */
@@ -23205,7 +23217,9 @@ function toggleAbResumo(btn){
 function renderAbResumo(){
   const body=document.getElementById('ab-resumo-body');
   if(!body||body.style.display==='none')return;
-  const ch=abResumoWhatsappScope(gFAb());
+  abIncluirSync();
+  const cfg=abIncluirCfg();
+  const ch=abResumoWhatsappScope(gFAb()).filter(c=>{const t=abTipoExtra(c);return t===AB_TIPO_SWAP?cfg.swap:t===AB_TIPO_EVE?cfg.eve:true;});
   abRenderPivot(ch);
   abRenderBlocos(ch);
   const pb=document.getElementById('ab-btn-pivot');if(pb)pb.disabled=ch.length===0;
