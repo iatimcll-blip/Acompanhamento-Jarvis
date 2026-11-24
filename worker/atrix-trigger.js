@@ -215,7 +215,8 @@ export default {
     if (payload.action === 'pbi_status') {
       try {
         /* alvo 'enc' = botão BI ENC do B2B Encerrados (2026-11-12) */
-        const arq = payload.alvo === 'enc' ? 'data/pbi-enc-status.json' : 'data/pbi-runner-status.json';
+        /* alvo 'atrix' = status do agente Atrix do B2B Abertos (barras de % ao vivo, sem o cache do raw) */
+        const arq = payload.alvo === 'atrix' ? 'data/atrix-runner-status.json' : payload.alvo === 'enc' ? 'data/pbi-enc-status.json' : 'data/pbi-runner-status.json';
         const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/${arq}?ref=${env.GH_BRANCH}`;
         const r = await fetch(url, { headers: ghHeaders(env, { Accept: 'application/vnd.github.raw+json' }) });
         if (r.status === 404) return json({ ok: true, status: null }, 200, env);

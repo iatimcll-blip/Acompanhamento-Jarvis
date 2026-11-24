@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-24T13:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-24T20:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22296,7 +22296,38 @@ function _atrixStopRunningTimer(){
    andamento ao vivo sem precisar de F5. */
 const ATRIX_RUNNER_STATUS_FILE='data/atrix-runner-status.json';
 let _atrixProgressTimer=null;
+/* 2026-11-24: o raw.githubusercontent.com devolve cópia de até 5 min (max-age=300), então a barra
+   ficava atrasada ou voltava atrás depois de F5. Lê primeiro pelo Worker (API do GitHub, sem cache);
+   só vale se o arquivo for do agente Atrix (source==='atrix_agent') — um Worker ainda sem a ação nova
+   devolveria o status do Power BI. Reserva: CDN. _atxWorkerOk guarda se o Worker serve esse alvo. */
+let _atxWorkerOk=null;
+async function _loadAtrixStatusWorker(){
+  if(_atxWorkerOk===false)return null;
+  try{
+    const r=await fetch(ATRIX_WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Atrix-Secret':ATRIX_WORKER_SECRET},body:JSON.stringify({action:'pbi_status',alvo:'atrix'})});
+    const b=await r.json().catch(()=>null);
+    if(r.ok&&b&&b.ok&&b.status&&b.status.source==='atrix_agent'){_atxWorkerOk=true;return b.status;}
+    if(r.ok&&b&&b.ok)_atxWorkerOk=false;
+  }catch(_){}
+  return null;
+}
+/* Trava anti-volta: mesma rodada, status mais antigo que o já visto (cópia velha do CDN) é descartado. */
+const _ATX_SNAP_KEY='jarvis:atrix:snap';
+function _atxStaleGuard(st){
+  if(!st||!st.lastRunStartedAt)return st;
+  let m=null;try{m=JSON.parse(localStorage.getItem(_ATX_SNAP_KEY)||'null');}catch(_){}
+  const rank=x=>(Number(x.lastPass)||1)*1e6+(Number(x.lastTicketsProgress)||0);
+  if(m&&m.lastRunStartedAt===st.lastRunStartedAt&&rank(m)>rank(st)&&st.state==='running')return m;
+  try{localStorage.setItem(_ATX_SNAP_KEY,JSON.stringify(st));}catch(_){}
+  return st;
+}
 async function loadAtrixRunnerStatus(){
+  const w=await _loadAtrixStatusWorker();
+  if(w)return _atxStaleGuard(w);
+  const r0=await _loadAtrixStatusRaw();
+  return _atxStaleGuard(r0);
+}
+async function _loadAtrixStatusRaw(){
   const rawUrl=`https://raw.githubusercontent.com/${GH_SYNC_OWNER}/${GH_SYNC_REPO}/main/${ATRIX_RUNNER_STATUS_FILE}`;
   try{
     const r=await fetch(rawUrl+'?t='+Date.now(),{cache:'no-store'});
@@ -22380,7 +22411,14 @@ function _atxTkSet(st){
   _atxTk.on=true;
   _atxTk.st=(st&&st.lastTicketsState&&typeof st.lastTicketsState==='object')?st.lastTicketsState:{};
   _atxTk.cur=st?String(st.lastTicketsCurrent||''):'';
-  if(_atxTk.cur!==_atxTkCurId){_atxTkCurId=_atxTk.cur;_atxTkCurDesde=_atxTk.cur?Date.now():0;}
+  if(_atxTk.cur!==_atxTkCurId){
+    _atxTkCurId=_atxTk.cur;_atxTkCurDesde=0;
+    if(_atxTk.cur){
+      let m=null;try{m=JSON.parse(localStorage.getItem('jarvis:atrix:curSince')||'null');}catch(_){}
+      if(m&&m.id===_atxTk.cur&&Date.now()-m.t<600000)_atxTkCurDesde=m.t;
+      else{_atxTkCurDesde=Date.now();try{localStorage.setItem('jarvis:atrix:curSince',JSON.stringify({id:_atxTk.cur,t:_atxTkCurDesde}));}catch(_){}}
+    }
+  }
   _atxTk.dur=st&&Number(st.lastPass)>1?30:10;
   _atxTk.rev=!!(st&&Number(st.lastPass)>1);
   _atxTkApply();
