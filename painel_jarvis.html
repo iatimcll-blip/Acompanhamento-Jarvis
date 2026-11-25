@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T14:10:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T15:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13957,6 +13957,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     #panel-whatsapp .wpp-mf-tag{display:inline-block;background:#dc2626;color:#fff;border-radius:4px;padding:0 4px;font-size:10px;margin-right:3px}
     #panel-whatsapp .wpp-mf-quem{font-size:11px;color:var(--tx3)}
     #panel-whatsapp .wpp-mf-pops{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+    #panel-whatsapp .wpp-mf-tk{display:inline-block;background:#111827;color:#fff;border-radius:4px;padding:0 5px;font-size:10.5px;margin-right:4px;font-variant-numeric:tabular-nums}
+    #panel-whatsapp .wpp-mf-msg .wpp-txt{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+    #panel-whatsapp .wpp-mf-atu{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;padding-top:3px;border-top:.5px dashed var(--bd);font-size:11px;color:var(--tx3)}
     #panel-whatsapp .wpp-mf-pop{font-size:10.5px;font-weight:600;background:rgba(37,99,235,.08);color:var(--blue);border-radius:4px;padding:1px 6px}
     @keyframes wppMfGira{to{transform:rotate(360deg)}}
     #panel-whatsapp .wpp-mf-gira{display:inline-block;animation:wppMfGira 1s linear infinite}
@@ -26410,46 +26413,88 @@ function wppAjustarAltura(){
 }
 window.addEventListener('resize',()=>{clearTimeout(window._wppAjT);window._wppAjT=setTimeout(wppAjustarAltura,80);});
 /* ── 2) monitor 2x2 de grupos escolhidos ── */
-/* ═══ Quadro "Massivos / Bdesk" (pedido 2026-11-25) ═══
-   O 3º bloco (coluna inteira) do Acompanhamento online é fixo: reúne, de QUALQUER conversa, as mensagens de massiva/Bdesk
-   que citam uma das UFs marcadas (botões no próprio quadro; padrão PI, PA, MA). A UF é reconhecida pela
-   sigla isolada (PI, PA…), por nomes de POP (POP-MA-CRN-01, br.pi.pna…, MA-CRN) ou por cidade com POP na
-   base do Painel POP. Cada mensagem mostra o POP citado com Tier e Regime (Próprio/Collocation) do Painel POP.
-   Fontes: mensagens novas em tempo real + varredura das conversas com atividade nas últimas 24 h.
-   Guarda as últimas 150 (48 h) neste navegador. Só leitura: não envia nada. */
-const WPP_MF_KEY='jarvis:wpp:mf:v1',WPP_MF_UFS=['PI','PA','MA','AP','AM'];
+/* ═══ Bloco "Massivos / Bdesk" (pedido 2026-11-25; refeito no mesmo dia) ═══
+   3º bloco (coluna inteira) do Acompanhamento online. Só lê os 4 grupos de acionamento (WPP_MF_GRUPOS) e só
+   entram mensagens que trazem número de chamado. CONTAGEM SEM REPETIÇÃO: as mensagens são agrupadas por
+   chamado — BDESK/TICKET/INCIDENTE/"688212 »" (6 dígitos), Ticket Giga/Swap (21112026-46779) e OS ATRIX
+   (15 dígitos); quando uma mensagem cita BDESK e OS juntos, os dois viram o MESMO chamado (união).
+   O contador mostra chamados distintos; as demais mensagens do mesmo chamado aparecem como atualizações.
+   UF (botões no bloco; padrão PI, PA, MA) pela sigla, POP (POP-MA-CRN-01, br.pi.pna, MA-CRN), estado ou cidade
+   com POP; cada chamado mostra o POP citado com Tier e Regime do Painel POP. Só leitura: não envia nada. */
+const WPP_MF_KEY='jarvis:wpp:mf:v2',WPP_MF_UFS=['PI','PA','MA','AP','AM'];
+const WPP_MF_GRUPOS=[
+  {rot:'INFRA -> NOC',re:/^infra\s*-+\s*>\s*noc\b/},
+  {rot:'SLN_OPERAÇÃO_GIGA+_ALLOHA',re:/^sln_opera[cç][aã]o_giga\+?_alloha/},
+  {rot:'INFRAESTRUTURA - MA/PA',re:/^infraestrutura\s*-\s*ma\s*\/\s*p[ai]\b/},
+  {rot:'Acion. Polo MOB 6 - SLN - MA O&M',re:/^acion\.?\s*polo\s*mob\s*6\b/}];
 const WPP_MF_NOME={PI:/\bpiau[ií]\b/i,MA:/\bmaranh[aã]o\b/i,AP:/\bamap[aá]\b/i,AM:/\bamazonas\b/i,PA:/(?!)/};
-const WPP_MF_RE=/massiv|bdesk|b-desk|b desk|rompimento|afetad|indisponibilidade|incidente|queda de|sem sinal|fora do ar/i;
+const WPP_MF_MASSIVA=/massiv|rompimento|indisponibilidade|fora do ar|\bRUP::/i;
 let wppMf={ufs:['PI','PA','MA'],itens:[]},_wppMfIdx=null,_wppMfIdxDe=-1,_wppMfVarrendo=false,_wppMfVarridoEm=0;
-try{const v=JSON.parse(localStorage.getItem(WPP_MF_KEY)||'null');if(v&&Array.isArray(v.ufs))wppMf={ufs:v.ufs,itens:Array.isArray(v.itens)?v.itens:[]};}catch(_){}
+try{const v=JSON.parse(localStorage.getItem(WPP_MF_KEY)||'null');if(v&&Array.isArray(v.ufs))wppMf={ufs:v.ufs,itens:Array.isArray(v.itens)?v.itens:[]};
+  else{const v1=JSON.parse(localStorage.getItem('jarvis:wpp:mf:v1')||'null');if(v1&&Array.isArray(v1.ufs))wppMf.ufs=v1.ufs;}}catch(_){}
+try{localStorage.removeItem('jarvis:wpp:mf:v1');}catch(_){}
 function wppMfSalvar(){
-  const lim=Date.now()/1000-48*3600;wppMf.itens=wppMf.itens.filter(x=>x.ts>=lim).slice(0,150);
+  const lim=Date.now()/1000-48*3600;wppMf.itens=wppMf.itens.filter(x=>x.ts>=lim&&x.tks&&x.tks.length).sort((a,b)=>b.ts-a.ts).slice(0,500);
   try{localStorage.setItem(WPP_MF_KEY,JSON.stringify(wppMf));}catch(_){}
 }
 function _wppMfNorm(t){return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
-/* índice da base de POPs (Painel POP): uf|sigla → POPs; nome → POP; cidades com POP por UF */
+function _wppMfGrupoDe(chatId){
+  const c=wppChats.find(x=>x.id===chatId);if(!c||!/@g\.us$/.test(chatId))return null;
+  const n=String(c.name||'').toLowerCase().replace(/\s+/g,' ').trim();
+  return WPP_MF_GRUPOS.some(g=>g.re.test(n))?c:null;
+}
+/* chamados citados na mensagem, já separados em blocos. 'B:' Bdesk/ticket (6–7 díg.), 'G:' ticket Giga/Swap, 'O:' OS ATRIX.
+   Regras (para NÃO contar o mesmo chamado 2 vezes e NÃO juntar chamados diferentes):
+   - números na MESMA LINHA são o mesmo chamado (ex.: "#23112026-31454 … Chamado: 140189", "#46779 - #23122");
+   - OS de 15 dígitos vai para o chamado anterior (ou o 1º, se vier antes);
+   - "BDESK: 689073 » 688814 »": o número logo após "»" é referência, não chamado novo;
+   - número que já apareceu antes na mensagem não abre bloco novo;
+   - mensagem de RESUMO (um chamado por linha) vira um bloco por chamado, cada um com o seu trecho. */
+function wppMfBlocos(t){
+  t=String(t||'').replace(/\*/g,'');const H=[];let m;
+  const r1=/\b(?:B-?DESK|TICKET|INCIDENTE(?:\s+DE\s+INFRA)?|CHAMADO(?:\s+OFS\s+ATRIX|\s+ASSOCIADO|\s+BDESK)?)\s*[:#nº°.\-]*\s*(\d{6,7})(?!\d)/gi;
+  while((m=r1.exec(t)))H.push({k:'B:'+m[1],i:m.index,j:m.index+m[0].length});
+  const r2=/(^|[^\d])(\d{6,7})\s*»/g;while((m=r2.exec(t))){const i=m.index+m[1].length;H.push({k:'B:'+m[2],i,j:i+m[2].length});}
+  const r3=/#?\b(\d{8}-\d{4,6})\b/g;while((m=r3.exec(t)))H.push({k:'G:'+m[1],i:m.index,j:m.index+m[0].length});
+  const r4=/(?:\bOS|\bATRIX|B-?DESK)\s*[:\-]?\s*(6\d{14})(?!\d)/gi;while((m=r4.exec(t)))H.push({k:'O:'+m[1],i:m.index,j:m.index+m[0].length});
+  H.sort((a,b)=>a.i-b.i||b.j-a.j);
+  const hs=[];H.forEach(h=>{const p=hs[hs.length-1];if(p&&h.i<p.j)return;
+    if(p&&h.k[0]==='B'&&p.k[0]==='B'&&/^\s*»\s*$/.test(t.slice(p.j,h.i)))return;hs.push(h);});
+  const B=[],ondeK={};let cur=null,prev=null;const pend=[];
+  hs.forEach(h=>{
+    if(ondeK[h.k]){cur=ondeK[h.k];prev=h;return;}
+    if(h.k[0]==='O'){if(cur){cur.keys.push(h.k);ondeK[h.k]=cur;}else pend.push(h.k);prev=h;return;}
+    if(cur&&prev&&!/\n/.test(t.slice(prev.j,h.i))){cur.keys.push(h.k);ondeK[h.k]=cur;prev=h;return;}
+    cur={keys:[h.k],ini:t.lastIndexOf('\n',h.i)+1};B.push(cur);ondeK[h.k]=cur;prev=h;});
+  if(!B.length)return[];
+  pend.forEach(k=>{if(!B[0].keys.includes(k))B[0].keys.unshift(k);});
+  B.forEach((b,n)=>{b.seg=B.length>1?t.slice(b.ini,n+1<B.length?B[n+1].ini:t.length).replace(/[_\-=]{8,}\s*$/,'').trim():t;
+    b.keys.sort((x,y)=>(x[0]==='O')-(y[0]==='O'));});
+  B.cab=B.length>1?t.slice(0,B[0].ini):'';
+  return B;
+}
+function wppMfRotulo(k){return k[0]==='B'?'BDESK '+k.slice(2):k[0]==='G'?'Ticket '+k.slice(2):'OS '+k.slice(2);}
+/* índice da base de POPs (Painel POP): uf|sigla → POPs; cidades com POP por UF */
 function _wppMfIndice(){
   const base=(typeof dPop!=='undefined'&&Array.isArray(dPop))?dPop:[];
   if(_wppMfIdx&&_wppMfIdxDe===base.length)return _wppMfIdx;
-  const sig={},nome={},cid={};
+  const sig={},cid={};
   base.forEach(p=>{const uf=String(p.uf||'').toUpperCase();if(!uf)return;
     const sg=String(p.sigla||'').toUpperCase();if(sg)(sig[uf+'|'+sg]=sig[uf+'|'+sg]||[]).push(p);
-    if(p.nome)nome[String(p.nome).toUpperCase()]=p;
     const c=_wppMfNorm(p.cidade);if(c.length>=5)(cid[uf]=cid[uf]||new Set()).add(c);});
-  _wppMfIdx={sig,nome,cid};_wppMfIdxDe=base.length;return _wppMfIdx;
+  _wppMfIdx={sig,cid};_wppMfIdxDe=base.length;return _wppMfIdx;
 }
 function _wppMfTipo(p){
   const rg=String(p.regime||p.collocation||'').toUpperCase();
   return(p.tier?'Tier '+p.tier:'Tier —')+' · '+(rg==='PROPRIO'?'Próprio':rg==='COLLOCATION'?'Collocation':(rg||'—'));
 }
-/* devolve {ufs,pops,cidades} ou null se a mensagem não for de massiva/Bdesk das UFs marcadas */
+/* UFs (das 5 acompanhadas) e POPs citados no texto */
 function wppMfAnalisar(texto){
-  const t=String(texto||'');if(!t||!WPP_MF_RE.test(t))return null;
-  const I=_wppMfIndice(),ufs=new Set(),pops=new Map(),cidades=new Set();
+  const t=String(texto||'');const I=_wppMfIndice(),ufs=new Set(),pops=new Map();
   const addPop=(uf,sg,n)=>{uf=uf.toUpperCase();sg=sg.toUpperCase();
-    const lista=I.sig[uf+'|'+sg];if(!lista)return false;ufs.add(uf);
+    const lista=I.sig[uf+'|'+sg];if(!lista)return;if(WPP_MF_UFS.includes(uf))ufs.add(uf);
     const alvo=n?lista.find(p=>String(p.nome||'').toUpperCase().endsWith('-'+String(n).padStart(2,'0')))||lista[0]:lista[0];
-    pops.set(alvo.nome||(uf+'-'+sg),alvo);return true;};
+    pops.set(alvo.nome||(uf+'-'+sg),alvo);};
   let m;
   const r1=/\bPOP[-_ ]?([A-Z]{2})[-_ ]?([A-Z]{3})(?:[-_ ]?(\d{1,2}))?/gi;while((m=r1.exec(t)))addPop(m[1],m[2],m[3]);
   const r2=/\bbr\.([a-z]{2})\.([a-z]{3})\b/gi;while((m=r2.exec(t)))addPop(m[1],m[2]);
@@ -26457,31 +26502,42 @@ function wppMfAnalisar(texto){
   const r4=/(?:^|[^A-Za-zÀ-ú])(PI|PA|MA|AP|AM)(?=$|[^A-Za-zÀ-ú])/g;while((m=r4.exec(t)))ufs.add(m[1]);
   WPP_MF_UFS.forEach(uf=>{if(WPP_MF_NOME[uf].test(t))ufs.add(uf);});
   const tn=' '+_wppMfNorm(t).replace(/[^a-z0-9]+/g,' ')+' ';
-  wppMf.ufs.forEach(uf=>{(I.cid[uf]||[]).forEach(c=>{if(tn.includes(' '+c.replace(/[^a-z0-9]+/g,' ')+' ')){ufs.add(uf);cidades.add(c);}});});
-  const sel=[...ufs].filter(u=>wppMf.ufs.includes(u));
-  if(!sel.length)return null;
-  return{ufs:sel,pops:[...pops.values()].filter(p=>sel.includes(String(p.uf).toUpperCase())).slice(0,4).map(p=>({nome:p.nome,cidade:p.cidade,uf:p.uf,tipo:_wppMfTipo(p)}))};
+  WPP_MF_UFS.forEach(uf=>{(I.cid[uf]||[]).forEach(c=>{if(tn.includes(' '+c.replace(/[^a-z0-9]+/g,' ')+' '))ufs.add(uf);});});
+  return{ufs:[...ufs],pops:[...pops.values()].slice(0,4).map(p=>({nome:p.nome,cidade:p.cidade,uf:p.uf,tipo:_wppMfTipo(p)}))};
 }
 function wppMfReceber(m,chatId,semRender){
-  if(!m||!m.id||wppMf.itens.some(x=>x.id===m.id))return false;
+  if(!m||!m.id||wppMf.itens.some(x=>(x.mid||x.id)===m.id))return false;
+  const c=_wppMfGrupoDe(chatId);if(!c)return false;
   const texto=[m.body,m.filename].filter(Boolean).join(' ');
-  const r=wppMfAnalisar(texto);if(!r)return false;
-  const c=wppChats.find(x=>x.id===chatId)||{};
-  wppMf.itens.push({id:m.id,chatId,chat:c.name||chatId,quem:m.fromMe?'Você':(m.senderName||''),txt:String(texto).slice(0,600),ts:m.timestamp||Math.floor(Date.now()/1000),ufs:r.ufs,pops:r.pops});
-  wppMf.itens.sort((a,b)=>b.ts-a.ts);wppMfSalvar();
+  const bl=wppMfBlocos(texto);if(!bl.length)return false;
+  const multi=bl.length>1,ts=m.timestamp||Math.floor(Date.now()/1000),quem=m.fromMe?'Você':(m.senderName||'');
+  bl.forEach((b,n)=>{const alvo=multi?bl.cab+'\n'+b.seg:texto,r=wppMfAnalisar(alvo);
+    wppMf.itens.push({id:multi?m.id+'#'+n:m.id,mid:m.id,chatId,chat:c.name||chatId,quem,txt:String(multi?b.seg:texto).slice(0,500),ts,tks:b.keys,ufs:r.ufs,pops:r.pops,mas:WPP_MF_MASSIVA.test(alvo),resumo:multi});});
+  wppMfSalvar();
   if(!semRender)wppMfRender();
   return true;
 }
-/* varre as conversas com atividade nas últimas 24 h (no máximo 30 conversas × 40 mensagens, 1 por vez) */
+/* agrupa as mensagens por chamado (união: mensagens que citam o mesmo número — ou BDESK+OS juntos — são 1 chamado) */
+function wppMfAgrupar(){
+  const pai={};const ach=k=>{while(pai[k]!==k){pai[k]=pai[pai[k]];k=pai[k];}return k;};
+  wppMf.itens.forEach(x=>x.tks.forEach(k=>{if(!(k in pai))pai[k]=k;}));
+  wppMf.itens.forEach(x=>{const r0=ach(x.tks[0]);x.tks.slice(1).forEach(k=>{const r=ach(k);if(r!==r0)pai[r]=r0;});});
+  const G=new Map();
+  wppMf.itens.forEach(x=>{const r=ach(x.tks[0]);let g=G.get(r);if(!g){g={keys:new Set(),msgs:[],ufs:new Set(),pops:new Map(),chats:new Map(),mas:false};G.set(r,g);}
+    x.tks.forEach(k=>g.keys.add(k));g.msgs.push(x);(x.ufs||[]).forEach(u=>g.ufs.add(u));(x.pops||[]).forEach(p=>g.pops.set(p.nome,p));g.chats.set(x.chatId,x.chat);if(x.mas)g.mas=true;});
+  return[...G.values()].map(g=>{g.msgs.sort((a,b)=>a.ts-b.ts);const ks=[...g.keys];
+    g.principal=ks.find(k=>k[0]==='B')||ks.find(k=>k[0]==='G')||ks[0];g.outros=ks.filter(k=>k!==g.principal);
+    g.ini=g.msgs[0];g.ult=g.msgs[g.msgs.length-1];return g;}).sort((a,b)=>b.ult.ts-a.ult.ts);
+}
+/* varre os 4 grupos (últimas 48 h, até 100 mensagens de cada) */
 async function wppMfVarrer(forcar){
   if(_wppMfVarrendo||(!forcar&&Date.now()-_wppMfVarridoEm<10*60000))return;
+  const grupos=wppChats.filter(c=>_wppMfGrupoDe(c.id));if(!grupos.length)return;
   _wppMfVarrendo=true;_wppMfVarridoEm=Date.now();wppMfRender();
   try{
-    const lim=Date.now()/1000-24*3600;
-    const conv=wppChats.filter(c=>c.lastMessage&&c.lastMessage.timestamp>=lim).sort((a,b)=>b.lastMessage.timestamp-a.lastMessage.timestamp).slice(0,30);
-    let novos=0;
-    for(const c of conv){
-      try{const L=await wppFetch('/api/chats/'+encodeURIComponent(c.id)+'/messages?limit=40');(L||[]).forEach(m=>{if(m.timestamp>=lim&&wppMfReceber(m,c.id,true))novos++;});}catch(_){}
+    const lim=Date.now()/1000-48*3600;let novos=0;
+    for(const c of grupos){
+      try{const L=await wppFetch('/api/chats/'+encodeURIComponent(c.id)+'/messages?limit=100');(L||[]).forEach(m=>{if(m.timestamp>=lim&&wppMfReceber(m,c.id,true))novos++;});}catch(_){}
     }
     if(novos)wppMfSalvar();
   }finally{_wppMfVarrendo=false;wppMfRender();}
@@ -26489,24 +26545,30 @@ async function wppMfVarrer(forcar){
 setInterval(()=>{if(typeof wppBridgeState!=='undefined'&&wppBridgeState&&wppBridgeState.status==='ready')wppMfVarrer();},10*60000);
 function wppMfUf(uf){
   const i=wppMf.ufs.indexOf(uf);if(i>=0)wppMf.ufs.splice(i,1);else wppMf.ufs.push(uf);
-  /* reaplica o filtro de UF nas mensagens guardadas */
-  wppMf.itens=wppMf.itens.filter(x=>(x.ufs||[]).some(u=>wppMf.ufs.includes(u)));
-  wppMfSalvar();wppMfRender();wppMfVarrer(true);
+  wppMfSalvar();wppMfRender();
 }
 function wppMfRender(){
   const el=document.getElementById('wpp-mc-filtro');if(!el)return;
-  const itens=wppMf.itens.filter(x=>(x.ufs||[]).some(u=>wppMf.ufs.includes(u)));
+  const todos=wppMfAgrupar(),lst=todos.filter(g=>[...g.ufs].some(u=>wppMf.ufs.includes(u)));
+  const nMsgs=new Set(lst.flatMap(g=>g.msgs.map(x=>x.mid||x.id))).size;
   const semPop=!(typeof dPop!=='undefined'&&dPop.length);
-  const chips=WPP_MF_UFS.map(u=>'<button type="button" class="wpp-mf-uf'+(wppMf.ufs.includes(u)?' on':'')+'" onclick="event.stopPropagation();wppMfUf(\''+u+'\')" title="Mostrar mensagens de '+u+'">'+u+'</button>').join('');
-  const lista=itens.length?itens.map(x=>{
-    const hora=new Date(x.ts*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-    const pops=(x.pops||[]).map(p=>'<span class="wpp-mf-pop" title="'+eh(p.cidade||'')+'/'+eh(p.uf||'')+'"><i class="ti ti-building-broadcast-tower"></i> '+eh(p.nome)+' · '+eh(p.tipo)+'</span>').join('');
-    return'<div class="wpp-mc-msg wpp-mf-msg" style="--wc:#dc2626" onclick="selectWppChat(\''+eh(x.chatId)+'\')" title="Abrir a conversa"><div class="wpp-mc-top"><b>'+(x.ufs||[]).map(u=>'<span class="wpp-mf-tag">'+eh(u)+'</span>').join('')+' '+eh(x.chat)+'</b><span>'+hora+'</span></div>'
-      +(x.quem?'<div class="wpp-mf-quem">'+eh(x.quem)+'</div>':'')+'<div class="wpp-txt">'+wppFmtTexto(x.txt)+'</div>'+(pops?'<div class="wpp-mf-pops">'+pops+'</div>':'')+'</div>';}).join('')
-    :'<div class="wpp-mc-sis">'+(_wppMfVarrendo?'Procurando nas conversas das últimas 24 h…':'Nenhuma mensagem de massiva/Bdesk de '+(wppMf.ufs.join(', ')||'nenhuma UF')+' nas últimas 48 h.')+'</div>';
-  el.innerHTML='<div class="wpp-mc-hd"><span class="wpp-ci-av" style="color:#dc2626"><i class="ti ti-alert-triangle"></i></span><span class="wpp-mc-nome">Massivos / Bdesk <small style="color:var(--tx3)">'+itens.length+'</small></span>'
-    +'<button type="button" onclick="event.stopPropagation();wppMfVarrer(true)" title="Procurar de novo nas conversas"><i class="ti ti-refresh'+(_wppMfVarrendo?' wpp-mf-gira':'')+'"></i></button></div>'
-    +'<div class="wpp-mf-ufs">'+chips+(semPop?'<span class="wpp-mf-aviso">Base do Painel POP vazia — sem tipo de POP</span>':'')+'</div>'
+  const faltam=WPP_MF_GRUPOS.filter(g=>!wppChats.some(c=>/@g\.us$/.test(c.id)&&g.re.test(String(c.name||'').toLowerCase().replace(/\s+/g,' ').trim())));
+  const fh=ts=>new Date(ts*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const chips=WPP_MF_UFS.map(u=>'<button type="button" class="wpp-mf-uf'+(wppMf.ufs.includes(u)?' on':'')+'" onclick="event.stopPropagation();wppMfUf(\''+u+'\')" title="Mostrar chamados de '+u+'">'+u+'</button>').join('');
+  const lista=lst.length?lst.map(g=>{
+    const pops=[...g.pops.values()].filter(p=>wppMf.ufs.includes(String(p.uf).toUpperCase())).slice(0,4).map(p=>'<span class="wpp-mf-pop" title="'+eh(p.cidade||'')+'/'+eh(p.uf||'')+'"><i class="ti ti-building-broadcast-tower"></i> '+eh(p.nome)+' · '+eh(p.tipo)+'</span>').join('');
+    const ufs=[...g.ufs].filter(u=>wppMf.ufs.includes(u)).map(u=>'<span class="wpp-mf-tag">'+eh(u)+'</span>').join('');
+    const outros=g.outros.length?' <small class="wpp-mf-quem">('+g.outros.map(wppMfRotulo).map(eh).join(', ')+')</small>':'';
+    const atu=g.msgs.length>1?'<div class="wpp-mf-atu"><i class="ti ti-message-2"></i> '+(g.msgs.length-1)+' atualizaç'+(g.msgs.length-1>1?'ões':'ão')+' · última '+fh(g.ult.ts)+(g.ult.quem?' — '+eh(g.ult.quem):'')+': '+eh(String(g.ult.txt).replace(/\s+/g,' ').slice(0,140))+'</div>':'';
+    return'<div class="wpp-mc-msg wpp-mf-msg" style="--wc:#dc2626" onclick="selectWppChat(\''+eh(g.ult.chatId)+'\')" title="Abrir a conversa">'
+      +'<div class="wpp-mc-top"><b><span class="wpp-mf-tk">'+eh(wppMfRotulo(g.principal))+'</span>'+(g.mas?'<span class="wpp-mf-tag">MASSIVA</span>':'')+ufs+outros+'</b><span>'+fh(g.ini.ts)+'</span></div>'
+      +'<div class="wpp-mf-quem">'+[...g.chats.values()].map(eh).join(' · ')+(g.ini.quem?' — '+eh(g.ini.quem):'')+'</div>'
+      +'<div class="wpp-txt" title="'+eh(g.ini.txt)+'">'+wppFmtTexto(String(g.ini.txt).replace(/[ \t]*\n\s*\n+/g,'\n').trim())+'</div>'+(pops?'<div class="wpp-mf-pops">'+pops+'</div>':'')+atu+'</div>';}).join('')
+    :'<div class="wpp-mc-sis">'+(_wppMfVarrendo?'Procurando nos 4 grupos (últimas 48 h)…':'Nenhum chamado de '+(wppMf.ufs.join(', ')||'nenhuma UF')+' nos 4 grupos nas últimas 48 h.')+'</div>';
+  el.innerHTML='<div class="wpp-mc-hd"><span class="wpp-ci-av" style="color:#dc2626"><i class="ti ti-alert-triangle"></i></span><span class="wpp-mc-nome" title="Contados 1 vez por número de chamado ('+nMsgs+' mensagens). Grupos: '+eh(WPP_MF_GRUPOS.map(g=>g.rot).join(' | '))+'">Massivos / Bdesk <small style="color:var(--tx3)">'+lst.length+' chamado'+(lst.length===1?'':'s')+' · '+nMsgs+' msg</small></span>'
+    +'<button type="button" onclick="event.stopPropagation();wppMfVarrer(true)" title="Procurar de novo nos 4 grupos"><i class="ti ti-refresh'+(_wppMfVarrendo?' wpp-mf-gira':'')+'"></i></button></div>'
+    +'<div class="wpp-mf-ufs">'+chips+(semPop?'<span class="wpp-mf-aviso">Base do Painel POP vazia — sem tipo de POP</span>':'')
+    +(faltam.length&&wppChats.length?'<span class="wpp-mf-aviso">Grupo não encontrado: '+eh(faltam.map(g=>g.rot).join(', '))+'</span>':'')+'</div>'
     +'<div class="wpp-mc-msgs">'+lista+'</div>';
 }
 async function wppMonSincronizar(cfg){
