@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T19:20:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T19:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -26761,6 +26761,33 @@ function _wppMfDesc(g){
   if(!d){const m=ls.find(l=>/indisponib|massiv|alerta|rup::|txe::|rompimento|motivo|falha|down|fora/i.test(l));d=m||ls.find(l=>/\d{6}|#\d{8}/.test(l))||ls[0]||'';}
   return d.replace(/\s+/g,' ').slice(0,110);
 }
+/* localidades do chamado (pedido 2026-11-25: no resumo, localidade no lugar do Tier).
+   Fontes, nesta ordem: cidade do POP citado (Painel POP), campo "Cidade:" da mensagem e nome de cidade com POP
+   (base do Painel POP) citado no texto — ex.: "PA::RUP::DOM ELISEU_MBW<>RONDON DO PARA_MBW". Formato "Cidade/UF". */
+let _wppMfCidNome=null,_wppMfCidDe=-1;
+function _wppMfCidMapa(){
+  const base=(typeof dPop!=='undefined'&&Array.isArray(dPop))?dPop:[];
+  if(_wppMfCidNome&&_wppMfCidDe===base.length)return _wppMfCidNome;
+  const m={};base.forEach(p=>{const uf=String(p.uf||'').toUpperCase(),c=_wppMfNorm(p.cidade).replace(/[^a-z0-9]+/g,' ').trim();if(uf&&c.length>=3&&!m[uf+'|'+c])m[uf+'|'+c]=String(p.cidade).trim();});
+  _wppMfCidNome=m;_wppMfCidDe=base.length;return m;
+}
+const _wppMfTitulo=t=>String(t).toLowerCase().replace(/(^|[\s\-'])([a-zà-ú])/g,(a,b,c)=>b+c.toUpperCase()).replace(/\b(D[aeo]s?|E)\b/g,x=>x.toLowerCase());
+function _wppMfLocais(g){
+  const M=_wppMfCidMapa(),I=_wppMfIndice(),out=new Map();
+  const ufsG=[...g.ufs].filter(u=>WPP_MF_UFS.includes(u));
+  const add=(nome,uf)=>{const k=_wppMfNorm(nome).replace(/[^a-z0-9]+/g,' ').trim();if(k.length<3)return;const kk=(uf||'')+'|'+k;if(!out.has(kk))out.set(kk,(M[kk]||_wppMfTitulo(nome.trim()))+(uf?'/'+uf:''));};
+  [...g.pops.values()].forEach(p=>{if(p.cidade)add(p.cidade,String(p.uf||'').toUpperCase());});
+  g.msgs.forEach(x=>{
+    const t=String(x.txt||'').replace(/\*/g,'');let m;
+    const re=/\bcidade(?:\s*\[infra\])?\s*:\s*([A-Za-zÀ-ú' .\-]{3,40}?)\s*(?:$|\n|\||UF\b|Status\b|T[eé]cnico\b|Motivo\b|OS\b|Regional\b)/gim;
+    while((m=re.exec(t))){const nome=m[1].trim();const k=_wppMfNorm(nome).replace(/[^a-z0-9]+/g,' ').trim();
+      const uf=ufsG.find(u=>M[u+'|'+k])||(ufsG.length===1?ufsG[0]:'');add(nome,uf);}
+    const tn=' '+_wppMfNorm(t).replace(/[^a-z0-9]+/g,' ')+' ';
+    ufsG.forEach(uf=>{(I.cid[uf]||[]).forEach(c=>{const cc=c.replace(/[^a-z0-9]+/g,' ');if(tn.includes(' '+cc+' '))add(M[uf+'|'+cc]||c,uf);});});
+  });
+  /* "Dom Eliseu/PA" e "Dom Eliseu" (sem UF) → fica só a com UF */
+  const v=[...out.entries()];return v.filter(([k])=>!(k.startsWith('|')&&v.some(([k2])=>k2!==k&&k2.endsWith(k)))).map(([,n])=>n);
+}
 function wppMfResumoDados(lst){
   const ini=_wppMfDiaIni(_wppMfDia),fim=ini+86400;
   const doDia=lst.filter(g=>g.msgs.some(x=>x.ts>=ini&&x.ts<fim)).sort((a,b)=>a.ini.ts-b.ini.ts);
@@ -26774,7 +26801,7 @@ function wppMfResumoDados(lst){
     porUf:cont(doDia,g=>[...g.ufs].filter(u=>wppMf.ufs.includes(u))),
     porGrupo:cont(doDia,g=>[...g.chats.values()]),
     porTag:cont(doDia,tagDe),
-    porTier:cont(doDia,g=>[...new Set([...g.pops.values()].map(p=>String(p.tipo).split(' · ')[0]))]),
+    porLocal:cont(doDia,g=>_wppMfLocais(g)),
     tagDe};
 }
 const _wppMfTagRot=k=>k==='semtag'?'Sem tag':(WPP_MF_TAGS[k]||{}).rot||k;
@@ -26790,14 +26817,14 @@ function wppMfResumoHtml(lst){
       +(T?'<span class="wpp-mf-tg" style="background:'+T.cor+'">'+T.rot+'</span>':'')+(g.mas?'<span class="wpp-mf-tag">MASSIVA</span>':'')
       +[...g.ufs].filter(u=>wppMf.ufs.includes(u)).map(u=>'<span class="wpp-mf-tag">'+u+'</span>').join('')+'<em>'+hm(g.ini.ts)+(g.msgs.length>1?' → '+hm(g.ult.ts):'')+'</em></div>'
       +'<div class="wpp-mf-rl-d">'+eh(_wppMfDesc(g))+'</div>'
-      +'<div class="wpp-mf-quem">'+(pop?eh(pop.nome)+' · '+eh(pop.tipo)+' · ':'')+eh([...g.chats.values()].join(' · '))+' · '+g.msgs.length+' msg</div></div>';}).join('');
+      +'<div class="wpp-mf-quem">'+(function(){const lc=_wppMfLocais(g);return lc.length?'<i class="ti ti-map-pin"></i> '+eh(lc.join(', '))+' · ':'';})()+(pop?eh(pop.nome)+' · ':'')+eh([...g.chats.values()].join(' · '))+' · '+g.msgs.length+' msg</div></div>';}).join('');
   return'<div class="wpp-mf-res">'
     +'<div class="wpp-mf-res-hd"><div class="wpp-mf-dias"><button type="button" class="'+(_wppMfDia===0?'on':'')+'" onclick="event.stopPropagation();wppMfDiaSel(0)">Hoje</button><button type="button" class="'+(_wppMfDia===1?'on':'')+'" onclick="event.stopPropagation();wppMfDiaSel(1)">Ontem</button></div><small>'+eh(dataTxt)+' · '+eh(wppMf.ufs.join(', ')||'nenhuma UF')+'</small></div>'
     +'<div class="wpp-mf-kpis">'+kpi(D.doDia.length,'chamados')+kpi(D.novos,'novos no dia')+kpi(D.atualizados,'com atualização')+kpi(D.massivas,'massivas','#dc2626')
       +kpi(D.porTag.filter(([k])=>k==='atencao').reduce((s,x)=>s+x[1],0),'atenção','#dc2626')+kpi(D.porTag.filter(([k])=>k==='resolvido').reduce((s,x)=>s+x[1],0),'resolvidos','#16a34a')+'</div>'
     +'<div class="wpp-mf-res-sec"><b>Status (tag)</b>'+barra(D.porTag.map(([k,v])=>[_wppMfTagRot(k),v,k]).map(x=>[x[0],x[1]]),k=>corTag(Object.keys(WPP_MF_TAGS).find(t=>WPP_MF_TAGS[t].rot===k)||'semtag'))+'</div>'
     +'<div class="wpp-mf-res-sec"><b>Por UF</b>'+barra(D.porUf,'#dc2626')+'</div>'
-    +'<div class="wpp-mf-res-sec"><b>Por tipo de POP (Painel POP)</b>'+barra(D.porTier,'#2563eb')+'</div>'
+    +'<div class="wpp-mf-res-sec"><b>Por localidade</b>'+barra(D.porLocal,'#2563eb')+'</div>'
     +'<div class="wpp-mf-res-sec"><b>Por grupo</b>'+barra(D.porGrupo,'#111827')+'</div>'
     +'<div class="wpp-mf-res-acoes"><button type="button" onclick="event.stopPropagation();wppMfResumoCopiar()"><i class="ti ti-copy"></i> Copiar resumo</button><button type="button" class="wa" onclick="event.stopPropagation();wppMfResumoEnviar()"><i class="ti ti-brand-whatsapp"></i> Enviar via WhatsApp</button></div>'
     +'<div class="wpp-mf-res-sec"><b>Chamados do dia ('+D.doDia.length+')</b>'+(linhas||'<div class="wpp-mc-sis">Nenhum chamado neste dia.</div>')+'</div></div>';
@@ -26811,10 +26838,10 @@ function wppMfResumoTexto(){
   const L=['*📋 Resumo do dia — Massivos / Bdesk — '+dia+'*','UFs: '+(wppMf.ufs.join(', ')||'—'),'',
     '*Chamados:* '+D.doDia.length+' (novos no dia '+D.novos+' · com atualização '+D.atualizados+') · *Massivas:* '+D.massivas,
     '*Status:* '+j(D.porTag.map(([k,v])=>[_wppMfTagRot(k),v])),
-    '*Por UF:* '+j(D.porUf),'*Por tipo de POP:* '+j(D.porTier),'*Por grupo:* '+j(D.porGrupo),'','*Chamados:*'];
+    '*Por UF:* '+j(D.porUf),'*Por localidade:* '+j(D.porLocal),'*Por grupo:* '+j(D.porGrupo),'','*Chamados:*'];
   D.doDia.forEach(g=>{const t=wppMfTagDe(g),T=t&&WPP_MF_TAGS[t.tag],pop=[...g.pops.values()][0];
     L.push('• *'+wppMfRotulo(g.principal)+'* ['+[...g.ufs].filter(u=>wppMf.ufs.includes(u)).join('/')+'] '+hm(g.ini.ts)+(g.mas?' — MASSIVA':'')+' — '+_wppMfDesc(g)
-      +(pop?' — '+pop.nome+' ('+pop.tipo+')':'')+(T?' — _'+T.rot+'_':''));});
+      +(function(){const lc=_wppMfLocais(g);return lc.length?' — 📍 '+lc.join(', '):'';})()+(pop?' — '+pop.nome:'')+(T?' — _'+T.rot+'_':''));});
   return L.join('\n');
 }
 function wppMfResumoCopiar(){
