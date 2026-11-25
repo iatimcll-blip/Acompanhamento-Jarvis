@@ -195,6 +195,41 @@ async function contactSummary(id) {
   }
 }
 
+/* 2026-11-25: histórico local das mensagens (só neste PC, fora do git).
+   Com o WhatsApp Web fixado numa versão anterior, depois de cada reinício da ponte a conversa volta com 0
+   mensagens na memória e loadEarlierMsgs não traz nada — o painel (e o bloco Massivos/Bdesk / Resumo do dia)
+   perdia tudo o que tinha chegado antes. Agora toda mensagem recebida/enviada/lida fica guardada aqui por 72 h
+   (até 400 por conversa) e /api/chats/:id/messages completa com ela. */
+const HIST_FILE = path.join(__dirname, '.historico.json');
+const HIST_HORAS = 72, HIST_MAX = 400;
+let hist = {};
+try { hist = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')) || {}; } catch (_) { hist = {}; }
+let _histTimer = null;
+function histSalvar() {
+  if (_histTimer) return;
+  _histTimer = setTimeout(() => {
+    _histTimer = null;
+    const lim = Date.now() / 1000 - HIST_HORAS * 3600;
+    for (const id of Object.keys(hist)) {
+      hist[id] = (hist[id] || []).filter(m => m && m.timestamp >= lim).slice(-HIST_MAX);
+      if (!hist[id].length) delete hist[id];
+    }
+    fs.writeFile(HIST_FILE + '.tmp', JSON.stringify(hist), err => { if (!err) fs.rename(HIST_FILE + '.tmp', HIST_FILE, () => {}); });
+  }, 15000);
+}
+function histGuardar(chatId, lista) {
+  if (!chatId || !lista || !lista.length) return;
+  const arr = hist[chatId] || (hist[chatId] = []);
+  const idx = new Map(arr.map((m, i) => [m.id, i]));
+  let mudou = false;
+  for (const m of lista) {
+    if (!m || !m.id || !m.timestamp) continue;
+    const i = idx.get(m.id);
+    if (i === undefined) { idx.set(m.id, arr.length); arr.push(m); mudou = true; }
+    else if (JSON.stringify(arr[i]) !== JSON.stringify(m)) { arr[i] = m; mudou = true; }
+  }
+  if (mudou) { arr.sort((a, b) => a.timestamp - b.timestamp); if (arr.length > HIST_MAX) arr.splice(0, arr.length - HIST_MAX); histSalvar(); }
+}
 async function summarizeMessage(message, withQuote = true) {
   const senderId = message.author || (message.fromMe ? message.to : message.from) || '';
   const sender = await contactSummary(senderId);
@@ -330,7 +365,9 @@ async function startClient() {
   client.on('message', async message => {
     state.unread += 1;
     touch();
-    broadcast('message', { message: await summarizeMessage(message) });
+    const sm = await summarizeMessage(message);
+    try { histGuardar(message.from, [sm]); } catch (_) {}
+    broadcast('message', { message: sm });
   });
   client.on('message_ack', (message, ack) => {
     broadcast('ack', { id: message.id && message.id._serialized, ack });
@@ -338,7 +375,9 @@ async function startClient() {
   client.on('message_create', async message => {
     if (!message.fromMe) return;
     touch();
-    broadcast('message_create', { message: await summarizeMessage(message) });
+    const sm = await summarizeMessage(message);
+    try { histGuardar(message.to, [sm]); } catch (_) {}
+    broadcast('message_create', { message: sm });
   });
 
   try {
@@ -442,7 +481,12 @@ app.get('/api/chats/:id/messages', async (req, res) => {
     const limit = Math.max(1, Math.min(300, Number(req.query.limit || 50)));
     const chat = await client.getChatById(req.params.id);
     const messages = await chat.fetchMessages({ limit });
-    res.json(await Promise.all(messages.map(summarizeMessage)));
+    const vivas = await Promise.all(messages.map(summarizeMessage));
+    histGuardar(req.params.id, vivas);
+    /* completa com o histórico local (mensagens que a memória do WhatsApp Web perdeu num reinício) */
+    const porId = new Map((hist[req.params.id] || []).map(m => [m.id, m]));
+    vivas.forEach(m => porId.set(m.id, m));
+    res.json([...porId.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-limit));
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
