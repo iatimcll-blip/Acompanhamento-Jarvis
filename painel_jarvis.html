@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T18:50:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T19:10:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22727,6 +22727,11 @@ function _atrixStartMonitoring(triggeredAtIso,startTries){
       if(st.lastRunConclusion==='failure'||st.state==='error'){
         await loadAtrixUpdates(); /* aplica o que foi lido certo (falha = metade ou mais sem leitura) */
         encerrar(false);
+        if(st.errorCode==='vpn_desligada'){
+          window._atrixTentativaAgendada=0;
+          _ghToast('A VPN Fortinet está DESCONECTADA no PC do agente — o Atrix só aceita acesso pela VPN. Conecte o FortiClient nesse PC e clique em Atualizar de novo. Nenhum substatus foi alterado.','var(--red)',14000);
+          return;
+        }
         if(st.errorCode==='atrix_bloqueado'){
           const n=window._atrixTentativaAgendada||0;window._atrixTentativaAgendada=0;
           const quando=new Date(st.lastRunCompletedAt||Date.now()).getTime()+ATRIX_BLOQ_ESPERA_MIN*60000;
@@ -22836,7 +22841,11 @@ async function triggerAtrixUpdateNow(btn,opt){
       if(!confirm('Há uma atualização agendada para '+_atxHM(ag.at)+' (o Atrix tinha bloqueado o agente).\n\nOK = disparar AGORA (o bloqueio pode continuar)\nCancelar = manter o agendamento'))return;
       _atrixAgendaGravar(null);
     }else{
-      const bq=_atrixBloqueioRecente(atrixRunnerSt||await loadAtrixRunnerStatus().catch(()=>null));
+      const stB=atrixRunnerSt||await loadAtrixRunnerStatus().catch(()=>null);
+      if(stB&&stB.errorCode==='vpn_desligada'&&stB.state!=='running'&&stB.lastRunCompletedAt&&Date.now()-new Date(stB.lastRunCompletedAt).getTime()<6*3600000){
+        if(!confirm('Na última tentativa ('+_atxHM(new Date(stB.lastRunCompletedAt).getTime())+') a VPN Fortinet estava DESCONECTADA no PC do agente — o Atrix só aceita acesso pela VPN.\n\nA VPN já foi conectada nesse PC?\nOK = atualizar agora\nCancelar = não fazer nada'))return;
+      }
+      const bq=stB&&stB.errorCode==='vpn_desligada'?null:_atrixBloqueioRecente(stB);
       if(bq){
         if(confirm('O Atrix bloqueou o acesso do agente às '+_atxHM(bq.fim)+' (firewall Azion — "Forbidden"). Esse bloqueio costuma durar um tempo, e tentar de novo logo em seguida só o prolonga.\n\nOK = AGENDAR a atualização automática para '+_atxHM(bq.libera)+' (deixe esta página aberta)\nCancelar = outras opções')){_atrixAgendar(bq.libera,1);return;}
         if(!confirm('Tentar AGORA mesmo assim? (provavelmente será bloqueado de novo)'))return;
