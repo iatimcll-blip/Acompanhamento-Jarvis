@@ -485,6 +485,34 @@ function enviaMidia(req, res, c) {
   res.send(c.buf);
 }
 const mediaBaixando = new Map();
+/* 2026-11-25: com o WhatsApp Web fixado numa versão anterior, o msg.downloadMedia() da biblioteca trava
+   para imagem e documento (só áudio funcionava) e o pedido ficava pendurado para sempre — e o mesmo
+   arquivo travava de novo a cada clique. Agora: caminho normal com limite de 20 s; se não vier, o caminho
+   direto (WAWebDownloadManager.downloadAndMaybeDecrypt, o mesmo das versões antigas da biblioteca),
+   com limite de 60 s. Sem resposta = 404 ("indisponível"), nunca pendurado. */
+const comPrazo = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r('__prazo__'), ms))]);
+async function baixarDireto(id) {
+  return client.pupPage.evaluate(async (msgId) => {
+    const { Msg } = window.require('WAWebCollections');
+    const msg = Msg.get(msgId) || (await Msg.getMessagesById([msgId]))?.messages?.[0];
+    if (!msg || !msg.directPath || !msg.mediaKey) return null;
+    const dm = window.require('WAWebDownloadManager').downloadManager;
+    /* esta versão do WhatsApp Web exige downloadQpl (medição interna) e o tipo de mídia interno */
+    let qpl = null;
+    try { qpl = window.require('WAWebStartMediaDownloadQpl').startMediaDownloadQpl({ entryPoint: 'GalaxyFlowResponsesDownload' }); } catch (_) {}
+    let tipo = msg.type;
+    try { tipo = window.require('WAWebMmsMediaTypes').getMsgMediaType(msg); } catch (_) {}
+    const buf = await dm.downloadAndMaybeDecrypt({
+      directPath: msg.directPath, encFilehash: msg.encFilehash, filehash: msg.filehash,
+      mediaKey: msg.mediaKey, mediaKeyTimestamp: msg.mediaKeyTimestamp, type: tipo,
+      signal: (new AbortController()).signal, userDownloadAttemptCount: 0,
+      ...(qpl ? { downloadQpl: qpl } : {})
+    });
+    try { if (qpl) qpl.endSuccess(); } catch (_) {}
+    const data = await window.WWebJS.arrayBufferToBase64Async(buf);
+    return { data, mimetype: msg.mimetype, filename: msg.filename };
+  }, id);
+}
 app.get('/api/media/:id', async (req, res) => {
   const id = String(req.params.id || '');
   const c = mediaCache.get(id);
@@ -495,7 +523,11 @@ app.get('/api/media/:id', async (req, res) => {
     if (!mediaBaixando.has(id)) mediaBaixando.set(id, (async () => {
       const msg = await client.getMessageById(id);
       if (!msg || !msg.hasMedia || !MEDIA_TIPOS.includes(msg.type)) return null;
-      const media = await msg.downloadMedia();
+      let media = await comPrazo(msg.downloadMedia().catch(() => null), 20000);
+      if (media === '__prazo__' || !media || !media.data) {
+        media = await comPrazo(baixarDireto(id).catch(e => { console.warn('[midia] caminho direto falhou:', e && e.message); return null; }), 60000);
+        if (media === '__prazo__') { console.warn('[midia] sem resposta em 80 s:', id.slice(-12)); media = null; }
+      }
       if (!media || !media.data) return null;
       const buf = Buffer.from(media.data, 'base64');
       const tipo = String(media.mimetype || 'application/octet-stream').split(';')[0].trim() || 'application/octet-stream';
