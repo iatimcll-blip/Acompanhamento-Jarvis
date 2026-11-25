@@ -535,27 +535,40 @@ const mediaBaixando = new Map();
    direto (WAWebDownloadManager.downloadAndMaybeDecrypt, o mesmo das versões antigas da biblioteca),
    com limite de 60 s. Sem resposta = 404 ("indisponível"), nunca pendurado. */
 const comPrazo = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r('__prazo__'), ms))]);
-async function baixarDireto(id) {
-  return client.pupPage.evaluate(async (msgId) => {
+/* 2026-11-25 (2): causa real do "imagem/documento não abre": o WhatsApp Web fixado baixa o arquivo, mas a
+   validação interna dele recusa ("Unexpected mimetype application/octet-stream for media type image") e o
+   download fica preso em DECRYPTING. Solução: a ponte baixa o arquivo CIFRADO do servidor de mídia do WhatsApp
+   (directPath da mensagem) e decifra aqui mesmo com a mediaKey da mensagem — procedimento padrão do WhatsApp:
+   HKDF-SHA256(mediaKey, 112 bytes, "WhatsApp <Tipo> Keys") → iv | chave AES-256-CBC | chave HMAC; confere o MAC. */
+const HKDF_INFO = { image: 'WhatsApp Image Keys', sticker: 'WhatsApp Image Keys', video: 'WhatsApp Video Keys', gif: 'WhatsApp Video Keys', audio: 'WhatsApp Audio Keys', ptt: 'WhatsApp Audio Keys', document: 'WhatsApp Document Keys' };
+async function baixarCifrado(id) {
+  const meta = await client.pupPage.evaluate(async (msgId) => {
     const { Msg } = window.require('WAWebCollections');
     const msg = Msg.get(msgId) || (await Msg.getMessagesById([msgId]))?.messages?.[0];
     if (!msg || !msg.directPath || !msg.mediaKey) return null;
-    const dm = window.require('WAWebDownloadManager').downloadManager;
-    /* esta versão do WhatsApp Web exige downloadQpl (medição interna) e o tipo de mídia interno */
-    let qpl = null;
-    try { qpl = window.require('WAWebStartMediaDownloadQpl').startMediaDownloadQpl({ entryPoint: 'GalaxyFlowResponsesDownload' }); } catch (_) {}
-    let tipo = msg.type;
-    try { tipo = window.require('WAWebMmsMediaTypes').getMsgMediaType(msg); } catch (_) {}
-    const buf = await dm.downloadAndMaybeDecrypt({
-      directPath: msg.directPath, encFilehash: msg.encFilehash, filehash: msg.filehash,
-      mediaKey: msg.mediaKey, mediaKeyTimestamp: msg.mediaKeyTimestamp, type: tipo,
-      signal: (new AbortController()).signal, userDownloadAttemptCount: 0,
-      ...(qpl ? { downloadQpl: qpl } : {})
-    });
-    try { if (qpl) qpl.endSuccess(); } catch (_) {}
-    const data = await window.WWebJS.arrayBufferToBase64Async(buf);
-    return { data, mimetype: msg.mimetype, filename: msg.filename };
+    return { directPath: msg.directPath, mediaKey: msg.mediaKey, type: msg.type, mimetype: msg.mimetype, filename: msg.filename, url: msg.deprecatedMms3Url || msg.clientUrl || '' };
   }, id);
+  if (!meta) return null;
+  const info = HKDF_INFO[meta.type];
+  if (!info) return null;
+  const urls = [meta.url, 'https://mmg.whatsapp.net' + meta.directPath].filter((u, i, a) => u && /^https:\/\/[\w.-]+\.whatsapp\.net\//.test(u) && a.indexOf(u) === i);
+  let enc = null, ultimoErro = '';
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(25000) });
+      if (!r.ok) { ultimoErro = 'HTTP ' + r.status; continue; }
+      enc = Buffer.from(await r.arrayBuffer()); break;
+    } catch (e) { ultimoErro = e.message; }
+  }
+  if (!enc || enc.length <= 10) throw new Error('download cifrado falhou: ' + ultimoErro);
+  const chaves = Buffer.from(crypto.hkdfSync('sha256', Buffer.from(meta.mediaKey, 'base64'), Buffer.alloc(32), Buffer.from(info), 112));
+  const iv = chaves.subarray(0, 16), chaveAes = chaves.subarray(16, 48), chaveMac = chaves.subarray(48, 80);
+  const corpo = enc.subarray(0, enc.length - 10), mac = enc.subarray(enc.length - 10);
+  const conferido = crypto.createHmac('sha256', chaveMac).update(iv).update(corpo).digest().subarray(0, 10);
+  if (!crypto.timingSafeEqual(conferido, mac)) throw new Error('MAC da mídia não confere');
+  const d = crypto.createDecipheriv('aes-256-cbc', chaveAes, iv);
+  const buf = Buffer.concat([d.update(corpo), d.final()]);
+  return { data: buf.toString('base64'), mimetype: meta.mimetype, filename: meta.filename };
 }
 app.get('/api/media/:id', async (req, res) => {
   const id = String(req.params.id || '');
@@ -567,10 +580,10 @@ app.get('/api/media/:id', async (req, res) => {
     if (!mediaBaixando.has(id)) mediaBaixando.set(id, (async () => {
       const msg = await client.getMessageById(id);
       if (!msg || !msg.hasMedia || !MEDIA_TIPOS.includes(msg.type)) return null;
-      let media = await comPrazo(msg.downloadMedia().catch(() => null), 20000);
+      let media = await comPrazo(baixarCifrado(id).catch(e => { console.warn('[midia] decifragem local falhou:', e && e.message); return null; }), 30000);
       if (media === '__prazo__' || !media || !media.data) {
-        media = await comPrazo(baixarDireto(id).catch(e => { console.warn('[midia] caminho direto falhou:', e && e.message); return null; }), 60000);
-        if (media === '__prazo__') { console.warn('[midia] sem resposta em 80 s:', id.slice(-12)); media = null; }
+        media = await comPrazo(msg.downloadMedia().catch(() => null), 20000);
+        if (media === '__prazo__') { console.warn('[midia] sem resposta em 50 s:', id.slice(-12)); media = null; }
       }
       if (!media || !media.data) return null;
       const buf = Buffer.from(media.data, 'base64');
