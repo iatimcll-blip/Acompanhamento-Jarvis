@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T16:50:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T17:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13965,6 +13965,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     #panel-whatsapp .wpp-mc-top span.wpp-mf-tk,#panel-whatsapp .wpp-mc-top span.wpp-mf-tag,#panel-whatsapp .wpp-mc-top span.wpp-mf-tg,#panel-whatsapp .wpp-mf-tk,#panel-whatsapp .wpp-mf-tag,#panel-whatsapp .wpp-mf-tg,#panel-whatsapp .wpp-mf-tk *,#panel-whatsapp .wpp-mf-tag *,#panel-whatsapp .wpp-mf-tg *,#wpp-mf-jan .wpp-mf-tk,#wpp-mf-jan .wpp-mf-tag{color:#fff!important}
     #panel-whatsapp .wpp-mf-amp{border:0;background:none;color:var(--tx3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1;vertical-align:middle}
     #panel-whatsapp .wpp-mf-amp:hover{color:var(--blue)}
+    #panel-whatsapp .wpp-mf-amp.wpp-mf-wa{color:#00a884}
+    #wpp-mf-jan .wpp-mf-jenv{border:0;background:#00a884;color:#fff;border-radius:99px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+    #wpp-mf-jan .wpp-mf-jenv:hover{background:#008f6f}
     #panel-whatsapp .wpp-mf-tg,#wpp-mf-jan .wpp-mf-tg{display:inline-block;color:#fff;border-radius:4px;padding:0 5px;font-size:10px;margin-right:3px}
     #panel-whatsapp .wpp-mf-tgres{padding:3px 8px;font-size:11px;font-weight:600;border-bottom:.5px solid var(--bd);flex:0 0 auto}
     #wpp-mf-jan{position:fixed;top:90px;right:28px;width:min(600px,94vw);max-height:82vh;z-index:9998;display:none;flex-direction:column;background:var(--surface);color:var(--tx);border:.5px solid var(--bd);border-top:4px solid #dc2626;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden;font-size:13px}
@@ -26592,7 +26595,8 @@ function wppMfRender(){
     const aberto=_wppMfAmpliados.has(g.principal);
     return'<div class="wpp-mc-msg wpp-mf-msg'+(aberto?' aberto':'')+(tg&&tg.tag==='resolvido'?' resolvido':'')+'" style="--wc:'+(T?T.cor:'#dc2626')+'" onclick="wppMfAbrir(\''+kq+'\')" title="Abrir o chamado numa janela">'
       +'<div class="wpp-mc-top"><b><span class="wpp-mf-tk">'+eh(wppMfRotulo(g.principal))+'</span>'+(T?'<span class="wpp-mf-tg" style="background:'+T.cor+'"><i class="ti '+T.ic+'"></i> '+T.rot+'</span>':'')+(g.mas?'<span class="wpp-mf-tag">MASSIVA</span>':'')+ufs+outros+'</b><span>'+fh(g.ini.ts)
-      +' <button type="button" class="wpp-mf-amp" onclick="event.stopPropagation();wppMfAmpliar(\''+kq+'\')" title="'+(aberto?'Recolher':'Ampliar aqui')+'"><i class="ti ti-chevron-'+(aberto?'up':'down')+'"></i></button></span></div>'
+      +' <button type="button" class="wpp-mf-amp wpp-mf-wa" onclick="event.stopPropagation();wppMfEnviar(\''+kq+'\')" title="Enviar via WhatsApp"><i class="ti ti-brand-whatsapp"></i></button>'
+      +'<button type="button" class="wpp-mf-amp" onclick="event.stopPropagation();wppMfAmpliar(\''+kq+'\')" title="'+(aberto?'Recolher':'Ampliar aqui')+'"><i class="ti ti-chevron-'+(aberto?'up':'down')+'"></i></button></span></div>'
       +'<div class="wpp-mf-quem">'+[...g.chats.values()].map(eh).join(' · ')+(g.ini.quem?' — '+eh(g.ini.quem):'')+'</div>'
       +'<div class="wpp-txt" title="'+eh(g.ini.txt)+'">'+wppFmtTexto(String(g.ini.txt).replace(/[ \t]*\n\s*\n+/g,'\n').trim())+'</div>'+(pops?'<div class="wpp-mf-pops">'+pops+'</div>':'')+atu+'</div>';}).join('')
     :'<div class="wpp-mc-sis">'+(_wppMfVarrendo?'Procurando nos 4 grupos (últimas 48 h)…':'Nenhum chamado de '+(wppMf.ufs.join(', ')||'nenhuma UF')+' nos 4 grupos nas últimas 48 h.')+'</div>';
@@ -26623,6 +26627,28 @@ function wppMfSetTag(k,tag){
   try{localStorage.setItem(WPP_MF_TAG_KEY,JSON.stringify(wppMfTags));}catch(_){}
   wppMfRender();
 }
+/* resumo do chamado para enviar — abre o seletor de destinos do painel (nada sai sem o usuário escolher e clicar Enviar) */
+function wppMfTextoChamado(g){
+  const fh=ts=>new Date(ts*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const limpa=t=>String(t||'').replace(/[ \t]*\n\s*\n+/g,'\n').trim();
+  const tg=wppMfTagDe(g),T=tg&&WPP_MF_TAGS[tg.tag];
+  const L=['*🚨 '+wppMfRotulo(g.principal)+'*'+(g.outros.length?' ('+g.outros.map(wppMfRotulo).join(' · ')+')':'')+(g.mas?' — MASSIVA':'')];
+  if(T)L.push('*Status:* '+T.rot);
+  if(g.ufs.size)L.push('*UF:* '+[...g.ufs].join(', '));
+  const pops=[...g.pops.values()];
+  if(pops.length)L.push('*POP:* '+pops.map(p=>p.nome+' · '+p.tipo+(p.cidade?' ('+p.cidade+'/'+(p.uf||'')+')':'')).join(' | '));
+  L.push('*Grupo:* '+[...g.chats.values()].join(' · '));
+  L.push('*Aberto:* '+fh(g.ini.ts)+(g.msgs.length>1?' · *Última atualização:* '+fh(g.ult.ts)+' ('+g.msgs.length+' mensagens)':''));
+  L.push('','*Acionamento*'+(g.ini.quem?' ('+g.ini.quem+')':'')+':',limpa(g.ini.txt).slice(0,1800));
+  if(g.msgs.length>1)L.push('','*Última atualização* — '+fh(g.ult.ts)+(g.ult.quem?' ('+g.ult.quem+')':'')+':',limpa(g.ult.txt).slice(0,800));
+  return L.join('\n');
+}
+async function wppMfEnviar(k){
+  const g=_wppMfGrupoPorChave(k);if(!g)return;
+  const txt=wppMfTextoChamado(g);
+  let ok=false;try{ok=await wppTalvezEnviar(txt,'Massivos / Bdesk — '+wppMfRotulo(g.principal));}catch(_){}
+  if(!ok){wppAbrirLink(txt);_ghToast('WhatsApp do Jarvis indisponível aqui — abri pelo link do WhatsApp.','var(--orange)',6000);}
+}
 function wppMfAmpliar(k){if(!_wppMfAmpliados.delete(k))_wppMfAmpliados.add(k);wppMfRender();}
 function wppMfAbrir(k){_wppMfJanela=k;wppMfJanelaRender();}
 function wppMfFechar(){_wppMfJanela=null;const j=document.getElementById('wpp-mf-jan');if(j)j.style.display='none';}
@@ -26646,7 +26672,8 @@ function wppMfJanelaRender(){
     +(g.outros.length?'<small>'+g.outros.map(wppMfRotulo).map(eh).join(' · ')+'</small>':'')
     +(g.mas?'<span class="wpp-mf-tag">MASSIVA</span>':'')+[...g.ufs].map(u=>'<span class="wpp-mf-tag">'+eh(u)+'</span>').join('')
     +'<span style="flex:1"></span><button type="button" class="wpp-mf-jan-x" onclick="wppMfFechar()" title="Fechar (Esc)"><i class="ti ti-x"></i></button></div>'
-    +'<div class="wpp-mf-jan-info"><div class="wpp-mf-jan-tags"><span>Tag:</span>'+tags+(tg?'<small>desde '+new Date(tg.em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</small>':'')+'</div>'
+    +'<div class="wpp-mf-jan-info"><div class="wpp-mf-jan-tags"><span>Tag:</span>'+tags+(tg?'<small>desde '+new Date(tg.em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</small>':'')
+    +'<span style="flex:1"></span><button type="button" class="wpp-mf-jenv" onclick="wppMfEnviar(\''+kq+'\')" title="Escolher grupo/contato e enviar o resumo deste chamado"><i class="ti ti-brand-whatsapp"></i> Enviar via WhatsApp</button></div>'
     +'<div class="wpp-mf-quem"><i class="ti ti-users"></i> '+[...g.chats.values()].map(eh).join(' · ')+' · '+g.msgs.length+' mensage'+(g.msgs.length>1?'ns':'m')+' · 1ª '+fh(g.ini.ts)+' · última '+fh(g.ult.ts)+'</div>'
     +(pops?'<div class="wpp-mf-pops">'+pops+'</div>':'')+'</div>'
     +'<div class="wpp-mf-jan-msgs">'+msgs+'</div>';
