@@ -405,12 +405,13 @@ async function pageState(page, ticket) {
    chamado"). Todas as esperas da leitura respeitam o prazo; quem não for lido dentro dele
    volta para a fila de revisão no fim da volta (ver runCycle). ms(max) = tempo restante até
    o prazo, limitado a max, nunca 0 (no Playwright timeout 0 = sem limite). */
-const TICKET_BUDGET_MS = Math.max(3, parseFloat(process.env.TICKET_SECONDS || '10')) * 1000;
+/* 2026-11-25 (pedido do usuário): 20 s por chamado, na leitura e na revisão. */
+const TICKET_BUDGET_MS = Math.max(3, parseFloat(process.env.TICKET_SECONDS || '20')) * 1000;
 /* Revisões: prazo maior, com a paciência do agente antigo. Bug real do teste de 2026-11-10:
    com só 10 s o select de Substatus (carregado DEPOIS do Status no Atrix) não aparecia e o
    agente gravava o Status genérico ("Em espera") em 13 de 23 chamados. Agora a 1ª volta
    (modo rápido) só aceita Substatus; Status/"Fechado" só saem numa revisão. */
-const TICKET_REVIEW_MS = Math.max(10, parseFloat(process.env.TICKET_REVIEW_SECONDS || '30')) * 1000;
+const TICKET_REVIEW_MS = Math.max(10, parseFloat(process.env.TICKET_REVIEW_SECONDS || '20')) * 1000;
 const ATRIX_MAX_PASSES = Math.max(1, parseInt(process.env.ATRIX_MAX_PASSES || '5', 10));
 function budget(deadline) {
   const dl = deadline || (Date.now() + 1e9);
@@ -513,6 +514,10 @@ async function extractSubstatus(page, ticket, deadline, rapido) {
     try {
       await page.waitForSelector('select', { timeout: b.ms(12000) });
     } catch {
+      /* 2026-11-25: o firewall do Atrix (Azion) responde "Forbidden". Antes ia para a revisão
+         e era tentado 5 vezes (40 chamados × 5 voltas); agora é reconhecido como bloqueio. */
+      const bloqueado = await page.evaluate(() => /Forbidden|Default error page/i.test(document.title || '')).catch(() => false);
+      if (bloqueado) { warn(`[${tid}] O Atrix bloqueou o acesso (firewall Azion: Forbidden).`); return { blocked: true }; }
       // Sem nenhum select: usar o Status encontrado na página, se houver
       if (rapido) { info(`[${tid}] Substatus ainda nao apareceu — vai para a revisao.`); return null; }
       const st = await extractPageStatus();
@@ -821,6 +826,7 @@ async function runCycle() {
   let changed = 0;
   let errors  = 0;
   let relogins = 0;
+  let bloqSeguidos = 0, bloqueioAtrix = false, voltasFeitas = 0;
 
   const ctx = await chromium.launchPersistentContext(SESSION_DIR, {
     headless:  !DEBUG,
@@ -873,7 +879,8 @@ async function runCycle() {
        prender a rodada para sempre). A barra de progresso soma as revisões ao total. */
     let fila = tickets.slice();
     let feitos = 0, totalPassos = tickets.length;
-    for (let volta = 1; volta <= ATRIX_MAX_PASSES && fila.length; volta++) {
+    for (let volta = 1; volta <= ATRIX_MAX_PASSES && fila.length && !bloqueioAtrix; volta++) {
+      voltasFeitas = volta;
       if (volta > 1) {
         /* Limite de tempo: o workflow cai em 30 min — não começa revisão depois de 22 min. */
         if (Date.now() - cycleStart.getTime() > 22 * 60000) { warn(`Revisões interrompidas: rodada passou de 22 min (${fila.length} chamado(s) sem leitura).`); break; }
@@ -909,6 +916,20 @@ async function runCycle() {
             if (result && result.sessionLost) result = null;
           } else result = null;
         }
+
+        /* 3 bloqueios seguidos = o firewall está barrando este computador: encerra a rodada
+           (insistir só prolonga o bloqueio) e mantém os substatus anteriores. */
+        if (result && result.blocked) {
+          result = null;
+          if (++bloqSeguidos >= 3) {
+            bloqueioAtrix = true;
+            warn('O Atrix bloqueou 3 chamados seguidos (Forbidden) — rodada encerrada, substatus anteriores mantidos.');
+            pendentes.push(ticket, ...fila.slice(i + 1));
+            estadoTk[tid] = 'rev';
+            feitos++;
+            break;
+          }
+        } else if (result) bloqSeguidos = 0;
 
         if (result) {
           lidosNaVolta++;
@@ -948,7 +969,7 @@ async function runCycle() {
     for (const ticket of fila) {
       const tid = ticket.id || ticket.ticketId || '';
       estadoTk[tid] = 'falha';
-      warn(`[${tid}] Sem leitura apos ${ATRIX_MAX_PASSES} volta(s) — mantendo o valor anterior.`);
+      warn(`[${tid}] Sem leitura apos ${voltasFeitas} volta(s) — mantendo o valor anterior.`);
       /* O "Fechado" que ficou de rodadas antigas sem confirmação (source 'fechado' sem
          verified) era quase sempre falha de leitura — remove, para o painel voltar a usar
          o substatus da planilha. */
@@ -983,7 +1004,10 @@ async function runCycle() {
     state: 'online',
     /* Metade ou mais sem leitura = rodada falhou (antes saía 'success' mesmo com 100% dos
        chamados ilegíveis). */
-    lastError: errors ? `${errors} de ${tickets.length} chamado(s) sem leitura${errors * 2 >= tickets.length ? ' — verifique a sessão/credenciais do Atrix' : ''}` : '',
+    lastError: bloqueioAtrix
+      ? `O Atrix bloqueou o acesso deste computador (firewall Azion: Forbidden) — ${errors} de ${tickets.length} chamado(s) sem leitura; substatus anteriores mantidos. Fale com o responsável pelo Atrix.`
+      : errors ? `${errors} de ${tickets.length} chamado(s) sem leitura${errors * 2 >= tickets.length ? ' — verifique a sessão/credenciais do Atrix' : ''}` : '',
+    errorCode: bloqueioAtrix ? 'atrix_bloqueado' : '',
     lastRunCompletedAt: cycleEnd.toISOString(),
     lastRunConclusion: !errors ? 'success' : (errors * 2 >= tickets.length ? 'failure' : 'partial'),
     lastTicketsChecked: tickets.length,
