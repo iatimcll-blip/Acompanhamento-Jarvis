@@ -968,8 +968,9 @@ async function runCycle() {
     errors = fila.length;
     for (const ticket of fila) {
       const tid = ticket.id || ticket.ticketId || '';
-      estadoTk[tid] = 'falha';
-      warn(`[${tid}] Sem leitura apos ${voltasFeitas} volta(s) — mantendo o valor anterior.`);
+      /* bloqueio do firewall: o chamado nem pôde ser tentado — estado próprio ('bloq'), não "falha" */
+      estadoTk[tid] = bloqueioAtrix ? 'bloq' : 'falha';
+      warn(bloqueioAtrix ? `[${tid}] Nao lido — Atrix bloqueado (Forbidden); valor anterior mantido.` : `[${tid}] Sem leitura apos ${voltasFeitas} volta(s) — mantendo o valor anterior.`);
       /* O "Fechado" que ficou de rodadas antigas sem confirmação (source 'fechado' sem
          verified) era quase sempre falha de leitura — remove, para o painel voltar a usar
          o substatus da planilha. */
