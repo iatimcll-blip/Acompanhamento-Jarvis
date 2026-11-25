@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T10:45:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T11:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14082,6 +14082,14 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     #panel-whatsapp .wpp-aud-vel{border:1px solid var(--bd);background:var(--surface);color:var(--tx2);border-radius:99px;font-size:11px;font-weight:700;padding:1px 7px;cursor:pointer;flex-shrink:0}
     #panel-whatsapp .wpp-mc .wpp-midia-aud audio{min-width:130px}
     #panel-whatsapp .wpp-midia video{display:block;max-width:100%;max-height:300px;border-radius:6px;background:#000}
+    #panel-whatsapp .wpp-midia-box,.wpp-midia-box{display:inline-flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:100%}
+    .wpp-arq{display:flex;align-items:center;gap:9px;padding:7px 10px;margin:2px 0 4px;background:var(--bg);border:.5px solid var(--bd);border-radius:8px;max-width:340px}
+    .wpp-arq>.ti{font-size:28px;color:var(--blue);flex:0 0 auto}
+    .wpp-arq-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+    .wpp-arq-info b{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+    .wpp-arq-acoes{display:inline-flex;gap:10px}
+    .wpp-arq-acoes a{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--blue)!important;text-decoration:none}
+    .wpp-arq-acoes a:hover{text-decoration:underline}
     #panel-whatsapp .wpp-midia-doc{text-decoration:none;color:var(--blue)!important;cursor:pointer}
     #wpp-alertas{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 32px))}
     #wpp-alertas .wpp-alerta{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--surface,#fff);border:1px solid #dc2626;border-left:5px solid #dc2626;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer;animation:wppAlertaIn .25s ease-out,wppPiscaVm 1s ease-in-out 3;font-size:12.5px;color:var(--tx,#111)}
@@ -26157,10 +26165,33 @@ function wppTick(m){
   if(a===2)return'<i class="ti ti-checks wpp-ack" title="Entregue"></i>';
   return'<i class="ti ti-checks wpp-ack lida" title="Lida"></i>';
 }
+/* 2026-11-25 (pedido): abrir QUALQUER arquivo recebido ou enviado. "Abrir" = nova aba (a ponte mostra na
+   aba só PDF, imagem, vídeo, áudio e texto; Word, Excel, ZIP etc. chegam como download com o nome certo).
+   "Baixar" = sempre download. */
+function wppArqIcone(nome,tipo){
+  const e=String(nome||'').toLowerCase().split('.').pop(),t=String(tipo||'').toLowerCase();
+  if(e==='pdf'||t.includes('pdf'))return'ti-file-type-pdf';
+  if(/^(docx?|odt|rtf)$/.test(e)||t.includes('word'))return'ti-file-type-doc';
+  if(/^(xlsx?|xlsm|ods|csv)$/.test(e)||t.includes('sheet')||t.includes('excel'))return'ti-file-type-xls';
+  if(/^(pptx?|odp)$/.test(e)||t.includes('presentation'))return'ti-file-type-ppt';
+  if(/^(zip|rar|7z|gz|tar)$/.test(e)||t.includes('zip')||t.includes('compressed'))return'ti-file-zip';
+  if(/^(jpe?g|png|gif|webp|bmp|heic)$/.test(e))return'ti-photo';
+  if(/^(mp4|mov|avi|mkv|3gp)$/.test(e))return'ti-video';
+  if(/^(mp3|ogg|opus|m4a|wav|aac)$/.test(e))return'ti-music';
+  if(/^(txt|log)$/.test(e))return'ti-file-text';
+  return'ti-file';
+}
+function wppArqAcoes(u,dl){
+  return'<span class="wpp-arq-acoes"><a href="'+u+'" target="_blank" rel="noopener" title="Abrir em uma nova aba"><i class="ti ti-external-link"></i> Abrir</a><a href="'+dl+'" title="Baixar o arquivo"><i class="ti ti-download"></i> Baixar</a></span>';
+}
 function wppMidiaHtml(m){
   if(m._preview&&m.type==='image')return'<span class="wpp-midia"><img src="'+m._preview+'" alt=""></span>';
   if(m._preview&&m.type==='video')return'<span class="wpp-midia"><video src="'+m._preview+'" controls muted></video></span>';
   const base=(wppActiveBridgeUrl||wppBridgeUrl()||'').replace(/\/+$/,'');
+  if(m.type==='image'&&m.hasMedia&&m.id&&!m._tmp&&base){
+    const u=base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base),dl=u+(u.includes('?')?'&':'?')+'dl=1';
+    return'<span class="wpp-midia-box"><a class="wpp-midia" href="'+u+'" target="_blank" rel="noopener" title="Abrir imagem"><img src="'+u+'" alt="" loading="lazy" onerror="this.closest(\'.wpp-midia-box\').outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-alert-circle&quot;></i> Imagem indisponível (abra no celular)</span>\'"></a>'+wppArqAcoes(u,dl)+'</span>';
+  }
   if((m.type==='image'||m.type==='sticker')&&m.hasMedia&&m.id&&!m._tmp&&base)
     return'<a class="wpp-midia'+(m.type==='sticker'?' fig':'')+'" href="'+base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base)+'" target="_blank" rel="noopener" title="Abrir imagem"><img src="'+base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base)+'" alt="" loading="lazy" onerror="this.parentNode.outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-photo&quot;></i> Imagem (abra no celular)</span>\'"></a>';
   /* áudio e mensagem de voz: tocar no painel (2026-11-18); vídeo: assistir; documento: baixar */
@@ -26168,10 +26199,11 @@ function wppMidiaHtml(m){
     const u=base+'/api/media/'+encodeURIComponent(m.id)+wppKQ(base),dl=u+(u.includes('?')?'&':'?')+'dl=1';
     const falha='this.closest(\'.wpp-midia-aud,.wpp-midia\').outerHTML=\'<span class=&quot;wpp-midia-lbl&quot;><i class=&quot;ti ti-alert-circle&quot;></i> Mídia indisponível (abra no celular)</span>\'';
     if(m.type==='audio'||m.type==='ptt')
-      return'<span class="wpp-midia-aud'+(m.type==='ptt'?' voz':'')+'"><i class="ti '+(m.type==='ptt'?'ti-microphone':'ti-music')+'"></i><audio controls preload="none" src="'+u+'" onerror="'+falha+'" onplay="wppAudioTocando(this)"></audio><button type="button" class="wpp-aud-vel" onclick="wppAudioVel(this)" title="Velocidade">1x</button></span>';
+      return'<span class="wpp-midia-box">'+'<span class="wpp-midia-aud'+(m.type==='ptt'?' voz':'')+'"><i class="ti '+(m.type==='ptt'?'ti-microphone':'ti-music')+'"></i><audio controls preload="none" src="'+u+'" onerror="'+falha+'" onplay="wppAudioTocando(this)"></audio><button type="button" class="wpp-aud-vel" onclick="wppAudioVel(this)" title="Velocidade">1x</button></span>'+wppArqAcoes(u,dl)+'</span>';
     if(m.type==='video')
-      return'<span class="wpp-midia"><video controls preload="metadata" src="'+u+'#t=0.1" onerror="'+falha+'"></video></span>';
-    return'<a class="wpp-midia-lbl wpp-midia-doc" href="'+dl+'" title="Baixar"><i class="ti ti-file-download"></i> '+eh(m.filename||'Documento')+'</a>';
+      return'<span class="wpp-midia-box"><span class="wpp-midia"><video controls preload="metadata" src="'+u+'#t=0.1" onerror="'+falha+'"></video></span>'+wppArqAcoes(u,dl)+'</span>';
+    const nome=m.filename||'Documento';
+    return'<span class="wpp-arq"><i class="ti '+wppArqIcone(nome,m.mimetype)+'"></i><span class="wpp-arq-info"><b title="'+eh(nome)+'">'+eh(nome)+'</b>'+wppArqAcoes(u,dl)+'</span></span>';
   }
   const md=WPP_MIDIA[m.type];
   return md?'<span class="wpp-midia-lbl"><i class="ti '+md[0]+'"></i> '+md[1]+(m.filename?' · '+eh(m.filename):'')+'</span>':'';

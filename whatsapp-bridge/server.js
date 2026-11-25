@@ -463,9 +463,16 @@ const mediaCache = new Map(); // id -> { buf, type, at }
 // Mídia das mensagens: imagem/figurinha (miniatura), ÁUDIO e mensagem de voz (tocar no painel, 2026-11-18),
 // vídeo (assistir) e documento (?dl=1 baixa com o nome original). Suporta Range, para o player poder avançar/voltar.
 const MEDIA_TIPOS = ['image', 'sticker', 'audio', 'ptt', 'video', 'document'];
+/* 2026-11-25: "Abrir" qualquer arquivo. Só formatos que o navegador mostra SEM executar código abrem na
+   aba (PDF, imagem, vídeo, áudio, texto); o resto (Word, Excel, ZIP, HTML, SVG…) sai como download com o
+   nome original — um arquivo recebido nunca roda script na origem da ponte. nosniff impede o navegador
+   de "adivinhar" outro tipo. */
+const MEDIA_INLINE = /^(image\/(png|jpe?g|gif|webp|bmp)|video\/[\w.+-]+|audio\/[\w.+-]+|application\/pdf|text\/plain)$/i;
 function enviaMidia(req, res, c) {
-  res.set('Content-Type', c.type).set('Cache-Control', 'private, max-age=86400').set('Accept-Ranges', 'bytes');
-  if (req.query.dl) res.set('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(c.nome || 'arquivo'));
+  const inline = !req.query.dl && MEDIA_INLINE.test(c.type);
+  res.set('Content-Type', inline ? c.type : (c.type === 'text/html' || /svg|xml|javascript/i.test(c.type) ? 'application/octet-stream' : c.type))
+    .set('Cache-Control', 'private, max-age=86400').set('Accept-Ranges', 'bytes').set('X-Content-Type-Options', 'nosniff');
+  res.set('Content-Disposition', (inline ? 'inline' : 'attachment') + "; filename*=UTF-8''" + encodeURIComponent(c.nome || 'arquivo'));
   const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
   if (m && (m[1] || m[2])) {
     const total = c.buf.length;
