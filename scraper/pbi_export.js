@@ -435,6 +435,13 @@ async function rodada() {
     log('Concluído.');
   } catch (e) {
     log('ERRO:', e.message);
+    /* 2026-11-24: sessão da NUVEM expirada → o fluxo roda de novo no PC (job local, com o login feito na janela).
+       Publica 'running' em vez de erro para o painel seguir acompanhando até o PC terminar. */
+    if (e.code === 'login_required' && process.env.PBI_FALLBACK_PC === '1') {
+      await status({ state: 'running', step: 0, stepTxt: 'A sessão da nuvem expirou — tentando de novo no PC', lastError: '', errorCode: 'nuvem_login' });
+      process.exitCode = 1;
+      return;
+    }
     await status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: e.message, errorCode: e.code || '' });
     process.exitCode = 1;
   } finally { await browser.close(); }

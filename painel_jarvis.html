@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-24T21:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T09:15:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22044,6 +22044,13 @@ function _pbiMonitorar(triggeredIso){
       _pbiBotoes('BI · na fila…',true,'Aguardando o computador do agente começar (se o Atualizar do Atrix estiver rodando, o BI espera ele terminar)');
       if(Date.now()-t0>ATRIX_ESPERA_INICIO_MIN*60000){_pbiParar();_ghToast('O agente do BI não começou em '+ATRIX_ESPERA_INICIO_MIN+' min (computador do agente desligado ou ocupado). Tente de novo mais tarde.','var(--red)',9000);}
       return;
+    }
+    /* 2026-11-24: sessão da nuvem expirada → o agente tenta no PC (job local). Mostra isso e desiste se o
+       PC não começar em ATRIX_ESPERA_INICIO_MIN (desligado/ocupado), em vez de esperar para sempre. */
+    if(st.state==='running'&&st.errorCode==='nuvem_login'){
+      const idade=Date.now()-new Date(st.updatedAt||st.lastRunStartedAt).getTime();
+      if(idade>ATRIX_ESPERA_INICIO_MIN*60000){_pbiParar();_ghToast('A sessão do Power BI na nuvem expirou e o computador do agente não começou em '+ATRIX_ESPERA_INICIO_MIN+' min. Ligue o PC do agente e tente de novo.','#ea580c',10000);return;}
+      _pbiBotoes('BI · no PC…',true,st.stepTxt||_PBI_TIT);return;
     }
     if(st.state==='running'){_pbiBotoes('BI · '+Math.min(PBI_PASSOS,Number(st.step||0))+'/'+PBI_PASSOS,true,st.stepTxt||_PBI_TIT);return;}
     _pbiParar();
