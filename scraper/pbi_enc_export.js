@@ -93,7 +93,8 @@ function sessao() {
   const v = (process.env.PBI_SESSION || '').trim();
   if (v && !fs.existsSync(STATE_FILE)) {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
-    fs.writeFileSync(STATE_FILE, zlib.gunzipSync(Buffer.from(v, 'base64')));
+    try { fs.writeFileSync(STATE_FILE, zlib.gunzipSync(Buffer.from(v, 'base64'))); }
+    catch (e) { throw Object.assign(new Error('O secret PBI_SESSION está inválido (' + e.message + ') — refaça o login do Power BI e atualize o secret.'), { code: 'login_required' }); }
     log('Sessão do Power BI carregada do secret.');
   }
   if (!fs.existsSync(STATE_FILE) && process.env.GITHUB_ACTIONS) throw Object.assign(new Error('O secret PBI_SESSION não está configurado no GitHub — o agente na nuvem não consegue abrir a sessão do Power BI.'), { code: 'config' });
@@ -344,6 +345,12 @@ async function rodada() {
     log('Concluído.');
   } catch (e) {
     log('ERRO:', e.message);
+    /* 2026-11-25: sessão da NUVEM expirada → o fluxo roda de novo no PC (job local, login feito na janela). */
+    if (e.code === 'login_required' && process.env.PBI_FALLBACK_PC === '1') {
+      await status({ state: 'running', step: 0, stepTxt: 'A sessão da nuvem expirou — tentando de novo no PC', lastError: '', errorCode: 'nuvem_login' });
+      process.exitCode = 1;
+      return;
+    }
     await status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: e.message, errorCode: e.code || '' });
     process.exitCode = 1;
   } finally { await browser.close(); }

@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T09:15:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-25T09:20:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22177,6 +22177,12 @@ function _pbiEncMonitorar(triggeredIso){
       _pbiEncBotoes('BI ENC · na fila…',true,'Aguardando o agente começar');
       if(Date.now()-t0>ATRIX_ESPERA_INICIO_MIN*60000){_pbiEncParar();_pbiEncBotoes('BI ENC !',false,'O agente do BI ENC não começou em '+ATRIX_ESPERA_INICIO_MIN+' min.','erro');_ghToast('O agente do BI ENC não começou em '+ATRIX_ESPERA_INICIO_MIN+' min. Tente de novo mais tarde.','#ea580c',9000);}
       return;
+    }
+    /* 2026-11-25: sessão da nuvem expirada → tenta no PC; desiste se o PC não começar a tempo. */
+    if(st.state==='running'&&st.errorCode==='nuvem_login'){
+      const idade=Date.now()-new Date(st.updatedAt||st.lastRunStartedAt).getTime();
+      if(idade>ATRIX_ESPERA_INICIO_MIN*60000){_pbiEncParar();_pbiEncBotoes('BI ENC !',false,'A sessão da nuvem expirou e o PC não começou a tempo.','erro');_ghToast('A sessão do Power BI na nuvem expirou e o computador do agente não começou em '+ATRIX_ESPERA_INICIO_MIN+' min. Ligue o PC do agente e tente de novo.','#ea580c',10000);return;}
+      _pbiEncBotoes('BI ENC · no PC…',true,st.stepTxt||_PBI_ENC_TIT);return;
     }
     if(st.state==='running'){_pbiEncBotoes('BI ENC · '+Math.min(PBI_ENC_PASSOS,Number(st.step||0))+'/'+PBI_ENC_PASSOS,true,st.stepTxt||_PBI_ENC_TIT);return;}
     _pbiEncParar();
