@@ -22730,14 +22730,6 @@ function _atrixStartMonitoring(triggeredAtIso,startTries){
       if(st.lastRunConclusion==='failure'||st.state==='error'){
         await loadAtrixUpdates(); /* aplica o que foi lido certo (falha = metade ou mais sem leitura) */
         encerrar(false);
-        if(st.errorCode==='atrix_bloqueado'){
-          const n=window._atrixTentativaAgendada||0;window._atrixTentativaAgendada=0;
-          const quando=new Date(st.lastRunCompletedAt||Date.now()).getTime()+ATRIX_BLOQ_ESPERA_MIN*60000;
-          if(n&&n<ATRIX_BLOQ_REAGENDA){_atrixAgendar(quando,n+1);_ghToast('O Atrix ainda está bloqueando o agente. Nova tentativa automática às '+_atxHM(quando)+'. Substatus anteriores mantidos.','var(--orange)',10000);return;}
-          if(!n&&canAtrixAtualizar()&&confirm('O Atrix bloqueou o agente (firewall Azion — "Forbidden"): '+(st.lastTicketsErrors||0)+' chamado(s) sem leitura, substatus anteriores mantidos.\n\nAgendar uma nova tentativa automática para '+_atxHM(quando)+'? (deixe esta página aberta)')){_atrixAgendar(quando,1);return;}
-          _ghToast('O Atrix continua bloqueando o agente. Substatus anteriores mantidos. Se persistir, é preciso pedir ao responsável pelo Atrix a liberação do acesso.','var(--red)',12000);
-          return;
-        }
         _ghToast('O agente terminou com erro: '+(st.lastError||'falha não informada')+'. Chamados sem leitura mantiveram o substatus anterior (nenhum foi marcado Fechado por falha).','var(--red)',9000);
         return;
       }
@@ -22765,7 +22757,6 @@ function _atrixStartMonitoring(triggeredAtIso,startTries){
 /* Ao abrir a página: lê o status do agente (mostrador) e, se houver rodada em andamento —
    disparada daqui ou de QUALQUER outro aparelho/usuário —, retoma barra e cronômetro. */
 async function _atrixResumeIfRunning(){
-  setTimeout(_atrixAgendaArmar,1500);
   const st=await loadAtrixRunnerStatus();
   _atrixAplicarStatus(st);
   if(st&&st.state!=='running'&&st.lastRunStartedAt&&st.lastRunCompletedAt&&st.lastRunCompletedAt>=st.lastRunStartedAt&&st.lastTicketsState&&Object.keys(st.lastTicketsState).length){
@@ -22792,61 +22783,8 @@ function canAtrixAtualizar(){
    (pedido 2026-10-24: "liberar o botão atualizar para os usuários Sr"): mesma regra do
    botão Atualizar do Atrix — Admin ou qualquer Usuário Sr que vê o painel B2B Abertos. */
 function canAbSubstatus(){return canEdit('abertos')||canAtrixAtualizar();}
-/* 2026-11-25: o firewall do Atrix (Azion) bloqueia o agente de forma INTERMITENTE (hoje: bloqueado 09:46,
-   liberado 10:43 e 14:48, bloqueado de novo 17:21/17:25/17:32 — as tentativas seguidas só prolongavam o bloqueio).
-   Agora: depois de um bloqueio, o botão não dispara na hora — oferece AGENDAR uma tentativa automática para
-   ATRIX_BLOQ_ESPERA_MIN depois do bloqueio (a página precisa estar aberta). Se a tentativa agendada também for
-   bloqueada, reagenda mais uma vez (no máximo ATRIX_BLOQ_REAGENDA vezes seguidas). Nada de contornar o firewall. */
-const ATRIX_BLOQ_ESPERA_MIN=30,ATRIX_BLOQ_REAGENDA=2,ATRIX_AGENDA_KEY='jarvis:atrix:agendado';
-let _atrixAgendaTimer=null;
-function _atrixAgendaLer(){try{const v=JSON.parse(localStorage.getItem(ATRIX_AGENDA_KEY)||'null');return v&&v.at?v:null;}catch(_){return null;}}
-function _atrixAgendaGravar(v){try{if(v)localStorage.setItem(ATRIX_AGENDA_KEY,JSON.stringify(v));else localStorage.removeItem(ATRIX_AGENDA_KEY);}catch(_){}_atrixAgendaArmar();}
-function _atrixBloqueioRecente(st){
-  if(!st||st.errorCode!=='atrix_bloqueado'||!st.lastRunCompletedAt||st.state==='running')return null;
-  const fim=new Date(st.lastRunCompletedAt).getTime(),libera=fim+ATRIX_BLOQ_ESPERA_MIN*60000;
-  return Date.now()<libera?{fim,libera}:null;
-}
-const _atxHM=t=>new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-function _atrixAgendaArmar(){
-  clearTimeout(_atrixAgendaTimer);_atrixAgendaTimer=null;
-  const ag=_atrixAgendaLer();
-  document.querySelectorAll('[data-up="atrix"]').forEach(b=>{
-    if(!b.dataset.origHtml)b.dataset.origHtml=b.innerHTML;
-    if(ag&&!b.disabled){b.innerHTML='<i class="ti ti-clock"></i> Agendado '+_atxHM(ag.at);b.title='Atualização automática agendada para '+_atxHM(ag.at)+' (o Atrix bloqueou o agente; esperar evita prolongar o bloqueio). Clique para disparar agora ou cancelar.';}
-    else if(!ag&&/Agendado/.test(b.innerHTML)){b.innerHTML=b.dataset.origHtml;}
-  });
-  if(!ag)return;
-  const falta=ag.at-Date.now();
-  if(falta<-10*60000){_atrixAgendaGravar(null);return;} /* página ficou fechada além da hora: não dispara atrasado */
-  _atrixAgendaTimer=setTimeout(_atrixAgendaDisparar,Math.max(0,falta));
-}
-async function _atrixAgendaDisparar(){
-  const ag=_atrixAgendaLer();if(!ag)return;
-  const st=await loadAtrixRunnerStatus().catch(()=>null);
-  /* outro aparelho já rodou (ou está rodando) depois do agendamento → não dispara de novo */
-  if(st&&(st.state==='running'||(st.lastRunStartedAt&&new Date(st.lastRunStartedAt).getTime()>ag.criadoEm))){_atrixAgendaGravar(null);return;}
-  _atrixAgendaGravar(null);
-  const b=document.querySelector('[data-up="atrix"]');
-  if(b&&canAtrixAtualizar()){_ghToast('Disparando a atualização agendada do Atrix…','var(--blue)',5000);window._atrixTentativaAgendada=(ag.n||1);triggerAtrixUpdateNow(b,{agendada:true});}
-}
-function _atrixAgendar(quando,n){_atrixAgendaGravar({at:quando,criadoEm:Date.now(),n:n||1});_ghToast('Atualização do Atrix agendada para '+_atxHM(quando)+' — deixe esta página aberta.','var(--blue)',8000);}
-async function triggerAtrixUpdateNow(btn,opt){
+async function triggerAtrixUpdateNow(btn){
   if(!canAtrixAtualizar())return;
-  opt=opt||{};
-  if(!opt.agendada){
-    const ag=_atrixAgendaLer();
-    if(ag){
-      if(!confirm('Há uma atualização agendada para '+_atxHM(ag.at)+' (o Atrix tinha bloqueado o agente).\n\nOK = disparar AGORA (o bloqueio pode continuar)\nCancelar = manter o agendamento'))return;
-      _atrixAgendaGravar(null);
-    }else{
-      const bq=_atrixBloqueioRecente(atrixRunnerSt||await loadAtrixRunnerStatus().catch(()=>null));
-      if(bq){
-        if(confirm('O Atrix bloqueou o acesso do agente às '+_atxHM(bq.fim)+' (firewall Azion — "Forbidden"). Esse bloqueio costuma durar um tempo, e tentar de novo logo em seguida só o prolonga.\n\nOK = AGENDAR a atualização automática para '+_atxHM(bq.libera)+' (deixe esta página aberta)\nCancelar = outras opções')){_atrixAgendar(bq.libera,1);return;}
-        if(!confirm('Tentar AGORA mesmo assim? (provavelmente será bloqueado de novo)'))return;
-      }
-    }
-  }
-  btn.innerHTML=btn.dataset.origHtml||btn.innerHTML;
   const orig=btn.innerHTML;
   const done=(cls,html)=>{
     btn.classList.remove('atrix-start-ok','atrix-start-err');
