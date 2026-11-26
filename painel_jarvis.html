@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-25T19:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T00:40:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -13962,6 +13962,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     #panel-whatsapp .wpp-mf-msg.aberto .wpp-txt,#panel-whatsapp .wpp-mf-msg.aberto .wpp-mf-atu{display:block;-webkit-line-clamp:unset;overflow:visible}
     #panel-whatsapp .wpp-mf-msg.resolvido{opacity:.6}
     /* etiquetas vermelhas/pretas/coloridas: fonte SEMPRE branca (a regra .wpp-mc-top span pintava de cinza) */
+#panel-whatsapp .wpp-mf-sla{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:9px;background:#e0f2fe;color:#0369a1!important;white-space:nowrap}
+#panel-whatsapp .wpp-mf-sla.venc{background:#dc2626;color:#fff!important}
+#panel-whatsapp .wpp-mf-sla i,#panel-whatsapp .wpp-mf-rl .wpp-mf-tk i{font-size:12px;color:inherit}
     #panel-whatsapp .wpp-mc-top span.wpp-mf-tk,#panel-whatsapp .wpp-mc-top span.wpp-mf-tag,#panel-whatsapp .wpp-mc-top span.wpp-mf-tg,#panel-whatsapp .wpp-mf-tk,#panel-whatsapp .wpp-mf-tag,#panel-whatsapp .wpp-mf-tg,#panel-whatsapp .wpp-mf-tk *,#panel-whatsapp .wpp-mf-tag *,#panel-whatsapp .wpp-mf-tg *,#wpp-mf-jan .wpp-mf-tk,#wpp-mf-jan .wpp-mf-tag{color:#fff!important}
     #panel-whatsapp .wpp-mf-amp{border:0;background:none;color:var(--tx3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1;vertical-align:middle}
     #panel-whatsapp .wpp-mf-amp:hover{color:var(--blue)}
@@ -26804,6 +26807,26 @@ function wppMfResumoDados(lst){
     porLocal:cont(doDia,g=>_wppMfLocais(g)),
     tagDe};
 }
+/* SLA do chamado (pedido 2026-11-25: no resumo, ícone de atenção no Bdesk/Ticket e relógio no SLA).
+   Lido da mensagem mais recente que traz o campo — ex.: "SLA : 8 horas (Padrão)", "SLA prazo 8h", "SLA: 30 min",
+   "SLA: 26/11 08:00". Duração → prazo = abertura do chamado + duração; vencido se passou e não está "Resolvido". */
+function _wppMfSla(g){
+  const re=/\bSLA\b(?:\s*(?:prazo|de atendimento|padr[aã]o))?\s*[:\-–=]?\s*(?:de\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*(?:[àa]s\s*)?\d{1,2}[:h]\d{2}|\d+(?:[.,]\d+)?\s*(?:horas?|hrs?|hs?|h|minutos?|min)\b)/i;
+  const ms=[...g.msgs].sort((a,b)=>b.ts-a.ts);
+  for(const x of ms){
+    const m=String(x.txt||'').replace(/\*/g,'').match(re);if(!m)continue;
+    const v=m[1].trim();let rot,venc=null;
+    const d=v.match(/^(\d+(?:[.,]\d+)?)\s*(horas?|hrs?|hs?|h|minutos?|min)$/i);
+    if(d){const n=parseFloat(d[1].replace(',','.')),min=/^m/i.test(d[2]);rot=String(d[1]).replace('.',',')+(min?' min':'h');venc=g.ini.ts+n*(min?60:3600);}
+    else{const q=v.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s*(?:[àa]s\s*)?(\d{1,2})[:h](\d{2})$/i);
+      if(q){const ano=q[3]?(q[3].length===2?2000+ +q[3]:+q[3]):new Date(g.ini.ts*1000).getFullYear();venc=new Date(ano,q[2]-1,+q[1],+q[4],+q[5]).getTime()/1000;}
+      rot=v.replace(/\s+/g,' ');}
+    const t=wppMfTagDe(g);
+    return{rot,venc,vencido:!!(venc&&Date.now()/1000>venc&&!(t&&t.tag==='resolvido'))};
+  }
+  return null;
+}
+const _wppMfVencTxt=ts=>new Date(ts*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 const _wppMfTagRot=k=>k==='semtag'?'Sem tag':(WPP_MF_TAGS[k]||{}).rot||k;
 function wppMfResumoHtml(lst){
   const D=wppMfResumoDados(lst);
@@ -26813,9 +26836,10 @@ function wppMfResumoHtml(lst){
   const barra=(arr,cor)=>{const mx=arr.length?arr[0][1]:1;return arr.map(([k,v])=>'<div class="wpp-mf-bar"><span title="'+eh(k)+'">'+eh(k)+'</span><i style="width:'+Math.max(6,v/mx*100)+'%;background:'+(typeof cor==='function'?cor(k):cor)+'"></i><b>'+v+'</b></div>').join('')||'<div class="wpp-mc-sis">—</div>';};
   const corTag=k=>k==='semtag'?'#9ca3af':(WPP_MF_TAGS[k]||{}).cor||'#9ca3af';
   const linhas=D.doDia.map(g=>{const t=wppMfTagDe(g),T=t&&WPP_MF_TAGS[t.tag];const pop=[...g.pops.values()][0];
-    return'<div class="wpp-mf-rl" onclick="wppMfAbrir(\''+eh(g.principal).replace(/'/g,'')+'\')" title="Abrir o chamado"><div class="wpp-mf-rl-top"><span class="wpp-mf-tk">'+eh(wppMfRotulo(g.principal))+'</span>'
+    return'<div class="wpp-mf-rl" onclick="wppMfAbrir(\''+eh(g.principal).replace(/'/g,'')+'\')" title="Abrir o chamado"><div class="wpp-mf-rl-top"><span class="wpp-mf-tk"><i class="ti ti-alert-triangle"></i> '+eh(wppMfRotulo(g.principal))+'</span>'
       +(T?'<span class="wpp-mf-tg" style="background:'+T.cor+'">'+T.rot+'</span>':'')+(g.mas?'<span class="wpp-mf-tag">MASSIVA</span>':'')
-      +[...g.ufs].filter(u=>wppMf.ufs.includes(u)).map(u=>'<span class="wpp-mf-tag">'+u+'</span>').join('')+'<em>'+hm(g.ini.ts)+(g.msgs.length>1?' → '+hm(g.ult.ts):'')+'</em></div>'
+      +[...g.ufs].filter(u=>wppMf.ufs.includes(u)).map(u=>'<span class="wpp-mf-tag">'+u+'</span>').join('')+(function(){const S=_wppMfSla(g);return S?'<span class="wpp-mf-sla'+(S.vencido?' venc':'')+'" title="'+(S.venc?(S.vencido?'SLA VENCIDO em ':'SLA vence em ')+_wppMfVencTxt(S.venc):'SLA informado no chamado')+'"><i class="ti ti-clock"></i> SLA '+eh(S.rot)+(S.venc?' · '+(S.vencido?'vencido ':'vence ')+_wppMfVencTxt(S.venc):'')+'</span>':'';})()
+      +'<em><i class="ti ti-clock"></i> '+hm(g.ini.ts)+(g.msgs.length>1?' → '+hm(g.ult.ts):'')+'</em></div>'
       +'<div class="wpp-mf-rl-d">'+eh(_wppMfDesc(g))+'</div>'
       +'<div class="wpp-mf-quem">'+(function(){const lc=_wppMfLocais(g);return lc.length?'<i class="ti ti-map-pin"></i> '+eh(lc.join(', '))+' · ':'';})()+(pop?eh(pop.nome)+' · ':'')+eh([...g.chats.values()].join(' · '))+' · '+g.msgs.length+' msg</div></div>';}).join('');
   return'<div class="wpp-mf-res">'
@@ -26840,7 +26864,8 @@ function wppMfResumoTexto(){
     '*Status:* '+j(D.porTag.map(([k,v])=>[_wppMfTagRot(k),v])),
     '*Por UF:* '+j(D.porUf),'*Por localidade:* '+j(D.porLocal),'*Por grupo:* '+j(D.porGrupo),'','*Chamados:*'];
   D.doDia.forEach(g=>{const t=wppMfTagDe(g),T=t&&WPP_MF_TAGS[t.tag],pop=[...g.pops.values()][0];
-    L.push('• *'+wppMfRotulo(g.principal)+'* ['+[...g.ufs].filter(u=>wppMf.ufs.includes(u)).join('/')+'] '+hm(g.ini.ts)+(g.mas?' — MASSIVA':'')+' — '+_wppMfDesc(g)
+    const S=_wppMfSla(g);
+    L.push('• ⚠️ *'+wppMfRotulo(g.principal)+'* ['+[...g.ufs].filter(u=>wppMf.ufs.includes(u)).join('/')+'] ⏰ '+hm(g.ini.ts)+(g.mas?' — MASSIVA':'')+(S?' — ⏰ SLA '+S.rot+(S.venc?' ('+(S.vencido?'*vencido* ':'vence ')+_wppMfVencTxt(S.venc)+')':''):'')+' — '+_wppMfDesc(g)
       +(function(){const lc=_wppMfLocais(g);return lc.length?' — 📍 '+lc.join(', '):'';})()+(pop?' — '+pop.nome:'')+(T?' — _'+T.rot+'_':''));});
   return L.join('\n');
 }
