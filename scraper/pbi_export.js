@@ -227,7 +227,7 @@ async function exportar(browser) {
       page.waitForSelector('input[name="loginfmt"], input[type="password"], #i0116, #i0118', { timeout: 120000 }).then(() => 'login')
     ]).catch(() => 'timeout');
     /* só conta como expirada se aparecer o FORMULÁRIO de login — a passagem rápida pelo login.microsoftonline.com para renovar a sessão sozinho (SSO silencioso) não é expiração */
-    if (ok === 'login') throw Object.assign(new Error('A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.'), { code: 'login_required' });
+    if (ok === 'login') throw Object.assign(new Error((process.env.PBI_SESSION ? 'A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.' : 'A sessão do Power BI expirou no PC do agente (a Microsoft pediu a senha de novo). No PC, dê dois cliques em "Login Power BI (Jarvis)" na Área de Trabalho, entre na conta e depois clique em BI de novo.')), { code: 'login_required' });
     if (ok !== 'ok') throw new Error('O relatório não carregou em 2 min (contador Total não apareceu).');
     await page.waitForTimeout(3000);
 
