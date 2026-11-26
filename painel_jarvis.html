@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T14:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T15:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1762,6 +1762,15 @@ body:not(.is-admin):not(.sr-edit) #rde-meta-cfg{display:none}
 .redir-table td.redir-delta{font-weight:700}
 .redir-table .redir-delta-col{background:rgba(0,122,255,.08)}
 .redir-table thead th.redir-delta-col{background:rgba(0,122,255,.16)}
+/* 2026-11-26: retângulo no mês e na semana selecionados nos filtros do B2B Encerrados */
+.redir-table th.redir-sel{border:2px solid #f59e0b!important;border-bottom-width:.5px!important}
+.redir-table td.redir-sel{border-left:2px solid #f59e0b!important;border-right:2px solid #f59e0b!important}
+.redir-table tbody tr:last-child td.redir-sel{border-bottom:2px solid #f59e0b!important}
+.redir-sub-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px}
+.redir-sub-hd .redir-sub-title{margin:0}
+.redir-copy-btn{border:1px solid var(--bd);background:var(--surface,#fff);color:var(--tx2);border-radius:8px;padding:3px 9px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+.redir-copy-btn:hover{color:var(--blue);border-color:var(--blue)}
+.redir-copy-btn:disabled{opacity:.7;cursor:default}
 .redir-table .redir-proj-col{background:rgba(175,82,222,.10);font-weight:700}
 .redir-table thead th.redir-proj-col{background:rgba(175,82,222,.20)}
 /* BUG REAL: o app tem uma regra global "td{...color:var(--tx2)!important}" /
@@ -13139,9 +13148,9 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div class="redir-ano-bar"><label for="redir-ano-sel">Ano</label><select id="redir-ano-sel" onchange="redirSetAno(this.value)"></select></div>
         </div>
         <div class="redir-desc" id="redir-desc-meta">Regional R7.2 (MA, PA, PI e AP) — Prazo de Reparos B2B, mesma regra/meta já usada no painel (Prazo ≤8h: meta 85% · Outlier &gt;12h: máx. 1,98%). Jan..mês corrente (MTD) do ano selecionado + últimas 5 semanas fechadas + semana corrente (WTD). Único filtro que o bloco usa é o Ano acima — não reage aos demais filtros do painel; só muda ao anexar nova base ou trocar o ano.</div>
-        <div class="redir-sub-title">Prazo &lt;8h</div>
+        <div class="redir-sub-hd"><div class="redir-sub-title">Prazo &lt;8h</div><button type="button" class="redir-copy-btn" onclick="redirCopiarImagem('prazo',this)" title="Copia a tabela inteira como imagem, para colar no WhatsApp, e-mail ou apresentação"><i class="ti ti-copy"></i> Copiar imagem</button></div>
         <div style="overflow-x:auto;margin-bottom:18px" id="redir-table-prazo"></div>
-        <div class="redir-sub-title">Outlier &gt;12h</div>
+        <div class="redir-sub-hd"><div class="redir-sub-title">Outlier &gt;12h</div><button type="button" class="redir-copy-btn" onclick="redirCopiarImagem('outlier',this)" title="Copia a tabela inteira como imagem, para colar no WhatsApp, e-mail ou apresentação"><i class="ti ti-copy"></i> Copiar imagem</button></div>
         <div style="overflow-x:auto" id="redir-table-outlier"></div>
         <div class="redir-sub-title" style="margin-top:18px">FCA — Prazo &lt;8h</div>
         <div class="rede-report-box" id="redir-fca-prazo"></div>
@@ -18563,19 +18572,22 @@ function _redirRenderTable(elId,metric){
   const diaSemana=redirDiaSemanaDecorrido();
   const anoAtual=redirPeriodoCorrente();
   const expandedSet=redirExpandedGroups[elId]||new Set();
+  const _selCtx=!String(elId).startsWith('exec-');
+  const mSel=k=>_selCtx&&selMes.includes(k);
+  const wSel=k=>_selCtx&&(selWeek.includes(k)||selWeek.includes(String(k).replace('-S','-W')));
   const monthHead=monthPeriods.map((k,i)=>{
-    return`<th>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
+    return`<th${mSel(k)?' class="redir-sel"':''}>${eh(redirMesAbrev(k))}<br><span class="redir-th-sub">${anoAtual&&i===monthPeriods.length-1?'MTD':'Real'}</span></th>`;
   }).join('');
   const weekHead=weekPeriods.map((k,i)=>{
     const num=(/-S(\d{2})$/.exec(k)||[])[1]||'';
-    return`<th>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
+    return`<th${wSel(k)?' class="redir-sel"':''}>S${num}<br><span class="redir-th-sub">${eh(redirWeekRangeLabel(k))}</span><br><span class="redir-th-sub">${anoAtual&&i===weekPeriods.length-1?'WTD':'Real'}</span></th>`;
   }).join('');
   /* ΔMoM (pedido do usuário, 2026-10-06): o p.p. do mês é a distância do MTD até a META,
      não até o mês anterior. ΔWoW continua sendo semana contra a semana anterior. */
   const meta=metric==='prazo'?ENC_META_PRAZO:ENC_META_OUTLIER;
   function buildRowHtml(row,wrow,clusterLabelHtml,extraCls,onclickAttr){
-    const monthCells=row.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
-    const weekCells=wrow.cells.map(c=>`<td class="${redirPctColor(metric,c.pct)}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+    const monthCells=row.cells.map((c,i)=>`<td class="${redirPctColor(metric,c.pct)}${mSel(monthPeriods[i])?' redir-sel':''}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
+    const weekCells=wrow.cells.map((c,i)=>`<td class="${redirPctColor(metric,c.pct)}${wSel(weekPeriods[i])?' redir-sel':''}">${c.pct===null?'—':pp(c.pct)+'%'}</td>`).join('');
     const projMes=redirProjecao(row.cells,diaMes,diasMes);
     const projSem=redirProjecao(wrow.cells,diaSemana,7);
     const projCell=p=>`<td class="redir-proj-col ${redirPctColor(metric,p)}">${p===null?'—':pp(p)+'%'}</td>`;
@@ -18698,6 +18710,43 @@ function execRedirTravarAno(sel,id){
   const a=execFiltro('ano');
   if(a.length){const v=[...a].sort().pop();if(![...sel.options].some(o=>o.value===v))sel.insertAdjacentHTML('beforeend','<option value="'+v+'">'+v+'</option>');sel.value=v;sel.disabled=true;sel.title='Ano definido pelo filtro Ano do Painel Executivo';}
   else{sel.disabled=false;sel.title='';}
+}
+/* Copiar imagem (pedido 2026-11-26): copia a tabela INTEIRA do indicador (sem o corte da rolagem
+   horizontal), com título, ano e mês/semana filtrados, para colar onde quiser. Sem permissão de
+   área de transferência, baixa o PNG. */
+function redirCopiarImagem(metric,btn){
+  const tab=document.querySelector('#redir-table-'+metric+' table');
+  if(!tab||!btn){_ghToast('A tabela ainda não foi carregada.','var(--orange)',4000);return;}
+  const orig=btn.innerHTML;
+  const fim=(ok,txt)=>{btn.disabled=false;btn.innerHTML=ok?'<i class="ti ti-check"></i> '+(txt||'Copiado'):'<i class="ti ti-x"></i> Erro';setTimeout(()=>{btn.innerHTML=orig;},2400);};
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Gerando…';
+  setTimeout(()=>{if(btn.disabled&&/Gerando/.test(btn.innerHTML)){fim(false);_ghToast('Não foi possível gerar a imagem agora. Tente de novo.','var(--orange)',5000);}},25000);
+  const titulo=metric==='prazo'?'Prazo <8h':'Outlier >12h';
+  const ano=(document.getElementById('redir-ano-sel')||{}).value||'';
+  const blobPromise=new Promise((resolve,reject)=>{
+    abCarregarH2C(async()=>{
+      const bg=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#ffffff';
+      const w=document.createElement('div');
+      w.style.cssText='position:absolute;left:'+window.scrollX+'px;top:'+window.scrollY+'px;z-index:-1;padding:14px 16px 16px;background:'+bg+';width:max-content;color:var(--tx)';
+      w.innerHTML='<div style="font-weight:800;font-size:14px;margin-bottom:2px">Redir B2B — '+eh(titulo)+'</div>'
+        +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Regional R7.2 (MA, PA, PI e AP)'+(ano?' · Ano '+eh(ano):'')
+        +(selMes.length?' · Mês: '+eh(selMes.map(m=>typeof fmtMesLabel==='function'?fmtMesLabel(m):m).join(', ')):'')
+        +(selWeek.length?' · Semana: '+eh(selWeek.join(', ')):'')+'</div>';
+      const t=tab.cloneNode(true);t.style.width='auto';t.style.tableLayout='auto';t.style.borderCollapse='separate';t.style.borderSpacing='0';t.querySelectorAll('tbody tr:last-child td').forEach(td=>{if(!td.classList.contains('redir-sel'))td.style.borderBottom='1px solid #d0d5dd';});
+      w.appendChild(t);document.body.appendChild(w);
+      try{
+        const canvas=await html2canvas(w,{backgroundColor:bg,scale:2,useCORS:true,logging:false,width:w.offsetWidth,height:w.offsetHeight,scrollX:-window.scrollX,scrollY:-window.scrollY});
+        canvas.toBlob(b=>b?resolve(b):reject(new Error('imagem vazia')),'image/png');
+      }catch(e){reject(e);}
+      finally{w.remove();}
+    },()=>reject(new Error('html2canvas não carregou')));
+  });
+  const baixar=b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='redir-b2b-'+metric+'.png';a.click();fim(true,'Baixado');};
+  if(!(navigator.clipboard&&typeof navigator.clipboard.write==='function'&&typeof window.ClipboardItem==='function')){blobPromise.then(baixar).catch(()=>fim(false));return;}
+  /* clipboard.write precisa receber a Promise ainda no clique (ativação do usuário) */
+  navigator.clipboard.write([new ClipboardItem({'image/png':blobPromise})])
+    .then(()=>{fim(true);_ghToast('Imagem da tabela '+titulo+' copiada — cole com Ctrl+V.','var(--green-dk)',4000);})
+    .catch(()=>blobPromise.then(baixar).catch(()=>fim(false)));
 }
 function redirRenderAll(){
   if(!REDIR_RENDER_TARGETS.some(t=>document.getElementById(t.prazo)))return;
