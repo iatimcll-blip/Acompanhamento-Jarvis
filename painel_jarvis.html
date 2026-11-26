@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T15:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T16:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22145,6 +22145,7 @@ setTimeout(()=>{try{_abBiRender();}catch(_){}},0);
    anexada depois do export). Mesma permissão do botão Atualizar (Admin + Sr). */
 const PBI_STATUS_FILE='data/pbi-runner-status.json',PBI_DATA_FILE='data/pbi_abertos.xlsx';
 const PBI_PASSOS=7;
+const PBI_ESPERA_LOGIN_MIN=15; /* janela de login fica aberta 10 min + o BI de novo */
 let abPbiAplicadoAt='',_pbiTimer=null,_pbiAplicando=false;
 function _pbiAdopt(v){if(v&&typeof v==='string'&&v>(abPbiAplicadoAt||''))abPbiAplicadoAt=v;}
 /* Lê pelo Worker (API do GitHub, sem cache): o raw.githubusercontent.com segura o arquivo
@@ -22218,6 +22219,12 @@ function _pbiMonitorar(triggeredIso){
     }
     /* 2026-11-24: sessão da nuvem expirada → o agente tenta no PC (job local). Mostra isso e desiste se o
        PC não começar em ATRIX_ESPERA_INICIO_MIN (desligado/ocupado), em vez de esperar para sempre. */
+    /* 2026-11-26: login vencido no PC → a janela de login abre sozinha no PC principal (vigia) e o BI roda de novo depois */
+    if(st.state==='running'&&st.errorCode==='pc_login'){
+      const idade=Date.now()-new Date(st.updatedAt||st.lastRunStartedAt).getTime();
+      if(idade>PBI_ESPERA_LOGIN_MIN*60000){_pbiParar();_pbiBotoes('BI !',false,'O login do Power BI não foi feito no PC principal. Entre na conta pela janela (ou pelo atalho "Login Power BI (Jarvis)") e clique em BI de novo.','erro');_ghToast('O login do Power BI não foi feito no PC principal em '+PBI_ESPERA_LOGIN_MIN+' min — a base do B2B Abertos não foi alterada. Entre na conta e clique em BI de novo.','#ea580c',10000);return;}
+      _pbiBotoes('BI · login no PC…',true,st.stepTxt||_PBI_TIT);return;
+    }
     if(st.state==='running'&&st.errorCode==='nuvem_login'){
       const idade=Date.now()-new Date(st.updatedAt||st.lastRunStartedAt).getTime();
       if(idade>ATRIX_ESPERA_INICIO_MIN*60000){_pbiParar();_ghToast('A sessão do Power BI na nuvem expirou e o computador do agente não começou em '+ATRIX_ESPERA_INICIO_MIN+' min. Ligue o PC do agente e tente de novo.','#ea580c',10000);return;}
@@ -22350,6 +22357,11 @@ function _pbiEncMonitorar(triggeredIso){
       return;
     }
     /* 2026-11-25: sessão da nuvem expirada → tenta no PC; desiste se o PC não começar a tempo. */
+    if(st.state==='running'&&st.errorCode==='pc_login'){
+      const idade=Date.now()-new Date(st.updatedAt||st.lastRunStartedAt).getTime();
+      if(idade>PBI_ESPERA_LOGIN_MIN*60000){_pbiEncParar();_pbiEncBotoes('BI ENC !',false,'O login do Power BI não foi feito no PC principal. Entre na conta e clique em BI ENC de novo.','erro');_ghToast('O login do Power BI não foi feito no PC principal em '+PBI_ESPERA_LOGIN_MIN+' min — a base do B2B Encerrados não foi alterada. Entre na conta e clique em BI ENC de novo.','#ea580c',10000);return;}
+      _pbiEncBotoes('BI ENC · login no PC…',true,st.stepTxt||_PBI_ENC_TIT);return;
+    }
     if(st.state==='running'&&st.errorCode==='nuvem_login'){
       const idade=Date.now()-new Date(st.updatedAt||st.lastRunStartedAt).getTime();
       if(idade>ATRIX_ESPERA_INICIO_MIN*60000){_pbiEncParar();_pbiEncBotoes('BI ENC !',false,'A sessão da nuvem expirou e o PC não começou a tempo.','erro');_ghToast('A sessão do Power BI na nuvem expirou e o computador do agente não começou em '+ATRIX_ESPERA_INICIO_MIN+' min. Ligue o PC do agente e tente de novo.','#ea580c',10000);return;}

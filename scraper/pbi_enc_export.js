@@ -38,6 +38,7 @@ const OUT_SYNC   = process.env.PBI_OUT_SYNC || '';
 const GH_TOKEN   = process.env.GITHUB_TOKEN  || '';
 const GH_REPO    = process.env.GITHUB_REPO   || 'iatimcll-blip/Acompanhamento-Jarvis';
 const GH_BRANCH  = process.env.GITHUB_BRANCH || 'main';
+const pbiComum = require('./pbi_comum');
 const STATUS_FILE = 'data/pbi-enc-status.json';
 const SYNC_FILE   = 'data/sync-state.json';
 const PASSOS = 8;
@@ -347,8 +348,18 @@ async function rodada() {
     log('ERRO:', e.message);
     /* 2026-11-25: sessão da NUVEM expirada → o fluxo roda de novo no PC (job local, login feito na janela). */
     if (e.code === 'login_required' && process.env.PBI_FALLBACK_PC === '1') {
+      /* 2026-11-26: marca o secret como vencido (só o hash) para o workflow ir direto ao PC nas
+         próximas rodadas, e sai com sucesso — o job do PC assume (a rodada não aparece como falha). */
+      if (!DRY_RUN && GH_TOKEN) { try { await ghPut(pbiComum.NUVEM_FILE, Buffer.from(JSON.stringify(pbiComum.marcaNuvemExpirada(), null, 2)), 'chore: sessão do BI na nuvem vencida'); } catch (x) { log('aviso:', x.message); } }
+      pbiComum.saidaFallback();
       await status({ state: 'running', step: 0, stepTxt: 'A sessão da nuvem expirou — tentando de novo no PC', lastError: '', errorCode: 'nuvem_login' });
-      process.exitCode = 1;
+      return;
+    }
+    /* 2026-11-26: login vencido no PC → o vigia (sessão do usuário) abre a janela de login sozinho e
+       dispara o BI ENC de novo depois do login. O painel segue acompanhando. */
+    if (e.code === 'login_required' && !process.env.PBI_SESSION && !DRY_RUN && pbiComum.pedirLoginNoPC(AUTH_DIR, 'enc')) {
+      log('Pedido de login entregue ao vigia (a janela de login abre no PC principal).');
+      await status({ state: 'running', step: 0, stepTxt: 'Login do Power BI vencido — a janela de login abriu no PC principal. Entre na conta e o BI ENC roda de novo sozinho.', lastError: '', errorCode: 'pc_login' });
       return;
     }
     await status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: e.message, errorCode: e.code || '' });

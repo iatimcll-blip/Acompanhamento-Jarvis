@@ -26,14 +26,22 @@ jobs:
       - id: v
         env:
           S: ${{ secrets.PBI_SESSION }}
+          GH_TOKEN: ${{ github.token }}
+        # 2026-11-26: se ESTE secret já venceu (hash em data/pbi-nuvem.json, gravado pelo agente),
+        # vai direto ao PC. Quando o secret é regravado o hash muda e a nuvem volta a ser tentada.
         run: |
-          if [ -n "$S" ]; then echo "nuvem=true" >> "$GITHUB_OUTPUT"; echo "Rodando na nuvem (secret PBI_SESSION presente)."; else echo "nuvem=false" >> "$GITHUB_OUTPUT"; echo "Secret PBI_SESSION ausente: rodando no PC do agente."; fi
+          if [ -z "$S" ]; then echo "nuvem=false" >> "$GITHUB_OUTPUT"; echo "Secret PBI_SESSION ausente: rodando no PC do agente."; exit 0; fi
+          H=$(printf '%s' "$S" | sha256sum | cut -c1-16)
+          V=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/${{ github.repository }}/contents/data/pbi-nuvem.json?ref=main" 2>/dev/null | jq -r '.expiradaHash // empty' 2>/dev/null || true)
+          if [ -n "$V" ] && [ "$V" = "$H" ]; then echo "nuvem=false" >> "$GITHUB_OUTPUT"; echo "Secret PBI_SESSION já venceu: rodando direto no PC do agente."; else echo "nuvem=true" >> "$GITHUB_OUTPUT"; echo "Rodando na nuvem (secret PBI_SESSION presente)."; fi
 
   nuvem:
     needs: onde
     if: needs.onde.outputs.nuvem == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      fallback: ${{ steps.exp.outputs.fallback }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,6 +54,7 @@ jobs:
         working-directory: scraper
         run: npx playwright install --with-deps chromium
       - name: Exportar do Power BI
+        id: exp
         working-directory: scraper
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,7 +69,7 @@ jobs:
   # 2026-11-25: roda no PC também quando a nuvem falha (ex.: sessão do PBI_SESSION expirada)
   local:
     needs: [onde, nuvem]
-    if: always() && (needs.onde.outputs.nuvem != 'true' || needs.nuvem.result == 'failure')
+    if: always() && (needs.onde.outputs.nuvem != 'true' || needs.nuvem.result == 'failure' || needs.nuvem.outputs.fallback == 'true')
     runs-on: [self-hosted, jarvis]
     timeout-minutes: 15
     defaults:
