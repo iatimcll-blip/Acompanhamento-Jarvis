@@ -110,6 +110,37 @@ function iniciarTunel() {
 }
 function agendaTunel() { tunelTentativas++; setTimeout(iniciarTunel, Math.min(300e3, 10e3 * tunelTentativas)); }
 process.on('exit', () => { try { if (tunelProc) tunelProc.kill(); } catch (_e) {} });
+/* 2026-11-25: o quick tunnel "morre" do lado da Cloudflare sem o cloudflared encerrar (o endereço
+   *.trycloudflare.com deixa de existir — DNS não resolve) e os outros aparelhos ficavam sem WhatsApp
+   até alguém reiniciar a ponte. Vigia: a cada 3 min a ponte chama o PRÓPRIO túnel em /api/vivo (rota
+   pública que só devolve um código aleatório deste processo — nenhum dado) e, com 2 falhas seguidas,
+   encerra o cloudflared; o 'exit' acima recria o túnel (endereço novo) e o Jarvis do PC republica. */
+const VIVO = crypto.randomBytes(12).toString('hex');
+let tunelFalhasVivo = 0;
+async function vigiaTunel() {
+  if (tunel.status !== 'ativo' || !tunel.url || !tunelProc) { tunelFalhasVivo = 0; return; }
+  const url = tunel.url;
+  let ok = false, motivo = '';
+  try {
+    const r = await fetch(url + '/api/vivo', { signal: AbortSignal.timeout(20000), cache: 'no-store' });
+    const t = await r.text();
+    ok = r.ok && t.trim() === VIVO; if (!ok) motivo = 'HTTP ' + r.status;
+  } catch (e) { motivo = (e && e.cause && e.cause.code) || (e && e.message) || 'erro'; }
+  if (url !== tunel.url) return; /* túnel trocou enquanto testava */
+  if (ok) { if (tunelFalhasVivo) console.log('[tunel] voltou a responder'); tunelFalhasVivo = 0; tunel.erro = ''; return; }
+  tunelFalhasVivo++;
+  tunel.erro = 'túnel sem resposta (' + motivo + ')';
+  console.warn('[tunel] sem resposta pelo endereço público (' + motivo + ') — falha ' + tunelFalhasVivo + '/2');
+  if (tunelFalhasVivo >= 2) {
+    tunelFalhasVivo = 0;
+    console.warn('[tunel] recriando o túnel (endereço novo)');
+    try { tunelProc.kill(); } catch (_e) {}
+  }
+}
+setInterval(() => { vigiaTunel().catch(() => {}); }, 3 * 60e3);
+setTimeout(() => { vigiaTunel().catch(() => {}); }, 45e3);
+// Rota pública do vigia do túnel: só um código aleatório deste processo, sem nenhum dado
+app.get('/api/vivo', (_req, res) => { res.set('Cache-Control', 'no-store'); res.type('text/plain').send(VIVO); });
 // Porteiro: acesso pelo túnel só com a chave
 app.use((req, res, next) => {
   if (ehLocal(req)) return next();
