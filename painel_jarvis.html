@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T00:40:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T01:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22628,14 +22628,9 @@ async function _atrixTriggerViaWorker(force){
     body:JSON.stringify({tickets,force:!!force})
   });
   const body=await res.json().catch(()=>({}));
-  if(res.status===409&&body.error==='rate_limited'&&!force&&Number(body.minsAgo)>=ATRIX_INTERVALO_MIN){
-    /* 2026-11-24 (pedido): intervalo mínimo entre atualizações = 10 min. Se o servidor ainda estiver
-       com o limite antigo (30), o painel libera sozinho depois de 10 min, sem perguntar. */
-    return _atrixTriggerViaWorker(true);
-  }
+  /* 2026-11-26 (pedido do usuário): sem trava de tempo mínimo entre solicitações. Se um Worker antigo
+     ainda responder "rate_limited", dispara mesmo assim (force). */
   if(res.status===409&&body.error==='rate_limited'){
-    const ok=confirm(`A última atualização via Atrix foi solicitada há ${body.minsAgo} min, dentro do intervalo mínimo entre atualizações.\n\nDisparar de novo agora mesmo assim? (Faltam ~${body.minsRemaining} min pro intervalo recomendado — solicitações muito próximas sobrecarregam o Atrix sem necessidade.)`);
-    if(!ok)return{ok:false,cancelled:true};
     return _atrixTriggerViaWorker(true);
   }
   if(!res.ok||!body.ok)throw new Error(body.error||('Falha ao chamar o Worker (HTTP '+res.status+')'));
