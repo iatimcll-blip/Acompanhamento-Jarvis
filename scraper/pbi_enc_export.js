@@ -165,12 +165,30 @@ async function exportar(browser) {
   try {
     await status({ step: 1, stepTxt: 'Abrindo o Dashboard Geral Encerrados' });
     await page.goto(REPORT_URL, { waitUntil: 'commit', timeout: 120000 });
-    const ok = await Promise.race([
+    let ok = await Promise.race([
       page.waitForSelector('svg[aria-label^="Total "]', { timeout: 150000 }).then(() => 'ok'),
       page.waitForSelector('input[name="loginfmt"], input[type="password"], #i0116, #i0118', { timeout: 150000 }).then(() => 'login')
     ]).catch(() => 'timeout');
     /* só conta como expirada se aparecer o FORMULÁRIO de login — a passagem rápida pelo login.microsoftonline.com para renovar a sessão sozinho (SSO silencioso) não é expiração */
-    if (ok === 'login') throw Object.assign(new Error((process.env.PBI_SESSION ? 'A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.' : 'A sessão do Power BI expirou no PC do agente (a Microsoft pediu a senha de novo). No PC, dê dois cliques em "Login Power BI (Jarvis)" na Área de Trabalho, entre na conta e depois clique em BI de novo.')), { code: 'login_required' });
+    /* 2026-11-26 (pedido do usuário): se a Microsoft pedir autenticação, solicita o Microsoft
+       Authenticator (o número aparece no painel; a pessoa aprova no celular). Só no PC. */
+    if (ok === 'login' && !process.env.PBI_SESSION) {
+      await status({ step: 1, stepTxt: 'A Microsoft pediu autenticação — solicitando aprovação no Microsoft Authenticator…' });
+      const aprovado = await pbiComum.autenticarPeloAuthenticator(page, async n => {
+        await status({ step: 1, stepTxt: n ? 'Aprove no Microsoft Authenticator do celular: número ' + n : 'Aprove a notificação no Microsoft Authenticator do celular', errorCode: 'mfa', mfaNumero: n || '', mfaAte: new Date(Date.now() + pbiComum.AUTH_ESPERA_MS).toISOString() });
+      }, log);
+      await status({ errorCode: '', mfaNumero: '', mfaAte: '' });
+      if (aprovado) {
+        try { await ctx.storageState({ path: STATE_FILE }); } catch (_) {}
+        await status({ step: 1, stepTxt: 'Autenticado pelo Authenticator — abrindo o relatório' });
+        await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => {});
+        ok = await Promise.race([
+          page.waitForSelector('svg[aria-label^="Total "]', { timeout: 150000 }).then(() => 'ok'),
+          page.waitForSelector('input[name="loginfmt"], input[type="password"], #i0116, #i0118', { timeout: 150000 }).then(() => 'login')
+        ]).catch(() => 'timeout');
+      }
+    }
+    if (ok === 'login') throw Object.assign(new Error((process.env.PBI_SESSION ? 'A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.' : 'A Microsoft pediu autenticação no Power BI e a aprovação pelo Microsoft Authenticator não foi feita a tempo. Clique em BI de novo e aprove no celular o número que aparece no painel (ou, no PC, dê dois cliques em "Login Power BI (Jarvis)" na Área de Trabalho).')), { code: 'login_required' });
     if (ok !== 'ok') throw new Error('O relatório não carregou em 2,5 min (contador Total não apareceu).');
     await page.waitForTimeout(4000);
     await fecharAvisos(page);
