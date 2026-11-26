@@ -503,6 +503,7 @@ app.get('/api/chats', async (_req, res) => {
   if (!requireReady(res)) return;
   try {
     const chats = await client.getChats();
+    chats.forEach(c => { const id = c.id && c.id._serialized, n = c.name || c.formattedTitle; if (id && n) nomeChat.set(id, n); });
     res.json(chats.map(summarizeChat).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100));
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });
@@ -524,6 +525,59 @@ app.get('/api/chats/:id/messages', async (req, res) => {
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
+});
+
+/* Busca nas mensagens (pedido 2026-11-26): procura o texto (sem diferenciar maiúsculas/acentos; todas as
+   palavras precisam aparecer) no histórico local das últimas 72 h de todas as conversas e, junto, na busca
+   do próprio WhatsApp Web (até 8 s; se falhar, fica só o histórico). Sem repetir a mesma mensagem. */
+/* nome das conversas para os resultados da busca (cache preenchido pela lista de conversas) */
+const nomeChat = new Map();
+async function nomeDoChat(id) {
+  if (!id) return '';
+  if (nomeChat.has(id)) return nomeChat.get(id);
+  try {
+    const c = await Promise.race([client.getChatById(id), new Promise((_, rej) => setTimeout(() => rej(new Error('tempo')), 3000))]);
+    const n = (c && (c.name || c.formattedTitle)) || '';
+    if (n) nomeChat.set(id, n);
+    return n;
+  } catch (_) { return ''; }
+}
+app.get('/api/search', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 100);
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit || 80)));
+  if (q.length < 2) { res.json({ resultados: [], fontes: [] }); return; }
+  const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const termos = norm(q).split(/s+/).filter(Boolean);
+  const casa = t => { const n = norm(t); return termos.every(x => n.includes(x)); };
+  const porId = new Map();
+  for (const [chatId, lista] of Object.entries(hist)) {
+    for (const m of lista || []) if (m && m.id && (casa(m.body) || casa(m.filename))) porId.set(m.id, { ...m, chatId });
+  }
+  const fontes = ['historico'];
+  if (client && state.status === 'ready') {
+    try {
+      const msgs = await Promise.race([
+        client.searchMessages(q, { limit }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado')), 8000))
+      ]);
+      for (const msg of msgs || []) {
+        const id = msg && msg.id && msg.id._serialized;
+        if (!id || porId.has(id)) continue;
+        const s2 = await summarizeMessage(msg, false);
+        porId.set(id, { ...s2, chatId: msg.fromMe ? msg.to : msg.from });
+      }
+      fontes.push('whatsapp');
+    } catch (e) { console.warn('[busca] WhatsApp Web não respondeu à busca:', e && e.message); }
+  }
+  const lista = [...porId.values()].sort((x, y) => (y.timestamp || 0) - (x.timestamp || 0)).slice(0, limit);
+  const nomes = {};
+  if (client && state.status === 'ready') {
+    const ids = [...new Set(lista.map(m => m.chatId).filter(Boolean))].slice(0, 40);
+    await Promise.all(ids.map(async id => { nomes[id] = await nomeDoChat(id); }));
+  }
+  const resultados = lista
+    .map(m => ({ id: m.id, chatId: m.chatId, chatName: nomes[m.chatId] || nomeChat.get(m.chatId) || '', body: String(m.body || '').slice(0, 600), filename: m.filename || '', senderName: m.senderName || '', fromMe: !!m.fromMe, timestamp: m.timestamp || 0, type: m.type || 'chat' }));
+  res.json({ resultados, fontes });
 });
 
 app.post('/api/chats/:id/seen', async (req, res) => {

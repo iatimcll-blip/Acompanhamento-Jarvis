@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T13:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T14:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14324,9 +14324,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
         <div class="wpp-search-wrap">
           <div class="wpp-search-box">
             <i class="ti ti-search"></i>
-            <input id="wpp-search-input" placeholder="Pesquisar" oninput="wppSearch(this.value)" autocomplete="off">
+            <input id="wpp-search-input" placeholder="Pesquisar conversas e mensagens" oninput="wppSearch(this.value)" autocomplete="off">
           </div>
         </div>
+        <div class="wpp-busca-msgs" id="wpp-busca-msgs" hidden></div>
 
         <!-- Lista de conversas -->
         <div class="wpp-chat-list" id="wpp-chat-list"></div>
@@ -26205,7 +26206,66 @@ function wppFilterLoad(){try{const s=JSON.parse(localStorage.getItem(WPP_FILTER_
 function wppFilterSave(){try{localStorage.setItem(WPP_FILTER_KEY,JSON.stringify({enabled:wppFilterEnabled,ids:[...wppFilterIds]}));}catch(e){}}
 /* 2026-11-18: o Monitoramento Seletivo só PRIORIZA (notificação vermelha); nada é filtrado nem bloqueado */
 function wppIsMonitored(chatId){return true;}
-function wppSearch(q){wppSearchQuery=(q||'').toLowerCase();renderWppChats();}
+/* Busca nas mensagens (pedido 2026-11-26). A caixa "Pesquisar" continua filtrando as conversas pelo nome e,
+   a partir de 3 letras, também busca o texto dentro das mensagens (ponte: /api/search — histórico das
+   últimas 72 h + busca do WhatsApp Web). Clicar no resultado abre a conversa e destaca a mensagem. */
+let _wppBuscaT=null,_wppBuscaSeq=0;
+(function(){if(document.getElementById('wpp-busca-css'))return;const st=document.createElement('style');st.id='wpp-busca-css';
+  st.textContent='.wpp-busca-msgs{max-height:46%;overflow:auto;border-bottom:1px solid var(--bd,#e5e7eb);padding:4px 10px 8px;flex-shrink:0}'
+  +'.wpp-busca-msgs[hidden]{display:none}'
+  +'.wpp-bm-hd{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;padding:6px 2px}'
+  +'.wpp-bm-item{padding:7px 8px;border-radius:9px;cursor:pointer}.wpp-bm-item:hover,.wpp-bm-item:focus{background:var(--bg2,#f3f4f6);outline:none}'
+  +'.wpp-bm-top{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}.wpp-bm-top b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wpp-bm-top span{font-size:11px;color:var(--tx3);white-space:nowrap}'
+  +'.wpp-bm-txt{font-size:12px;color:var(--tx2,#4b5563);margin-top:2px;line-height:1.35;word-break:break-word}'
+  +'.wpp-bm-txt mark{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}'
+  +'.wpp-bm-vazio{font-size:12px;color:var(--tx3);padding:4px 2px 6px}'
+  +'.wpp-bubble.wpp-bm-flash{box-shadow:0 0 0 3px #f59e0b;transition:box-shadow .3s}';
+  document.head.appendChild(st);})();
+function _wppBmNorm(t){return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function _wppBmTrecho(m,q){
+  const txt=String(m.body||m.filename||'').replace(/\s+/g,' ');
+  const termos=String(q||'').split(/\s+/).filter(Boolean);
+  const n=_wppBmNorm(txt);let i=-1;
+  termos.forEach(t=>{const k=n.indexOf(_wppBmNorm(t));if(k>=0&&(i<0||k<i))i=k;});
+  const ini=Math.max(0,i-50),fim=Math.min(txt.length,Math.max(i,0)+120);
+  let h=eh((ini>0?'…':'')+txt.slice(ini,fim)+(fim<txt.length?'…':''));
+  termos.forEach(t=>{if(t.length<2)return;const re=new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');h=h.replace(re,x=>'<mark>'+x+'</mark>');});
+  return h||'<i>(mídia)</i>';
+}
+function wppSearch(q){
+  wppSearchQuery=(q||'').toLowerCase();renderWppChats();
+  clearTimeout(_wppBuscaT);
+  const t=String(q||'').trim(),box=document.getElementById('wpp-busca-msgs');if(!box)return;
+  if(t.length<3){_wppBuscaSeq++;box.innerHTML='';box.hidden=true;return;}
+  box.hidden=false;box.innerHTML='<div class="wpp-bm-hd">Buscando nas mensagens…</div>';
+  _wppBuscaT=setTimeout(()=>wppBuscarMensagens(t),450);
+}
+async function wppBuscarMensagens(q){
+  const seq=++_wppBuscaSeq,box=document.getElementById('wpp-busca-msgs');if(!box)return;
+  let data=null;
+  try{data=await wppFetch('/api/search?q='+encodeURIComponent(q)+'&limit=60');}
+  catch(e){if(seq!==_wppBuscaSeq)return;box.innerHTML='<div class="wpp-bm-vazio">Não foi possível buscar nas mensagens: '+eh((e&&e.message)||String(e))+'</div>';return;}
+  if(seq!==_wppBuscaSeq)return;
+  const L=(data&&Array.isArray(data.resultados))?data.resultados:[];
+  const nome=(id,n)=>{const c=(wppChats||[]).find(x=>x.id===id);return (c&&c.name)||n||String(id||'').split('@')[0];};
+  box.innerHTML='<div class="wpp-bm-hd">Mensagens · '+L.length+(L.length>=60?'+':'')+'</div>'
+    +(L.length?L.map(m=>'<div class="wpp-bm-item" role="button" tabindex="0" data-chat="'+eh(m.chatId||'')+'" data-mid="'+eh(m.id||'')+'" onclick="wppAbrirMensagem(this.dataset.chat,this.dataset.mid)" onkeydown="if(event.key===\'Enter\')this.click()">'
+      +'<div class="wpp-bm-top"><b>'+eh(nome(m.chatId,m.chatName))+'</b><span>'+_wppFmtTime(m.timestamp)+'</span></div>'
+      +'<div class="wpp-bm-txt">'+(m.fromMe?'<b>Você:</b> ':(m.senderName?'<b>'+eh(m.senderName)+':</b> ':''))+_wppBmTrecho(m,q)+'</div></div>').join('')
+    :'<div class="wpp-bm-vazio">Nenhuma mensagem encontrada (busca nas últimas 72 h e no WhatsApp Web).</div>');
+}
+async function wppAbrirMensagem(chatId,msgId){
+  if(!chatId)return;
+  await selectWppChat(chatId);
+  let n=0;
+  const tenta=()=>{
+    const el=[...document.querySelectorAll('.wpp-bubble[data-id]')].find(b=>b.dataset.id===msgId);
+    if(el){el.scrollIntoView({block:'center'});el.classList.add('wpp-bm-flash');setTimeout(()=>el.classList.remove('wpp-bm-flash'),2600);}
+    else if(++n<12)setTimeout(tenta,300);
+  };
+  tenta();
+}
+
 function wppIsHostedPage(){return location.protocol==='https:'&&!['localhost','127.0.0.1','::1'].includes(location.hostname)}
 function wppIsLocalBridgeUrl(u){return/^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(String(u||'').trim())}
 function wppStoredBridge(){
