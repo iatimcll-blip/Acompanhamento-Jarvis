@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T10:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T11:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -1114,7 +1114,7 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .sub-manual-lock:hover { background:#d97706; color:#fff }
 .substatus-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; min-width: 0; }
 /* (2026-11-10) Check + barrinha por chamado enquanto o botão Atualizar (Agente Atrix) roda. */
-.atx-tk { display:inline-flex;align-items:center;gap:3px;margin-left:4px;flex-shrink:0;font-size:10px;font-weight:700;line-height:1;white-space:nowrap }
+.atx-tk { display:flex;align-items:center;gap:6px;width:100%;flex-basis:100%;margin:6px 0 2px;font-size:11px;font-weight:700;line-height:1;white-space:nowrap }
 .atx-tk:empty { display:none }
 .fap-aud-cred-top { display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed var(--bd,#d0d5dd) }
 .fap-aud-cred-sel { min-width:220px }
@@ -1127,9 +1127,11 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .ab-bi-run.ab-bi-erro,.enc-bi-run.ab-bi-erro { background:#ea580c !important;color:#fff !important;border-color:#c2410c !important }
 .enc-bi-run.ab-bi-rodando { background:var(--blue-bg);color:var(--blue) }
 .enc-bi-run.ab-bi-rodando i { animation:wppSpin 1.2s linear infinite }
-.atx-tk .atx-bar { position:relative;display:inline-block;width:34px;height:5px;border-radius:3px;background:var(--bd,#d0d5dd);overflow:hidden }
+.atx-tk .atx-bar { position:relative;display:block;flex:1;width:auto;height:10px;border-radius:5px;background:var(--bd,#d0d5dd);overflow:hidden }
+.atx-tk .atx-pct { min-width:38px;text-align:right;font-variant-numeric:tabular-nums }
 .atx-tk .atx-fill { position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--blue) }
 .atx-tk .atx-fill.atx-run { animation:atxFill linear forwards }
+.atx-tk .atx-fill { transition:width .4s }
 .atx-tk[data-s="ok"] .atx-fill { width:100%;background:var(--green-dk,#15803d) }
 .atx-tk[data-s="ok"] { color:var(--green-dk,#15803d) }
 .atx-tk[data-s="rev"] .atx-fill { width:50%;background:var(--orange,#f59e0b) }
@@ -1138,7 +1140,7 @@ tbody tr.row-pending-client:hover td { background: rgba(255,149,0,.18); }
 .atx-tk[data-s="falha"] { color:var(--red,#dc2626) }
 .atx-tk[data-s="cur"] { color:var(--blue) }
 .atx-tk[data-s="wait"] { color:var(--tx3,#98a2b3) }
-.atx-tk i { font-size:12px }
+.atx-tk i { font-size:14px }
 .atx-tk[data-s="cur"] i { animation:wppSpin 1s linear infinite }
 @keyframes atxFill { from { width:0 } to { width:100% } }
 .abc-check-btn { display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;background:var(--blue-bg);color:var(--blue);font-size:12px;cursor:pointer;flex-shrink:0;margin-left:2px;border:none;padding:0 }
@@ -22468,11 +22470,22 @@ function _atxTkEstado(k){
   if(k&&k===_atxTk.cur)return'cur';
   return v==='rev'?'rev':'wait';
 }
+/* % por chamado (pedido 2026-11-26): fila 0%, lendo = avanço estimado pelo tempo do chamado (máx. 95% até o
+   agente confirmar), revisão 50%, lido/sem leitura 100%. */
+function _atxTkPct(s){
+  if(s==='ok'||s==='falha')return 100;
+  if(s==='rev')return 50;
+  if(s==='cur'){const seg=(_atxTk.dur||10)*1000,el=Date.now()-(_atxTk.curAt||Date.now());return Math.min(95,Math.max(1,Math.round(el/seg*100)));}
+  return 0;
+}
 function _atxTkInner(s){
   const ic={ok:'ti-check',falha:'ti-x',cur:'ti-loader-2',rev:'ti-refresh',wait:'ti-clock'}[s];
-  const fill=s==='cur'?'<span class="atx-fill atx-run" style="animation-duration:'+_atxTk.dur+'s"></span>':'<span class="atx-fill"></span>';
-  return'<span class="atx-bar">'+fill+'</span><i class="ti '+ic+'"></i>';
+  const p=_atxTkPct(s);
+  const fill=s==='cur'?'<span class="atx-fill atx-run" style="animation-duration:'+_atxTk.dur+'s"></span>':'<span class="atx-fill" style="width:'+p+'%"></span>';
+  return'<span class="atx-bar">'+fill+'</span><span class="atx-pct">'+p+'%</span><i class="ti '+ic+'"></i>';
 }
+/* atualiza só o texto da % dos chamados em leitura (a barra segue a animação CSS) */
+setInterval(()=>{document.querySelectorAll('.atx-tk[data-s="cur"] .atx-pct').forEach(el=>{el.textContent=_atxTkPct('cur')+'%';});},500);
 const _ATX_TK_TIT={ok:'Lido no Atrix nesta rodada',falha:'Sem leitura nesta rodada — mantido o substatus anterior',cur:'Lendo agora no Atrix…',rev:'Não carregou a tempo — vai para a revisão',wait:'Na fila do agente'};
 function _atxTkMark(d){
   if(!d||!safeUrl(d.link))return'';
@@ -22494,7 +22507,9 @@ function _atxTkSet(st){
   clearTimeout(_atxTk.clr);_atxTk.clr=null;
   _atxTk.on=true;
   _atxTk.st=(st&&st.lastTicketsState&&typeof st.lastTicketsState==='object')?st.lastTicketsState:{};
-  _atxTk.cur=st?String(st.lastTicketsCurrent||''):'';
+  const curNovo=st?String(st.lastTicketsCurrent||''):'';
+  if(curNovo!==_atxTk.cur)_atxTk.curAt=Date.now();
+  _atxTk.cur=curNovo;
   _atxTk.dur=st&&Number(st.lastPass)>1?30:10;
   _atxTkApply();
 }
