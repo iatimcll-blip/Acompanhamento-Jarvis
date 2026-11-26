@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T12:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T13:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -660,6 +660,20 @@ body {
 
 /* ─── GRID ─── */
 .g3 { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 10px; margin-bottom: 16px; }
+/* B2B Abertos (2026-11-26): "Por Substatus" na metade da linha + bloco "Atualização" por cluster */
+.ab-sub-atu { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+@media (max-width:900px){ .ab-sub-atu { grid-template-columns:1fr; } }
+.atu-hd { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--tx3); margin-bottom:6px; }
+.atu-hd b { font-size:22px; color:var(--blue); font-variant-numeric:tabular-nums; }
+.atu-row { display:grid; grid-template-columns:130px 1fr 46px; gap:10px; align-items:center; margin:9px 0; }
+.atu-lb { display:flex; flex-direction:column; font-size:11px; color:var(--tx3); line-height:1.3; }
+.atu-lb b { font-size:12.5px; color:var(--tx); }
+.atu-bar { height:12px; background:var(--bd,#e5e7eb); border-radius:6px; overflow:hidden; display:flex; }
+.atu-bar i { display:block; height:100%; transition:width .5s; }
+.atu-bar i.ok { background:var(--green-dk,#15803d); }
+.atu-bar i.fa { background:var(--red,#dc2626); }
+.atu-pct { font-weight:800; text-align:right; font-variant-numeric:tabular-nums; }
+.atu-vazio { font-size:12.5px; color:var(--tx3); padding:4px 0; }
 .g2 { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 10px; margin-bottom: 16px; }
 .g4 { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 10px; margin-bottom: 16px; }
 
@@ -12593,12 +12607,19 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
           <div id="mop-ab"></div>
         </div>
       </div>
-      <div class="g3">
-        <div class="card" style="grid-column:span 1">
+      <div class="ab-sub-atu">
+        <div class="card">
           <div class="card-hd">
             <span class="card-title">Por Substatus</span>
           </div>
           <div id="sub-ab"></div>
+        </div>
+        <div class="card">
+          <div class="card-hd">
+            <span class="card-title">Atualização</span>
+            <span style="font-size:11px;color:var(--tx3)">progresso por cluster</span>
+          </div>
+          <div id="atu-ab"></div>
         </div>
       </div>
       <div class="tsec">
@@ -21770,7 +21791,7 @@ function renderMopQuick(){
   }).join('');
   el.innerHTML=`<span class="quick-mop-label">Dashboard Cluster's</span>${btns}`;
 }
-function renderAllAb(){refreshAbTimes();renderMopQuick();rMetAb();rPillAb();rSlaAb();rTecAb();rMopAb();rSubAb();renderTAb()}
+function renderAllAb(){refreshAbTimes();renderMopQuick();rMetAb();rPillAb();rSlaAb();rTecAb();rMopAb();rSubAb();try{rAtuAb();}catch(_){}renderTAb()}
 
 function rMetAb(){
   const data=abScope();
@@ -22620,6 +22641,48 @@ function _atxTkMark(d){
   const s=_atxTkEstado(_atxTkKey(d));
   return'<span class="atx-tk" data-atx="'+k+'" data-s="'+s+'" title="'+_ATX_TK_TIT[s]+'">'+_atxTkInner(s)+'</span>';
 }
+/* Bloco "Atualização" do B2B Abertos (pedido 2026-11-26): % da leitura do Atrix por cluster, durante a
+   atualização (extensão ou agente do PC — os dois alimentam _atxTk). Cluster pela regra do Painel Rede:
+   MA CAP = São Luís, Paço do Lumiar e São José de Ribamar; demais MA = MA INT; PI; PA/AM/AP = NORTE.
+   O resultado da última rodada fica guardado neste aparelho e aparece até a próxima. */
+const _ATU_KEY='jarvis:atrix:atu-ultima';
+const _ATU_ORD=['C','I','P','N','O'];
+const _ATU_LBL={C:'MA CAP',I:'MA INT',P:'PI',N:'NORTE',O:'OUTROS'};
+function _atuCluster(d){
+  const uf=String(d.uf||'').toUpperCase().trim();
+  const cid=String(d.cidade||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z]/g,'');
+  if(uf==='PI')return'P';
+  if(uf==='PA'||uf==='AM'||uf==='AP')return'N';
+  if(uf==='MA')return(cid==='SAOLUIS'||cid.includes('PACODOLUMIAR')||cid.includes('RIBAMAR'))?'C':'I';
+  return'O';
+}
+function rAtuAb(){
+  const el=document.getElementById('atu-ab');if(!el)return;
+  let rows=null,titulo='';
+  if(_atxTk.on){
+    const g={};
+    dAb.filter(d=>d.link&&safeUrl(d.link)).forEach(d=>{
+      const c=_atuCluster(d),s=_atxTkEstado(_atxTkKey(d));
+      const o=g[c]||(g[c]={c,tot:0,ok:0,falha:0,cur:0,rev:0});
+      o.tot++;if(s==='ok')o.ok++;else if(s==='falha')o.falha++;else if(s==='cur')o.cur++;else if(s==='rev')o.rev++;
+    });
+    rows=_ATU_ORD.filter(c=>g[c]).map(c=>g[c]);
+    titulo='Atualização em andamento';
+    if(Object.keys(_atxTk.st||{}).length){try{localStorage.setItem(_ATU_KEY,JSON.stringify({at:new Date().toISOString(),rows}));}catch(_){}}
+  }else{
+    let u=null;try{u=JSON.parse(localStorage.getItem(_ATU_KEY)||'null');}catch(_){}
+    if(u&&Array.isArray(u.rows)&&u.rows.length){rows=u.rows;titulo='Última atualização · '+new Date(u.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
+  }
+  if(!rows||!rows.length){el.innerHTML='<div class="atu-vazio">Nenhuma atualização registrada neste aparelho. Clique em <b>Atualizar</b> para acompanhar o progresso de cada cluster aqui.</div>';return;}
+  const tot=rows.reduce((a,r)=>a+r.tot,0),feito=rows.reduce((a,r)=>a+r.ok+r.falha,0);
+  el.innerHTML='<div class="atu-hd"><span>'+eh(titulo)+' · '+feito+' de '+tot+' chamado(s)</span><b>'+(tot?Math.round(feito/tot*100):0)+'%</b></div>'
+    +rows.map(r=>{
+      const p=r.tot?Math.round((r.ok+r.falha)/r.tot*100):0,pOk=r.tot?r.ok/r.tot*100:0,pFa=r.tot?r.falha/r.tot*100:0;
+      const det=[(r.ok+r.falha)+'/'+r.tot];if(r.cur)det.push('lendo');if(r.rev)det.push(r.rev+' em revisão');if(r.falha)det.push(r.falha+' sem leitura');
+      return'<div class="atu-row" title="Lidos: '+r.ok+' · sem leitura: '+r.falha+' · em revisão: '+r.rev+'"><div class="atu-lb"><b>'+(_ATU_LBL[r.c]||r.c)+'</b><span>'+det.join(' · ')+'</span></div>'
+        +'<div class="atu-bar"><i class="ok" style="width:'+pOk+'%"></i><i class="fa" style="width:'+pFa+'%"></i></div><div class="atu-pct">'+p+'%</div></div>';
+    }).join('');
+}
 function _atxTkApply(){
   document.querySelectorAll('.atx-tk[data-atx]').forEach(el=>{
     if(!_atxTk.on){if(el.dataset.s){delete el.dataset.s;el.removeAttribute('title');el.innerHTML='';}return;}
@@ -22627,6 +22690,7 @@ function _atxTkApply(){
     if(el.dataset.s===s)return;
     el.dataset.s=s;el.title=_ATX_TK_TIT[s];el.innerHTML=_atxTkInner(s);
   });
+  try{rAtuAb();}catch(_){}
 }
 /* st = status do runner DESTA rodada (null enquanto ela ainda não começou: todos "na fila"). */
 function _atxTkSet(st){
