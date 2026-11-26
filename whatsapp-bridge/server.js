@@ -12,6 +12,9 @@ const HOST = process.env.WPP_HOST || '127.0.0.1';
 const CORS_ORIGIN = process.env.WPP_CORS_ORIGIN || 'https://iatimcll-blip.github.io';
 const NOTIFY_FILE = process.env.WPP_NOTIFY_FILE || path.join(__dirname, '.jarvis-notify.json');
 const CLIENT_ID = process.env.WPP_CLIENT_ID || 'jarvis';
+/* Instalação da ponte (2026-11-26): cada PC pode ter a sua ponte com nome, histórico e porta próprios.
+   WPP_NOME aparece no status para o painel saber de qual ponte veio a resposta. */
+const NOME_INSTANCIA = process.env.WPP_NOME || 'Jarvis';
 const AUTH_DIR = process.env.WPP_AUTH_DIR || path.join(__dirname, '.wwebjs_auth');
 
 fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -173,7 +176,7 @@ function touch() {
 }
 
 function publicState() {
-  return { ...state, hasQr: !!state.qr };
+  return { ...state, hasQr: !!state.qr, instancia: NOME_INSTANCIA };
 }
 
 function broadcast(type, payload = {}) {
@@ -231,7 +234,7 @@ async function contactSummary(id) {
    mensagens na memória e loadEarlierMsgs não traz nada — o painel (e o bloco Massivos/Bdesk / Resumo do dia)
    perdia tudo o que tinha chegado antes. Agora toda mensagem recebida/enviada/lida fica guardada aqui por 72 h
    (até 400 por conversa) e /api/chats/:id/messages completa com ela. */
-const HIST_FILE = path.join(__dirname, '.historico.json');
+const HIST_FILE = process.env.WPP_HIST_FILE || path.join(__dirname, '.historico.json');
 const HIST_HORAS = 72, HIST_MAX = 400;
 let hist = {};
 try { hist = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')) || {}; } catch (_) { hist = {}; }
