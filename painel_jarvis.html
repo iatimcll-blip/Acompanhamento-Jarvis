@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T08:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-26T09:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22630,7 +22630,7 @@ const ATRIX_WORKER_SECRET='VO_zOhXIvnPpkfPXhT5HX9HkmE1-7fsc';
    Nenhuma credencial passa pelo Jarvis: o login é feito pela pessoa no próprio Atrix. */
 const ATRIX_ORIGIN='https://atrix.mobtelecom.com.br';
 const ATRIX_HOME=ATRIX_ORIGIN+'/controle/addonmodules.php?module=helpdesk#/';
-const ATRIX_LEITOR_VER=3;
+const ATRIX_LEITOR_VER=4;
 const ATRIX_SEG_CHAMADO=20;
 var atrixLeituraSync=null;
 let _atxL=null;
@@ -22758,7 +22758,8 @@ function _atrixLeitorFn(VER,JARVIS,SEG){
   };
   var local=function(d){var uf=campo(d,'estado'),c=campo(d,'cidade');return{uf:uf?uf.trim().toUpperCase():'',cidade:c?c.trim():''};};
   var ehLogin=function(d){return !!d.querySelector('input[type="password"]')||/login/i.test(d.title||'');};
-  var ehDoChamado=function(d,t){var tx=(d.body&&d.body.innerText)||'';return [t.ticketId,t.id].some(function(x){return x&&tx.indexOf(String(x))>=0;});};
+  /* página do chamado carregada (não é login/bloqueio e tem conteúdo renderizado) */
+  var paginaCarregou=function(d){return ((d.body&&d.body.innerText)||'').trim().length>=40;};
   var ler=async function(t){
     await ir('about:blank');
     await ir(t.link);
@@ -22777,7 +22778,8 @@ function _atrixLeitorFn(VER,JARVIS,SEG){
     if(!d)return null;
     var st=acharStatus(d);
     if(st){var L2=local(d);return{value:st,source:'status',uf:L2.uf,cidade:L2.cidade};}
-    if(ehDoChamado(d,t)){var L3=local(d);return{value:'Fechado',source:'fechado',verified:true,uf:L3.uf,cidade:L3.cidade};}
+    /* regra do usuário (2026-11-26): sem Status e sem Substatus na página do chamado → Fechado */
+    if(paginaCarregou(d)){var L3=local(d);return{value:'Fechado',source:'fechado',verified:true,uf:L3.uf,cidade:L3.cidade};}
     return null;
   };
   var esperaPopup=function(){
