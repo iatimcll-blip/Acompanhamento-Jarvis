@@ -252,8 +252,20 @@ export default {
       }
     }
 
-    /* 2026-11-26 (pedido do usuário): sem trava de tempo mínimo entre solicitações de atualização. */
+    const minInterval = Number(env.MIN_INTERVAL_MIN || '10');
     try {
+      if (!payload.force) {
+        const minsAgo = await getLatestRunAgeMinutes(env);
+        if (minsAgo !== null && minsAgo < minInterval) {
+          return json({
+            ok: false,
+            error: 'rate_limited',
+            minsAgo: Math.floor(minsAgo),
+            minsRemaining: Math.ceil(minInterval - minsAgo),
+          }, 409, env);
+        }
+      }
+
       await pushTicketsJson(env, payload.tickets);
       await cancelQueuedRuns(env);
       await dispatchWorkflow(env);
