@@ -758,23 +758,6 @@ async function extractLocation(page, ticket) {
 }
 
 // ── Ciclo principal ───────────────────────────────────────────────────────────
-/* 2026-11-25: o Atrix só aceita acesso pela VPN Fortinet. Sem ela o firewall Azion responde "Forbidden"
-   e a rodada inteira (40 chamados) saía "sem leitura" com a mensagem de bloqueio — parecendo bloqueio do
-   Atrix quando, na verdade, a VPN deste PC estava desconectada. Agora o agente confere o adaptador da
-   Fortinet ANTES de abrir o Atrix: desconectado → encerra na hora com errorCode 'vpn_desligada', sem
-   bater no Atrix. Sem adaptador Fortinet ou erro na consulta → não sabe, segue normal. */
-function vpnFortinetConectada() {
-  if (process.platform !== 'win32' || process.env.ATRIX_SKIP_VPN_CHECK === '1') return null;
-  try {
-    const { execFileSync } = require('child_process');
-    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      "Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceDescription -match 'Fortinet' } | ForEach-Object { $_.Status }"],
-      { timeout: 20000, encoding: 'utf8', windowsHide: true });
-    const st = String(out || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-    if (!st.length) return null;
-    return st.some(x => /^up$/i.test(x));
-  } catch (_) { return null; }
-}
 async function runCycle() {
   const cycleStart = new Date();
   info('══════════════════════════════════════');
@@ -804,27 +787,6 @@ async function runCycle() {
   });
 
   const tickets = await loadTickets();
-  const vpn = vpnFortinetConectada();
-  if (vpn === false) {
-    warn('VPN Fortinet desconectada neste PC — o Atrix so aceita acesso pela VPN. Rodada encerrada sem abrir o Atrix.');
-    await publishRunnerStatus({
-      state: 'online',
-      lastError: 'A VPN Fortinet está DESCONECTADA no PC do agente — o Atrix só aceita acesso pela VPN. Conecte o FortiClient nesse PC e clique em Atualizar de novo. Substatus anteriores mantidos.',
-      errorCode: 'vpn_desligada',
-      lastRunCompletedAt: new Date().toISOString(),
-      lastRunConclusion: 'failure',
-      lastTicketsChecked: 0,
-      lastTicketsChanged: 0,
-      lastTicketsErrors: tickets.length,
-      lastTicketsTotal: tickets.length,
-      lastTicketsProgress: 0,
-      lastTicketsPending: tickets.length,
-      lastTicketsState: {},
-      lastTicketsCurrent: ''
-    });
-    return;
-  }
-  if (vpn === true) info('VPN Fortinet conectada.');
   if (!tickets.length) {
     await publishRunnerStatus({
       state: 'online',
