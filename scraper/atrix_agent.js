@@ -296,6 +296,15 @@ async function ensureLoggedIn(page) {
      a página. O formulário de login do Atrix aparece depois disso, então a sessão expirada
      passava como "ativa" e todo chamado caía na tela de login (lido como "Fechado").
      Agora espera até 8 s pelo campo de senha e também confere o título "Login". */
+  /* 2026-11-26 — bug real: com o acesso recusado pelo firewall do Atrix (Azion, HTTP 403 "Forbidden" /
+     "Default error page") a página não tem campo de senha, então era lida como "sessão ativa" e a rodada
+     tentava os 42 chamados em 5 voltas (~40 min) sem ler nenhum. Agora a recusa encerra a rodada na hora,
+     com o motivo real; os substatus anteriores ficam como estão. */
+  const tituloIni = await page.title().catch(() => '');
+  if (/Forbidden|Default error page/i.test(tituloIni)) {
+    error('O Atrix recusou o acesso deste PC (403 Forbidden).');
+    return { ok: false, reason: 'O Atrix recusou o acesso do PC do agente (403 Forbidden). Esse PC está sem acesso ao Atrix — confira a conexão de rede/VPN desse PC e clique em Atualizar de novo. Substatus anteriores mantidos.' };
+  }
   let needsLogin = false;
   try { await page.waitForSelector('input[type="password"]', { timeout: 8000 }); needsLogin = true; }
   catch { needsLogin = /login/i.test(await page.title().catch(() => '')); }
