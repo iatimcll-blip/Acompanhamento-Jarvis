@@ -97,7 +97,7 @@ function registraFalha(req) {
 const tunel = { url: '', status: 'desligado', erro: '', at: '' };
 let tunelProc = null, tunelTentativas = 0;
 function iniciarTunel() {
-  if (process.env.WPP_TUNEL === '0') { tunel.status = 'desativado'; return; }
+  if (process.env.WPP_TUNEL !== '1') { tunel.status = 'desativado'; return; } /* 2026-11-27: túnel desligado por padrão (cada aparelho usa a própria extensão); WPP_TUNEL=1 religa */
   if (!fs.existsSync(CLOUDFLARED)) { tunel.status = 'sem-cloudflared'; tunel.erro = 'cloudflared.exe não encontrado em ' + CLOUDFLARED; return; }
   tunel.status = 'iniciando'; tunel.url = ''; tunel.erro = '';
   try {
