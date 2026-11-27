@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-26T17:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-27T11:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -14254,6 +14254,10 @@ function doGet(e){try{var cb=e&&e.parameter&&e.parameter.callback;var ss=Spreads
     .wpp-acesso-box{max-width:560px}
     .wpp-acesso-corpo{padding:4px 16px 4px;font-size:13px;display:flex;flex-direction:column;gap:8px}
     .wpp-acesso-corpo p{margin:0}
+    .wpp-acesso-modo{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--bd);border-radius:9px;cursor:pointer;font-size:13px}
+    .wpp-acesso-modo small{display:block;color:var(--tx3);font-size:11.5px;font-weight:400}
+    .wpp-acesso-disp{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--bd);border-radius:9px;font-size:12.5px}
+    .wpp-acesso-disp small{color:var(--tx3)}
     .wpp-acesso-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
     .wpp-acesso-chave{display:flex;gap:6px;flex-wrap:wrap}
     .wpp-acesso-chave input{flex:1;min-width:200px;padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:13px ui-monospace,Consolas,monospace}
@@ -27483,8 +27487,31 @@ const WPP_CHAVE_KEY='jarvis:wpp:chave-remota:v1';
 var wppTunelUrl='';
 function wppChaveRemota(){try{return localStorage.getItem(WPP_CHAVE_KEY)||'';}catch(_){return'';}}
 function wppEhTunel(base){return!!(base&&wppTunelUrl&&base.replace(/\/+$/,'')===wppTunelUrl);}
-function wppHdrChave(base){return wppEhTunel(base)&&wppChaveRemota()?{'X-Jarvis-Key':wppChaveRemota()}:{};}
-function wppKQ(base){return wppEhTunel(base)&&wppChaveRemota()?'?k='+encodeURIComponent(wppChaveRemota()):'';}
+/* 2026-11-27: WhatsApp PRÓPRIO por aparelho. Pelo túnel, o aparelho manda um código aleatório (guardado só neste
+   navegador) em X-Jarvis-Dev / ?d= e a ponte do PC mantém uma sessão de WhatsApp (QR próprio) só para ele.
+   Padrão nos aparelhos remotos: sessão própria; "pc" = ver o WhatsApp do PC principal (como antes). */
+const WPP_DEV_KEY='jarvis:wpp:dev:v1',WPP_MODO_KEY='jarvis:wpp:modo:v1';
+function wppDevId(){
+  let d='';try{d=localStorage.getItem(WPP_DEV_KEY)||'';}catch(_){}
+  if(!/^[a-f0-9]{24}$/.test(d)){d=[...crypto.getRandomValues(new Uint8Array(12))].map(b=>b.toString(16).padStart(2,'0')).join('');try{localStorage.setItem(WPP_DEV_KEY,d);}catch(_){}}
+  return d;
+}
+function wppModoProprio(){let m='';try{m=localStorage.getItem(WPP_MODO_KEY)||'';}catch(_){}return m==='proprio'||(m!=='pc'&&!wppNotifyHere());}
+function wppDevOn(base){return wppEhTunel(base)&&wppModoProprio();}
+function wppHdrChave(base){const h={};if(wppEhTunel(base)&&wppChaveRemota())h['X-Jarvis-Key']=wppChaveRemota();if(wppDevOn(base))h['X-Jarvis-Dev']=wppDevId();return h;}
+function wppKQ(base){const p=[];if(wppEhTunel(base)&&wppChaveRemota())p.push('k='+encodeURIComponent(wppChaveRemota()));if(wppDevOn(base))p.push('d='+wppDevId());return p.length?'?'+p.join('&'):'';}
+function wppModoSet(m){try{localStorage.setItem(WPP_MODO_KEY,m==='pc'?'pc':'proprio');}catch(_){}_ghToast(m==='pc'?'Este aparelho vai usar o WhatsApp do PC principal…':'Este aparelho vai usar o seu próprio WhatsApp (QR próprio)…','#00a884',2500);setTimeout(()=>location.reload(),800);}
+async function wppMinhaSessaoRemover(){
+  if(!confirm('Remover o WhatsApp deste aparelho do PC da ponte? A sessão e o histórico dela serão apagados e, para voltar, será preciso ler um novo QR.'))return;
+  try{await wppFetch('/api/dispositivo/remover',{method:'POST',body:'{}'});_ghToast('Sessão removida.','#00a884',3000);setTimeout(()=>location.reload(),900);}
+  catch(e){_ghToast('Não foi possível remover: '+(e&&e.message||e),'var(--red)',5000);}
+}
+async function wppDispRemover(id){
+  if(!confirm('Remover a sessão de WhatsApp deste aparelho? Ela e o histórico serão apagados; para voltar, ele precisa ler um novo QR.'))return;
+  try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/dispositivos/remover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});if(!r.ok)throw new Error('HTTP '+r.status);_ghToast('Sessão removida.','#00a884',3000);}
+  catch(e){_ghToast('Não foi possível remover: '+(e&&e.message||e),'var(--red)',5000);}
+  wppAcessoAbrir();
+}
 const _b64=u=>btoa(String.fromCharCode(...new Uint8Array(u))),_unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 async function _wppDeriva(chave,salt){
   const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(chave),'PBKDF2',false,['deriveKey']);
@@ -27527,7 +27554,7 @@ async function wppAcessoAbrir(){
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px';
     ov.addEventListener('click',e=>{if(e.target===ov)ov.style.display='none';});document.body.appendChild(ov);}
   ov.style.display='flex';ov.innerHTML='<div class="wpp-nt-box wpp-acesso-box"><div class="wpp-nt-empty"><i class="ti ti-loader-2"></i> Verificando…</div></div>';
-  let t=null;if(wppNotifyHere()){try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/tunel',{cache:'no-store'});t=r.ok?await r.json():null;}catch(_){}}
+  let t=null,ds=null;if(wppNotifyHere()){try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/tunel',{cache:'no-store'});t=r.ok?await r.json():null;}catch(_){}try{const r=await fetch(WPP_BRIDGE_LOCAL+'/api/dispositivos',{cache:'no-store'});ds=r.ok?await r.json():null;}catch(_){}}
   const hd='<div class="wpp-nt-hd"><div><b><i class="ti ti-devices" style="color:#00a884"></i> Acesso de outros aparelhos</b><small>O WhatsApp continua conectado neste PC; os outros aparelhos usam um túnel seguro protegido por chave.</small></div><button type="button" class="wpp-nt-x" onclick="document.getElementById(\'wpp-acesso-modal\').style.display=\'none\'"><i class="ti ti-x"></i></button></div>';
   let corpo;
   if(t){
@@ -27537,12 +27564,21 @@ async function wppAcessoAbrir(){
       +'<p>Endereço publicado (criptografado) para os outros aparelhos: <b>'+eh(pub)+'</b></p>'
       +'<label>Chave de acesso (digite uma vez em cada aparelho):</label><div class="wpp-acesso-chave"><input id="wpp-acesso-k" type="password" readonly value="'+eh(t.chave)+'"><button type="button" class="wpp-page-btn" onclick="const i=document.getElementById(\'wpp-acesso-k\');i.type=i.type===\'password\'?\'text\':\'password\'"><i class="ti ti-eye"></i>Mostrar</button><button type="button" class="wpp-page-btn" onclick="navigator.clipboard.writeText(document.getElementById(\'wpp-acesso-k\').value).then(()=>_ghToast(\'Chave copiada.\',\'#00a884\',3000))"><i class="ti ti-copy"></i>Copiar</button></div>'
       +'<p class="wpp-acesso-aviso"><i class="ti ti-shield-lock"></i> Quem tiver a chave lê e envia mensagens neste WhatsApp. Não mande a chave em grupo; se ela vazar, gere outra (os aparelhos precisarão da nova).</p>'
+      +(ds?'<label>Aparelhos com WhatsApp próprio (cada um lê o próprio QR; até '+ds.max+'):</label>'
+        +(ds.dispositivos.length?ds.dispositivos.map(d=>{const stt={ready:'conectado',qr:'aguardando leitura do QR',authenticated:'conectando',starting:'iniciando'}[d.status]||(d.ligado?d.status||'ligado':'desligado');
+          return'<div class="wpp-acesso-disp"><span><b>Aparelho '+eh(d.curto)+'</b>'+(d.nome?' · '+eh(d.nome):'')+' — '+eh(stt)+'<small> · último uso '+eh(d.ultimoUso?new Date(d.ultimoUso).toLocaleString('pt-BR'):'—')+'</small></span><button type="button" class="wpp-page-btn" onclick="wppDispRemover(\''+d.id+'\')"><i class="ti ti-trash"></i>Remover</button></div>';}).join('')
+          :'<p style="color:var(--tx3)">Nenhum aparelho usou ainda. Em cada aparelho: WhatsApp › Acesso remoto, digite a chave e leia o QR dele.</p>'):'')
       +'<div class="wpp-nt-ft"><span id="wpp-acesso-st"></span><button type="button" class="wpp-page-btn" onclick="wppAcessoNovaChave()"><i class="ti ti-key"></i>Gerar nova chave</button></div></div>';
   }else{
     const k=wppChaveRemota(),u=await wppTunelResolver();
     const st=!k?'Digite a chave para acessar o WhatsApp do PC.':!wppTunelSync?'O PC da ponte ainda não publicou o endereço (ele precisa estar ligado com o Jarvis aberto).':u?'Chave correta — endereço encontrado.':'Chave não confere com a publicada pelo PC.';
     corpo='<div class="wpp-acesso-corpo"><label>Chave de acesso (pegue no PC da ponte: WhatsApp › Acesso remoto):</label><div class="wpp-acesso-chave"><input id="wpp-acesso-k" type="password" autocomplete="off" placeholder="Cole a chave aqui" value="'+eh(k)+'" onkeydown="if(event.key===\'Enter\')wppAcessoSalvar()"><button type="button" class="wpp-page-btn primary" onclick="wppAcessoSalvar()"><i class="ti ti-check"></i>Salvar</button>'+(k?'<button type="button" class="wpp-page-btn" onclick="wppAcessoSalvar(true)"><i class="ti ti-trash"></i>Esquecer</button>':'')+'</div>'
-      +'<p><b>'+eh(st)+'</b></p><p class="wpp-acesso-aviso"><i class="ti ti-shield-lock"></i> A chave fica guardada só neste navegador. O PC da ponte precisa estar ligado.</p></div>';
+      +'<p><b>'+eh(st)+'</b></p>'
+      +'<label>Qual WhatsApp este aparelho usa?</label>'
+      +'<label class="wpp-acesso-modo"><input type="radio" name="wppmodo" '+(wppModoProprio()?'checked':'')+' onchange="wppModoSet(\'proprio\')"> <span><b>Meu WhatsApp (QR próprio)</b><small> — este aparelho lê o próprio QR e vê só as próprias conversas.</small></span></label>'
+      +'<label class="wpp-acesso-modo"><input type="radio" name="wppmodo" '+(wppModoProprio()?'':'checked')+' onchange="wppModoSet(\'pc\')"> <span><b>WhatsApp do PC principal</b><small> — vê as conversas da conta ligada no PC da ponte.</small></span></label>'
+      +(wppModoProprio()&&u?'<div class="wpp-nt-ft"><span></span><button type="button" class="wpp-page-btn" onclick="wppMinhaSessaoRemover()"><i class="ti ti-trash"></i>Remover minha sessão</button></div>':'')
+      +'<p class="wpp-acesso-aviso"><i class="ti ti-shield-lock"></i> A chave fica guardada só neste navegador. O PC da ponte precisa estar ligado.</p></div>';
   }
   ov.innerHTML='<div class="wpp-nt-box wpp-acesso-box">'+hd+corpo+'</div>';
 }

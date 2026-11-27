@@ -157,6 +157,160 @@ app.use((req, res, next) => {
 app.get('/api/tunel', (_req, res) => { res.json({ ...tunel, chave: CHAVE }); });
 app.post('/api/tunel/nova-chave', (_req, res) => { CHAVE = gerarChave(); _falhas.clear(); res.json({ ...tunel, chave: CHAVE }); });
 
+// ── Uma sessão de WhatsApp por aparelho (2026-11-27) ───────────────────────────────────────
+// Cada aparelho que acessa pelo túnel pode ter o PRÓPRIO WhatsApp (QR próprio). O aparelho gera um código
+// aleatório (24 hex, guardado só no navegador dele) e o manda em X-Jarvis-Dev (ou ?d=). A ponte sobe um
+// processo filho desta mesma ponte (porta local própria, pasta de sessão própria, histórico próprio) e
+// repassa as chamadas / o WebSocket a ele. O aparelho só enxerga a sessão do próprio código. A chave de
+// acesso do túnel continua obrigatória (porteiro acima). Sem o cabeçalho, tudo segue como antes (sessão do PC).
+const EH_FILHO = !!process.env.WPP_PAI;
+const DISP_FILE = process.env.WPP_DISP_FILE || path.join(__dirname, '.dispositivos.json');
+const DISP_DIR = path.join(__dirname, '.dispositivos');
+const MAX_DISP = Number(process.env.WPP_MAX_DISP || 4);
+const DISP_RE = /^[a-f0-9]{24}$/;
+let DISP = {};
+try { DISP = JSON.parse(fs.readFileSync(DISP_FILE, 'utf8')) || {}; } catch (_e) { DISP = {}; }
+function dispSalvar() { try { fs.writeFileSync(DISP_FILE, JSON.stringify(DISP, null, 2)); } catch (_e) {} }
+function devIdDe(req) {
+  let d = String((req.headers && req.headers['x-jarvis-dev']) || '');
+  if (!d) { try { d = new URL(req.url, 'http://x').searchParams.get('d') || ''; } catch (_e) {} }
+  return DISP_RE.test(d) ? d : '';
+}
+const filhos = new Map(); // id -> { proc, porta, pronto, ultimo }
+function portaLivre() {
+  return new Promise((ok, err) => {
+    const sv = require('net').createServer();
+    sv.once('error', err);
+    sv.listen(0, '127.0.0.1', () => { const p = sv.address().port; sv.close(() => ok(p)); });
+  });
+}
+function matarArvore(proc) {
+  try { if (!proc || proc.exitCode !== null) return; } catch (_e) { return; }
+  if (process.platform === 'win32') { try { require('child_process').execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {}); } catch (_e) {} }
+  else { try { proc.kill('SIGKILL'); } catch (_e) {} }
+}
+function garantirFilho(id) {
+  let f = filhos.get(id);
+  if (f && f.proc.exitCode === null) { f.ultimo = Date.now(); return f.pronto.then(() => f); }
+  f = { proc: null, porta: 0, ultimo: Date.now(), pronto: null };
+  filhos.set(id, f);
+  f.pronto = (async () => {
+    f.porta = await portaLivre();
+    fs.mkdirSync(path.join(DISP_DIR, 'auth'), { recursive: true });
+    const base = path.join(DISP_DIR, id);
+    const log = fs.openSync(base + '.log', 'a');
+    f.proc = spawn(process.execPath, [__filename], {
+      env: Object.assign({}, process.env, {
+        PORT: String(f.porta), WPP_PORT: String(f.porta), WPP_HOST: '127.0.0.1', WPP_TUNEL: '0',
+        WPP_CLIENT_ID: 'd-' + id, WPP_NOME: 'Aparelho ' + id.slice(0, 6),
+        WPP_AUTH_DIR: path.join(DISP_DIR, 'auth'), WPP_HIST_FILE: base + '.historico.json',
+        WPP_NOTIFY_FILE: base + '.notify.json', WPP_CHAVE_FILE: base + '.chave', WPP_PAI: String(process.pid)
+      }),
+      stdio: ['ignore', log, log], windowsHide: true
+    });
+    f.proc.on('exit', () => { if (filhos.get(id) === f) filhos.delete(id); });
+    const fim = Date.now() + 45000;
+    while (Date.now() < fim) {
+      if (f.proc.exitCode !== null) throw new Error('a sessão do aparelho não iniciou');
+      try { const r = await fetch('http://127.0.0.1:' + f.porta + '/api/status', { signal: AbortSignal.timeout(2000) }); if (r.ok) return; } catch (_e) {}
+      await new Promise(r => setTimeout(r, 500));
+    }
+    throw new Error('a sessão do aparelho demorou para iniciar');
+  })();
+  f.pronto.catch(() => { if (filhos.get(id) === f) { matarArvore(f.proc); filhos.delete(id); } });
+  return f.pronto.then(() => f);
+}
+function dispRegistrar(id) {
+  if (DISP[id]) { DISP[id].ultimoUso = new Date().toISOString(); return true; }
+  if (Object.keys(DISP).length >= MAX_DISP) return false;
+  DISP[id] = { criadoEm: new Date().toISOString(), ultimoUso: new Date().toISOString(), autenticado: false };
+  dispSalvar(); return true;
+}
+function proxyHttp(req, res, porta) {
+  const h = Object.assign({}, req.headers);
+  for (const n of ['host', 'x-jarvis-key', 'x-jarvis-dev', 'cf-connecting-ip', 'cf-ray', 'cdn-loop', 'cf-visitor', 'cf-ipcountry', 'x-forwarded-for', 'x-forwarded-proto', 'cf-warp-tag-id', 'content-length', 'connection', 'transfer-encoding']) delete h[n];
+  h.host = '127.0.0.1:' + porta;
+  let corpo = null;
+  if (req.method !== 'GET' && req.method !== 'HEAD') { corpo = Buffer.from(JSON.stringify(req.body || {})); h['content-type'] = 'application/json'; h['content-length'] = String(corpo.length); }
+  const u = new URL(req.url, 'http://x'); u.searchParams.delete('k'); u.searchParams.delete('d');
+  const pr = http.request({ host: '127.0.0.1', port: porta, method: req.method, path: u.pathname + u.search, headers: h }, pres => {
+    res.writeHead(pres.statusCode, pres.headers); pres.pipe(res);
+  });
+  pr.on('error', e => { if (!res.headersSent) res.status(502).json({ error: 'Sessão do aparelho indisponível: ' + e.message }); else res.end(); });
+  if (corpo) pr.end(corpo); else pr.end();
+}
+async function dispRemover(id) {
+  const f = filhos.get(id); filhos.delete(id);
+  if (f) { matarArvore(f.proc); await new Promise(r => setTimeout(r, 2500)); }
+  const base = path.join(DISP_DIR, id);
+  for (const p of [path.join(DISP_DIR, 'auth', 'session-d-' + id), base + '.historico.json', base + '.notify.json', base + '.chave', base + '.log']) {
+    try { fs.rmSync(p, { recursive: true, force: true }); } catch (_e) {}
+  }
+  delete DISP[id]; dispSalvar();
+}
+if (!EH_FILHO) {
+  app.use(async (req, res, next) => {
+    try {
+      // só no PC da ponte: lista e remoção administrativa
+      if (req.path === '/api/dispositivos' && ehLocal(req)) {
+        const lista = [];
+        for (const [id, d] of Object.entries(DISP)) {
+          let st = '', me = '';
+          const f = filhos.get(id);
+          if (f && f.porta) { try { const j = await (await fetch('http://127.0.0.1:' + f.porta + '/api/status', { signal: AbortSignal.timeout(2000) })).json(); st = j.status; me = (j.me && j.me.pushname) || ''; } catch (_e) {} }
+          lista.push({ id, curto: id.slice(0, 6), criadoEm: d.criadoEm, ultimoUso: d.ultimoUso, autenticado: !!d.autenticado, ligado: !!f, status: st, nome: me });
+        }
+        res.json({ max: MAX_DISP, dispositivos: lista }); return;
+      }
+      if (req.path === '/api/dispositivos/remover' && req.method === 'POST' && ehLocal(req)) {
+        const id = String((req.body && req.body.id) || '');
+        if (!DISP_RE.test(id) || !DISP[id]) { res.status(404).json({ error: 'Aparelho não encontrado.' }); return; }
+        await dispRemover(id); res.json({ ok: true }); return;
+      }
+      const id = devIdDe(req);
+      if (!id) return next();
+      if (req.path === '/api/dispositivo/remover' && req.method === 'POST') { if (DISP[id]) await dispRemover(id); res.json({ ok: true }); return; }
+      if (!dispRegistrar(id)) { res.status(403).json({ error: 'Limite de ' + MAX_DISP + ' aparelhos com WhatsApp próprio atingido. Remova um no PC da ponte.' }); return; }
+      const f = await garantirFilho(id); f.ultimo = Date.now();
+      if (req.path === '/api/dispositivo/iniciar') { res.json({ ok: true }); return; }
+      proxyHttp(req, res, f.porta);
+    } catch (e) { if (!res.headersSent) res.status(503).json({ error: 'Sessão do aparelho: ' + e.message }); }
+  });
+  // faxina: sessão sem QR lido e sem uso por 20 min é desligada (liberar memória); marca quem já autenticou
+  setInterval(async () => {
+    for (const [id, f] of [...filhos]) {
+      if (!f.porta) continue;
+      try {
+        const j = await (await fetch('http://127.0.0.1:' + f.porta + '/api/status', { signal: AbortSignal.timeout(3000) })).json();
+        if (j.status === 'ready' && DISP[id] && !DISP[id].autenticado) { DISP[id].autenticado = true; dispSalvar(); }
+        if (j.status !== 'ready' && Date.now() - f.ultimo > 20 * 60e3) { matarArvore(f.proc); filhos.delete(id); }
+      } catch (_e) {}
+    }
+  }, 2 * 60e3);
+  process.on('exit', () => { for (const f of filhos.values()) { try { if (f.proc && f.proc.exitCode === null && process.platform !== 'win32') f.proc.kill('SIGKILL'); } catch (_e) {} } });
+}
+function dispIniciar() {
+  if (EH_FILHO) {
+    // o filho some junto com a ponte principal (inclusive se ela for encerrada à força)
+    const pai = Number(process.env.WPP_PAI);
+    setInterval(async () => {
+      let vivo = true; try { process.kill(pai, 0); } catch (_e) { vivo = false; }
+      if (vivo) return;
+      try { if (client) await Promise.race([client.destroy().catch(() => {}), new Promise(r => setTimeout(r, 8000))]); } catch (_e) {}
+      process.exit(0);
+    }, 10000);
+    return;
+  }
+  // religa, aos poucos, as sessões que já tinham WhatsApp conectado (continuam guardando histórico)
+  setTimeout(async () => {
+    for (const [id, d] of Object.entries(DISP)) {
+      if (!d.autenticado) continue;
+      garantirFilho(id).catch(() => {});
+      await new Promise(r => setTimeout(r, 20000));
+    }
+  }, 25000);
+}
+
 let client;
 let initializing = false;
 const contactCache = new Map();
@@ -182,7 +336,7 @@ function publicState() {
 function broadcast(type, payload = {}) {
   const msg = JSON.stringify({ type, ...payload, state: publicState() });
   for (const ws of wss.clients) {
-    if (ws.readyState === ws.OPEN) ws.send(msg);
+    if (ws.readyState === ws.OPEN && !ws._dev) ws.send(msg);
   }
 }
 
@@ -904,7 +1058,24 @@ app.post('/api/notify', async (req, res) => {
   res.json({ ok: results.every(r => r.ok), sent: novos.length, results });
 });
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
+  const dev = EH_FILHO ? '' : devIdDe(req);
+  if (dev) {
+    // WebSocket de um aparelho com sessão própria: liga ao filho dele (nunca recebe os eventos da sessão do PC)
+    ws._dev = true;
+    if (!dispRegistrar(dev)) { try { ws.close(1008, 'limite de aparelhos'); } catch (_e) {} return; }
+    garantirFilho(dev).then(f => {
+      f.ultimo = Date.now();
+      const WS = require('ws');
+      const up = new WS('ws://127.0.0.1:' + f.porta + '/ws');
+      up.on('message', d => { if (ws.readyState === ws.OPEN) ws.send(d.toString()); });
+      up.on('close', () => { try { ws.close(); } catch (_e) {} });
+      up.on('error', () => { try { ws.close(); } catch (_e) {} });
+      ws.on('message', d => { if (up.readyState === up.OPEN) up.send(d.toString()); });
+      ws.on('close', () => { try { up.close(); } catch (_e) {} });
+    }).catch(() => { try { ws.close(1011, 'sessão indisponível'); } catch (_e) {} });
+    return;
+  }
   ws.send(JSON.stringify({ type: 'status', state: publicState() }));
 });
 
@@ -913,6 +1084,7 @@ server.listen(PORT, HOST, () => {
   console.log(`WhatsApp auth dir: ${AUTH_DIR}`);
   startClient();
   iniciarTunel();
+  dispIniciar();
 });
 
 process.on('SIGINT', async () => {
