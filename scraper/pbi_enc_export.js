@@ -165,10 +165,7 @@ async function exportar(browser) {
   try {
     await status({ step: 1, stepTxt: 'Abrindo o Dashboard Geral Encerrados' });
     await page.goto(REPORT_URL, { waitUntil: 'commit', timeout: 120000 });
-    let ok = await Promise.race([
-      page.waitForSelector('svg[aria-label^="Total "]', { timeout: 150000 }).then(() => 'ok'),
-      page.waitForSelector('input[name="loginfmt"], input[type="password"], #i0116, #i0118', { timeout: 150000 }).then(() => 'login')
-    ]).catch(() => 'timeout');
+    let ok = await pbiComum.aguardarRelatorio(page, 150000);
     /* só conta como expirada se aparecer o FORMULÁRIO de login — a passagem rápida pelo login.microsoftonline.com para renovar a sessão sozinho (SSO silencioso) não é expiração */
     /* 2026-11-26 (pedido do usuário): se a Microsoft pedir autenticação, solicita o Microsoft
        Authenticator (o número aparece no painel; a pessoa aprova no celular). Só no PC. */
@@ -182,10 +179,7 @@ async function exportar(browser) {
         try { await ctx.storageState({ path: STATE_FILE }); } catch (_) {}
         await status({ step: 1, stepTxt: 'Autenticado pelo Authenticator — abrindo o relatório' });
         await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => {});
-        ok = await Promise.race([
-          page.waitForSelector('svg[aria-label^="Total "]', { timeout: 150000 }).then(() => 'ok'),
-          page.waitForSelector('input[name="loginfmt"], input[type="password"], #i0116, #i0118', { timeout: 150000 }).then(() => 'login')
-        ]).catch(() => 'timeout');
+        ok = await pbiComum.aguardarRelatorio(page, 150000);
       }
     }
     if (ok === 'login') throw Object.assign(new Error((process.env.PBI_SESSION ? 'A sessão do Power BI expirou — refaça o login (node pbi_export.js --login) e atualize o secret PBI_SESSION no GitHub.' : 'A Microsoft pediu autenticação no Power BI e a aprovação pelo Microsoft Authenticator não foi feita a tempo. Clique em BI de novo e aprove no celular o número que aparece no painel (ou, no PC, dê dois cliques em "Login Power BI (Jarvis)" na Área de Trabalho).')), { code: 'login_required' });

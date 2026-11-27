@@ -55,43 +55,77 @@ function pedirLoginNoPC(authDir, alvo) {
  *    AUTH_ESPERA_MS, devolve false (o agente segue o caminho antigo: login vencido).
  *    onNumero(numero|'') é chamado quando o pedido é enviado ao celular. */
 const AUTH_ESPERA_MS = 4 * 60000;
+const HOST_LOGIN = /login\.microsoftonline\.com|login\.live\.com|login\.microsoft\.com/i;
+const SEL_FORM = 'input[name="loginfmt"], input[type="password"], #i0116, #i0118';
+
+/* Espera o relatório (contador Total) ou uma tela de login. Passagem rápida pelo login.microsoftonline.com
+   (SSO silencioso) não conta: só vale como login se aparecer uma tela de autenticação ou a página
+   ficar >8 s no domínio da Microsoft. */
+async function aguardarRelatorio(page, ms) {
+  const fim = Date.now() + ms; let desde = 0;
+  while (Date.now() < fim) {
+    if (await page.locator('svg[aria-label^="Total "]').count().catch(() => 0)) return 'ok';
+    if (HOST_LOGIN.test(page.url())) {
+      if (!desde) desde = Date.now();
+      if (Date.now() - desde > 1500 && await page.locator(SEL_FORM + ', #idA_PWD_SwitchToCredPicker, #idSIButton9, #idRichContext_DisplaySign').count().catch(() => 0)) return 'login';
+      if (Date.now() - desde > 8000) return 'login';
+    } else desde = 0;
+    await page.waitForTimeout(700);
+  }
+  return HOST_LOGIN.test(page.url()) ? 'login' : 'timeout';
+}
+
+/* Resolve as telas de autenticação da Microsoft pedindo o Authenticator — e PEDINDO DE NOVO se a
+   solicitação falhar. Telas: senha > "Entrar de outra forma"; lista de métodos > Authenticator;
+   "A solicitação não foi enviada" > Avançar (reenvia, até 4 envios); número de correspondência (publicado
+   via onNumero); "Continuar conectado?" > Sim; escolha de conta. Nunca digita senha nem e-mail. */
 async function autenticarPeloAuthenticator(page, onNumero, log) {
   const L = (...a) => { try { (log || console.log)(...a); } catch (_) {} };
+  const fim = Date.now() + AUTH_ESPERA_MS + 90000;
+  let envios = 0, numeroPublicado = null, ultimaAcao = 0, esperaDesde = 0;
+  const texto = () => page.evaluate(() => ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 600)).catch(() => '');
   try {
-    const outra = page.locator('#idA_PWD_SwitchToCredPicker');
-    if (!(await outra.count())) { L('Authenticator: tela sem "Entrar de outra forma" (não é a tela de senha da conta).'); return false; }
-    await outra.click();
-    const tile = page.locator('[data-bind*="$parent.tile"]').filter({ hasText: /Microsoft Authenticator/i }).first();
-    await tile.waitFor({ state: 'visible', timeout: 20000 });
-    await tile.click();
-    L('Authenticator: pedido de aprovação enviado ao celular.');
-    /* número da correspondência (ids conhecidos da Microsoft; se não houver, aprova sem número) */
-    let numero = '';
-    for (let i = 0; i < 20 && !numero; i++) {
-      numero = await page.evaluate(() => {
-        const el = [...document.querySelectorAll('[id$="DisplaySign"], .displaySign, #idRemoteNGC_DisplaySign, #idRichContext_DisplaySign')]
-          .find(e => e.offsetParent !== null && /^\s*\d{1,3}\s*$/.test(e.textContent || ''));
-        return el ? el.textContent.trim() : '';
-      }).catch(() => '');
-      if (!numero) await page.waitForTimeout(500);
-    }
-    await onNumero(numero);
-    /* espera a aprovação: volta ao Power BI; "Continuar conectado?" → Sim (mantém a sessão) */
-    const fim = Date.now() + AUTH_ESPERA_MS;
     while (Date.now() < fim) {
       const u = page.url();
-      if (/app\.powerbi\.com/.test(u) && !/login|singleSignOn/i.test(u)) { L('Authenticator: aprovado.'); return true; }
-      if (await page.locator('#KmsiCheckboxField, #KmsiDescription').count().catch(() => 0)) {
-        await page.locator('#idSIButton9').click().catch(() => {});
-        L('Authenticator: "Continuar conectado" → Sim.');
+      if (!HOST_LOGIN.test(u)) {
+        if (/powerbi\.com/i.test(u)) { L('Authenticator: autenticado, de volta ao Power BI.'); return true; }
+        await page.waitForTimeout(1000); continue;
       }
-      const recusado = await page.locator('#idDiv_SAASDS_Title, #idDiv_SAOTCAS_Title, #idTD_Error').filter({ hasText: /negad|recus|não foi aprovad|expirou|denied/i }).count().catch(() => 0);
-      if (recusado) { L('Authenticator: pedido recusado ou expirado no celular.'); return false; }
+      const t = await texto();
+      /* 1) aguardando aprovação no celular (com ou sem número) */
+      const numero = await page.evaluate(() => {
+        const el = [...document.querySelectorAll('[id$="DisplaySign"], .displaySign')].find(e => e.offsetParent !== null && /^\s*\d{1,3}\s*$/.test(e.textContent || ''));
+        return el ? el.textContent.trim() : '';
+      }).catch(() => '');
+      if (numero || /Aprove a solicitação|Aprovar a solicitação|Abra o aplicativo Microsoft Authenticator|Abra seu aplicativo Authenticator|Verifique seu telefone/i.test(t)) {
+        if (!esperaDesde) esperaDesde = Date.now();
+        if (numeroPublicado === null || numero !== numeroPublicado) { numeroPublicado = numero; await onNumero(numero); L('Authenticator: aguardando aprovação no celular' + (numero ? ' (número ' + numero + ')' : '') + '.'); }
+        if (Date.now() - esperaDesde > AUTH_ESPERA_MS) { L('Authenticator: ninguém aprovou em ' + (AUTH_ESPERA_MS / 60000) + ' min.'); return false; }
+        await page.waitForTimeout(1500); continue;
+      }
+      esperaDesde = 0;
+      /* 2) solicitação não enviada / negada / expirada > PEDE DE NOVO (Avançar) */
+      if (/solicitação não foi enviada|não foi possível enviar|Não recebemos|negad|recusad|expirou|tente novamente|didn't receive|request.{0,20}not.{0,10}sent/i.test(t)) {
+        if (envios >= 4) { L('Authenticator: a Microsoft não enviou/recebeu a solicitação após ' + envios + ' tentativas.'); return false; }
+        const av = page.locator('#idSIButton9, #idSubmit_SAOTCAS_Continue, input[type=submit]').first();
+        if (await av.count()) { envios++; L('Authenticator: solicitação falhou — pedindo a autenticação de novo (tentativa ' + (envios + 1) + ').'); numeroPublicado = null; await page.waitForTimeout(envios > 1 ? 6000 : 1500); await av.click().catch(() => {}); await page.waitForTimeout(2500); continue; }
+      }
+      /* 3) "Continuar conectado?" > Sim */
+      if (await page.locator('#KmsiCheckboxField, #KmsiDescription').count().catch(() => 0)) { await page.locator('#idSIButton9').click().catch(() => {}); L('Authenticator: "Continuar conectado" > Sim.'); await page.waitForTimeout(2000); continue; }
+      /* 4) lista de métodos > Authenticator */
+      const tile = page.locator('[data-bind*="$parent.tile"]').filter({ hasText: /Microsoft Authenticator/i }).first();
+      if (await tile.count() && await tile.isVisible().catch(() => false)) { envios++; L('Authenticator: escolhendo "Aprovar uma solicitação em meu aplicativo Microsoft Authenticator".'); numeroPublicado = null; await tile.click().catch(() => {}); await page.waitForTimeout(2500); continue; }
+      /* 5) tela de senha > "Entrar de outra forma" */
+      const outra = page.locator('#idA_PWD_SwitchToCredPicker');
+      if (await outra.count() && await outra.isVisible().catch(() => false)) { L('Authenticator: tela de senha — escolhendo outra forma de entrar.'); await outra.click().catch(() => {}); await page.waitForTimeout(2500); continue; }
+      /* 6) escolha de conta já conhecida (nunca digita nada) */
+      const conta = page.locator('[data-test-id*="@"], #tilesHolder [role=button]').filter({ hasText: /@/ }).first();
+      if (await conta.count() && Date.now() - ultimaAcao > 5000) { ultimaAcao = Date.now(); await conta.click().catch(() => {}); await page.waitForTimeout(2500); continue; }
       await page.waitForTimeout(1500);
     }
-    L('Authenticator: ninguém aprovou em ' + (AUTH_ESPERA_MS / 60000) + ' min.');
+    L('Authenticator: tempo esgotado na tela de login.');
     return false;
   } catch (e) { L('Authenticator: não foi possível usar (' + e.message + ').'); return false; }
 }
 
-module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, AUTH_ESPERA_MS };
+module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, aguardarRelatorio, AUTH_ESPERA_MS };
