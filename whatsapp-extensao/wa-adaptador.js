@@ -11,6 +11,7 @@
   const contatos = new Map();
   const nomeChat = new Map();
   let naoLidas = 0;
+  let ultimoErro = '';
 
   const sid = x => (x == null ? '' : (typeof x === 'string' ? x : (x._serialized || (x.toString && x.toString()) || '')));
   const W = () => window.WPP;
@@ -23,9 +24,21 @@
       return cv ? cv.toDataURL('image/png') : '';
     } catch (_) { return ''; }
   }
+  /* diagnóstico: mostra no painel em que etapa o wa-js está (ajuda a achar incompatibilidade com o WhatsApp Web atual) */
+  function diag() {
+    const d = { wpp: !!W(), injetado: false, pronto: false, auth: null, main: null, versao: '' };
+    try { d.injetado = !!(W() && W().isInjected); d.pronto = !!(W() && W().isReady); } catch (_) {}
+    try { d.auth = !!W().conn.isAuthenticated(); } catch (_) {}
+    try { d.main = !!W().conn.isMainReady(); } catch (_) {}
+    try { d.versao = String((W().whatsapp && W().whatsapp.Debug && W().whatsapp.Debug.VERSION) || ''); } catch (_) {}
+    return d;
+  }
+  const diagTxt = d => 'wa-js: ' + (d.wpp ? 'carregado' : 'NÃO carregou') + ', pronto=' + d.pronto + ', autenticado=' + d.auth + ', sincronizado=' + d.main + (d.versao ? ', WhatsApp Web ' + d.versao : '');
   function estado() {
-    const base = { qr: '', qrText: '', hasQr: false, me: null, lastError: '', unread: naoLidas, startedAt: INICIO, updatedAt: new Date().toISOString(), instancia: 'Este aparelho (extensão)' };
-    if (!W() || !W().isInjected) return Object.assign(base, { status: 'starting' });
+    const dg = diag();
+    const base = { qr: '', qrText: '', hasQr: false, me: null, lastError: ultimoErro, diag: diagTxt(dg), unread: naoLidas, startedAt: INICIO, updatedAt: new Date().toISOString(), instancia: 'Este aparelho (extensão)' };
+    if (!W() || !W().isInjected) return Object.assign(base, { status: 'starting', lastError: 'A biblioteca do WhatsApp (wa-js) ainda não carregou nesta aba. Se persistir, recarregue a aba do WhatsApp Web.' });
+    if (dg.pronto && dg.auth && !dg.main) return Object.assign(base, { status: 'authenticated', lastError: 'Autenticado — o WhatsApp Web está sincronizando as conversas (pode levar alguns minutos na primeira vez).' });
     if (pronto()) {
       let wid = '', nome = '';
       try { wid = sid(W().conn.getMyUserId()); } catch (_) {}
@@ -34,7 +47,7 @@
     }
     const qr = qrDaPagina();
     if (qr) return Object.assign(base, { status: 'qr', qr, hasQr: true, lastError: 'Leia o QR Code com o WhatsApp do seu celular (WhatsApp › Aparelhos conectados).' });
-    return Object.assign(base, { status: 'starting' });
+    return Object.assign(base, { status: 'starting', lastError: dg.pronto ? 'O WhatsApp Web ainda não terminou de abrir.' : 'O wa-js ainda não ficou pronto nesta aba (pode ser incompatível com a versão atual do WhatsApp Web).' });
   }
 
   /* ── contatos e resumos no mesmo formato da ponte ── */
@@ -213,7 +226,7 @@
     if (ev.source !== window || ev.origin !== ORIGEM) return;
     const d = ev.data;
     if (!d || d.jarvisWaPedido !== true) return;
-    tratar(d).then(r => responder(d.id, r)).catch(e => responder(d.id, { status: 500, tipo: 'json', json: { error: (e && e.message) || String(e) } }));
+    tratar(d).then(r => { if (r && r.status < 400) ultimoErro = ''; responder(d.id, r); }).catch(e => { const msg = (e && e.message) || String(e); ultimoErro = String(d.caminho || '').split('?')[0] + ': ' + msg; responder(d.id, { status: 500, tipo: 'json', json: { error: msg } }); });
   });
   const evento = (tipo, extra) => window.postMessage({ jarvisWaEvento: true, evento: Object.assign({ type: tipo, state: estado() }, extra || {}) }, ORIGEM);
 
@@ -239,4 +252,6 @@
     else if (tentativas > 600) clearInterval(espera);
   }, 1000);
   setInterval(() => evento('status'), 30000); // o painel acompanha QR/conexão mesmo sem mensagens
+  let assinatura = '';
+  setInterval(() => { try { const e = estado(); const a = e.status + '|' + (e.hasQr ? 'qr' : '') + '|' + e.diag; if (a !== assinatura) { assinatura = a; evento('status'); } } catch (_) {} }, 1500);
 })();
