@@ -81,7 +81,7 @@ async function aguardarRelatorio(page, ms) {
    via onNumero); "Continuar conectado?" > Sim; escolha de conta. Nunca digita senha nem e-mail. */
 async function autenticarPeloAuthenticator(page, onNumero, log) {
   const L = (...a) => { try { (log || console.log)(...a); } catch (_) {} };
-  const fim = Date.now() + AUTH_ESPERA_MS + 90000;
+  const fim = Date.now() + AUTH_ESPERA_MS + 150000;
   let envios = 0, numeroPublicado = null, ultimaAcao = 0, esperaDesde = 0;
   const texto = () => page.evaluate(() => ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 600)).catch(() => '');
   try {
@@ -94,10 +94,14 @@ async function autenticarPeloAuthenticator(page, onNumero, log) {
       const t = await texto();
       /* 1) aguardando aprovação no celular (com ou sem número) */
       const numero = await page.evaluate(() => {
-        const el = [...document.querySelectorAll('[id$="DisplaySign"], .displaySign')].find(e => e.offsetParent !== null && /^\s*\d{1,3}\s*$/.test(e.textContent || ''));
+        const ok = e => e.offsetParent !== null && /^\s*\d{1,3}\s*$/.test(e.textContent || '');
+        const el = [...document.querySelectorAll('[id$="DisplaySign"], .displaySign')].find(ok)
+          || [...document.querySelectorAll('div,span')].filter(e => e.children.length === 0).find(ok);
         return el ? el.textContent.trim() : '';
       }).catch(() => '');
-      if (numero || /Aprove a solicitação|Aprovar a solicitação|Abra o aplicativo Microsoft Authenticator|Abra seu aplicativo Authenticator|Verifique seu telefone/i.test(t)) {
+      const telaAprovar = /Aprovar entrada|Abra o aplicativo (Microsoft )?Authenticator|aprove a solicitação|Aprovar solicitação|Verifique seu telefone|Approve sign in/i.test(t);
+      if (L.ultimoTxt !== t.slice(0, 120)) { L.ultimoTxt = t.slice(0, 120); L('Authenticator: tela = «' + t.slice(0, 120) + '»'); }
+      if (numero || telaAprovar) {
         if (!esperaDesde) esperaDesde = Date.now();
         if (numeroPublicado === null || numero !== numeroPublicado) { numeroPublicado = numero; await onNumero(numero); L('Authenticator: aguardando aprovação no celular' + (numero ? ' (número ' + numero + ')' : '') + '.'); }
         if (Date.now() - esperaDesde > AUTH_ESPERA_MS) { L('Authenticator: ninguém aprovou em ' + (AUTH_ESPERA_MS / 60000) + ' min.'); return false; }
@@ -105,10 +109,10 @@ async function autenticarPeloAuthenticator(page, onNumero, log) {
       }
       esperaDesde = 0;
       /* 2) solicitação não enviada / negada / expirada > PEDE DE NOVO (Avançar) */
-      if (/solicitação não foi enviada|não foi possível enviar|Não recebemos|negad|recusad|expirou|tente novamente|didn't receive|request.{0,20}not.{0,10}sent/i.test(t)) {
-        if (envios >= 4) { L('Authenticator: a Microsoft não enviou/recebeu a solicitação após ' + envios + ' tentativas.'); return false; }
+      if (/A solicitação não foi enviada|Não foi possível enviar uma notificação|solicitação (foi )?negada|solicitação expirou|Sign-in was denied|request wasn't sent/i.test(t)) {
+        if (envios >= 5) { L('Authenticator: a Microsoft não enviou/recebeu a solicitação após ' + envios + ' tentativas.'); return false; }
         const av = page.locator('#idSIButton9, #idSubmit_SAOTCAS_Continue, input[type=submit]').first();
-        if (await av.count()) { envios++; L('Authenticator: solicitação falhou — pedindo a autenticação de novo (tentativa ' + (envios + 1) + ').'); numeroPublicado = null; await page.waitForTimeout(envios > 1 ? 6000 : 1500); await av.click().catch(() => {}); await page.waitForTimeout(2500); continue; }
+        if (await av.count()) { envios++; L('Authenticator: solicitação falhou — pedindo a autenticação de novo (tentativa ' + (envios + 1) + ').'); numeroPublicado = null; await page.waitForTimeout(8000 * envios); await av.click().catch(() => {}); await page.waitForTimeout(2500); continue; }
       }
       /* 3) "Continuar conectado?" > Sim */
       if (await page.locator('#KmsiCheckboxField, #KmsiDescription').count().catch(() => 0)) { await page.locator('#idSIButton9').click().catch(() => {}); L('Authenticator: "Continuar conectado" > Sim.'); await page.waitForTimeout(2000); continue; }
