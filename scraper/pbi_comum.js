@@ -58,6 +58,32 @@ const AUTH_ESPERA_MS = 4 * 60000;
 const HOST_LOGIN = /login\.microsoftonline\.com|login\.live\.com|login\.microsoft\.com/i;
 const SEL_FORM = 'input[name="loginfmt"], input[type="password"], #i0116, #i0118';
 
+/* 2026-11-28: o repositório é público (os logs do Actions também) — nunca imprimir e-mail de conta */
+const mascarar = t => String(t || '').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '«conta»');
+
+/* Pedido que ficou na fila (PC do agente desligado/em suspensão): minutos entre o clique e agora.
+   PBI_PEDIDO_EM = segundos Unix gravados pelo job "onde" no momento do clique. */
+const PEDIDO_VELHO_MIN = 15;
+function minutosNaFila() {
+  const t = Number(process.env.PBI_PEDIDO_EM || 0);
+  return t > 0 ? Math.max(0, Math.round((Date.now() / 1000 - t) / 60)) : 0;
+}
+
+/* Ninguém aprovou o código: pede OUTRO (nova tela de login = novo número), até AUTH_RODADAS vezes.
+   Devolve true | 'timeout' (ninguém aprovou) | false (não deu para usar o Authenticator). */
+const AUTH_RODADAS = 2;
+async function autenticarComReenvio(page, url, onNumero, log) {
+  let r = false;
+  for (let i = 1; i <= AUTH_RODADAS; i++) {
+    r = await autenticarPeloAuthenticator(page, n => onNumero(n, i, AUTH_RODADAS), log);
+    if (r !== 'timeout' || i === AUTH_RODADAS) return r;
+    try { (log || console.log)('Authenticator: pedindo um código novo (' + (i + 1) + ' de ' + AUTH_RODADAS + ').'); } catch (_) {}
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => {});
+    if (await aguardarRelatorio(page, 60000) === 'ok') return true;
+  }
+  return r;
+}
+
 /* Espera o relatório (contador Total) ou uma tela de login. Passagem rápida pelo login.microsoftonline.com
    (SSO silencioso) não conta: só vale como login se aparecer uma tela de autenticação ou a página
    ficar >8 s no domínio da Microsoft. */
@@ -100,11 +126,11 @@ async function autenticarPeloAuthenticator(page, onNumero, log) {
         return el ? el.textContent.trim() : '';
       }).catch(() => '');
       const telaAprovar = /Aprovar entrada|Abra o aplicativo (Microsoft )?Authenticator|aprove a solicitação|Aprovar solicitação|Verifique seu telefone|Approve sign in/i.test(t);
-      if (L.ultimoTxt !== t.slice(0, 120)) { L.ultimoTxt = t.slice(0, 120); L('Authenticator: tela = «' + t.slice(0, 120) + '»'); }
+      if (L.ultimoTxt !== t.slice(0, 120)) { L.ultimoTxt = t.slice(0, 120); L('Authenticator: tela = «' + mascarar(t).slice(0, 120) + '»'); }
       if (numero || telaAprovar) {
         if (!esperaDesde) esperaDesde = Date.now();
         if (numeroPublicado === null || numero !== numeroPublicado) { numeroPublicado = numero; await onNumero(numero); L('Authenticator: aguardando aprovação no celular' + (numero ? ' (número ' + numero + ')' : '') + '.'); }
-        if (Date.now() - esperaDesde > AUTH_ESPERA_MS) { L('Authenticator: ninguém aprovou em ' + (AUTH_ESPERA_MS / 60000) + ' min.'); return false; }
+        if (Date.now() - esperaDesde > AUTH_ESPERA_MS) { L('Authenticator: ninguém aprovou em ' + (AUTH_ESPERA_MS / 60000) + ' min.'); return 'timeout'; }
         await page.waitForTimeout(1500); continue;
       }
       esperaDesde = 0;
@@ -132,4 +158,4 @@ async function autenticarPeloAuthenticator(page, onNumero, log) {
   } catch (e) { L('Authenticator: não foi possível usar (' + e.message + ').'); return false; }
 }
 
-module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, aguardarRelatorio, AUTH_ESPERA_MS };
+module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, autenticarComReenvio, aguardarRelatorio, mascarar, minutosNaFila, PEDIDO_VELHO_MIN, AUTH_ESPERA_MS };

@@ -15,7 +15,41 @@
 
   const sid = x => (x == null ? '' : (typeof x === 'string' ? x : (x._serialized || (x.toString && x.toString()) || '')));
   const W = () => window.WPP;
-  const pronto = () => { try { return !!(W() && W().isReady && W().conn.isAuthenticated() && W().conn.isMainReady()); } catch (_) { return false; } };
+  const totalChats = () => { try { return W().whatsapp.ChatStore.getModelsArray().length; } catch (_) { return 0; } };
+  /* pronto = logado e (interface sincronizada OU já há conversas na memória) */
+  const pronto = () => {
+    try {
+      if (!(W() && W().isReady)) return false;
+      let auth = null, main = false;
+      try { auth = !!W().conn.isAuthenticated(); } catch (_) {}
+      try { main = !!W().conn.isMainReady(); } catch (_) {}
+      if (auth === false) return false;
+      return (auth === true && main) || totalChats() > 0;
+    } catch (_) { return false; }
+  };
+  const comPrazo = (p, ms, nome) => Promise.race([p, new Promise((_, err) => setTimeout(() => err(new Error(nome + ' não respondeu em ' + Math.round(ms / 1000) + ' s')), ms))]);
+  /* 2026-11-28 (BUG "lê o QR mas não abre as mensagens"): o chat.list buscava, um grupo de cada vez, os dados de
+     TODOS os grupos no servidor antes de responder — em conta com muitos grupos estourava o tempo (ou falhava em um
+     grupo e derrubava a lista). Pede a lista sem isso e, se a biblioteca falhar, lê direto as conversas em memória. */
+  async function listaChats(opcoes) {
+    let l;
+    try { l = await comPrazo(W().chat.list(Object.assign({ ignoreGroupMetadata: true }, opcoes)), 20000, 'A lista de conversas'); }
+    catch (e) {
+      try { l = W().whatsapp.ChatStore.getModelsArray().slice(); } catch (_) { l = []; }
+      if (opcoes && opcoes.onlyGroups) l = l.filter(c => /@g\.us$/.test(sid(c.id)));
+      if (!l.length) throw e;
+    }
+    return l.filter(c => idsOk(sid(c.id))); // fora: status@broadcast, canais etc.
+  }
+  async function mensagensDe(id, limite) {
+    try { return await comPrazo(W().chat.getMessages(id, { count: limite }), 30000, 'A leitura das mensagens'); }
+    catch (e) {
+      let l = [];
+      try { const c = W().whatsapp.ChatStore.get(id); l = c.msgs.getModelsArray().slice(-limite); } catch (_) {}
+      if (!l.length) throw e;
+      return l; // pelo menos as mensagens já carregadas no WhatsApp Web
+    }
+  }
 
   /* ── status ── */
   function qrDaPagina() {
@@ -26,19 +60,19 @@
   }
   /* diagnóstico: mostra no painel em que etapa o wa-js está (ajuda a achar incompatibilidade com o WhatsApp Web atual) */
   function diag() {
-    const d = { wpp: !!W(), injetado: false, pronto: false, auth: null, main: null, versao: '' };
+    const d = { wpp: !!W(), injetado: false, pronto: false, auth: null, main: null, versao: '', chats: totalChats() };
     try { d.injetado = !!(W() && W().isInjected); d.pronto = !!(W() && W().isReady); } catch (_) {}
     try { d.auth = !!W().conn.isAuthenticated(); } catch (_) {}
     try { d.main = !!W().conn.isMainReady(); } catch (_) {}
     try { d.versao = String((W().whatsapp && W().whatsapp.Debug && W().whatsapp.Debug.VERSION) || ''); } catch (_) {}
     return d;
   }
-  const diagTxt = d => 'wa-js: ' + (d.wpp ? 'carregado' : 'NÃO carregou') + ', pronto=' + d.pronto + ', autenticado=' + d.auth + ', sincronizado=' + d.main + (d.versao ? ', WhatsApp Web ' + d.versao : '');
+  const diagTxt = d => 'wa-js: ' + (d.wpp ? 'carregado' : 'NÃO carregou') + ', pronto=' + d.pronto + ', autenticado=' + d.auth + ', sincronizado=' + d.main + ', conversas=' + d.chats + (d.versao ? ', WhatsApp Web ' + d.versao : '');
   function estado() {
     const dg = diag();
     const base = { qr: '', qrText: '', hasQr: false, me: null, lastError: ultimoErro, diag: diagTxt(dg), unread: naoLidas, startedAt: INICIO, updatedAt: new Date().toISOString(), instancia: 'Este aparelho (extensão)' };
     if (!W() || !W().isInjected) return Object.assign(base, { status: 'starting', lastError: 'A biblioteca do WhatsApp (wa-js) ainda não carregou nesta aba. Se persistir, recarregue a aba do WhatsApp Web.' });
-    if (dg.pronto && dg.auth && !dg.main) return Object.assign(base, { status: 'authenticated', lastError: 'Autenticado — o WhatsApp Web está sincronizando as conversas (pode levar alguns minutos na primeira vez).' });
+    if (dg.pronto && dg.auth && !dg.main && !dg.chats) return Object.assign(base, { status: 'authenticated', lastError: 'Autenticado — o WhatsApp Web está sincronizando as conversas (pode levar alguns minutos na primeira vez).' });
     if (pronto()) {
       let wid = '', nome = '';
       try { wid = sid(W().conn.getMyUserId()); } catch (_) {}
@@ -76,7 +110,7 @@
     const m = ultimaMsgDoChat(c);
     const ehMidia = m && TIPOS_MIDIA.includes(m.type);
     return {
-      id, name: nome, isGroup: !!c.isGroup, unreadCount: c.unreadCount || 0, timestamp: c.t || 0,
+      id, name: nome, isGroup: !!c.isGroup || /@g\.us$/.test(id), unreadCount: c.unreadCount || 0, timestamp: c.t || 0,
       archived: !!c.archive, pinned: !!c.pin,
       lastMessage: m ? { body: (ehMidia ? (m.caption || '') : (m.body || '')) || '', fromMe: !!(m.id && m.id.fromMe), timestamp: m.t || 0 } : null
     };
@@ -126,15 +160,17 @@
     if (!pronto()) { if (rota.startsWith('/api/media/') || rota.startsWith('/api/avatar/')) return { status: 404, tipo: 'vazio' }; return naoPronto(); }
 
     if (rota === '/api/chats' && metodo === 'GET') {
-      const chats = await W().chat.list({ count: 100 });
-      return json(200, chats.map(resumoChat).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100));
+      const lista = [];
+      for (const c of await listaChats()) { try { lista.push(resumoChat(c)); } catch (_) {} } // uma conversa com defeito não derruba a lista
+      return json(200, lista.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100));
     }
     let m;
     if ((m = rota.match(/^\/api\/chats\/([^/]+)\/messages$/)) && metodo === 'GET') {
       const id = decodeURIComponent(m[1]);
       const limite = Math.max(1, Math.min(300, Number(q.get('limit') || 50)));
-      const msgs = await W().chat.getMessages(id, { count: limite });
-      const vivas = await Promise.all(msgs.map(x => resumoMsg(x)));
+      const msgs = await mensagensDe(id, limite);
+      const vivas = (await Promise.all(msgs.map(x => resumoMsg(x).catch(() => null)))).filter(Boolean);
+      if (msgs.length && !vivas.length) throw new Error('As mensagens foram lidas, mas nenhuma pôde ser convertida.');
       return json(200, vivas.sort((a, b) => a.timestamp - b.timestamp).slice(-limite));
     }
     if ((m = rota.match(/^\/api\/chats\/([^/]+)\/seen$/)) && metodo === 'POST') {
@@ -191,7 +227,7 @@
       return url ? { status: 200, tipo: 'url', url } : { status: 404, tipo: 'vazio' };
     }
     if (rota === '/api/groups' && metodo === 'GET') {
-      const chats = await W().chat.list({ onlyGroups: true });
+      const chats = await listaChats({ onlyGroups: true });
       return json(200, chats.map(c => ({ id: sid(c.id), name: c.name || c.formattedTitle || 'Grupo sem nome', participants: ((c.groupMetadata && c.groupMetadata.participants && (c.groupMetadata.participants.length || (c.groupMetadata.participants.getModelsArray && c.groupMetadata.participants.getModelsArray().length))) || 0), timestamp: c.t || 0 }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
     }

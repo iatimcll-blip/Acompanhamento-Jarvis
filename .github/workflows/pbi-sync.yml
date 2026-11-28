@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       nuvem: ${{ steps.v.outputs.nuvem }}
+      pedido: ${{ steps.v.outputs.pedido }}
     steps:
       - id: v
         env:
@@ -30,6 +31,7 @@ jobs:
         # 2026-11-26: se ESTE secret já venceu (hash em data/pbi-nuvem.json, gravado pelo agente),
         # vai direto ao PC. Quando o secret é regravado o hash muda e a nuvem volta a ser tentada.
         run: |
+          echo "pedido=$(date +%s)" >> "$GITHUB_OUTPUT"
           if [ -z "$S" ]; then echo "nuvem=false" >> "$GITHUB_OUTPUT"; echo "Secret PBI_SESSION ausente: rodando no PC do agente."; exit 0; fi
           H=$(printf '%s' "$S" | sha256sum | cut -c1-16)
           V=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/${{ github.repository }}/contents/data/pbi-nuvem.json?ref=main" 2>/dev/null | jq -r '.expiradaHash // empty' 2>/dev/null || true)
@@ -71,7 +73,7 @@ jobs:
     needs: [onde, nuvem]
     if: always() && (needs.onde.outputs.nuvem != 'true' || needs.nuvem.result == 'failure' || needs.nuvem.outputs.fallback == 'true')
     runs-on: [self-hosted, jarvis]
-    timeout-minutes: 15
+    timeout-minutes: 22
     defaults:
       run:
         shell: powershell -ExecutionPolicy Bypass -Command "& '{0}'"
@@ -93,4 +95,5 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_BRANCH: main
           PBI_AUTH_DIR: D:\JarvisRunner\pbi-auth
+          PBI_PEDIDO_EM: ${{ needs.onde.outputs.pedido }}
         run: node pbi_export.js

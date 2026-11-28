@@ -170,12 +170,16 @@ async function exportar(browser) {
     /* 2026-11-26 (pedido do usuário): se a Microsoft pedir autenticação, solicita o Microsoft
        Authenticator (o número aparece no painel; a pessoa aprova no celular). Só no PC. */
     if (ok === 'login' && !process.env.PBI_SESSION) {
+      /* 2026-11-28: se o pedido ficou parado na fila, quem clicou não está mais olhando — não dispara o código à toa */
+      const fila = pbiComum.minutosNaFila();
+      if (fila > pbiComum.PEDIDO_VELHO_MIN) throw Object.assign(new Error('O PC principal estava desligado ou em suspensão: o pedido esperou ' + fila + ' min na fila e a Microsoft pediu autenticação. Clique em BI ENC de novo para receber o código.'), { code: 'pedido_velho' });
       await status({ step: 1, stepTxt: 'A Microsoft pediu autenticação — solicitando aprovação no Microsoft Authenticator…' });
-      const aprovado = await pbiComum.autenticarPeloAuthenticator(page, async n => {
-        await status({ step: 1, stepTxt: n ? 'Aprove no Microsoft Authenticator do celular: número ' + n : 'Aprove a notificação no Microsoft Authenticator do celular', errorCode: 'mfa', mfaNumero: n || '', mfaAte: new Date(Date.now() + pbiComum.AUTH_ESPERA_MS).toISOString() });
+      const aprovado = await pbiComum.autenticarComReenvio(page, REPORT_URL, async (n, vez, de) => {
+        await status({ step: 1, stepTxt: (n ? 'Aprove no Microsoft Authenticator do celular: número ' + n : 'Aprove a notificação no Microsoft Authenticator do celular') + ' (pedido ' + vez + ' de ' + de + ')', errorCode: 'mfa', mfaNumero: n || '', mfaAte: new Date(Date.now() + pbiComum.AUTH_ESPERA_MS).toISOString() });
       }, log);
       await status({ errorCode: '', mfaNumero: '', mfaAte: '' });
-      if (aprovado) {
+      if (aprovado === 'timeout') throw Object.assign(new Error('Ninguém aprovou o código do Microsoft Authenticator. Clique em BI ENC de novo para receber um código novo — a aprovação é feita no celular.'), { code: 'mfa_timeout' });
+      if (aprovado === true) {
         try { await ctx.storageState({ path: STATE_FILE }); } catch (_) {}
         await status({ step: 1, stepTxt: 'Autenticado pelo Authenticator — abrindo o relatório' });
         await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => {});
