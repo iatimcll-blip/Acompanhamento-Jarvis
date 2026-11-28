@@ -275,7 +275,7 @@ async function exportar(browser) {
   } catch (e) {
     try { await page.screenshot({ path: path.join(AUTH_DIR, 'erro_enc.png') }); } catch (_) {}
     throw e;
-  } finally { await ctx.close(); }
+  } finally { await pbiComum.fechar(ctx); }
 }
 
 /* ── Aplica na sincronização com o próprio painel (procEnc) ─────────────────── */
@@ -346,6 +346,7 @@ async function aplicarNoSync(browser, xlsxB64, fileAt, totalFiltrado) {
 
 async function rodada() {
   statusAtual = {};
+  const pararVigia = pbiComum.vigiarRodada(msg => status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: msg, errorCode: 'prazo' }), () => statusAtual.state === 'running', log);
   await status({ state: 'running', step: 0, stepTxt: 'Iniciando o agente do BI ENC', lastRunStartedAt: new Date().toISOString(), lastRunCompletedAt: '', lastRunConclusion: '', lastError: '', errorCode: '', aplicadoNoSync: false });
   const browser = await chromium.launch({ headless: process.env.PBI_HEADED !== '1', args: ['--no-sandbox', '--disable-dev-shm-usage'], ...(process.env.PBI_CHROME ? { executablePath: process.env.PBI_CHROME } : {}) });
   try {
@@ -382,7 +383,7 @@ async function rodada() {
     }
     await status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: e.message, errorCode: e.code || '' });
     process.exitCode = 1;
-  } finally { await browser.close(); }
+  } finally { await pbiComum.fechar(browser); pararVigia(); }
 }
 
 if (require.main === module) rodada();

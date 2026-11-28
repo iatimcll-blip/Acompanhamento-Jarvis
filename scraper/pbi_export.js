@@ -307,7 +307,7 @@ async function exportar(browser) {
   } catch (e) {
     try { const shot = path.join(AUTH_DIR, 'erro_ultimo.png'); await page.screenshot({ path: shot }); log('print do erro em', shot); } catch (_) {}
     throw e;
-  } finally { await ctx.close(); }
+  } finally { await pbiComum.fechar(ctx); }
 }
 
 /* ── Filtro com a própria regra do painel (procAbBaseGeral) ──────────────── */
@@ -420,6 +420,7 @@ async function aplicarNoSync(browser, xlsxB64, fileAt) {
 async function rodada() {
   const startedAt = new Date().toISOString();
   statusAtual = {};
+  const pararVigia = pbiComum.vigiarRodada(msg => status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: msg, errorCode: 'prazo' }), () => statusAtual.state === 'running', log);
   await status({ state: 'running', step: 0, stepTxt: 'Iniciando o agente do BI', lastRunStartedAt: startedAt, lastRunCompletedAt: '', lastRunConclusion: '', lastError: '', errorCode: '' });
   const browser = await chromium.launch({ headless: process.env.PBI_HEADED !== '1', args: ['--no-sandbox', '--disable-dev-shm-usage'], ...(process.env.PBI_CHROME ? { executablePath: process.env.PBI_CHROME } : {}) });
   try {
@@ -474,7 +475,7 @@ async function rodada() {
     }
     await status({ state: 'error', stepTxt: 'Erro', lastRunCompletedAt: new Date().toISOString(), lastRunConclusion: 'failure', lastError: e.message, errorCode: e.code || '' });
     process.exitCode = 1;
-  } finally { await browser.close(); }
+  } finally { await pbiComum.fechar(browser); pararVigia(); }
 }
 
 if (require.main === module) {

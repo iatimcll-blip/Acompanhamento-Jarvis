@@ -90,6 +90,23 @@ function comPrazo(promessa, ms, nome) {
   return Promise.race([promessa, new Promise((_, err) => { t = setTimeout(() => err(new Error('Passou do prazo de ' + Math.round(ms / 60000) + ' min ao ' + nome + '.')), ms); })]).finally(() => clearTimeout(t));
 }
 
+/* fechar o navegador nunca pode segurar a rodada (com o PC sem memória o close fica pendurado) */
+const fechar = alvo => comPrazo(Promise.resolve().then(() => alvo.close()), 15000, 'fechar o navegador').catch(() => {});
+
+/* Vigia da rodada (2026-11-28): se algo travar, publica o erro e encerra ANTES de o GitHub cancelar o job —
+   assim o painel nunca fica parado em "rodando". Nuvem: job de 15 min; PC: job de 22 min. */
+function vigiarRodada(publicarErro, estaRodando, log) {
+  const min = Number(process.env.PBI_PRAZO_MIN) || (process.env.PBI_FALLBACK_PC === '1' ? 13 : 19);
+  const t = setTimeout(async () => {
+    const rodando = estaRodando();
+    try { (log || console.log)('Prazo da rodada (' + min + ' min) esgotado' + (rodando ? ' — encerrando com erro.' : ' — encerrando.')); } catch (_) {}
+    if (rodando) await comPrazo(publicarErro('A rodada passou de ' + min + ' min sem terminar (o computador do agente pode estar sem memória ou sem rede). Clique de novo.'), 60000, 'publicar o erro').catch(() => {});
+    process.exit(rodando ? 1 : 0);
+  }, min * 60000);
+  t.unref();
+  return () => clearTimeout(t);
+}
+
 /* Espera o relatório (contador Total) ou uma tela de login. Passagem rápida pelo login.microsoftonline.com
    (SSO silencioso) não conta: só vale como login se aparecer uma tela de autenticação ou a página
    ficar >8 s no domínio da Microsoft. */
@@ -164,4 +181,4 @@ async function autenticarPeloAuthenticator(page, onNumero, log) {
   } catch (e) { L('Authenticator: não foi possível usar (' + e.message + ').'); return false; }
 }
 
-module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, autenticarComReenvio, comPrazo, aguardarRelatorio, mascarar, minutosNaFila, PEDIDO_VELHO_MIN, AUTH_ESPERA_MS };
+module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, autenticarComReenvio, comPrazo, fechar, vigiarRodada, aguardarRelatorio, mascarar, minutosNaFila, PEDIDO_VELHO_MIN, AUTH_ESPERA_MS };

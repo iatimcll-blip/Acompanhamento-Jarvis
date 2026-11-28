@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-28T10:00:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-28T14:15:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -22175,7 +22175,8 @@ function _pbiAvisoMfa(st,nome){
   const conta=()=>{const el=document.getElementById('pbi-mfa-prazo');if(!el)return;const s=Math.max(0,Math.round((ate-Date.now())/1000));el.textContent=s?'Válido por '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0'):'Prazo esgotado — aguardando o agente…';};
   conta();_pbiMfaTm=setInterval(conta,1000);
 }
-const PBI_ESPERA_LOGIN_MIN=15; /* janela de login fica aberta 10 min + o BI de novo */
+const PBI_ESPERA_LOGIN_MIN=15;
+const _pbiParada=st=>{const t=Date.parse((st&&(st.updatedAt||st.lastRunStartedAt))||'');return!!t&&Date.now()-t>15*60000;}; /* janela de login fica aberta 10 min + o BI de novo */
 let abPbiAplicadoAt='',_pbiTimer=null,_pbiAplicando=false;
 function _pbiAdopt(v){if(v&&typeof v==='string'&&v>(abPbiAplicadoAt||''))abPbiAplicadoAt=v;}
 /* Lê pelo Worker (API do GitHub, sem cache): o raw.githubusercontent.com segura o arquivo
@@ -22264,6 +22265,7 @@ function _pbiMonitorar(triggeredIso){
     }
     /* 2026-11-26: a Microsoft pediu autenticação → o agente solicitou o Microsoft Authenticator; mostra o número */
     if(st.state==='running'&&st.errorCode==='mfa'){_pbiBotoes('BI · Authenticator'+(st.mfaNumero?' '+st.mfaNumero:''),true,st.stepTxt||_PBI_TIT);_pbiAvisoMfa(st,'BI');return;}
+    if(st.state==='running'&&_pbiParada(st)){_pbiParar();_pbiBotoes('BI !',false,'A rodada parou sem responder no passo "'+(st.stepTxt||'')+'". Clique para tentar de novo.','erro');_ghToast('O agente do BI parou sem responder há mais de 15 min — a base do B2B Abertos pode não ter sido atualizada. Clique em BI de novo.','#ea580c',10000);return;}
     if(st.state==='running'){_pbiBotoes('BI · '+Math.min(PBI_PASSOS,Number(st.step||0))+'/'+PBI_PASSOS,true,st.stepTxt||_PBI_TIT);return;}
     _pbiParar();
     if(st.lastRunConclusion==='success'&&st.aplicadoNoSync){
@@ -22312,7 +22314,7 @@ async function _pbiRetomar(){
   const st=await _pbiLerStatus();
   if(!st||!st.lastRunStartedAt)return;
   const min=(Date.now()-new Date(st.lastRunStartedAt).getTime())/60000;
-  if(st.state==='running'&&min<30){_pbiMonitorar(st.lastRunStartedAt);return;}
+  if(st.state==='running'&&min<30&&!_pbiParada(st)){_pbiMonitorar(st.lastRunStartedAt);return;}
   if(st.lastRunConclusion==='success'&&min<24*60)await _pbiAplicar(st,false);
   _pbiPintarResultado(st);
 }
@@ -22404,6 +22406,7 @@ function _pbiEncMonitorar(triggeredIso){
       _pbiEncBotoes('BI ENC · no PC…',true,st.stepTxt||_PBI_ENC_TIT);return;
     }
     if(st.state==='running'&&st.errorCode==='mfa'){_pbiEncBotoes('BI ENC · Authenticator'+(st.mfaNumero?' '+st.mfaNumero:''),true,st.stepTxt||_PBI_ENC_TIT);_pbiAvisoMfa(st,'BI ENC');return;}
+    if(st.state==='running'&&_pbiParada(st)){_pbiEncParar();_pbiEncBotoes('BI ENC !',false,'A rodada parou sem responder no passo "'+(st.stepTxt||'')+'". Clique para tentar de novo.','erro');_ghToast('O agente do BI ENC parou sem responder há mais de 15 min — a base do B2B Encerrados pode não ter sido atualizada. Clique em BI ENC de novo.','#ea580c',10000);return;}
     if(st.state==='running'){_pbiEncBotoes('BI ENC · '+Math.min(PBI_ENC_PASSOS,Number(st.step||0))+'/'+PBI_ENC_PASSOS,true,st.stepTxt||_PBI_ENC_TIT);return;}
     _pbiEncParar();
     if(st.lastRunConclusion==='success'&&st.aplicadoNoSync){
