@@ -84,6 +84,12 @@ async function autenticarComReenvio(page, url, onNumero, log) {
   return r;
 }
 
+/* Nenhuma etapa pode ficar presa em silêncio até o GitHub cancelar a rodada */
+function comPrazo(promessa, ms, nome) {
+  let t;
+  return Promise.race([promessa, new Promise((_, err) => { t = setTimeout(() => err(new Error('Passou do prazo de ' + Math.round(ms / 60000) + ' min ao ' + nome + '.')), ms); })]).finally(() => clearTimeout(t));
+}
+
 /* Espera o relatório (contador Total) ou uma tela de login. Passagem rápida pelo login.microsoftonline.com
    (SSO silencioso) não conta: só vale como login se aparecer uma tela de autenticação ou a página
    ficar >8 s no domínio da Microsoft. */
@@ -158,4 +164,4 @@ async function autenticarPeloAuthenticator(page, onNumero, log) {
   } catch (e) { L('Authenticator: não foi possível usar (' + e.message + ').'); return false; }
 }
 
-module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, autenticarComReenvio, aguardarRelatorio, mascarar, minutosNaFila, PEDIDO_VELHO_MIN, AUTH_ESPERA_MS };
+module.exports = { NUVEM_FILE, hashSessao, marcaNuvemExpirada, saidaFallback, vigiaVivo, pedirLoginNoPC, autenticarPeloAuthenticator, autenticarComReenvio, comPrazo, aguardarRelatorio, mascarar, minutosNaFila, PEDIDO_VELHO_MIN, AUTH_ESPERA_MS };

@@ -92,6 +92,7 @@ function ghRequest(method, urlPath, bodyObj) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(120000, () => req.destroy(new Error('O GitHub não respondeu em 2 min.')));
     if (body) req.write(body);
     req.end();
   });
@@ -372,9 +373,11 @@ async function montarBaseNoPainel(browser, estado, xlsxB64, nomeArquivo) {
     await page.goto('file:///' + path.resolve(PANEL_FILE).split(path.sep).join('/'), { waitUntil: 'load', timeout: 60000 });
     await page.waitForFunction(() => typeof XLSX !== 'undefined' && typeof procAbBaseGeral === 'function' && typeof applyState === 'function', null, { timeout: 30000 });
     await page.waitForTimeout(1500);
-    return await page.evaluate(async ({ estado, xlsxB64, nomeArquivo }) => {
+    /* 2026-11-28 (BUG do BI preso em "Sincronizando"): o estado (23 MB) e o resultado vão como TEXTO —
+       entregues como objeto, a ferramenta de automação trava na conversão e o GitHub cancelava a rodada. */
+    return JSON.parse(await pbiComum.comPrazo(page.evaluate(async ({ estadoJson, xlsxB64, nomeArquivo }) => {
       window.saveState = () => {}; window.saveGhState = async () => false; window._ghToast = () => {};
-      applyState(estado, 'agente BI');
+      applyState(JSON.parse(estadoJson), 'agente BI');
       const bin = Uint8Array.from(atob(xlsxB64), c => c.charCodeAt(0));
       const wb = XLSX.read(bin, { type: 'array' });
       const sn = wb.SheetNames.find(n => nk(n) === nk('Export')) || wb.SheetNames[0];
@@ -383,8 +386,8 @@ async function montarBaseNoPainel(browser, estado, xlsxB64, nomeArquivo) {
       /* finishAbUpload chama loadAtrixUpdates (assíncrono): espera ele reaplicar os substatus */
       for (let i = 0; i < 20; i++) { await new Promise(r => setTimeout(r, 500)); if (typeof _atrixLoading === 'undefined' || !_atrixLoading) { if (i >= 6) break; } }
       const b = buildState();
-      return { dAb: b.dAb, lastAbAt: b.lastAbAt, lastAbBaseAt: b.lastAbBaseAt, lastAbFile: b.lastAbFile, abLastUpd: b.abLastUpd, n: dAb.length };
-    }, { estado, xlsxB64, nomeArquivo });
+      return JSON.stringify({ dAb: b.dAb, lastAbAt: b.lastAbAt, lastAbBaseAt: b.lastAbBaseAt, lastAbFile: b.lastAbFile, abLastUpd: b.abLastUpd, n: dAb.length });
+    }, { estadoJson: JSON.stringify(estado), xlsxB64, nomeArquivo }), 5 * 60000, 'montar a base no painel'));
   } finally { await ctx.close(); }
 }
 async function aplicarNoSync(browser, xlsxB64, fileAt) {

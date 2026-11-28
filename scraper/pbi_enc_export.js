@@ -67,6 +67,7 @@ function ghRequest(method, urlPath, bodyObj) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(120000, () => req.destroy(new Error('O GitHub não respondeu em 2 min.')));
     if (body) req.write(body);
     req.end();
   });
@@ -295,9 +296,10 @@ async function montarBaseEnc(browser, estado, xlsxB64, nomeArquivo) {
     await page.goto('file:///' + path.resolve(PANEL_FILE).split(path.sep).join('/'), { waitUntil: 'load', timeout: 90000 });
     await page.waitForFunction(() => typeof XLSX !== 'undefined' && typeof procEnc === 'function' && typeof applyState === 'function', null, { timeout: 60000 });
     await page.waitForTimeout(1500);
-    return await page.evaluate(({ estado, xlsxB64, nomeArquivo, colsEsperadas }) => {
+    /* 2026-11-28: estado e resultado vão como TEXTO (como objeto, a conversão trava — ver pbi_export.js) */
+    return JSON.parse(await pbiComum.comPrazo(page.evaluate(({ estadoJson, xlsxB64, nomeArquivo, colsEsperadas }) => {
       window.saveState = () => {}; window.saveGhState = async () => false; window._ghToast = () => {}; window.autoSyncAfterBaseUpload = () => {};
-      applyState(estado, 'agente BI ENC');
+      applyState(JSON.parse(estadoJson), 'agente BI ENC');
       const bin = Uint8Array.from(atob(xlsxB64), c => c.charCodeAt(0));
       const wb = XLSX.read(bin, { type: 'array' });
       const sn = wb.SheetNames.find(n => n.toUpperCase().includes('BASE')) || wb.SheetNames[0];
@@ -305,12 +307,12 @@ async function montarBaseEnc(browser, estado, xlsxB64, nomeArquivo) {
       const linhas = rows.filter(r => (r['ticket_id'] || r['protocolo']) && !encLinhaRodape(r['protocolo'] || r['ticket_id'])).length;
       const cab = (XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1 })[0] || []).map(String);
       const faltam = colsEsperadas.filter(c => !cab.includes(c));
-      if (faltam.length) return { faltam };
+      if (faltam.length) return JSON.stringify({ faltam });
       procEnc(rows, nomeArquivo);
       const b = buildState();
-      return { dEnc: b.dEnc, lastEncAt: b.lastEncAt, lastEncBaseAt: b.lastEncBaseAt, lastEncFile: b.lastEncFile, n: dEnc.length, linhas,
-        meses: [...new Set(dEnc.map(d => d.mes).filter(Boolean))].sort() };
-    }, { estado, xlsxB64, nomeArquivo, colsEsperadas: COLS_ESPERADAS });
+      return JSON.stringify({ dEnc: b.dEnc, lastEncAt: b.lastEncAt, lastEncBaseAt: b.lastEncBaseAt, lastEncFile: b.lastEncFile, n: dEnc.length, linhas,
+        meses: [...new Set(dEnc.map(d => d.mes).filter(Boolean))].sort() });
+    }, { estadoJson: JSON.stringify(estado), xlsxB64, nomeArquivo, colsEsperadas: COLS_ESPERADAS }), 6 * 60000, 'montar a base no painel'));
   } finally { await ctx.close(); }
 }
 async function aplicarNoSync(browser, xlsxB64, fileAt, totalFiltrado) {
