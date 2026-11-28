@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-28T15:30:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-28T17:00:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -7670,7 +7670,7 @@ body.is-admin #panel-combustivel .fuel-management-row { display: grid; }
     <button class="login-action" type="submit">Entrar</button>
     <button type="button" class="login-action" style="margin-top:8px;background:var(--surface2);color:var(--tx2);border:.5px solid var(--bd2)" onclick="loginAsGuest()"><i class="ti ti-eye"></i> Continuar sem login (visão padrão)</button>
     <div style="margin-top:12px;text-align:center">
-      <a id="login-reset-link" href="#" onclick="resetAuthData();return false" style="font-size:13px;color:var(--tx3);text-decoration:none;opacity:.6">Problemas de acesso? Redefinir dados de autenticação</a>
+      <a id="login-reset-link" href="#" onclick="resetAuthData();return false" style="font-size:13px;color:var(--tx3);text-decoration:none;opacity:.6">Problemas de acesso? Atualizar dados de autenticação</a>
     </div>
   </form>
 </div>
@@ -7683,7 +7683,7 @@ body.is-admin #panel-combustivel .fuel-management-row { display: grid; }
     </div>
     <div class="user-form">
       <input id="new-user" placeholder="Novo usuário">
-      <input id="new-pass" type="password" placeholder="Senha">
+      <input id="new-pass" type="password" autocomplete="new-password" placeholder="Senha (mín. 8)">
       <select id="new-role" title="Tipo de acesso">
         <option value="viewer">Usuário</option>
         <option value="sr">Usuário Sr</option>
@@ -16598,7 +16598,8 @@ const SESSION_KEY='atrix:sessao:v1';
    dos dois, sem aviso). usersAt é bumped só nos 4 pontos que de fato mutam a lista
    (criar/excluir/mudar permissões/mudar tipo) — nunca dentro de getUsers(), que roda
    a cada render e só faz normalização (admin/Moises/visitante). */
-let usersAt='';
+const USERS_AT_KEY='atrix:usuarios-at:v1';
+let usersAt=(()=>{try{return localStorage.getItem('atrix:usuarios-at:v1')||'';}catch(_){return'';}})();
 /* Rastreia o savedAt do último estado remoto que ESTE dispositivo conhece — usado
    para detectar, antes de cada envio, se outro dispositivo sincronizou algo mais
    novo nesse meio-tempo (evita apagar bases anexadas em outro PC). */
@@ -16682,6 +16683,87 @@ async function hashPass(v){
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }catch(e){return encPass(v);}/* fallback Base64 se Web Crypto indisponível */
 }
+/* ═══ Senhas (2026-11-28): o painel é público — nenhuma senha no código; só se grava a versão embaralhada lenta
+   (PBKDF2-SHA256, sal aleatório por usuário). Formato: passType 'p2', pass 'p2$iterações$sal$hash', derivado do
+   SHA-256 da senha. Os cadastros expostos foram convertidos na base compartilhada com trocar:true e a pessoa
+   cria uma senha nova no próximo acesso. */
+const SENHA_ITER=600000,SENHA_MIN=8;
+const _senhaHex=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+async function _senhaDerivar(pre,saltHex,iter){
+  const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pre),'PBKDF2',false,['deriveBits']);
+  const salt=new Uint8Array(saltHex.match(/../g).map(h=>parseInt(h,16)));
+  return _senhaHex(await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},k,256));
+}
+async function senhaGravavel(pre){const salt=_senhaHex(crypto.getRandomValues(new Uint8Array(16)));return'p2$'+SENHA_ITER+'$'+salt+'$'+await _senhaDerivar(pre,salt,SENHA_ITER);}
+async function senhaConfere(u,raw){
+  if(!u||u.isGuest||!u.pass)return false;
+  if(u.passType==='p2'){const p=String(u.pass).split('$');return p.length===4&&await _senhaDerivar(await hashPass(raw),p[2],Number(p[1]))===p[3];}
+  if(u.passType==='sha256')return u.pass===await hashPass(raw);
+  return u.pass===encPass(raw);
+}
+/* cadastro marcado para troca, ou ainda no formato antigo (exposto): a pessoa cria uma senha nova */
+const precisaTrocarSenha=u=>!!(u&&!u.isGuest&&(u.trocar||u.passType!=='p2'));
+const _senhaVersao=u=>String((u&&u.pass)||'').slice(-16);
+function sessaoGravar(u){try{localStorage.setItem(SESSION_KEY,JSON.stringify({u:u.username,v:_senhaVersao(u)}));}catch(_){}}
+function sessaoLer(){try{const j=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');return j&&typeof j.u==='string'?j:null;}catch(_){return null;}}
+/* a senha ou o cadastro do usuário logado mudou (em qualquer aparelho): pede novo login */
+function sessaoConferir(){
+  const se=sessaoLer();
+  if(!currentUser||currentUser.isGuest||!se||currentUser.username!==se.u)return;
+  const u=getUsers().find(x=>x.username===se.u);
+  if(!u||_senhaVersao(u)!==se.v){localStorage.removeItem(SESSION_KEY);senhaTrocaFechar();showLogin('Sua senha ou seu acesso mudou. Entre novamente.');}
+}
+/* grava só o cadastro de quem trocou a senha direto na base compartilhada (vale para qualquer perfil) */
+async function senhaPublicar(nome,pass){
+  for(let t=1;t<=4;t++){
+    const r=await _syncGetViaWorker();
+    const st=r.content?await _ghB64ToState(r.content):null;
+    if(!st)throw new Error('base compartilhada indisponível');
+    const lista=Array.isArray(st.users)&&st.users.length?st.users:getUsers();
+    const k=lista.findIndex(u=>u.username===nome);
+    if(k<0)throw new Error('usuário não encontrado na base compartilhada');
+    lista[k]={...lista[k],pass,passType:'p2',trocar:false};
+    st.users=lista;st.usersAt=new Date().toISOString();
+    try{
+      await _syncPutViaWorker(r.sha,await _ghStateToB64(st));
+      usersAt=st.usersAt;saveUsers(lista);return getUsers().find(u=>u.username===nome);
+    }catch(e){if(e.status!==409||t===4)throw e;await new Promise(ok=>setTimeout(ok,700*t));}
+  }
+}
+function senhaTrocaFechar(){const ov=document.getElementById('senha-troca');if(ov)ov.remove();}
+function senhaTrocaAbrir(){
+  if(document.getElementById('senha-troca'))return;
+  const ov=document.createElement('div');ov.id='senha-troca';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px';
+  const campo='style="width:100%;box-sizing:border-box;font:inherit;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin:4px 0 10px;background:#fff;color:#111"';
+  ov.innerHTML='<form onsubmit="senhaTrocaSalvar(event)" style="background:var(--bg,#fff);color:var(--tx,#111);border-radius:16px;max-width:400px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.45)">'
+    +'<div style="font-weight:700;font-size:17px">Crie uma senha nova</div>'
+    +'<div style="font-size:12.5px;margin:8px 0 14px;line-height:1.45">Por segurança, a senha antiga precisa ser trocada. Use pelo menos '+SENHA_MIN+' caracteres, com letras e números, e não repita uma senha usada em outro sistema.</div>'
+    +'<input type="text" autocomplete="username" value="'+String(currentUser&&currentUser.username||'').replace(/[&<>"]/g,'')+'" style="display:none" readonly>'
+    +'<label style="font-size:12px">Nova senha<input id="senha-nova" type="password" autocomplete="new-password" '+campo+'></label>'
+    +'<label style="font-size:12px">Repita a nova senha<input id="senha-nova2" type="password" autocomplete="new-password" '+campo+'></label>'
+    +'<div id="senha-erro" style="font-size:12.5px;color:#dc2626;min-height:18px;margin-bottom:8px"></div>'
+    +'<button type="submit" id="senha-salvar" class="login-action">Salvar senha</button>'
+    +'<div style="text-align:center;margin-top:10px"><a href="#" onclick="senhaTrocaFechar();logoutUser();return false" style="font-size:12.5px;color:var(--tx3)">Sair</a></div></form>';
+  document.body.appendChild(ov);
+  setTimeout(()=>{const i=document.getElementById('senha-nova');if(i)i.focus();},60);
+}
+async function senhaTrocaSalvar(ev){
+  if(ev)ev.preventDefault();
+  const erro=m=>{const el=document.getElementById('senha-erro');if(el)el.textContent=m;};
+  const a=document.getElementById('senha-nova').value,b=document.getElementById('senha-nova2').value;
+  if(a.length<SENHA_MIN||!/[A-Za-zÀ-ÿ]/.test(a)||!/\d/.test(a))return erro('Use pelo menos '+SENHA_MIN+' caracteres, com letras e números.');
+  if(a!==b)return erro('As duas senhas não são iguais.');
+  if(a.toLowerCase().includes(String(currentUser.username).toLowerCase()))return erro('A senha não pode conter o nome de usuário.');
+  const bt=document.getElementById('senha-salvar');bt.disabled=true;erro('');bt.textContent='Salvando…';
+  try{
+    if(await senhaConfere(currentUser,a)){erro('A nova senha precisa ser diferente da atual.');return;}
+    const novo=await senhaPublicar(currentUser.username,await senhaGravavel(await hashPass(a)));
+    currentUser=novo;sessaoGravar(novo);senhaTrocaFechar();
+    _ghToast('Senha trocada ✓ Vale para todos os aparelhos.','var(--green-dk)',6000);
+  }catch(e){erro('Não foi possível salvar (verifique a internet e tente de novo): '+(e&&e.message||e));}
+  finally{if(document.getElementById('senha-salvar')){bt.disabled=false;bt.textContent='Salvar senha';}}
+}
 function normRole(role){return role==='admin'?'admin':role==='sr'?'sr':'viewer'}
 function roleLabel(role){const r=normRole(role);return r==='admin'?'Admin - permissões totais':r==='sr'?'Usuário Sr - atualiza os painéis que visualiza':'Usuário - apenas leitura'}
 /* Painéis em que o admin pode liberar "atualizar/anexar base" pro perfil Usuário Sr
@@ -16712,19 +16794,17 @@ function getUsers(){
   if(!Array.isArray(users))users=[];
   /* filtra entradas sem username para evitar TypeError em comparações */
   users=users.filter(u=>u&&typeof u.username==='string'&&u.username).map(u=>({...u,role:normRole(u.role)}));
-  /* admin: senha fixa no código — sempre forçada para evitar que estado antigo bloqueie acesso */
+  /* admin: conta fixa, sem senha no código — a senha (embaralhada) vem da base compartilhada */
   const ai=users.findIndex(u=>u.username.toLowerCase()==='admin');
-  if(ai<0)users.unshift({username:'admin',pass:encPass('atrix@2026'),role:'admin',passType:'b64'});
-  else users[ai]={...users[ai],username:'admin',pass:encPass('atrix@2026'),role:'admin',passType:'b64'};
-  if(!users.some(u=>u.username.toLowerCase()==='moises'))
-    users.push({username:'Moises',pass:encPass('Alloha@2026'),role:'viewer',passType:'b64'});
+  if(ai<0)users.unshift({username:'admin',role:'admin'});
+  else users[ai]={...users[ai],username:'admin',role:'admin'};
   const gi=users.findIndex(u=>u.username===GUEST_USERNAME);
   if(gi<0)users.push({username:GUEST_USERNAME,role:'viewer',isGuest:true,perms:{panels:[]}});
   else users[gi]={...users[gi],username:GUEST_USERNAME,role:'viewer',isGuest:true,pass:undefined,passType:undefined};
   saveUsers(users);
   return users;
 }
-function saveUsers(users){localStorage.setItem(USERS_KEY,JSON.stringify(users))}
+function saveUsers(users){localStorage.setItem(USERS_KEY,JSON.stringify(users));try{if(usersAt)localStorage.setItem(USERS_AT_KEY,usersAt);}catch(_){}}
 /* Sem argumento: gate estrito de admin, usado em toda ação site-wide (gestão de
    usuários, config de sync, excluir/limpar coisas fora dos 2 painéis abaixo) — Usuário
    Sr NUNCA passa aqui, mesmo com painéis liberados, pra não ganhar poderes de admin
@@ -16957,19 +17037,24 @@ function hideLogin(){
      ver saveGhState()/_syncGetViaWorker()/_syncPutViaWorker(). Nada pra avisar mais
      aqui; o campo de token pessoal continua disponível só como opção avançada. */
 }
+function _usuariosAdotar(st){
+  if(!st||!Array.isArray(st.users)||!st.users.length)return false;
+  if(usersAt&&String(st.usersAt||'')<usersAt)return true; /* o que está aqui é mais novo */
+  if(st.usersAt)usersAt=st.usersAt;
+  saveUsers(st.users);getUsers();return true;
+}
 async function syncRemoteUsers(){
-  /* tenta carregar usuários do estado remoto (GitHub ou Sheets) */
+  /* tenta carregar usuários do estado remoto (Worker sem cache; depois GitHub; depois Sheets) */
   try{
-    const st=await fetchGhRawState();
-    if(st&&Array.isArray(st.users)&&st.users.length){saveUsers(st.users);getUsers();return true;}
+    const r=await _syncGetViaWorker();
+    if(r.content&&_usuariosAdotar(await _ghB64ToState(r.content)))return true;
   }catch{}
+  try{if(_usuariosAdotar(await fetchGhRawState()))return true;}catch{}
   try{
     const url=getSheetsUrl();
     if(!url)return false;
     const data=await jsonpFetch(url,{action:'state',t:Date.now()});
-    if(data&&data.state&&Array.isArray(data.state.users)&&data.state.users.length){
-      saveUsers(data.state.users);getUsers();return true;
-    }
+    if(data&&_usuariosAdotar(data.state))return true;
   }catch(e){console.warn('Não foi possível carregar usuários compartilhados:',e)}
   return false;
 }
@@ -17738,30 +17823,25 @@ function saveGhToken(){
   const st=document.getElementById('sync-status');
   if(st){st.textContent=val?'Token salvo neste dispositivo. Leituras públicas funcionam nos demais aparelhos; escrita/início usam este token.':'Token removido.';st.style.color=val?'var(--green-dk)':'var(--tx3)'}
 }
+let _entrando=false;
 async function loginUser(ev){
   if(ev)ev.preventDefault();
-  const username=document.getElementById('login-user').value.trim();
-  const passRaw=document.getElementById('login-pass').value;
-  const passSha=await hashPass(passRaw);
-  const passB64=encPass(passRaw);
-  function matchUser(u){
-    if(u.isGuest)return false;/* Padrão nunca loga por usuário/senha — só via loginAsGuest() */
-    if(u.username.toLowerCase()!==username.toLowerCase())return false;
-    return u.passType==='sha256'?u.pass===passSha:u.pass===passB64;
-  }
-  let users=getUsers();
-  let user=users.find(matchUser);
-  if(!user&&await syncRemoteUsers()){users=getUsers();user=users.find(matchUser);}
-  if(!user){showLogin('Usuário ou senha inválidos.');return}
-  /* migra Base64 → SHA-256 automaticamente no próximo login */
-  if(!user.passType||user.passType==='b64'){
-    user={...user,pass:passSha,passType:'sha256'};
-    saveUsers(users.map(u=>u.username===user.username?user:u));
-  }
-  currentUser=user;
-  localStorage.setItem(SESSION_KEY,user.username);
-  document.getElementById('login-pass').value='';
-  hideLogin();applyUiZoom();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+  if(_entrando)return;_entrando=true;
+  const botao=document.querySelector('#login-screen button[type="submit"]'),rotulo=botao&&botao.textContent;
+  if(botao){botao.disabled=true;botao.textContent='Entrando…';}
+  try{
+    const username=document.getElementById('login-user').value.trim();
+    const passRaw=document.getElementById('login-pass').value;
+    /* sempre confere primeiro a base compartilhada: senha trocada em outro aparelho vale na hora */
+    await Promise.race([syncRemoteUsers(),new Promise(ok=>setTimeout(ok,9000))]);
+    let user=getUsers().find(u=>!u.isGuest&&u.username.toLowerCase()===username.toLowerCase());
+    if(!user||!await senhaConfere(user,passRaw)){showLogin('Usuário ou senha inválidos.');return}
+    currentUser=user;
+    sessaoGravar(user);
+    document.getElementById('login-pass').value='';
+    hideLogin();applyUiZoom();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+    if(precisaTrocarSenha(currentUser))senhaTrocaAbrir();
+  }finally{_entrando=false;if(botao){botao.disabled=false;botao.textContent=rotulo;}}
 }
 /* Visão do usuário Padrão (pedido do usuário): "não precisará de acesso ou senha" — um
    clique, sem formulário. Não persiste SESSION_KEY de propósito: ao recarregar a
@@ -17780,20 +17860,23 @@ function logoutUser(){
   localStorage.removeItem(SESSION_KEY);
   closeUserPanel();showLogin('');
 }
-function resetAuthData(){
-  if(!confirm('Redefinir usuários e senhas para o padrão?\nAdmin: admin / atrix@2026\nUsuário: Moises / Alloha@2026'))return;
-  try{localStorage.removeItem(USERS_KEY);localStorage.removeItem(SESSION_KEY);}catch(e){}
-  getUsers();
-  showLogin('Dados redefinidos. Faça login: admin / atrix@2026');
+/* não existe mais "senha padrão": só apaga a cópia local dos cadastros e busca a atual */
+async function resetAuthData(){
+  if(!confirm('Atualizar os dados de login deste aparelho? Os cadastros guardados aqui são apagados e baixados de novo.'))return;
+  try{localStorage.removeItem(USERS_KEY);localStorage.removeItem(SESSION_KEY);localStorage.removeItem(USERS_AT_KEY);}catch(e){}
+  usersAt='';getUsers();
+  showLogin('Atualizando os cadastros…');
+  const ok=await syncRemoteUsers();
+  showLogin(ok?'Cadastros atualizados. Entre com seu usuário e senha. Esqueceu a senha? Fale com o Admin.':'Não foi possível baixar os cadastros. Verifique a internet e tente de novo.');
 }
 function initAuth(){
-  const savedUsername=localStorage.getItem(SESSION_KEY);
-  if(savedUsername){
-    const users=getUsers();
-    const user=users.find(u=>u.username.toLowerCase()===savedUsername.toLowerCase());
-    if(user){
+  const se=sessaoLer();
+  if(se){
+    const user=getUsers().find(u=>u.username.toLowerCase()===se.u.toLowerCase());
+    if(user&&user.pass&&_senhaVersao(user)===se.v){
       currentUser=user;
       hideLogin();applyUiZoom();buildPreventSysGrid();resetPreventForm();restoreState();restoreActiveTab();applyPermissions();iniciarAtualizacaoAutomaticaSla();iniciarSincronizacaoAutomatica();_renderGhLastSyncBadge();
+      if(precisaTrocarSenha(currentUser))senhaTrocaAbrir();
       return;
     }
   }
@@ -17812,11 +17895,10 @@ async function createSecondaryUser(){
   const pass=document.getElementById('new-pass').value.trim();
   const role=normRole(document.getElementById('new-role').value);
   if(!/^[a-z0-9._-]{3,30}$/i.test(username)){alert('Use um usuário com 3 a 30 caracteres, sem espaços.');return}
-  if(pass.length<4){alert('Informe uma senha com pelo menos 4 caracteres.');return}
+  if(pass.length<SENHA_MIN){alert('Informe uma senha com pelo menos '+SENHA_MIN+' caracteres.');return}
   const users=getUsers();
   if(users.some(u=>u.username.toLowerCase()===username.toLowerCase())){alert('Usuário já existe.');return}
-  const passSha=await hashPass(pass);
-  users.push({username,pass:passSha,passType:'sha256',role});
+  users.push({username,pass:await senhaGravavel(await hashPass(pass)),passType:'p2',trocar:true,role});
   usersAt=new Date().toISOString();
   saveUsers(users);
   saveState();
@@ -19593,13 +19675,14 @@ function applyState(st,label){
     }
   }catch(e){console.warn('applyState: falha ao restaurar B2B Encerrados:',e);}
   try{
-    if(Array.isArray(st.users)&&st.users.length){
-      saveUsers(st.users);
+    if(Array.isArray(st.users)&&st.users.length&&!(usersAt&&String(st.usersAt||'')<usersAt)){
       if(st.usersAt)usersAt=st.usersAt;
-      const allUsers=getUsers(); /* normaliza: garante admin com senha correta */
+      saveUsers(st.users);
+      const allUsers=getUsers(); /* normaliza admin e visitante */
       if(currentUser){
         const fresh=allUsers.find(u=>u.username===currentUser.username);
         if(fresh)currentUser=fresh;
+        sessaoConferir();
       }
       if(document.getElementById('user-panel').style.display==='flex')renderUsers();
     }
