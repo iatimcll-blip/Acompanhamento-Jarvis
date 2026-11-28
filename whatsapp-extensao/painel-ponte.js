@@ -14,7 +14,11 @@
         chrome.runtime.sendMessage({ tipo: 'req', metodo: d.metodo, caminho: d.caminho, corpo: d.corpo })
           .then(r => avisar({ tipo: 'resp', id: d.id, r }))
           .catch(e => avisar({ tipo: 'resp', id: d.id, r: { status: 503, tipo: 'json', json: { error: 'Extensão indisponível: ' + ((e && e.message) || e) + ' (recarregue a página)' } } }));
-      } catch (e) { avisar({ tipo: 'resp', id: d.id, r: { status: 503, tipo: 'json', json: { error: 'Extensão atualizada — recarregue a página.' } } }); }
+      } catch (e) {
+        avisar({ tipo: 'resp', id: d.id, r: { status: 503, tipo: 'json', json: { error: 'Extensão atualizada — recarregando a página…' } } });
+        // este script ficou órfão depois da atualização: recarrega a página (no máximo 1 vez por minuto)
+        try { const k = 'jarvisExtRecarga'; if (Date.now() - Number(sessionStorage.getItem(k) || 0) > 60000) { sessionStorage.setItem(k, String(Date.now())); setTimeout(() => location.reload(), 1500); } } catch (_) {}
+      }
     }
   });
   chrome.runtime.onMessage.addListener(m => { if (m && m.tipo === 'evt-painel') avisar({ tipo: 'evento', evento: m.evento }); });

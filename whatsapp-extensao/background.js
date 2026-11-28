@@ -60,19 +60,53 @@ async function tratarCfg(metodo, corpo) {
   return { status: 200, tipo: 'json', json: await lerCfg() };
 }
 
+/* Fala com a aba do WhatsApp Web. Se houver mais de uma, usa a que responder; se a aba estiver aberta sem o
+   script (aberta antes de instalar/atualizar a extensão), recarrega essa aba sozinho. */
+let ultimaRecarga = 0;
 async function enviarAbaWA(aba, req) {
-  const fim = Date.now() + 25000;
+  const msg = { tipo: 'req', metodo: req.metodo, caminho: req.caminho, corpo: req.corpo };
+  const fim = Date.now() + 30000, comeco = Date.now();
   for (;;) {
-    try { return await chrome.tabs.sendMessage(aba.id, { tipo: 'req', metodo: req.metodo, caminho: req.caminho, corpo: req.corpo }); }
-    catch (_e) {
-      // a aba acabou de abrir/recarregar e o relé ainda não carregou
-      if (Date.now() > fim) return { status: 503, tipo: 'json', json: { error: 'A aba do WhatsApp Web não respondeu. Abra web.whatsapp.com neste navegador.' } };
-      await sleep(1000);
+    let abas = [];
+    try { abas = await chrome.tabs.query({ url: URL_WA }); } catch (_) {}
+    const ordem = abas.length ? abas : [aba];
+    for (const t of ordem) { try { const r = await chrome.tabs.sendMessage(t.id, msg); if (r) return r; } catch (_e) {} }
+    if (Date.now() - comeco > 6000 && Date.now() - ultimaRecarga > 120000 && ordem[0] && ordem[0].status === 'complete') {
+      ultimaRecarga = Date.now();
+      try { await chrome.tabs.reload(ordem[0].id); } catch (_) {}
     }
+    if (Date.now() > fim) return { status: 503, tipo: 'json', json: { error: 'A aba do WhatsApp Web não respondeu. Abra web.whatsapp.com neste navegador.' } };
+    await sleep(1000);
   }
 }
+
+/* Atualização sozinha: quando os arquivos da pasta mudam (versão nova), a extensão se recarrega. */
+let ultimaConferida = 0;
+async function conferirAtualizacao() {
+  if (Date.now() - ultimaConferida < 20000) return false;
+  ultimaConferida = Date.now();
+  try {
+    const r = await fetch(chrome.runtime.getURL('manifest.json') + '?t=' + Date.now(), { cache: 'no-store' });
+    const disco = (await r.json()).version;
+    if (disco && disco !== chrome.runtime.getManifest().version) { await chrome.storage.local.set({ jarvisRecarregarAbas: Date.now() }); chrome.runtime.reload(); return true; }
+  } catch (_) {}
+  return false;
+}
+/* depois de instalar/atualizar, recarrega as abas do WhatsApp Web e do Jarvis para entrar o script novo */
+let abasRecarregadas = false;
+async function recarregarAbas() {
+  if (abasRecarregadas) return;
+  abasRecarregadas = true;
+  try { await chrome.storage.local.remove('jarvisRecarregarAbas'); } catch (_) {}
+  for (const url of [URL_WA, URL_PAINEL]) {
+    try { for (const t of await chrome.tabs.query({ url })) chrome.tabs.reload(t.id); } catch (_) {}
+  }
+}
+chrome.runtime.onInstalled.addListener(() => { recarregarAbas(); });
+chrome.storage.local.get('jarvisRecarregarAbas').then(o => { if (o && o.jarvisRecarregarAbas) recarregarAbas(); }).catch(() => {});
 async function tratarReq(req) {
   const rota = String(req.caminho || '').split('?')[0];
+  if (rota === '/api/status') conferirAtualizacao();
   if (rota === '/api/notify-config') return tratarCfg(String(req.metodo || 'GET').toUpperCase(), req.corpo);
   if (rota === '/api/notify' || rota === '/api/notify-test') return { status: 200, tipo: 'json', json: { ok: true, skipped: 'envio automático desativado' } };
   if (rota.startsWith('/api/dispositivo') || rota === '/api/tunel') return { status: 404, tipo: 'json', json: { error: 'Não se aplica a este modo.' } };

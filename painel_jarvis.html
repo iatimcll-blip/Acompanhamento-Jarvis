@@ -6,7 +6,7 @@
 <title>Jarvis MCLL — Painel de Operações</title>
 <script>/* APP_BUILD_ID: marcador de versão publicada, lido via Range request (poucos bytes)
   por _checkAppBuildFreshness() — não mexer de lugar nem de nome sem atualizar essa função. */
-window.APP_BUILD_ID='2026-11-28T14:45:00-03:00';</script>
+window.APP_BUILD_ID='2026-11-28T15:30:00-03:00';</script>
 <link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <script src="assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="assets/vendor/chartjs/chart.umd.js"></script>
@@ -26464,7 +26464,9 @@ function renderWppState(st){setTimeout(()=>{try{renderWppResumo();}catch(_){}},0
   const statusMsgs={starting:['Iniciando serviço WhatsApp...','ti-loader-2'],qr:['Aponte o celular para o QR Code','ti-qrcode'],authenticated:['Autenticado — carregando conversas...','ti-loader-2'],ready:['Sessão conectada','ti-check'],auth_failure:['Falha na autenticação','ti-alert-triangle'],disconnected:['Sessão desconectada','ti-alert-triangle'],error:['Erro no serviço WhatsApp','ti-alert-triangle']};
   const [stText,stIcon]=statusMsgs[wppBridgeState.status]||['Conectando...','ti-loader-2'];
   setWppStatus(stText,stIcon);
-  if(wppBridgeState.status)setWppDiag('Bridge conectado: '+wppBridgeUrl()+' | Status: '+wppBridgeState.status+' | Sessão: '+(wppModoExt()?'WhatsApp Web deste navegador (extensão)':'ponte local deste PC')+(wppBridgeState.me&&wppBridgeState.me.pushname?' · conta '+wppBridgeState.me.pushname:'')+(wppBridgeState.instancia?' ('+wppBridgeState.instancia+')':'')+(wppModoExt()&&wppBridgeState.status!=='ready'&&wppBridgeState.lastError&&wppBridgeState.status!=='qr'?' | '+wppBridgeState.lastError:'')+(wppModoExt()&&wppBridgeState.diag&&wppBridgeState.status!=='ready'?' | '+wppBridgeState.diag:'')+(wppModoExt()&&wppExtVelha()?' | ⚠ EXTENSÃO DESATUALIZADA ('+window.__jarvisWppExtVersao+', atual '+WPP_EXT_ATUAL+') — clique em "Meu WhatsApp" para atualizar':''),wppModoExt()&&wppExtVelha()?'err':'ok');
+  if(wppBridgeState.status)setWppDiag('Bridge conectado: '+wppBridgeUrl()+' | Status: '+wppBridgeState.status+' | Sessão: '+(wppModoExt()?'WhatsApp Web deste navegador (extensão)':'ponte local deste PC')+(wppBridgeState.me&&wppBridgeState.me.pushname?' · conta '+wppBridgeState.me.pushname:'')+(wppBridgeState.instancia?' ('+wppBridgeState.instancia+')':'')+(wppModoExt()&&wppBridgeState.status!=='ready'&&wppBridgeState.lastError&&wppBridgeState.status!=='qr'?' | '+wppBridgeState.lastError:'')+(wppModoExt()&&wppBridgeState.diag&&wppBridgeState.status!=='ready'?' | '+wppBridgeState.diag:'')+(wppBridgeState.autoteste?' | '+wppBridgeState.autoteste:'')+(wppModoExt()&&wppExtVelha()?' | ⚠ EXTENSÃO DESATUALIZADA ('+window.__jarvisWppExtVersao+', atual '+WPP_EXT_ATUAL+') — clique em "Meu WhatsApp" para atualizar':''),wppModoExt()&&wppExtVelha()?'err':'ok');
+  /* extensão antiga é a causa mais comum de "não carrega": avisa de forma visível, uma vez */
+  if(wppModoExt()&&wppExtVelha()&&!_wppVelhaAvisada&&typeof activeTab!=='undefined'&&activeTab==='whatsapp'){_wppVelhaAvisada=true;wppAcessoAbrir();}
   const ready=wppBridgeState.status==='ready';
   setWppLoading(!ready);
   const input=document.getElementById('wpp-message-input'),btn=document.getElementById('wpp-send-btn');
@@ -26476,7 +26478,7 @@ function renderWppChats(){
   const el=document.getElementById('wpp-chat-list');if(!el)return;
   const fbtn=document.getElementById('wpp-filter-btn');
   if(fbtn){const active=wppFilterIds.size>0;fbtn.classList.toggle('active',active);}
-  if(!wppChats.length){el.innerHTML='<div class="wpp-chat-item"><div class="wpp-ci-av"><i class="ti ti-qrcode"></i></div><div class="wpp-ci-info"><div class="wpp-ci-top"><span class="wpp-ci-name">'+(wppBridgeState.status==='ready'?'Conversas':'Conectar aparelho')+'</span></div><div class="wpp-ci-bot"><span class="wpp-ci-prev">'+(wppBridgeState.status==='ready'?(_wppChatsErr?'Erro ao carregar: '+eh(_wppChatsErr):'Carregando conversas…'):'Leia o QR Code para iniciar')+'</span></div></div></div>';return}
+  if(!wppChats.length){el.innerHTML='<div class="wpp-chat-item"><div class="wpp-ci-av"><i class="ti ti-qrcode"></i></div><div class="wpp-ci-info"><div class="wpp-ci-top"><span class="wpp-ci-name">'+(wppBridgeState.status==='ready'?'Conversas':'Conectar aparelho')+'</span></div><div class="wpp-ci-bot"><span class="wpp-ci-prev">'+(wppModoExt()&&wppExtVelha()?'⚠ Atualize a extensão: clique em Meu WhatsApp':wppBridgeState.status==='ready'?(_wppChatsErr?'Erro ao carregar: '+eh(_wppChatsErr):'Carregando conversas…'):'Leia o QR Code para iniciar')+'</span></div></div></div>';return}
   let chats=[...wppChats];
   if(wppTabFilter==='unread')chats=chats.filter(c=>c.unreadCount>0);
   else if(wppTabFilter==='groups')chats=chats.filter(c=>c.isGroup);
@@ -27532,7 +27534,8 @@ function wppModoProprio(){let m='';try{m=localStorage.getItem(WPP_MODO_KEY)||'';
    sempre e a extensão responde com o WhatsApp Web deste navegador. Padrão em aparelhos remotos quando a extensão está instalada. */
 const WPP_FAKE='https://jarvis-wpp.local';
 function wppExtPronta(){return!!window.__jarvisWppExtVersao;}
-const WPP_EXT_ATUAL='1.0.2';
+const WPP_EXT_ATUAL='1.0.3';
+var _wppVelhaAvisada=false;
 function wppExtVelha(){const v=String(window.__jarvisWppExtVersao||'');if(!v)return false;const n=x=>x.split('.').reduce((a,p)=>a*1000+(Number(p)||0),0);return n(v)<n(WPP_EXT_ATUAL);}
 function wppModoExt(){if(!wppNotifyHere())return true;let m='';try{m=localStorage.getItem(WPP_MODO_KEY)||'';}catch(_){}return m==='ext';}
 function wppPingExt(){try{window.postMessage({jarvisWppPedido:true,tipo:'ping'},location.origin);}catch(_){}}
@@ -27595,7 +27598,7 @@ async function wppAcessoAbrir(){
   const optPc='<label class="wpp-acesso-modo"><input type="radio" name="wppmodo" '+(modoExt?'':'checked')+' onchange="wppModoSet(\'pc\')"> <span><b>Ponte local deste PC</b><small> — usa o WhatsApp ligado nesta máquina (127.0.0.1). Nenhum outro aparelho enxerga essa conta.</small></span></label>';
   let det;
   if(modoExt){
-    det=ext&&wppExtVelha()?'<div class="wpp-acesso-aviso" style="display:block"><b><i class="ti ti-alert-triangle"></i> Extensão desatualizada: instalada '+eh(window.__jarvisWppExtVersao)+', atual '+WPP_EXT_ATUAL+'.</b><ol style="margin:6px 0 6px 18px;padding:0"><li><a href="whatsapp-extensao.zip?v='+WPP_EXT_ATUAL+'" download>Baixe a versão nova</a> e extraia <b>por cima da mesma pasta</b>.</li><li>Em <b>chrome://extensions</b>, clique em recarregar (⟳) na extensão do Jarvis.</li><li>Feche a aba do WhatsApp Web e aperte F5 no painel.</li></ol></div>':ext?'<p><b>✔ Extensão detectada (versão '+eh(window.__jarvisWppExtVersao)+').</b> Ao abrir o Painel WhatsApp, ela abre o WhatsApp Web numa aba fixada deste navegador; na primeira vez, leia o QR com o celular (WhatsApp › Aparelhos conectados). Mantenha essa aba aberta (pode ficar em segundo plano).</p>'
+    det=ext&&wppExtVelha()?'<div class="wpp-acesso-aviso" style="display:block"><b><i class="ti ti-alert-triangle"></i> Extensão desatualizada: instalada '+eh(window.__jarvisWppExtVersao)+', atual '+WPP_EXT_ATUAL+'.</b><ol style="margin:6px 0 6px 18px;padding:0"><li><a href="whatsapp-extensao.zip?v='+WPP_EXT_ATUAL+'" download>Baixe a versão nova</a> e extraia <b>por cima da mesma pasta</b>.</li><li>Em <b>chrome://extensions</b>, clique em recarregar (⟳) na extensão do Jarvis.</li><li>Pronto: as abas recarregam sozinhas. Nas próximas versões basta dar dois cliques em <b>Atualizar extensão</b> dentro da pasta.</li></ol></div>':ext?'<p><b>✔ Extensão detectada (versão '+eh(window.__jarvisWppExtVersao)+').</b> Ao abrir o Painel WhatsApp, ela abre o WhatsApp Web numa aba fixada deste navegador; na primeira vez, leia o QR com o celular (WhatsApp › Aparelhos conectados). Mantenha essa aba aberta (pode ficar em segundo plano).</p>'
       :'<div class="wpp-acesso-aviso" style="display:block"><b><i class="ti ti-puzzle"></i> Extensão não detectada neste navegador.</b><ol style="margin:6px 0 6px 18px;padding:0"><li><a href="whatsapp-extensao.zip" download>Baixe a extensão</a> e extraia o .zip numa pasta fixa.</li><li>No Chrome/Edge, abra <b>chrome://extensions</b> e ligue o <b>Modo do desenvolvedor</b>.</li><li>Clique em <b>Carregar sem compactação</b> e escolha a pasta extraída.</li><li>Volte aqui e clique em <b>Verificar de novo</b>; o QR aparece e você lê com o celular.</li></ol><small>Só funciona no Chrome ou Edge do computador (celular não aceita extensões).</small><br><button type="button" class="wpp-page-btn" onclick="wppAcessoAbrir()"><i class="ti ti-refresh"></i>Verificar de novo</button></div>';
   }else{
     det='<p><b>Este PC usa a ponte local com o QR próprio dele.</b> Para o WhatsApp Web deste navegador, escolha a opção da extensão.</p>';

@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia, Message } = require('whatsapp-web.js');
 
 const PORT = Number(process.env.PORT || process.env.WPP_PORT || 8788);
 const HOST = process.env.WPP_HOST || '127.0.0.1';
@@ -453,9 +453,81 @@ async function summarizeMessage(message, withQuote = true) {
 
 // Depois do 1º login o WhatsApp Web recarrega a página e o script injetado (window.WWebJS) some:
 // chamadas falham com "reading 'getChats'". Reinicia o cliente com a sessão salva (sem novo QR).
+let _ultimoReinicioLeitura = 0;
+const limitarTempo = (p, ms, nome) => { let t; return Promise.race([p, new Promise((_, err) => { t = setTimeout(() => err(new Error(nome + ' não respondeu em ' + Math.round(ms / 1000) + ' s')), ms); })]).finally(() => clearTimeout(t)); };
+
+/* 2026-11-28: leitura DIRETA da memória do WhatsApp Web. O getChats da biblioteca busca no servidor os dados de
+   cada grupo (todos ao mesmo tempo) e uma única falha derrubava a lista inteira; a abertura de conversa fazia o
+   mesmo. Aqui lê só o que o WhatsApp Web já tem; a biblioteca fica de reserva. */
+function listaDireta() {
+  return limitarTempo(client.pupPage.evaluate(() => {
+    const sid = x => !x ? '' : (typeof x === 'string' ? x : x._serialized || x.$1 || String(x));
+    return window.require('WAWebCollections').Chat.getModelsArray().map(c => {
+      try {
+        const id = sid(c.id);
+        if (!/@(c|g)\.us$|@lid$/.test(id)) return null;
+        let m = null; try { const a = c.msgs.getModelsArray(); m = a[a.length - 1] || null; } catch (_) {}
+        let participantes = 0; try { const p = c.groupMetadata && c.groupMetadata.participants; participantes = (p && (p.length || p.getModelsArray().length)) || 0; } catch (_) {}
+        return { id, name: c.formattedTitle || c.name || (c.id && c.id.user) || 'Sem nome', isGroup: /@g\.us$/.test(id), unreadCount: c.unreadCount || 0, timestamp: c.t || 0, archived: !!c.archive, pinned: !!c.pin,
+          lastMessage: m ? { body: String((m.type === 'chat' ? m.body : m.caption) || ''), fromMe: !!(m.id && m.id.fromMe), timestamp: m.t || 0 } : null, participantes };
+      } catch (_) { return null; }
+    }).filter(Boolean);
+  }), 20000, 'A lista de conversas');
+}
+async function mensagensDiretas(id, limite) {
+  const cruas = await limitarTempo(client.pupPage.evaluate(async (id, limite) => {
+    const sid = x => !x ? '' : (typeof x === 'string' ? x : x._serialized || x.$1 || String(x));
+    const col = window.require('WAWebCollections'), wid = window.require('WAWebWidFactory').createWid(id);
+    let chat = col.Chat.get(wid) || col.Chat.getModelsArray().find(c => sid(c.id) === id);
+    if (!chat) chat = (await window.require('WAWebFindChatAction').findOrCreateLatestChat(wid)).chat;
+    let msgs = chat.msgs.getModelsArray().filter(m => !m.isNotification);
+    const fim = Date.now() + 12000;
+    while (msgs.length < limite && Date.now() < fim) {
+      let mais = null;
+      try { mais = await Promise.race([window.require('WAWebChatLoadMessages').loadEarlierMsgs({ chat }), new Promise(r => setTimeout(() => r(null), 8000))]); } catch (_) { break; }
+      const vistos = new Set(msgs.map(m => sid(m.id)));
+      const novas = (mais || []).filter(m => !m.isNotification && !vistos.has(sid(m.id)));
+      if (!novas.length) break;
+      msgs = novas.concat(msgs);
+    }
+    return msgs.sort((a, b) => (a.t || 0) - (b.t || 0)).slice(-limite).map(m => { try { return window.WWebJS.getMessageModel(m); } catch (_) { return null; } }).filter(Boolean);
+  }, id, limite), 30000, 'A leitura das mensagens');
+  return cruas.map(m => new Message(client, m));
+}
+async function lerMensagens(id, limite) {
+  try { const m = await mensagensDiretas(id, limite); if (m.length) return m; }
+  catch (e) { console.error('leitura direta de mensagens falhou:', String(e.message || e).slice(0, 160)); }
+  const chat = await limitarTempo(client.getChatById(id), 20000, 'Abrir a conversa');
+  return limitarTempo(chat.fetchMessages({ limit: limite }), 30000, 'A leitura das mensagens');
+}
+async function lerConversas() {
+  try { const l = await listaDireta(); if (l.length) return l; }
+  catch (e) { console.error('leitura direta de conversas falhou:', String(e.message || e).slice(0, 160)); }
+  const chats = await limitarTempo(client.getChats(), 40000, 'A lista de conversas');
+  return chats.map(c => Object.assign(summarizeChat(c), { participantes: (c.participants || []).length })).filter(c => c.id);
+}
+/* autoteste (só contagens): roda ao conectar e aparece no status/painel */
+async function autoteste() {
+  try {
+    const chats = (await lerConversas()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    let com = 0, erro = '';
+    for (const c of chats.slice(0, 3)) { try { if ((await lerMensagens(c.id, 5)).length) com++; } catch (e) { erro = String(e.message || e).replace(/\d{6,}/g, '…').slice(0, 140); } }
+    state.autoteste = 'Autoteste: ' + chats.length + ' conversas, mensagens abriram em ' + com + ' de ' + Math.min(3, chats.length) + (erro ? ' — erro: ' + erro : '');
+    console.log('[autoteste] ' + state.autoteste);
+    broadcast('status');
+    if (!chats.length || !com) setTimeout(() => { if (state.status === 'ready') autoteste(); }, 60000);
+  } catch (e) {
+    state.autoteste = 'Autoteste falhou: ' + String(e.message || e).slice(0, 140); console.error('[autoteste] ' + state.autoteste); broadcast('status');
+    setTimeout(() => { if (state.status === 'ready') autoteste(); }, 60000);
+  }
+}
+
 function falhaDeInjecao(err) {
   const m = String(err && err.message || err);
-  if (/WWebJS|reading 'getChats'|Execution context was destroyed|detached Frame/i.test(m)) { console.error('Injeção perdida — reiniciando cliente:', m); scheduleRestart(1500); return true; }
+  if (/WWebJS|reading 'getChats'|Execution context was destroyed|detached Frame/i.test(m)) {
+    if (Date.now() - _ultimoReinicioLeitura > 180000) { _ultimoReinicioLeitura = Date.now(); console.error('Injeção perdida — reiniciando cliente:', m); scheduleRestart(1500); }
+    return true;
+  }
   return false;
 }
 
@@ -541,6 +613,7 @@ async function startClient() {
         platform: info.platform || ''
       }
     });
+    setTimeout(autoteste, 5000);
   });
   client.on('auth_failure', msg => {
     setStatus('auth_failure', { lastError: String(msg || 'Falha de autenticação') });
@@ -656,9 +729,9 @@ app.post('/api/logout', async (_req, res) => {
 app.get('/api/chats', async (_req, res) => {
   if (!requireReady(res)) return;
   try {
-    const chats = await client.getChats();
-    chats.forEach(c => { const id = c.id && c.id._serialized, n = c.name || c.formattedTitle; if (id && n) nomeChat.set(id, n); });
-    res.json(chats.map(summarizeChat).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100));
+    const chats = await lerConversas();
+    chats.forEach(c => { if (c.id && c.name) nomeChat.set(c.id, c.name); });
+    res.json(chats.map(({ participantes, ...c }) => c).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100));
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });
   }
@@ -666,18 +739,21 @@ app.get('/api/chats', async (_req, res) => {
 
 app.get('/api/chats/:id/messages', async (req, res) => {
   if (!requireReady(res)) return;
+  const id = req.params.id;
   try {
     const limit = Math.max(1, Math.min(300, Number(req.query.limit || 50)));
-    const chat = await client.getChatById(req.params.id);
-    const messages = await chat.fetchMessages({ limit });
-    const vivas = await Promise.all(messages.map(summarizeMessage));
-    histGuardar(req.params.id, vivas);
+    const messages = await lerMensagens(id, limit);
+    const vivas = (await Promise.all(messages.map(m => summarizeMessage(m).catch(() => null)))).filter(m => m && m.id);
+    histGuardar(id, vivas);
     /* completa com o histórico local (mensagens que a memória do WhatsApp Web perdeu num reinício) */
-    const porId = new Map((hist[req.params.id] || []).map(m => [m.id, m]));
+    const porId = new Map((hist[id] || []).map(m => [m.id, m]));
     vivas.forEach(m => porId.set(m.id, m));
     res.json([...porId.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-limit));
   } catch (err) {
-    falhaDeInjecao(err); res.status(500).json({ error: err.message });
+    falhaDeInjecao(err);
+    /* mesmo com falha na leitura, devolve o que está guardado neste PC */
+    if (hist[id] && hist[id].length) return res.json(hist[id].slice(-Math.max(1, Math.min(300, Number(req.query.limit || 50)))));
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -991,8 +1067,8 @@ async function sendToGroups(cfg, body, kind) {
 app.get('/api/groups', async (_req, res) => {
   if (!requireReady(res)) return;
   try {
-    const chats = await client.getChats();
-    res.json(chats.filter(c => c.isGroup).map(c => ({ id: c.id._serialized, name: c.name || 'Grupo sem nome', participants: (c.participants || []).length, timestamp: c.timestamp || 0 }))
+    const chats = await lerConversas();
+    res.json(chats.filter(c => c.isGroup).map(c => ({ id: c.id, name: c.name || 'Grupo sem nome', participants: c.participantes || 0, timestamp: c.timestamp || 0 }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
   } catch (err) {
     falhaDeInjecao(err); res.status(500).json({ error: err.message });

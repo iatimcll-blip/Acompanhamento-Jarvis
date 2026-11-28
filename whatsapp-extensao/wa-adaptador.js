@@ -13,11 +13,32 @@
   let naoLidas = 0;
   let ultimoErro = '';
 
-  const sid = x => (x == null ? '' : (typeof x === 'string' ? x : (x._serialized || (x.toString && x.toString()) || '')));
+  /* o WhatsApp Web renomeou _serialized para $1 (julho/2026) */
+  const sid = x => {
+    if (x == null) return '';
+    if (typeof x === 'string') return x;
+    if (x._serialized) return x._serialized;
+    if (typeof x.$1 === 'string') return x.$1;
+    return x.toString && x.toString !== Object.prototype.toString ? x.toString() : '';
+  };
   const W = () => window.WPP;
-  const totalChats = () => { try { return W().whatsapp.ChatStore.getModelsArray().length; } catch (_) { return 0; } };
-  /* pronto = logado e (interface sincronizada OU já há conversas na memória) */
-  const pronto = () => {
+  const req = nome => { try { return typeof window.require === 'function' ? window.require(nome) : null; } catch (_) { return null; } };
+  function chatsMemoria() {
+    for (const f of [() => W().whatsapp.ChatStore, () => req('WAWebCollections').Chat]) {
+      try { const a = f().getModelsArray(); if (a && a.length) return a.slice(); } catch (_) {}
+    }
+    return [];
+  }
+  function chatPorId(id) {
+    for (const f of [() => W().whatsapp.ChatStore.get(id), () => req('WAWebCollections').Chat.get(req('WAWebWidFactory').createWid(id)), () => chatsMemoria().find(c => sid(c.id) === id)]) {
+      try { const c = f(); if (c && c.msgs) return c; } catch (_) {}
+    }
+    return null;
+  }
+  const socketLigado = () => { try { return req('WAWebSocketModel').Socket.state === 'CONNECTED'; } catch (_) { return false; } };
+  const totalChats = () => chatsMemoria().length;
+  /* pela biblioteca: logado e (interface sincronizada OU já há conversas na memória) */
+  const prontoWajs = () => {
     try {
       if (!(W() && W().isReady)) return false;
       let auth = null, main = false;
@@ -27,28 +48,63 @@
       return (auth === true && main) || totalChats() > 0;
     } catch (_) { return false; }
   };
+  /* sem a biblioteca (ela não casou com a versão do WhatsApp Web): conectado e com conversas na memória */
+  const pronto = () => prontoWajs() || (socketLigado() && totalChats() > 0);
   const comPrazo = (p, ms, nome) => Promise.race([p, new Promise((_, err) => setTimeout(() => err(new Error(nome + ' não respondeu em ' + Math.round(ms / 1000) + ' s')), ms))]);
   /* 2026-11-28 (BUG "lê o QR mas não abre as mensagens"): o chat.list buscava, um grupo de cada vez, os dados de
-     TODOS os grupos no servidor antes de responder — em conta com muitos grupos estourava o tempo (ou falhava em um
-     grupo e derrubava a lista). Pede a lista sem isso e, se a biblioteca falhar, lê direto as conversas em memória. */
+     TODOS os grupos no servidor antes de responder. Pede sem isso e, se a biblioteca falhar ou vier vazia, lê
+     direto as conversas que o WhatsApp Web tem em memória. */
   async function listaChats(opcoes) {
-    let l;
-    try { l = await comPrazo(W().chat.list(Object.assign({ ignoreGroupMetadata: true }, opcoes)), 20000, 'A lista de conversas'); }
-    catch (e) {
-      try { l = W().whatsapp.ChatStore.getModelsArray().slice(); } catch (_) { l = []; }
-      if (opcoes && opcoes.onlyGroups) l = l.filter(c => /@g\.us$/.test(sid(c.id)));
-      if (!l.length) throw e;
+    let l = [], falha = null;
+    if (prontoWajs()) {
+      try { l = await comPrazo(W().chat.list(Object.assign({ ignoreGroupMetadata: true }, opcoes)), 15000, 'A lista de conversas'); }
+      catch (e) { falha = e; }
     }
+    if (!l || !l.length) {
+      l = chatsMemoria();
+      if (opcoes && opcoes.onlyGroups) l = l.filter(c => /@g\.us$/.test(sid(c.id)));
+    }
+    if (!l.length && falha) throw falha;
     return l.filter(c => idsOk(sid(c.id))); // fora: status@broadcast, canais etc.
   }
   async function mensagensDe(id, limite) {
-    try { return await comPrazo(W().chat.getMessages(id, { count: limite }), 30000, 'A leitura das mensagens'); }
-    catch (e) {
-      let l = [];
-      try { const c = W().whatsapp.ChatStore.get(id); l = c.msgs.getModelsArray().slice(-limite); } catch (_) {}
-      if (!l.length) throw e;
-      return l; // pelo menos as mensagens já carregadas no WhatsApp Web
+    let falha = null;
+    if (prontoWajs()) {
+      try { const m = await comPrazo(W().chat.getMessages(id, { count: limite }), 15000, 'A leitura das mensagens'); if (m && m.length) return m; }
+      catch (e) { falha = e; }
     }
+    /* reserva: memória da conversa + "carregar anteriores" do próprio WhatsApp Web */
+    const chat = chatPorId(id);
+    if (!chat) { if (falha) throw falha; throw new Error('Conversa não encontrada no WhatsApp Web.'); }
+    let msgs = [];
+    try { msgs = chat.msgs.getModelsArray().filter(m => !m.isNotification); } catch (_) {}
+    const carregar = req('WAWebChatLoadMessages'), fim = Date.now() + 12000;
+    while (carregar && msgs.length < limite && Date.now() < fim) {
+      let mais = null;
+      try { mais = await comPrazo(Promise.resolve(carregar.loadEarlierMsgs({ chat })), 8000, 'Carregar anteriores'); } catch (_) { break; }
+      const vistos = new Set(msgs.map(m => sid(m.id)));
+      const novas = (mais || []).filter(m => !m.isNotification && !vistos.has(sid(m.id)));
+      if (!novas.length) break;
+      msgs = novas.concat(msgs);
+    }
+    if (!msgs.length && falha) throw falha;
+    return msgs.sort((a, b) => (a.t || 0) - (b.t || 0)).slice(-limite);
+  }
+  /* autoteste (só contagens, sem conteúdo): mostra no painel se a leitura funciona neste aparelho */
+  let autoteste = '', autotesteOk = false, autotestando = false;
+  async function autotestar() {
+    if (autotestando || !pronto()) return;
+    autotestando = true;
+    try {
+      const chats = (await listaChats()).sort((a, b) => (b.t || 0) - (a.t || 0));
+      let com = 0, erroTxt = '';
+      const amostra = chats.slice(0, 3);
+      for (const c of amostra) { try { if ((await mensagensDe(sid(c.id), 5)).length) com++; } catch (e) { erroTxt = String((e && e.message) || e).replace(/\d{6,}/g, '…').slice(0, 140); } }
+      autotesteOk = chats.length > 0 && com > 0;
+      autoteste = 'Autoteste: ' + chats.length + ' conversas, mensagens abriram em ' + com + ' de ' + amostra.length + ' (' + (prontoWajs() ? 'biblioteca ok' : 'modo reserva') + ')' + (erroTxt ? ' — erro: ' + erroTxt : '');
+    } catch (e) { autoteste = 'Autoteste falhou: ' + String((e && e.message) || e).slice(0, 140); autotesteOk = false; }
+    autotestando = false;
+    evento('status');
   }
 
   /* ── status ── */
@@ -70,9 +126,7 @@
   const diagTxt = d => 'wa-js: ' + (d.wpp ? 'carregado' : 'NÃO carregou') + ', pronto=' + d.pronto + ', autenticado=' + d.auth + ', sincronizado=' + d.main + ', conversas=' + d.chats + (d.versao ? ', WhatsApp Web ' + d.versao : '');
   function estado() {
     const dg = diag();
-    const base = { qr: '', qrText: '', hasQr: false, me: null, lastError: ultimoErro, diag: diagTxt(dg), unread: naoLidas, startedAt: INICIO, updatedAt: new Date().toISOString(), instancia: 'Este aparelho (extensão)' };
-    if (!W() || !W().isInjected) return Object.assign(base, { status: 'starting', lastError: 'A biblioteca do WhatsApp (wa-js) ainda não carregou nesta aba. Se persistir, recarregue a aba do WhatsApp Web.' });
-    if (dg.pronto && dg.auth && !dg.main && !dg.chats) return Object.assign(base, { status: 'authenticated', lastError: 'Autenticado — o WhatsApp Web está sincronizando as conversas (pode levar alguns minutos na primeira vez).' });
+    const base = { qr: '', qrText: '', hasQr: false, me: null, lastError: ultimoErro, diag: diagTxt(dg), autoteste, unread: naoLidas, startedAt: INICIO, updatedAt: new Date().toISOString(), instancia: 'Este aparelho (extensão)' };
     if (pronto()) {
       let wid = '', nome = '';
       try { wid = sid(W().conn.getMyUserId()); } catch (_) {}
@@ -81,6 +135,8 @@
     }
     const qr = qrDaPagina();
     if (qr) return Object.assign(base, { status: 'qr', qr, hasQr: true, lastError: 'Leia o QR Code com o WhatsApp do seu celular (WhatsApp › Aparelhos conectados).' });
+    if (!W() || !W().isInjected) return Object.assign(base, { status: 'starting', lastError: 'A biblioteca do WhatsApp (wa-js) ainda não carregou nesta aba. Se persistir, recarregue a aba do WhatsApp Web.' });
+    if (dg.pronto && dg.auth && !dg.main && !dg.chats) return Object.assign(base, { status: 'authenticated', lastError: 'Autenticado — o WhatsApp Web está sincronizando as conversas (pode levar alguns minutos na primeira vez).' });
     return Object.assign(base, { status: 'starting', lastError: dg.pronto ? 'O WhatsApp Web ainda não terminou de abrir.' : 'O wa-js ainda não ficou pronto nesta aba (pode ser incompatível com a versão atual do WhatsApp Web).' });
   }
 
@@ -91,7 +147,9 @@
     if (contatos.has(k)) return contatos.get(k);
     let item = { id: k, name: k.replace(/@.+$/, ''), number: k.replace(/@.+$/, '') };
     try {
-      const c = await W().contact.get(k);
+      let c = null;
+      try { c = await W().contact.get(k); } catch (_) {}
+      if (!c) c = req('WAWebCollections').Contact.get(req('WAWebWidFactory').createWid(k));
       if (c) item = { id: k, name: c.name || c.pushname || c.shortName || c.formattedName || item.number, number: (c.id && c.id.user) || item.number };
     } catch (_) {}
     contatos.set(k, item);
@@ -288,6 +346,19 @@
     else if (tentativas > 600) clearInterval(espera);
   }, 1000);
   setInterval(() => evento('status'), 30000); // o painel acompanha QR/conexão mesmo sem mensagens
+  /* autoteste na primeira conexão (repete a cada 1 min enquanto não passar) e mensagens ao vivo sem a biblioteca */
+  let ultimoTeste = 0;
+  setInterval(() => {
+    try {
+      if (!pronto()) return;
+      if (!autotesteOk && Date.now() - ultimoTeste > 60000) { ultimoTeste = Date.now(); autotestar(); }
+      const Msg = !window.__jarvisWaEventos && !window.__jarvisWaNativos && (req('WAWebCollections') || {}).Msg;
+      if (Msg && Msg.on) {
+        window.__jarvisWaNativos = true;
+        Msg.on('add', async m => { try { if (window.__jarvisWaEventos || !m.isNewMsg) return; const fromMe = !!(m.id && m.id.fromMe); if (!fromMe) naoLidas++; evento(fromMe ? 'message_create' : 'message', { message: await resumoMsg(m) }); } catch (_) {} });
+      }
+    } catch (_) {}
+  }, 2000);
   let assinatura = '';
   setInterval(() => { try { const e = estado(); const a = e.status + '|' + (e.hasQr ? 'qr' : '') + '|' + e.diag; if (a !== assinatura) { assinatura = a; evento('status'); } } catch (_) {} }, 1500);
 })();
